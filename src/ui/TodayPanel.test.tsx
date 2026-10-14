@@ -37,10 +37,16 @@ describe('TodayPanelView', () => {
   it("shows yesterday's units and revenue per product", () => {
     const html = render({
       day: 3,
-      sold: { cafe: 87, croissant: 54 },
+      sold: { cafe: 87, chocolat: 12, croissant: 54 },
       revenue: cents(123_456),
-      lostSales: { cafe: 0, croissant: 6 },
-      spoiled: { cafe: 2, croissant: 10 },
+      lostSales: { cafe: 0, chocolat: 3, croissant: 6 },
+      spoiled: { cafe: 2, chocolat: 0, croissant: 10 },
+      segments: {
+        aubaine: { visits: 30, buyers: 12, tooExpensive: 18, soldOut: 0 },
+        habitue: { visits: 60, buyers: 59, tooExpensive: 0, soldOut: 1 },
+        chic: { visits: 24, buyers: 24, tooExpensive: 0, soldOut: 0 },
+      },
+      visits: [],
     })
     expect(html).toContain(`Hier${S}: Jeudi 4 mai, an 1`)
     expect(html).toContain(
@@ -48,6 +54,7 @@ describe('TodayPanelView', () => {
     )
     expect(productRows(html)).toEqual([
       ['Café', '87', '0', '2'],
+      ['Chocolat chaud', '12', '3', '0'],
       ['Croissant', '54', '6', '10'],
     ])
     expect(html).toContain(
@@ -65,6 +72,12 @@ describe('TodayPanelView', () => {
         String(lastDay.sold.cafe),
         String(lastDay.lostSales.cafe),
         String(lastDay.spoiled.cafe),
+      ],
+      [
+        'Chocolat chaud',
+        String(lastDay.sold.chocolat),
+        String(lastDay.lostSales.chocolat),
+        String(lastDay.spoiled.chocolat),
       ],
       [
         'Croissant',

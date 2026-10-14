@@ -1,5 +1,5 @@
-import type { FoodTruckContent } from '../content/schema.ts'
-import { FOOD_TRUCK, openingJournal, playDay } from './day.ts'
+import type { CustomerContent, FoodTruckContent } from '../content/schema.ts'
+import { CUSTOMERS, FOOD_TRUCK, openingJournal, playDay } from './day.ts'
 import { seedRng } from './rng.ts'
 import type { Day, GameState } from './types.ts'
 
@@ -56,8 +56,14 @@ export function createInitialState(
 export function tick(
   state: GameState,
   content: FoodTruckContent = FOOD_TRUCK,
+  customers: CustomerContent = CUSTOMERS,
 ): GameState {
-  const played = playDay(state, toCalendar(state.day).weekday, content)
+  const played = playDay(
+    state,
+    toCalendar(state.day).weekday,
+    content,
+    customers,
+  )
   return { ...played, day: state.day + 1 }
 }
 

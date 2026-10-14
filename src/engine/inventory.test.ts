@@ -25,15 +25,16 @@ function frozen(lots: Lot[]): readonly Lot[] {
   return Object.freeze(lots.map((l) => Object.freeze(l)))
 }
 
-const SHELF_LIFE = { cafe: 90, croissant: 1 }
+const SHELF_LIFE = { cafe: 90, chocolat: 90, croissant: 1 }
 
 describe('perProduct', () => {
   it('has every product and nothing else', () => {
     expect(perProduct((product) => product.length)).toEqual({
       cafe: 4,
+      chocolat: 8,
       croissant: 9,
     })
-    expect(PRODUCTS).toEqual(['cafe', 'croissant'])
+    expect(PRODUCTS).toEqual(['cafe', 'chocolat', 'croissant'])
   })
 })
 
@@ -41,17 +42,19 @@ describe('onHand and inventoryValue', () => {
   const lots = frozen([
     lot('cafe', 3, 40),
     lot('croissant', 5, 90),
+    lot('chocolat', 4, 55),
     lot('cafe', 2, 45, 1),
   ])
 
   it('counts the units of one product across its lots', () => {
     expect(onHand(lots, 'cafe')).toBe(5)
+    expect(onHand(lots, 'chocolat')).toBe(4)
     expect(onHand(lots, 'croissant')).toBe(5)
     expect(onHand([], 'cafe')).toBe(0)
   })
 
   it('values every lot at its own unit cost', () => {
-    expect(inventoryValue(lots)).toBe(3 * 40 + 5 * 90 + 2 * 45)
+    expect(inventoryValue(lots)).toBe(3 * 40 + 5 * 90 + 4 * 55 + 2 * 45)
     expect(inventoryValue([])).toBe(0)
   })
 })
@@ -102,6 +105,19 @@ describe('takeFifo', () => {
     expect(left[0]).toBe(lots[0])
   })
 
+  it('takes hot chocolate from its own lots, oldest first', () => {
+    const mixed = frozen([
+      lot('chocolat', 2, 50, 0),
+      lot('cafe', 3, 10, 0),
+      lot('chocolat', 6, 55, 1),
+    ])
+    expect(takeFifo(mixed, 'chocolat', 5)).toEqual({
+      lots: [mixed[1], lot('chocolat', 3, 55, 1)],
+      taken: 5,
+      cost: 2 * 50 + 3 * 55,
+    })
+  })
+
   it.each([-1, 1.5, Number.NaN])('rejects quantity %s', (quantity) => {
     expect(() => takeFifo(lots, 'cafe', quantity)).toThrow(RangeError)
   })
@@ -112,7 +128,7 @@ describe('removeExpired', () => {
     const lots = frozen([lot('croissant', 7, 90, 4), lot('cafe', 2, 40, 4)])
     expect(removeExpired(lots, 4, SHELF_LIFE)).toEqual({
       lots: [lots[1]],
-      spoiled: { cafe: 0, croissant: 7 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 7 },
       cost: 7 * 90,
     })
   })
@@ -121,13 +137,26 @@ describe('removeExpired', () => {
     const lots = frozen([lot('cafe', 6, 40, 10)])
     expect(removeExpired(lots, 10 + 88, SHELF_LIFE)).toEqual({
       lots,
-      spoiled: { cafe: 0, croissant: 0 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 0 },
       cost: 0,
     })
     expect(removeExpired(lots, 10 + 89, SHELF_LIFE)).toEqual({
       lots: [],
-      spoiled: { cafe: 6, croissant: 0 },
+      spoiled: { cafe: 6, chocolat: 0, croissant: 0 },
       cost: 6 * 40,
+    })
+  })
+
+  it('keeps hot chocolate for 90 days, like coffee', () => {
+    const lots = frozen([
+      lot('chocolat', 5, 55, 10),
+      lot('croissant', 3, 90, 99),
+    ])
+    expect(removeExpired(lots, 10 + 88, SHELF_LIFE).lots).toEqual(lots)
+    expect(removeExpired(lots, 10 + 89, SHELF_LIFE)).toEqual({
+      lots: [],
+      spoiled: { cafe: 0, chocolat: 5, croissant: 3 },
+      cost: 5 * 55 + 3 * 90,
     })
   })
 
@@ -135,7 +164,7 @@ describe('removeExpired', () => {
     const lots = frozen([lot('cafe', 1, 40, 0), lot('cafe', 2, 50, 20)])
     expect(removeExpired(lots, 100, SHELF_LIFE)).toEqual({
       lots: [lots[1]],
-      spoiled: { cafe: 1, croissant: 0 },
+      spoiled: { cafe: 1, chocolat: 0, croissant: 0 },
       cost: 40,
     })
   })
@@ -144,7 +173,7 @@ describe('removeExpired', () => {
     const lots = frozen([lot('croissant', 2, 90, 3), lot('croissant', 5, 80)])
     expect(removeExpired(lots, 3, SHELF_LIFE)).toEqual({
       lots: [],
-      spoiled: { cafe: 0, croissant: 7 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 7 },
       cost: 2 * 90 + 5 * 80,
     })
   })

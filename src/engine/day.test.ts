@@ -1,18 +1,25 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import {
+  loadCustomerContent,
   loadFoodTruckContent,
+  type CustomerContent,
+  type DayType,
+  type DayTypeId,
   type FoodTruckContent,
   type ProductId,
   type RestockRule,
+  type Segment,
+  type SegmentId,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance, trialBalance, type JournalEntry } from '../finance/journal.ts'
-import { createInitialState, tick } from './clock.ts'
-import { FOOD_TRUCK, openingJournal } from './day.ts'
-import { PRODUCTS, inventoryValue, onHand } from './inventory.ts'
+import { createInitialState, tick, toCalendar } from './clock.ts'
+import { SEGMENTS, dayTypeOf, perSegment } from './customers.ts'
+import { CUSTOMERS, FOOD_TRUCK, currentPrice, openingJournal } from './day.ts'
+import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
 import { cents } from './money.ts'
-import type { Day, GameState } from './types.ts'
+import type { Day, DaySummary, GameState, PerProduct } from './types.ts'
 
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
@@ -26,70 +33,177 @@ const MEMO = {
   spoilage: 'Marchandises périmées',
 }
 
-// Content variants: each change returns new content, and `variant` validates
-// the result like the shipped file.
-type Change = (content: FoodTruckContent) => FoodTruckContent
+/** What a day is played with: the truck's numbers and its customers. */
+interface Content {
+  truck: FoodTruckContent
+  customers: CustomerContent
+}
 
-function variant(...changes: Change[]): FoodTruckContent {
-  return loadFoodTruckContent(
-    changes.reduce((content, change) => change(content), FOOD_TRUCK),
+const SHIPPED: Content = { truck: FOOD_TRUCK, customers: CUSTOMERS }
+
+function byProduct<T>(value: (product: ProductId) => T): Record<ProductId, T> {
+  return Object.fromEntries(
+    PRODUCTS.map((product) => [product, value(product)]),
+  ) as Record<ProductId, T>
+}
+
+/** A crowd spread evenly over the opening hours, with every product liked. */
+function evenCrowd(customers: number): DayType {
+  const { semaine } = FOOD_TRUCK.walkIns.dayTypes
+  return {
+    name: 'Test',
+    customers,
+    segmentShares: { aubaine: 0.2, habitue: 0.5, chic: 0.3 },
+    productAppeal: byProduct(() => 1),
+    patienceMultiplier: 1,
+    arrivalWeights: semaine.arrivalWeights.map(() => 1),
+  }
+}
+
+/**
+ * The baseline the day tests change: 120 customers on weekdays and 80 on
+ * weekends, with the same tastes, and every segment's reference price is the
+ * base price. So each customer wants a product with exactly its purchase
+ * probability, whatever the segment (see `buying`).
+ */
+const FLAT: Content = {
+  truck: loadFoodTruckContent({
+    ...FOOD_TRUCK,
+    walkIns: {
+      ...FOOD_TRUCK.walkIns,
+      dayTypes: { semaine: evenCrowd(120), finDeSemaine: evenCrowd(80) },
+    },
+  }),
+  customers: loadCustomerContent({
+    segments: perSegment((id) => ({
+      name: CUSTOMERS.segments[id].name,
+      products: byProduct((product) => ({
+        referencePriceCents: FOOD_TRUCK.products[product].basePriceCents,
+        purchaseProbability: { cafe: 0.8, chocolat: 0.3, croissant: 0.5 }[
+          product
+        ],
+        sensitivity: 4,
+      })),
+    })),
+  }),
+}
+
+// Content variants: each change returns new content, and `variant` validates
+// the result like the shipped files.
+type Change = (content: Content) => Content
+
+/** The flat baseline with `changes` made. */
+function variant(...changes: Change[]): Content {
+  return validated(changes.reduce((content, change) => change(content), FLAT))
+}
+
+/** The shipped content with `changes` made. */
+function shipped(...changes: Change[]): Content {
+  return validated(
+    changes.reduce((content, change) => change(content), SHIPPED),
   )
 }
 
+function validated({ truck, customers }: Content): Content {
+  return {
+    truck: loadFoodTruckContent(truck),
+    customers: loadCustomerContent(customers),
+  }
+}
+
+function truck(change: (truck: FoodTruckContent) => FoodTruckContent): Change {
+  return (content) => ({ ...content, truck: change(content.truck) })
+}
+
 /** Exactly this many customers each weekday and each weekend day. */
-function customers(weekday: number, weekend = weekday): Change {
+function crowd(weekday: number, weekend = weekday): Change {
+  return truck((t) => ({
+    ...t,
+    walkIns: {
+      ...t.walkIns,
+      noiseStdDevRatio: 0,
+      dayTypes: {
+        semaine: { ...t.walkIns.dayTypes.semaine, customers: weekday },
+        finDeSemaine: {
+          ...t.walkIns.dayTypes.finDeSemaine,
+          customers: weekend,
+        },
+      },
+    },
+  }))
+}
+
+type Odds = Segment['products'][ProductId]
+
+/** Changes every segment's odds for every product. */
+function everySegment(
+  change: (odds: Odds, product: ProductId) => Odds,
+): Change {
   return (content) => ({
     ...content,
-    walkIns: {
-      weekdayCustomers: weekday,
-      weekendCustomers: weekend,
-      noiseStdDevRatio: 0,
+    customers: {
+      ...content.customers,
+      segments: perSegment((id) => {
+        const segment = content.customers.segments[id]
+        return {
+          ...segment,
+          products: byProduct((product) =>
+            change(segment.products[product], product),
+          ),
+        }
+      }),
     },
   })
 }
 
+/** Every segment's chance of buying each product at its reference price. */
 function buying(probability: Partial<Record<ProductId, number>>): Change {
-  return (content) => ({
-    ...content,
-    purchaseProbability: { ...content.purchaseProbability, ...probability },
-  })
+  return everySegment((odds, product) => ({
+    ...odds,
+    purchaseProbability: probability[product] ?? odds.purchaseProbability,
+  }))
 }
 
 function restocking(rules: Partial<Record<ProductId, RestockRule>>): Change {
-  return (content) => ({
-    ...content,
-    restockPolicy: { ...content.restockPolicy, ...rules },
-  })
+  return truck((t) => ({
+    ...t,
+    restockPolicy: { ...t.restockPolicy, ...rules },
+  }))
 }
 
-function unitCost(product: ProductId, unitCostCents: number): Change {
-  return (content) => ({
-    ...content,
-    products: {
-      ...content.products,
-      [product]: {
-        ...content.products[product],
-        unitCostCents: cents(unitCostCents),
-      },
-    },
-  })
+function product(
+  id: ProductId,
+  change: Partial<FoodTruckContent['products'][ProductId]>,
+): Change {
+  return truck((t) => ({
+    ...t,
+    products: { ...t.products, [id]: { ...t.products[id], ...change } },
+  }))
+}
+
+function unitCost(id: ProductId, unitCostCents: number): Change {
+  return product(id, { unitCostCents: cents(unitCostCents) })
+}
+
+function pricing(id: ProductId, basePriceCents: number): Change {
+  return product(id, { basePriceCents: cents(basePriceCents) })
 }
 
 function fixedCosts(rentAndPermit: number, fuelAndMaintenance: number): Change {
-  return (content) => ({
-    ...content,
+  return truck((t) => ({
+    ...t,
     dailyFixedCostsCents: {
       rentAndPermit: cents(rentAndPermit),
       fuelAndMaintenance: cents(fuelAndMaintenance),
     },
-  })
+  }))
 }
 
 function capital(startingCapitalCents: number): Change {
-  return (content) => ({
-    ...content,
+  return truck((t) => ({
+    ...t,
     startingCapitalCents: cents(startingCapitalCents),
-  })
+  }))
 }
 
 function buyDaily(quantity: number): RestockRule {
@@ -100,18 +214,27 @@ function topUp(whenBelow: number, upTo: number): RestockRule {
   return { kind: 'topUp', whenBelow, upTo }
 }
 
-const NO_RESTOCK = restocking({ cafe: buyDaily(0), croissant: buyDaily(0) })
+const NO_RESTOCK = restocking(byProduct(() => buyDaily(0)))
+
+function start(content: Content = SHIPPED, seed = 42): GameState {
+  return createInitialState(seed, content.truck)
+}
+
+/** One tick with this content. */
+function step(state: GameState, content: Content): GameState {
+  return tick(state, content.truck, content.customers)
+}
 
 /** The state after each of `days` ticks, in order. */
 function play(
   days: number,
-  content: FoodTruckContent = FOOD_TRUCK,
-  start: GameState = createInitialState(42, content),
+  content: Content = SHIPPED,
+  from: GameState = start(content),
 ): GameState[] {
   const states: GameState[] = []
-  let state = start
+  let state = from
   for (let i = 0; i < days; i += 1) {
-    state = tick(state, content)
+    state = step(state, content)
     states.push(state)
   }
   return states
@@ -120,12 +243,17 @@ function play(
 /** The state after `days` ticks. */
 function after(
   days: number,
-  content: FoodTruckContent = FOOD_TRUCK,
-  start: GameState = createInitialState(42, content),
+  content: Content = SHIPPED,
+  from: GameState = start(content),
 ): GameState {
-  const state = play(days, content, start).at(-1)
+  const state = play(days, content, from).at(-1)
   if (state === undefined) throw new Error('no day played')
   return state
+}
+
+function summary(state: GameState): DaySummary {
+  if (state.lastDay === null) throw new Error('no day played')
+  return state.lastDay
 }
 
 function entriesOn(state: GameState, day: Day): JournalEntry[] {
@@ -157,14 +285,27 @@ function transfer(
   }
 }
 
+function arrivals(state: GameState) {
+  return summary(state).visits.map(({ arrivalMinute, segment }) => ({
+    arrivalMinute,
+    segment,
+  }))
+}
+
+function units(count: PerProduct): number {
+  return PRODUCTS.reduce((total, product) => total + count[product], 0)
+}
+
 /**
  * Checks the state a tick returned: the day it played is the day before, no
  * entry is dated after it, every lot holds a positive whole number of
  * units, the Stocks account carries the lots' cost and the books balance.
+ * The visits come in arrival order within opening hours, each buying at most
+ * one unit of each product, and add up to the units sold and to the segments'
+ * counts; the revenue is the units sold at `currentPrice`.
  */
-function expectConsistent(state: GameState, content: FoodTruckContent): void {
-  const { lastDay } = state
-  if (lastDay === null) throw new Error('no day played')
+function expectConsistent(state: GameState, content: Content): void {
+  const lastDay = summary(state)
   expect(lastDay.day).toBe(state.day - 1)
   expect(state.journal.entries.at(-1)?.day ?? 0).toBeLessThanOrEqual(
     lastDay.day,
@@ -182,10 +323,46 @@ function expectConsistent(state: GameState, content: FoodTruckContent): void {
 
   const revenue = PRODUCTS.reduce(
     (total, product) =>
-      total + lastDay.sold[product] * content.products[product].basePriceCents,
+      total +
+      lastDay.sold[product] * currentPrice(state, product, content.truck),
     0,
   )
   expect(lastDay.revenue).toBe(revenue)
+
+  const { opensAtMinute, closesAtMinute } = content.truck.walkIns
+  const minutes = lastDay.visits.map(({ arrivalMinute }) => arrivalMinute)
+  expect(minutes).toEqual([...minutes].sort((a, b) => a - b))
+  expect(
+    minutes.every(
+      (minute) => minute >= opensAtMinute && minute < closesAtMinute,
+    ),
+  ).toBe(true)
+  expect(
+    lastDay.visits.every(
+      ({ bought, outcome }) =>
+        PRODUCTS.every((id) => bought[id] === 0 || bought[id] === 1) &&
+        (outcome === 'bought') === units(bought) > 0,
+    ),
+  ).toBe(true)
+  expect(
+    perProduct((product) =>
+      lastDay.visits.reduce((total, { bought }) => total + bought[product], 0),
+    ),
+  ).toEqual(lastDay.sold)
+  const count = (id: SegmentId, outcome?: string) =>
+    lastDay.visits.filter(
+      (visit) =>
+        visit.segment === id &&
+        (outcome === undefined || visit.outcome === outcome),
+    ).length
+  expect(lastDay.segments).toEqual(
+    perSegment((id) => ({
+      visits: count(id),
+      buyers: count(id, 'bought'),
+      tooExpensive: count(id, 'tooExpensive'),
+      soldOut: count(id, 'soldOut'),
+    })),
+  )
 
   expect(balance(state.journal, INVENTORY, { toDay: lastDay.day })).toBe(
     inventoryValue(state.inventory),
@@ -204,30 +381,49 @@ describe('the opening books', () => {
   })
 
   it('are empty when there is no starting capital', () => {
-    expect(openingJournal(variant(capital(0))).entries).toEqual([])
+    expect(openingJournal(variant(capital(0)).truck).entries).toEqual([])
+  })
+})
+
+describe('currentPrice', () => {
+  it("is each product's base price", () => {
+    const state = start()
+    for (const product of PRODUCTS) {
+      expect(currentPrice(state, product)).toBe(
+        FOOD_TRUCK.products[product].basePriceCents,
+      )
+    }
+    const dearer = variant(pricing('chocolat', 425)).truck
+    expect(currentPrice(state, 'chocolat', dearer)).toBe(425)
   })
 })
 
 describe('tick', () => {
   it('plays day 0 first, posting the day in order', () => {
     const content = variant(
-      customers(10),
-      buying({ cafe: 1, croissant: 0 }),
-      restocking({ cafe: buyDaily(30), croissant: buyDaily(7) }),
+      crowd(10),
+      buying({ cafe: 1, chocolat: 1, croissant: 0 }),
+      restocking({
+        cafe: buyDaily(30),
+        chocolat: buyDaily(12),
+        croissant: buyDaily(7),
+      }),
       unitCost('cafe', 40),
+      unitCost('chocolat', 55),
       unitCost('croissant', 90),
       fixedCosts(4500, 2000),
     )
-    const start = createInitialState(42, content)
-    const state = tick(start, content)
-    const { basePriceCents } = content.products.cafe
+    const from = start(content)
+    const state = step(from, content)
+    const price = (id: ProductId) => content.truck.products[id].basePriceCents
+    const revenue = 10 * price('cafe') + 10 * price('chocolat')
 
     expect(state.day).toBe(1)
     expect(state.journal.entries).toEqual([
-      ...start.journal.entries,
-      transfer(0, MEMO.purchases, INVENTORY, CASH, 30 * 40 + 7 * 90),
-      transfer(0, MEMO.sales, CASH, '4000', 10 * basePriceCents),
-      transfer(0, MEMO.costOfSales, '5000', INVENTORY, 10 * 40),
+      ...from.journal.entries,
+      transfer(0, MEMO.purchases, INVENTORY, CASH, 30 * 40 + 12 * 55 + 7 * 90),
+      transfer(0, MEMO.sales, CASH, '4000', revenue),
+      transfer(0, MEMO.costOfSales, '5000', INVENTORY, 10 * 40 + 10 * 55),
       {
         day: 0,
         memo: MEMO.fixedCosts,
@@ -241,14 +437,24 @@ describe('tick', () => {
     ])
     expect(state.inventory).toEqual([
       { product: 'cafe', quantity: 20, unitCost: 40, boughtOnDay: 0 },
+      { product: 'chocolat', quantity: 2, unitCost: 55, boughtOnDay: 0 },
     ])
-    expect(state.lastDay).toEqual({
+    const { segments, visits, ...rest } = summary(state)
+    expect(rest).toEqual({
       day: 0,
-      sold: { cafe: 10, croissant: 0 },
-      revenue: 10 * basePriceCents,
-      lostSales: { cafe: 0, croissant: 0 },
-      spoiled: { cafe: 0, croissant: 7 },
+      sold: { cafe: 10, chocolat: 10, croissant: 0 },
+      revenue,
+      lostSales: { cafe: 0, chocolat: 0, croissant: 0 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 7 },
     })
+    expect(visits).toHaveLength(10)
+    for (const visit of visits) {
+      expect(visit).toMatchObject({
+        bought: { cafe: 1, chocolat: 1, croissant: 0 },
+        outcome: 'bought',
+      })
+    }
+    expect(SEGMENTS.reduce((n, id) => n + segments[id].buyers, 0)).toBe(10)
   })
 
   it('does not mutate its input', () => {
@@ -263,19 +469,39 @@ describe('tick', () => {
 })
 
 describe('determinism', () => {
-  it('plays the same 30 days from the same seed', () => {
+  it('plays the same 30 days, journal and visits, from the same seed', () => {
     const first = play(30)
     const second = play(30)
     expect(second).toEqual(first)
     expect(second.at(-1)?.journal.entries).toEqual(
       first.at(-1)?.journal.entries,
     )
+    expect(second.map(summary).map(({ visits }) => visits)).toEqual(
+      first.map(summary).map(({ visits }) => visits),
+    )
   })
 
   it('plays different days from another seed', () => {
     const seed42 = after(30)
-    const seed43 = after(30, FOOD_TRUCK, createInitialState(43))
+    const seed43 = after(30, SHIPPED, start(SHIPPED, 43))
     expect(seed43.journal.entries).not.toEqual(seed42.journal.entries)
+  })
+
+  it('brings the same customers whatever the prices', () => {
+    const dearer = shipped(
+      ...PRODUCTS.map((id) =>
+        pricing(id, FOOD_TRUCK.products[id].basePriceCents + 100),
+      ),
+    )
+    const base = play(30)
+    const other = play(30, dearer)
+    expect(other.map(arrivals)).toEqual(base.map(arrivals))
+    expect(other.map(({ rngState }) => rngState)).toEqual(
+      base.map(({ rngState }) => rngState),
+    )
+    expect(other.map((state) => summary(state).sold)).not.toEqual(
+      base.map((state) => summary(state).sold),
+    )
   })
 })
 
@@ -283,8 +509,8 @@ describe('the books and the stock', () => {
   it.each([1, 42, 2026])(
     'agree every day for a year from seed %i, with stock never negative',
     (seed) => {
-      for (const state of play(365, FOOD_TRUCK, createInitialState(seed))) {
-        expectConsistent(state, FOOD_TRUCK)
+      for (const state of play(365, SHIPPED, start(SHIPPED, seed))) {
+        expectConsistent(state, SHIPPED)
       }
     },
   )
@@ -293,105 +519,299 @@ describe('the books and the stock', () => {
 describe('walk-in demand', () => {
   it('brings weekday traffic Monday to Friday and weekend traffic after', () => {
     const content = variant(
-      customers(120, 80),
-      buying({ cafe: 1, croissant: 0 }),
+      crowd(120, 80),
+      buying({ cafe: 1, chocolat: 0, croissant: 0 }),
       restocking({ cafe: buyDaily(200) }),
     )
     // Day 0 is a Monday.
-    const asked = play(7, content).map(({ lastDay }) =>
-      lastDay === null ? 0 : lastDay.sold.cafe + lastDay.lostSales.cafe,
-    )
-    expect(asked).toEqual([120, 120, 120, 120, 120, 80, 80])
+    const days = play(7, content).map(summary)
+    expect(days.map(({ visits }) => visits.length)).toEqual([
+      120, 120, 120, 120, 120, 80, 80,
+    ])
+    expect(days.map(({ sold }) => sold.cafe)).toEqual([
+      120, 120, 120, 120, 120, 80, 80,
+    ])
+  })
+
+  it('counts one visit per walk-in, every one in a segment', () => {
+    const content = variant(crowd(37, 23))
+    for (const state of play(14, content)) {
+      const { visits, segments } = summary(state)
+      const weekday = toCalendar(summary(state).day).weekday
+      const walkIns = dayTypeOf(weekday) === 'semaine' ? 37 : 23
+      expect(visits).toHaveLength(walkIns)
+      expect(SEGMENTS.reduce((n, id) => n + segments[id].visits, 0)).toBe(
+        walkIns,
+      )
+      expectConsistent(state, content)
+    }
   })
 
   it('sells what is in stock and counts the rest as lost sales', () => {
     const content = variant(
-      customers(50),
-      buying({ cafe: 1, croissant: 1 }),
-      restocking({ cafe: buyDaily(30), croissant: buyDaily(10) }),
+      crowd(50),
+      buying({ cafe: 1, chocolat: 1, croissant: 1 }),
+      restocking({
+        cafe: buyDaily(30),
+        chocolat: buyDaily(20),
+        croissant: buyDaily(10),
+      }),
       unitCost('cafe', 40),
+      unitCost('chocolat', 55),
       unitCost('croissant', 90),
     )
     const state = after(1, content)
-    const price = (product: ProductId) =>
-      content.products[product].basePriceCents
-    const revenue = 30 * price('cafe') + 10 * price('croissant')
+    const price = (id: ProductId) => content.truck.products[id].basePriceCents
+    const revenue =
+      30 * price('cafe') + 20 * price('chocolat') + 10 * price('croissant')
 
-    expect(state.lastDay).toEqual({
+    expect(summary(state)).toMatchObject({
       day: 0,
-      sold: { cafe: 30, croissant: 10 },
+      sold: { cafe: 30, chocolat: 20, croissant: 10 },
       revenue,
-      lostSales: { cafe: 20, croissant: 40 },
-      spoiled: { cafe: 0, croissant: 0 },
+      lostSales: { cafe: 20, chocolat: 30, croissant: 40 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 0 },
     })
     expect(state.inventory).toEqual([])
     expect(entry(state, 0, MEMO.sales)).toEqual(
       transfer(0, MEMO.sales, CASH, '4000', revenue),
     )
     expect(entry(state, 0, MEMO.costOfSales)).toEqual(
-      transfer(0, MEMO.costOfSales, '5000', INVENTORY, 30 * 40 + 10 * 90),
+      transfer(
+        0,
+        MEMO.costOfSales,
+        '5000',
+        INVENTORY,
+        30 * 40 + 20 * 55 + 10 * 90,
+      ),
+    )
+  })
+
+  it('serves customers as they arrive, so a stockout hits the later ones', () => {
+    const content = variant(
+      crowd(30),
+      buying({ cafe: 0, chocolat: 0, croissant: 1 }),
+      restocking({ croissant: buyDaily(10) }),
+    )
+    const { visits, lostSales, segments } = summary(after(1, content))
+    expect(visits.map(({ outcome }) => outcome)).toEqual([
+      ...Array.from({ length: 10 }, () => 'bought'),
+      ...Array.from({ length: 20 }, () => 'soldOut'),
+    ])
+    expect(lostSales.croissant).toBe(20)
+    expect(SEGMENTS.reduce((n, id) => n + segments[id].soldOut, 0)).toBe(20)
+  })
+
+  it('counts customers a price above their reference kept away', () => {
+    // They would buy everything at their reference: a fifth of today's price.
+    const content = variant(
+      crowd(25),
+      buying({ cafe: 1, chocolat: 1, croissant: 1 }),
+      everySegment((odds, id) => ({
+        ...odds,
+        referencePriceCents: cents(FOOD_TRUCK.products[id].basePriceCents / 5),
+        sensitivity: 50,
+      })),
+    )
+    const { visits, segments, sold } = summary(after(1, content))
+    expect(units(sold)).toBe(0)
+    expect(visits.every(({ outcome }) => outcome === 'tooExpensive')).toBe(true)
+    expect(SEGMENTS.reduce((n, id) => n + segments[id].tooExpensive, 0)).toBe(
+      25,
+    )
+  })
+
+  it('counts customers who want nothing at their reference as browsing', () => {
+    const content = variant(
+      crowd(25),
+      buying({ cafe: 0, chocolat: 0, croissant: 0 }),
+    )
+    const { visits, segments } = summary(after(1, content))
+    expect(visits.every(({ outcome }) => outcome === 'browsed')).toBe(true)
+    for (const id of SEGMENTS) {
+      expect(segments[id]).toMatchObject({
+        buyers: 0,
+        tooExpensive: 0,
+        soldOut: 0,
+      })
+    }
+  })
+})
+
+describe('prices and crowds over a year', () => {
+  // The shipped segments and crowds from seed 42, with so much stock that no
+  // sale is ever lost.
+  const AMPLE = restocking(byProduct(() => buyDaily(1_000)))
+  const STEP_CENTS = 30
+  const PRICES = 6
+
+  interface Year {
+    /** Units each segment bought of each product. */
+    bought: Record<SegmentId, PerProduct>
+    lostSales: number
+    /** Visits and units bought, by type of day. */
+    crowds: Record<DayTypeId, { visits: number; bought: PerProduct }>
+  }
+
+  const years = new Map<string, Year>()
+
+  /** A year of play, with `id` at `price` when given; played once. */
+  function yearAt(id?: ProductId, price?: number): Year {
+    const key = `${id}@${price}`
+    const known = years.get(key)
+    if (known !== undefined) return known
+
+    const changes = id === undefined ? [] : [pricing(id, price ?? 0)]
+    const content = shipped(AMPLE, ...changes)
+    const bought = perSegment(() => byProduct(() => 0))
+    const crowds = {
+      semaine: { visits: 0, bought: byProduct(() => 0) },
+      finDeSemaine: { visits: 0, bought: byProduct(() => 0) },
+    }
+    let lostSales = 0
+    for (const state of play(365, content)) {
+      const lastDay = summary(state)
+      lostSales += units(lastDay.lostSales)
+      expect(lastDay.revenue).toBe(
+        PRODUCTS.reduce(
+          (total, product) =>
+            total +
+            lastDay.sold[product] * currentPrice(state, product, content.truck),
+          0,
+        ),
+      )
+      const day = crowds[dayTypeOf(toCalendar(lastDay.day).weekday)]
+      day.visits += lastDay.visits.length
+      for (const visit of lastDay.visits) {
+        for (const product of PRODUCTS) {
+          bought[visit.segment][product] += visit.bought[product]
+          day.bought[product] += visit.bought[product]
+        }
+      }
+    }
+    const year = { bought, lostSales, crowds }
+    years.set(key, year)
+    return year
+  }
+
+  it.each(PRODUCTS)(
+    'sells less %s to every segment at each higher price',
+    (id) => {
+      const base = FOOD_TRUCK.products[id].basePriceCents
+      const played = Array.from({ length: PRICES }, (_, step) =>
+        yearAt(id, base + step * STEP_CENTS),
+      )
+      expect(played.map(({ lostSales }) => lostSales)).toEqual(
+        played.map(() => 0),
+      )
+      for (const segment of SEGMENTS) {
+        const sold = played.map(({ bought }) => bought[segment][id])
+        expect(sold[PRICES - 1]).toBeGreaterThan(0)
+        for (let step = 1; step < PRICES; step += 1) {
+          expect(sold[step], `${segment} at step ${step}`).toBeLessThan(
+            sold[step - 1] ?? 0,
+          )
+        }
+      }
+    },
+  )
+
+  it.each(PRODUCTS)(
+    'loses more bargain hunters than chic customers when %s costs a fifth more',
+    (id) => {
+      const base = FOOD_TRUCK.products[id].basePriceCents
+      const before = yearAt().bought
+      const dearer = yearAt(id, Math.round(base * 1.2)).bought
+      const drop = (segment: SegmentId) =>
+        1 - dearer[segment][id] / before[segment][id]
+      expect(drop('aubaine')).toBeGreaterThan(drop('chic'))
+      expect(drop('chic')).toBeGreaterThan(0)
+    },
+  )
+
+  it('sells more hot chocolate per visit on weekends, more coffee on weekdays', () => {
+    const { semaine, finDeSemaine } = yearAt().crowds
+    const perVisit = (
+      day: { visits: number; bought: PerProduct },
+      id: ProductId,
+    ) => day.bought[id] / day.visits
+    expect(perVisit(finDeSemaine, 'chocolat')).toBeGreaterThanOrEqual(
+      1.5 * perVisit(semaine, 'chocolat'),
+    )
+    expect(perVisit(semaine, 'cafe')).toBeGreaterThanOrEqual(
+      1.5 * perVisit(finDeSemaine, 'cafe'),
     )
   })
 })
 
 describe('restocking', () => {
-  it('tops up only once stock falls below the threshold', () => {
-    const base = [
-      restocking({ cafe: topUp(10, 25), croissant: buyDaily(0) }),
-      buying({ cafe: 1, croissant: 0 }),
-      unitCost('cafe', 40),
-    ]
-    // Day 0 buys 25 and sells 15; day 1 opens with exactly 10 and sells 1;
-    // day 2 opens with 9, below 10, so it buys back up to 25.
-    let state = createInitialState(42, variant(...base))
-    state = tick(state, variant(...base, customers(15)))
-    expect(entry(state, 0, MEMO.purchases)).toEqual(
-      transfer(0, MEMO.purchases, INVENTORY, CASH, 25 * 40),
-    )
-    state = tick(state, variant(...base, customers(1)))
-    expect(entriesOn(state, 1).map(({ memo }) => memo)).not.toContain(
-      MEMO.purchases,
-    )
-    expect(onHand(state.inventory, 'cafe')).toBe(9)
-    state = tick(state, variant(...base, customers(0)))
-    expect(entry(state, 2, MEMO.purchases)).toEqual(
-      transfer(2, MEMO.purchases, INVENTORY, CASH, 16 * 40),
-    )
-    expect(onHand(state.inventory, 'cafe')).toBe(25)
-  })
+  it.each(['cafe', 'chocolat'] as const)(
+    'tops %s up only once stock falls below the threshold',
+    (id) => {
+      const base = [
+        NO_RESTOCK,
+        restocking({ [id]: topUp(10, 25) }),
+        buying({ cafe: 0, chocolat: 0, croissant: 0, [id]: 1 }),
+        unitCost(id, 40),
+      ]
+      // Day 0 buys 25 and sells 15; day 1 opens with exactly 10 and sells 1;
+      // day 2 opens with 9, below 10, so it buys back up to 25.
+      let state = start(variant(...base))
+      state = step(state, variant(...base, crowd(15)))
+      expect(entry(state, 0, MEMO.purchases)).toEqual(
+        transfer(0, MEMO.purchases, INVENTORY, CASH, 25 * 40),
+      )
+      state = step(state, variant(...base, crowd(1)))
+      expect(entriesOn(state, 1).map(({ memo }) => memo)).not.toContain(
+        MEMO.purchases,
+      )
+      expect(onHand(state.inventory, id)).toBe(9)
+      state = step(state, variant(...base, crowd(0)))
+      expect(entry(state, 2, MEMO.purchases)).toEqual(
+        transfer(2, MEMO.purchases, INVENTORY, CASH, 16 * 40),
+      )
+      expect(onHand(state.inventory, id)).toBe(25)
+    },
+  )
 
-  it('costs sales first in, first out across lots bought at other prices', () => {
-    // Coffee bought at 10 ¢, then at 20 ¢, is sold once it costs 40 ¢ to buy.
-    const quiet = [NO_RESTOCK, buying({ cafe: 1, croissant: 0 })]
-    let state = createInitialState(42, variant(...quiet))
-    state = tick(
-      state,
-      variant(
-        ...quiet,
-        customers(0),
-        unitCost('cafe', 10),
-        restocking({ cafe: buyDaily(3) }),
-      ),
-    )
-    state = tick(
-      state,
-      variant(
-        ...quiet,
-        customers(0),
-        unitCost('cafe', 20),
-        restocking({ cafe: buyDaily(5) }),
-      ),
-    )
-    state = tick(state, variant(...quiet, customers(5), unitCost('cafe', 40)))
+  it.each(['cafe', 'chocolat'] as const)(
+    'costs %s sales first in, first out across lots bought at other prices',
+    (id) => {
+      // Bought at 10 ¢, then at 20 ¢, and sold once it costs 40 ¢ to buy.
+      const quiet = [
+        NO_RESTOCK,
+        buying({ cafe: 0, chocolat: 0, croissant: 0, [id]: 1 }),
+      ]
+      let state = start(variant(...quiet))
+      state = step(
+        state,
+        variant(
+          ...quiet,
+          crowd(0),
+          unitCost(id, 10),
+          restocking({ [id]: buyDaily(3) }),
+        ),
+      )
+      state = step(
+        state,
+        variant(
+          ...quiet,
+          crowd(0),
+          unitCost(id, 20),
+          restocking({ [id]: buyDaily(5) }),
+        ),
+      )
+      state = step(state, variant(...quiet, crowd(5), unitCost(id, 40)))
 
-    expect(entry(state, 2, MEMO.costOfSales)).toEqual(
-      transfer(2, MEMO.costOfSales, '5000', INVENTORY, 3 * 10 + 2 * 20),
-    )
-    expect(state.inventory).toEqual([
-      { product: 'cafe', quantity: 3, unitCost: 20, boughtOnDay: 1 },
-    ])
-    expect(balance(state.journal, INVENTORY, { toDay: 2 })).toBe(3 * 20)
-  })
+      expect(entry(state, 2, MEMO.costOfSales)).toEqual(
+        transfer(2, MEMO.costOfSales, '5000', INVENTORY, 3 * 10 + 2 * 20),
+      )
+      expect(state.inventory).toEqual([
+        { product: id, quantity: 3, unitCost: 20, boughtOnDay: 1 },
+      ])
+      expect(balance(state.journal, INVENTORY, { toDay: 2 })).toBe(3 * 20)
+    },
+  )
 })
 
 describe('fixed costs', () => {
@@ -426,8 +846,7 @@ describe('spoilage', () => {
     )
     let spoiledAtAll = 0
     for (const state of play(30, content)) {
-      const { lastDay } = state
-      if (lastDay === null) throw new Error('no day played')
+      const lastDay = summary(state)
       expect(lastDay.spoiled.croissant).toBe(70 - lastDay.sold.croissant)
       expect(onHand(state.inventory, 'croissant')).toBe(0)
       const spoilage = entriesOn(state, lastDay.day).find(
@@ -448,48 +867,58 @@ describe('spoilage', () => {
       unitCost('croissant', 90),
     )
     const state = after(1, content)
-    expect(state.lastDay?.spoiled).toEqual({ cafe: 0, croissant: 70 })
+    expect(state.lastDay?.spoiled).toEqual({
+      cafe: 0,
+      chocolat: 0,
+      croissant: 70,
+    })
     expect(entry(state, 0, MEMO.spoilage)).toEqual(
       transfer(0, MEMO.spoilage, '5100', INVENTORY, 70 * 90),
     )
   })
 
-  it('spares coffee within its first 90 days', () => {
+  it('spares coffee and hot chocolate within their first 90 days', () => {
     for (const { lastDay } of play(90)) {
       expect(lastDay?.spoiled.cafe).toBe(0)
+      expect(lastDay?.spoiled.chocolat).toBe(0)
     }
   })
 
-  it('writes off unsold coffee at the close of its 90th day', () => {
-    const content = variant(
-      buying({ cafe: 0 }),
-      restocking({ cafe: topUp(100, 300), croissant: buyDaily(0) }),
-      unitCost('cafe', 40),
-    )
-    const states = play(91, content)
-    states.slice(0, 89).forEach(({ lastDay, inventory }) => {
-      expect(lastDay?.spoiled.cafe).toBe(0)
-      expect(onHand(inventory, 'cafe')).toBe(300)
-    })
-    const [day89, day90] = states.slice(89)
-    if (day89 === undefined || day90 === undefined) throw new Error('no day')
-    expect(day89.lastDay?.spoiled.cafe).toBe(300)
-    expect(day89.inventory).toEqual([])
-    expect(entry(day89, 89, MEMO.spoilage)).toEqual(
-      transfer(89, MEMO.spoilage, '5100', INVENTORY, 300 * 40),
-    )
-    expect(entry(day90, 90, MEMO.purchases)).toEqual(
-      transfer(90, MEMO.purchases, INVENTORY, CASH, 300 * 40),
-    )
-  })
+  it.each(['cafe', 'chocolat'] as const)(
+    'writes off unsold %s at the close of its 90th day',
+    (id) => {
+      const content = variant(
+        NO_RESTOCK,
+        buying({ [id]: 0 }),
+        restocking({ [id]: topUp(100, 300) }),
+        unitCost(id, 40),
+      )
+      const states = play(91, content)
+      states.slice(0, 89).forEach(({ lastDay, inventory }) => {
+        expect(lastDay?.spoiled[id]).toBe(0)
+        expect(onHand(inventory, id)).toBe(300)
+      })
+      const [day89, day90] = states.slice(89)
+      if (day89 === undefined || day90 === undefined) throw new Error('no day')
+      expect(day89.lastDay?.spoiled[id]).toBe(300)
+      expect(day89.inventory).toEqual([])
+      expect(entry(day89, 89, MEMO.spoilage)).toEqual(
+        transfer(89, MEMO.spoilage, '5100', INVENTORY, 300 * 40),
+      )
+      expect(entry(day90, 90, MEMO.purchases)).toEqual(
+        transfer(90, MEMO.purchases, INVENTORY, CASH, 300 * 40),
+      )
+    },
+  )
 })
 
 describe('cash', () => {
   it('may go negative', () => {
-    const content = variant(capital(0), customers(0))
+    const content = variant(capital(0), crowd(0))
     const state = after(1, content)
     const purchases = entry(state, 0, MEMO.purchases).lines[0]?.debit ?? 0
-    const { rentAndPermit, fuelAndMaintenance } = content.dailyFixedCostsCents
+    const { rentAndPermit, fuelAndMaintenance } =
+      content.truck.dailyFixedCostsCents
     expect(balance(state.journal, CASH, { toDay: 0 })).toBe(
       -(purchases + rentAndPermit + fuelAndMaintenance),
     )
@@ -502,18 +931,23 @@ describe('cash', () => {
       capital(0),
       NO_RESTOCK,
       fixedCosts(0, 0),
-      customers(10),
-      buying({ cafe: 1, croissant: 1 }),
+      crowd(10),
+      buying({ cafe: 1, chocolat: 1, croissant: 1 }),
     )
     const state = after(1, content)
     expect(state.journal.entries).toEqual([])
-    expect(state.lastDay).toEqual({
+    const { visits, segments, ...rest } = summary(state)
+    expect(rest).toEqual({
       day: 0,
-      sold: { cafe: 0, croissant: 0 },
+      sold: { cafe: 0, chocolat: 0, croissant: 0 },
       revenue: 0,
-      lostSales: { cafe: 10, croissant: 10 },
-      spoiled: { cafe: 0, croissant: 0 },
+      lostSales: { cafe: 10, chocolat: 10, croissant: 10 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 0 },
     })
+    expect(visits.map(({ outcome }) => outcome)).toEqual(
+      Array.from({ length: 10 }, () => 'soldOut'),
+    )
+    expect(SEGMENTS.reduce((n, id) => n + segments[id].soldOut, 0)).toBe(10)
   })
 })
 
@@ -525,43 +959,38 @@ describe('day properties', () => {
       .map(([a, b]) => topUp(Math.min(a, b), Math.max(a, b))),
   )
   const probability = fc.double({ min: 0, max: 1, noNaN: true })
+  const perId = <T>(arbitrary: fc.Arbitrary<T>) =>
+    fc.record(byProduct(() => arbitrary))
   const scenario = fc.record({
     seed: fc.integer({ min: 0, max: 2 ** 32 - 1 }),
     weekday: fc.integer({ min: 0, max: 200 }),
     weekend: fc.integer({ min: 0, max: 200 }),
     noise: fc.double({ min: 0, max: 0.5, noNaN: true }),
-    cafe: probability,
-    croissant: probability,
-    cafeRule: rule,
-    croissantRule: rule,
-    cafeShelfLife: fc.integer({ min: 1, max: 10 }),
-    croissantShelfLife: fc.integer({ min: 1, max: 10 }),
+    buying: perId(probability),
+    price: perId(fc.integer({ min: 0, max: 1_000 })),
+    rules: perId(rule),
+    shelfLife: perId(fc.integer({ min: 1, max: 10 })),
   })
 
   it('keep the stock whole and the books in step with it', () => {
     fc.assert(
       fc.property(scenario, (s) => {
-        const content = variant(
-          (c) => ({
-            ...c,
-            walkIns: {
-              weekdayCustomers: s.weekday,
-              weekendCustomers: s.weekend,
-              noiseStdDevRatio: s.noise,
-            },
-            products: {
-              cafe: { ...c.products.cafe, shelfLifeDays: s.cafeShelfLife },
-              croissant: {
-                ...c.products.croissant,
-                shelfLifeDays: s.croissantShelfLife,
-              },
-            },
-          }),
-          buying({ cafe: s.cafe, croissant: s.croissant }),
-          restocking({ cafe: s.cafeRule, croissant: s.croissantRule }),
+        const content = shipped(
+          crowd(s.weekday, s.weekend),
+          truck((t) => ({
+            ...t,
+            walkIns: { ...t.walkIns, noiseStdDevRatio: s.noise },
+          })),
+          ...PRODUCTS.map((id) =>
+            product(id, {
+              basePriceCents: cents(s.price[id]),
+              shelfLifeDays: s.shelfLife[id],
+            }),
+          ),
+          buying(s.buying),
+          restocking(s.rules),
         )
-        const start = createInitialState(s.seed, content)
-        for (const state of play(40, content, start)) {
+        for (const state of play(40, content, start(content, s.seed))) {
           expectConsistent(state, content)
         }
       }),
