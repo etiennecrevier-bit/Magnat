@@ -5,7 +5,7 @@ Gate issue: [#8](https://github.com/etiennecrevier-bit/Magnat/issues/8). Product
 Checked on 2026-10-14 against `main` at [`149cd2a`](https://github.com/etiennecrevier-bit/Magnat/commit/149cd2ab2eac6a3e7b79843c852ee239d26802b6).
 
 ## Status
-- Automated pre-flight: **passed** (every check below, in two runs).
+- Automated pre-flight: **passed**. The clock, Space and phone layout checks passed in two runs; the widest-date check was added for the second run and passed there.
 - Human acceptance on a real phone and laptop: **pending**. The gate passes only when Étienne ticks the four boxes on #8. A pre-flight in an emulated browser is not that acceptance.
 
 | Gate criterion (#8) | Automated pre-flight | Human check |
