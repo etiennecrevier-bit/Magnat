@@ -145,11 +145,15 @@ const PLACE: Record<AccountCode, Place> = {
   '4000': 'sales',
   '5000': 'costOfGoodsSold',
   '5100': 'expenses',
+  '5200': 'expenses',
   '6000': 'expenses',
   '6100': 'expenses',
+  '6120': 'expenses',
+  '6150': 'expenses',
   '6200': 'expenses',
   '6300': 'expenses',
   '6400': 'expenses',
+  '6500': 'expenses',
   '7000': 'expenses',
 }
 
@@ -191,6 +195,7 @@ const CASH_FLOW_ROWS = [
   },
   { key: 'wages', activity: 'operating', label: 'Salaires' },
   { key: 'otherExpenses', activity: 'operating', label: 'Autres charges' },
+  { key: 'interest', activity: 'operating', label: 'Intérêts payés' },
   { key: 'equipment', activity: 'investing', label: 'Équipement' },
   { key: 'loans', activity: 'financing', label: 'Emprunts bancaires' },
   { key: 'shareCapital', activity: 'financing', label: 'Capital-actions' },
@@ -204,9 +209,12 @@ type CashFlowRow = (typeof CASH_FLOW_ROWS)[number]['key']
 
 // The row each counterpart of Encaisse feeds, typed over every other account
 // so a new account does not compile until it has a row. Interest paid is an
-// operating flow, as ASPE section 1540 has it. Stocks and Pertes sur stocks
-// go with the suppliers, so the cost of a sale and the stock it uses cancel
-// out within one row when the engine posts them with the sale. Amortissement
+// operating flow, as ASPE section 1540 has it, on a row of its own so the
+// cash the debt costs shows; the principal repaid goes with the loans, in
+// financing. The truck's lease is an operating charge like the rent, and
+// packaging is bought goods like stock. Stocks and Pertes sur stocks go with
+// the suppliers, so the cost of a sale and the stock it uses cancel out
+// within one row when the engine posts them with the sale. Amortissement
 // goes with the equipment for the same reason: depreciation never moves cash,
 // and it cancels out against Amortissement cumulé.
 const CASH_FLOW_ROW: Record<Exclude<AccountCode, typeof CASH>, CashFlowRow> = {
@@ -221,12 +229,16 @@ const CASH_FLOW_ROW: Record<Exclude<AccountCode, typeof CASH>, CashFlowRow> = {
   '4000': 'customers',
   '5000': 'suppliers',
   '5100': 'suppliers',
+  '5200': 'suppliers',
   '6000': 'wages',
   '6100': 'otherExpenses',
+  '6120': 'otherExpenses',
+  '6150': 'otherExpenses',
   '6200': 'otherExpenses',
   '6300': 'otherExpenses',
   '6400': 'equipment',
-  '7000': 'otherExpenses',
+  '6500': 'otherExpenses',
+  '7000': 'interest',
 }
 
 /**
