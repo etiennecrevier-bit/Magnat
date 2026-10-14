@@ -66,8 +66,8 @@ export function emptyJournal(): Journal {
  */
 export function postEntry(journal: Journal, entry: JournalEntry): Journal {
   const { day, memo, lines } = entry
-  // First, since every other failure quotes the memo. Anything but a string
-  // would be stored by reference, so later changes would reach the journal.
+  // First, since every other failure quotes the memo. An object memo would be
+  // stored by reference, so later changes would reach the journal.
   if (typeof memo !== 'string') {
     throw new Error(
       `Cannot post an entry on day ${day}: memo is not a string (${typeof memo})`,
