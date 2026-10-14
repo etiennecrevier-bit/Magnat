@@ -5,7 +5,7 @@ import type { GameStore } from './store.ts'
  * Most game days one animation frame may advance. After a long stall (a
  * frozen tab, a debugger pause) the extra days are dropped, not caught up.
  */
-export const MAX_TICKS_PER_FRAME = 10
+export const MAX_TICKS_PER_FRAME = pacing.maxTicksPerFrame
 
 export interface ClockStep {
   days: number
