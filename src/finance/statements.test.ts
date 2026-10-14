@@ -495,8 +495,8 @@ describe('the statements together', () => {
   })
 
   it('reject a journal that emptyJournal() and postEntry() did not make', () => {
-    // A spread type-checks as a Journal; the cast stands for any way past
-    // the type check, should that one close.
+    // A spread does not type-check as a Journal; the cast stands for any
+    // way past the type check, to reach the runtime one.
     const forged = {
       ...journal,
       entries: [
