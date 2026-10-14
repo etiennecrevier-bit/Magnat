@@ -2,24 +2,30 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: 'date gauge speeds';
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem 1rem;
+  gap: 0.5rem 1.5rem;
   padding: 0.5rem 1rem;
   background: #1f2933;
   color: #f5f7fa;
 }
 
 .top-bar__date {
+  grid-area: date;
   margin: 0;
   font-weight: 600;
   white-space: nowrap;
 }
 
+.top-bar > .cash-gauge {
+  grid-area: gauge;
+}
+
 .top-bar__speeds {
+  grid-area: speeds;
   display: flex;
-  flex-shrink: 0;
   gap: 0.25rem;
 }
 
@@ -51,12 +57,27 @@
   outline-offset: 2px;
 }
 
-/* The longest dates (about 250 px) and four 44 px buttons do not fit on one
-   row on narrow screens, so the date sits above the buttons there. */
+/* The longest dates (about 250 px), the gauge with a large amount (about
+   300 px) and four 44 px buttons need about 860 px on one row. Below that
+   the gauge gets a row of its own under the date and the buttons. */
+@media (max-width: 859px) {
+  .top-bar {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'date speeds'
+      'gauge gauge';
+  }
+}
+
+/* The date and the buttons no longer fit side by side either, so each part
+   sits on its own row, with the buttons sharing the full width. */
 @media (max-width: 559px) {
   .top-bar {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'date'
+      'gauge'
+      'speeds';
   }
 
   .top-bar__speed {

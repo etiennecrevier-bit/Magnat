@@ -1,4 +1,4 @@
-import { toCalendar } from '../engine/clock.ts'
+import { toCalendar, type CalendarDate } from '../engine/clock.ts'
 import type { Day } from '../engine/types.ts'
 
 // The game calendar is not a real one (no leap years, year 1 starts on a
@@ -35,9 +35,36 @@ function nameAt(names: readonly string[], oneBasedIndex: number): string {
   return name
 }
 
+/** The day and month, e.g. `1er mai`. */
+function dayAndMonth({ month, dayOfMonth }: CalendarDate): string {
+  const dayLabel = dayOfMonth === 1 ? '1er' : String(dayOfMonth)
+  return `${dayLabel} ${nameAt(MONTHS, month)}`
+}
+
+function shortDate(date: CalendarDate): string {
+  return `${dayAndMonth(date)}, an ${date.year}`
+}
+
 /** French (Quebec) long date for a game day, e.g. `Lundi 1er mai, an 1`. */
 export function formatGameDate(day: Day): string {
-  const { year, month, dayOfMonth, weekday } = toCalendar(day)
-  const dayLabel = dayOfMonth === 1 ? '1er' : String(dayOfMonth)
-  return `${nameAt(WEEKDAYS, weekday)} ${dayLabel} ${nameAt(MONTHS, month)}, an ${year}`
+  const date = toCalendar(day)
+  return `${nameAt(WEEKDAYS, date.weekday)} ${shortDate(date)}`
+}
+
+/** French (Quebec) date without the weekday, e.g. `1er mai, an 1`. */
+export function formatShortGameDate(day: Day): string {
+  return shortDate(toCalendar(day))
+}
+
+/**
+ * A period from `fromDay` to `toDay`, both included, e.g. `Du 1er mai au
+ * 31 mai, an 1`, or `Le 1er juin, an 1` for a single day. The year shows
+ * once when both days share it.
+ */
+export function formatGamePeriod(fromDay: Day, toDay: Day): string {
+  const from = toCalendar(fromDay)
+  const to = toCalendar(toDay)
+  if (fromDay === toDay) return `Le ${shortDate(to)}`
+  const fromText = from.year === to.year ? dayAndMonth(from) : shortDate(from)
+  return `Du ${fromText} au ${shortDate(to)}`
 }

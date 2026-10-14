@@ -1,10 +1,14 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { cents } from '../engine/money.ts'
 import TopBar, { TopBarView } from './TopBar.tsx'
 
-function render(day: number, speed: number) {
+// Every space in an amount is a no-break space (U+00A0).
+const S = '\u00a0'
+
+function render(day: number, speed: number, cash = cents(1_000_000)) {
   return renderToStaticMarkup(
-    <TopBarView day={day} speed={speed} onSpeedChange={() => {}} />,
+    <TopBarView day={day} cash={cash} speed={speed} onSpeedChange={() => {}} />,
   )
 }
 
@@ -21,6 +25,14 @@ describe('TopBarView', () => {
     expect(render(244, 1)).toContain(
       '<p class="top-bar__date">Dimanche 31 décembre, an 1</p>',
     )
+  })
+
+  it('shows the cash gauge between the date and the buttons', () => {
+    const html = render(0, 1, cents(-12_345))
+    expect(html).toMatch(
+      /^<header class="top-bar"><p class="top-bar__date">.*<\/p><p class="cash-gauge cash-gauge--negative">.*<\/p><div class="top-bar__speeds"/,
+    )
+    expect(html).toContain(`-123,45${S}$`)
   })
 
   it('has a labelled group of pause and speed buttons', () => {
@@ -47,9 +59,12 @@ describe('TopBarView', () => {
 })
 
 describe('TopBar', () => {
-  it('shows the app store: day 0 at normal speed', () => {
+  it('shows the app store: day 0 at normal speed, with the starting cash', () => {
     const html = renderToStaticMarkup(<TopBar />)
     expect(html).toContain('Lundi 1er mai, an 1')
+    expect(html).toContain('cash-gauge--healthy')
+    expect(html).toContain(`10${S}000,00${S}$`)
+    expect(html).toContain('Saine')
     expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
       label: 'Vitesse normale',
       pressed: 'true',

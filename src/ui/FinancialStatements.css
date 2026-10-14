@@ -1,0 +1,35 @@
+.statements__dates {
+  margin: 0 0 0.5rem;
+  color: #52606d;
+}
+
+.statement .statement__depth-1 {
+  padding-left: 1.25rem;
+}
+
+.statement .statement__depth-2 {
+  padding-left: 2rem;
+}
+
+.statement__heading th {
+  padding-top: 0.75rem;
+  font-weight: 700;
+}
+
+.statement__total th,
+.statement__total td,
+.statement__grandTotal th,
+.statement__grandTotal td {
+  font-weight: 700;
+}
+
+/* Accounting rules: a line over each subtotal, a double line under each
+   grand total. 2 px so the line wins over the row border above it. */
+.statement__total td,
+.statement__grandTotal td {
+  border-top: 2px solid #1f2933;
+}
+
+.statement__grandTotal td {
+  border-bottom: 4px double #1f2933;
+}
