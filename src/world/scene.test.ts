@@ -5,12 +5,12 @@ import { ART_URLS, loadArt } from './art.ts'
 import { ASSETS } from './manifest.ts'
 import { SKY_COLOR } from './mountWorld.ts'
 import { buildScene, type Scene } from './scene.ts'
-import { BUSINESS_NAME, type TruckView } from './truckView.ts'
+import type { TruckView } from './truckView.ts'
 
 const OPEN: TruckView = {
   open: true,
   croissants: 70,
-  businessName: BUSINESS_NAME,
+  businessName: "Le P'tit Camion",
 }
 const CLOSED: TruckView = { ...OPEN, open: false, croissants: 0 }
 
@@ -191,6 +191,14 @@ describe('Scene.update', () => {
       })
       expect(name.anchor).toMatchObject({ x: 0.5, y: 0.5 })
       expect(name.scale.x).toBe(1)
+    })
+
+    it("writes the player's business name, and a new one when it changes", () => {
+      const scene = buildScene(ASSETS, new Map(), () => 100)
+      scene.update({ ...OPEN, businessName: 'Chez Mimi' })
+      expect(nameOf(scene).text).toBe('Chez Mimi')
+      scene.update(OPEN)
+      expect(nameOf(scene).text).toBe("Le P'tit Camion")
     })
 
     it('shrinks a name too wide for the sign to fit', () => {

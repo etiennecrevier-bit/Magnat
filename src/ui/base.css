@@ -92,7 +92,58 @@ h2 {
   white-space: nowrap;
 }
 
+/* The screen buttons, then the export button at the far end. */
 .screen-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0 0.5rem;
   margin: 0 0 1rem;
   border-bottom: 1px solid #e4e7eb;
+}
+
+.screen-nav > .button {
+  margin: 0 0 1rem;
+}
+
+/* Something the player should know before going on. */
+.notice {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid #f0b429;
+  background: #fffbea;
+}
+
+/* A plain action button; the primary one is the step most players take. */
+.button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid #616e7c;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2933;
+  font: inherit;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: #f5f7fa;
+}
+
+.button--primary {
+  border-color: #1f2933;
+  background: #1f2933;
+  color: #f5f7fa;
+  font-weight: 700;
+}
+
+.button--primary:hover {
+  background: #323f4b;
+}
+
+.button:focus-visible {
+  outline: 3px solid #2186eb;
+  outline-offset: 2px;
 }

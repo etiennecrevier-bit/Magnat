@@ -1,17 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { ProductId } from '../content/schema.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
+import { FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
 import { PRODUCTS, onHand } from '../engine/inventory.ts'
 import { cents } from '../engine/money.ts'
 import type { GameState } from '../engine/types.ts'
-import {
-  BUSINESS_NAME,
-  openingStock,
-  opensToday,
-  rackFill,
-  truckView,
-} from './truckView.ts'
+import { openingStock, opensToday, rackFill, truckView } from './truckView.ts'
 
 const SEED = 42
 
@@ -71,8 +66,18 @@ describe('truckView', () => {
     expect(truckView(monday)).toEqual({
       open: false,
       croissants: 0,
-      businessName: BUSINESS_NAME,
+      businessName: "Le P'tit Camion",
     })
+  })
+
+  it("writes the player's business name on the sign", () => {
+    const game = createInitialState(SEED, FOOD_TRUCK, {
+      businessName: 'Chez Mimi',
+      avatar: 'homme',
+      difficulty: 'facile',
+    })
+    expect(truckView(game).businessName).toBe('Chez Mimi')
+    expect(truckView(tick(game)).businessName).toBe('Chez Mimi')
   })
 
   it('opens on Tuesday with the starting order of croissants', () => {

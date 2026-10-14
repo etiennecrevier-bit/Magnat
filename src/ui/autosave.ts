@@ -1,0 +1,43 @@
+import { toCalendar } from '../engine/clock.ts'
+import type { Day, GameState } from '../engine/types.ts'
+import { browserHost, type LoopHost } from './gameLoop.ts'
+import type { GameStore } from './store.ts'
+
+/** The browser APIs the autosave needs, injectable so tests can fake them. */
+export type AutosaveHost = Pick<LoopHost, 'isHidden' | 'onVisibilityChange'>
+
+function monthOf(day: Day): string {
+  const { year, month } = toCalendar(day)
+  return `${year}-${month}`
+}
+
+/**
+ * Hands the game in `store` to `write` now, again each time it reaches a new
+ * game month, and whenever the page is hidden, so closing the tab or
+ * switching away loses nothing. Days the loop plays in one go count once,
+ * whatever months they cross. Returns a function that stops it.
+ */
+export function startAutosave(
+  store: GameStore,
+  write: (game: GameState) => void,
+  host: AutosaveHost = browserHost,
+): () => void {
+  let savedMonth = monthOf(store.getState().game.day)
+  write(store.getState().game)
+
+  const unsubscribe = store.subscribe((state, previous) => {
+    if (state.game === previous.game) return
+    const month = monthOf(state.game.day)
+    if (month === savedMonth) return
+    savedMonth = month
+    write(state.game)
+  })
+  const stopWatching = host.onVisibilityChange(() => {
+    if (host.isHidden()) write(store.getState().game)
+  })
+
+  return () => {
+    unsubscribe()
+    stopWatching()
+  }
+}

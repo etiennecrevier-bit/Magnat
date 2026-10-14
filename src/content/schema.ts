@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { cents } from '../engine/money.ts'
+import difficultyJson from './difficulty.json'
 import foodTruckJson from './foodtruck.json'
+import profileJson from './profile.json'
 import segmentsJson from './segments.json'
 
 // Every object is strict, so a mistyped key while tuning fails loudly instead
@@ -44,6 +46,14 @@ export type SegmentId = z.infer<typeof segmentIdSchema>
 export const dayTypeIdSchema = z.enum(['semaine', 'finDeSemaine'])
 
 export type DayTypeId = z.infer<typeof dayTypeIdSchema>
+
+export const difficultyIdSchema = z.enum(['facile', 'moyen', 'difficile'])
+
+export type DifficultyId = z.infer<typeof difficultyIdSchema>
+
+export const avatarSchema = z.enum(['femme', 'homme'])
+
+export type Avatar = z.infer<typeof avatarSchema>
 
 const productSchema = z.strictObject({
   name: z.string().min(1),
@@ -228,6 +238,47 @@ export const customerSchema = z.strictObject({
 export type CustomerContent = z.output<typeof customerSchema>
 
 /**
+ * How the truck comes to the business: already the owner's (`owned`), bought
+ * with a startup loan (`loan`) or leased by the month (`lease`).
+ */
+const startingTruckSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('owned') }),
+  z.strictObject({ kind: z.literal('loan'), loanCents: money }),
+  z.strictObject({ kind: z.literal('lease'), monthlyLeaseCents: money }),
+])
+
+/** One way to start a game, as the new game screen shows it. */
+const difficultySchema = z.strictObject({
+  name: z.string().min(1),
+  /** What the business has in the bank once the truck is settled. */
+  startingCashCents: money,
+  truck: startingTruckSchema,
+})
+
+export type Difficulty = z.output<typeof difficultySchema>
+
+export const difficultyContentSchema = z.strictObject({
+  _note: z.string().optional(),
+  difficulties: z.record(difficultyIdSchema, difficultySchema),
+})
+
+export type DifficultyContent = z.output<typeof difficultyContentSchema>
+
+export const profileContentSchema = z.strictObject({
+  _note: z.string().optional(),
+  /** The most characters a business name may hold. */
+  businessNameMaxLength: z.int().positive(),
+  /** What the new game screen offers until the player changes it. */
+  defaultProfile: z.strictObject({
+    businessName: z.string().min(1),
+    avatar: avatarSchema,
+    difficulty: difficultyIdSchema,
+  }),
+})
+
+export type ProfileContent = z.output<typeof profileContentSchema>
+
+/**
  * Validates the food truck's content and returns it typed, with money as
  * `Cents`. Throws an Error naming every invalid field. Pass `raw` only to
  * check other data; by default it reads `foodtruck.json`.
@@ -247,6 +298,26 @@ export function loadCustomerContent(
   raw: unknown = segmentsJson,
 ): CustomerContent {
   return parsed(customerSchema, raw, 'segments.json')
+}
+
+/**
+ * Validates the difficulties and returns them typed, with money as `Cents`.
+ * Throws an Error naming every invalid field. Pass `raw` only to check other
+ * data; by default it reads `difficulty.json`.
+ */
+export function loadDifficultyContent(
+  raw: unknown = difficultyJson,
+): DifficultyContent {
+  return parsed(difficultyContentSchema, raw, 'difficulty.json')
+}
+
+/**
+ * Validates the player profile's defaults and limits and returns them typed.
+ * Throws an Error naming every invalid field. Pass `raw` only to check other
+ * data; by default it reads `profile.json`.
+ */
+export function loadProfileContent(raw: unknown = profileJson): ProfileContent {
+  return parsed(profileContentSchema, raw, 'profile.json')
 }
 
 function parsed<T extends z.ZodType>(

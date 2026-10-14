@@ -5,17 +5,24 @@ import {
   toCalendar,
   type CalendarDate,
 } from './clock.ts'
-import { openingJournal, playDay } from './day.ts'
+import { FOOD_TRUCK, openingJournal, playDay } from './day.ts'
 import { startingDecisions } from './decisions.ts'
+import { defaultProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
-import type { Day } from './types.ts'
+import type { Day, Profile } from './types.ts'
 
 // Month lengths of a non-leap year, kept apart from clock.ts so the ten-year
 // walk checks it against an independent spec.
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
+const CUSTOM: Profile = {
+  businessName: 'Chez Mimi 🥐',
+  avatar: 'homme',
+  difficulty: 'difficile',
+}
+
 describe('createInitialState', () => {
-  it('starts on day 0, seeded, with no stock, the capital paid in and the starting decisions', () => {
+  it('starts on day 0, seeded, with no stock, the capital paid in, the starting decisions and the default profile', () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
@@ -25,11 +32,41 @@ describe('createInitialState', () => {
       lastDay: null,
       decisions: startingDecisions(),
       pendingDecisions: null,
+      profile: defaultProfile(),
     })
   })
 
   it.each([-1, 1.5, 2 ** 32, Number.NaN])('rejects seed %s', (seed) => {
     expect(() => createInitialState(seed)).toThrow(RangeError)
+  })
+
+  it("keeps the player's profile, as a copy, and opens the same books for every difficulty until P2-14", () => {
+    const profile = { ...CUSTOM }
+    const state = createInitialState(42, FOOD_TRUCK, profile)
+    expect(state.profile).toEqual(CUSTOM)
+    expect(state.profile).not.toBe(profile)
+    expect({ ...state, profile: defaultProfile() }).toEqual(
+      createInitialState(42),
+    )
+  })
+
+  it('keeps only the fields of a profile', () => {
+    const profile = { ...CUSTOM, extra: 1 } as Profile
+    expect(createInitialState(42, FOOD_TRUCK, profile).profile).toEqual(CUSTOM)
+  })
+
+  it.each([
+    [{ ...CUSTOM, businessName: '' }, 'businessName'],
+    [{ ...CUSTOM, businessName: ' Chez Mimi' }, 'businessName'],
+    [{ ...CUSTOM, avatar: 'robot' }, 'avatar'],
+    [{ ...CUSTOM, difficulty: 'extreme' }, 'difficulty'],
+  ])('rejects the profile %j', (profile, field) => {
+    expect(() =>
+      createInitialState(42, FOOD_TRUCK, profile as Profile),
+    ).toThrow(new RegExp(`^Invalid profile: .*${field}`))
+    expect(() =>
+      createInitialState(42, FOOD_TRUCK, profile as Profile),
+    ).toThrow(RangeError)
   })
 })
 
@@ -52,10 +89,10 @@ describe('tick', () => {
     expect(state).toEqual(createInitialState(42))
   })
 
-  it('counts one day per tick and keeps the seed', () => {
-    let state = createInitialState(7)
+  it('counts one day per tick and keeps the seed and the profile', () => {
+    let state = createInitialState(7, FOOD_TRUCK, CUSTOM)
     for (let i = 0; i < 400; i += 1) state = tick(state)
-    expect(state).toMatchObject({ day: 400, seed: 7 })
+    expect(state).toMatchObject({ day: 400, seed: 7, profile: CUSTOM })
   })
 })
 

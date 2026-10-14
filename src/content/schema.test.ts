@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import difficultyJson from './difficulty.json'
 import foodTruckJson from './foodtruck.json'
+import profileJson from './profile.json'
 import {
   dayTypeIdSchema,
+  difficultyIdSchema,
   loadCustomerContent,
+  loadDifficultyContent,
   loadFoodTruckContent,
+  loadProfileContent,
   productIdSchema,
   segmentIdSchema,
 } from './schema.ts'
@@ -392,5 +397,121 @@ describe('loadCustomerContent', () => {
   it('accepts a segment without tooCheap', () => {
     const raw = without('segments.chic.tooCheap', segmentsJson)
     expect(loadCustomerContent(raw).segments.chic.tooCheap).toBeUndefined()
+  })
+})
+
+describe('loadDifficultyContent', () => {
+  const loadDifficulties: Load = loadDifficultyContent
+  const reject = (raw: unknown, path: string) =>
+    expectRejected(raw, path, loadDifficulties)
+  const withDifficultyValue = (path: string, value: unknown) =>
+    withValue(path, value, difficultyJson)
+
+  it('loads the shipped difficulty.json with each difficulty and its kind of truck', () => {
+    const { difficulties } = loadDifficultyContent()
+    expect(Object.keys(difficulties).sort()).toEqual(
+      [...difficultyIdSchema.options].sort(),
+    )
+    expect(Object.values(difficulties).map(({ truck }) => truck.kind)).toEqual([
+      'owned',
+      'loan',
+      'lease',
+    ])
+  })
+
+  it('names difficulty.json in its error', () => {
+    expect(() => loadDifficultyContent({})).toThrow(
+      /^difficulty\.json is invalid/,
+    )
+  })
+
+  it('rejects a missing difficulty', () => {
+    reject(without('difficulties.moyen', difficultyJson), 'difficulties.moyen')
+  })
+
+  it('rejects an unknown difficulty', () => {
+    const raw = withDifficultyValue(
+      'difficulties.extreme',
+      difficultyJson.difficulties.difficile,
+    )
+    reject(raw, 'difficulties')
+    expect(() => loadDifficultyContent(raw)).toThrow(
+      'Unrecognized key: "extreme"',
+    )
+  })
+
+  it('rejects a mistyped key', () => {
+    const raw = withDifficultyValue('difficulties.facile.startingCash', 1)
+    reject(raw, 'difficulties.facile')
+    expect(() => loadDifficultyContent(raw)).toThrow(
+      'Unrecognized key: "startingCash"',
+    )
+  })
+
+  it('rejects an unknown kind of truck', () => {
+    reject(
+      withDifficultyValue('difficulties.difficile.truck.kind', 'rented'),
+      'difficulties.difficile.truck.kind',
+    )
+  })
+
+  it("rejects an amount that belongs to another kind's truck", () => {
+    const raw = withDifficultyValue(
+      'difficulties.facile.truck.loanCents',
+      7_000_000,
+    )
+    reject(raw, 'difficulties.facile.truck')
+  })
+
+  it.each([
+    ['difficulties.facile.startingCashCents', 12.5],
+    ['difficulties.moyen.truck.loanCents', -1],
+    ['difficulties.difficile.truck.monthlyLeaseCents', 1800.5],
+    ['difficulties.moyen.name', ''],
+  ])('rejects %s = %s', (path, value) => {
+    reject(withDifficultyValue(path, value), path)
+  })
+})
+
+describe('loadProfileContent', () => {
+  const loadProfile: Load = loadProfileContent
+  const reject = (raw: unknown, path: string) =>
+    expectRejected(raw, path, loadProfile)
+  const withProfileValue = (path: string, value: unknown) =>
+    withValue(path, value, profileJson)
+
+  it('loads the shipped profile.json', () => {
+    const content = loadProfileContent()
+    expect(content.businessNameMaxLength).toBeGreaterThan(0)
+    expect(difficultyIdSchema.options).toContain(
+      content.defaultProfile.difficulty,
+    )
+  })
+
+  it('names profile.json in its error', () => {
+    expect(() => loadProfileContent({})).toThrow(/^profile\.json is invalid/)
+  })
+
+  it.each([
+    ['businessNameMaxLength', 0],
+    ['businessNameMaxLength', 30.5],
+    ['defaultProfile.businessName', ''],
+    ['defaultProfile.avatar', 'robot'],
+    ['defaultProfile.difficulty', 'extreme'],
+  ])('rejects %s = %s', (path, value) => {
+    reject(withProfileValue(path, value), path)
+  })
+
+  it('rejects a missing default', () => {
+    reject(
+      without('defaultProfile.avatar', profileJson),
+      'defaultProfile.avatar',
+    )
+  })
+
+  it('rejects a mistyped key', () => {
+    const raw = withProfileValue('defaultProfile.name', 'Chez Nous')
+    reject(raw, 'defaultProfile')
+    expect(() => loadProfileContent(raw)).toThrow('Unrecognized key: "name"')
   })
 })
