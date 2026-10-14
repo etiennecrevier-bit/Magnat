@@ -10,3 +10,29 @@
 .world canvas {
   display: block;
 }
+
+/* The street is busy behind the panels' text, so while the world is on the
+   page the panels sit on a card of their own: opaque cream with an ink
+   outline, the art brief's colours (palette.cream and palette.ink in
+   src/content/assets.json). 42rem leaves the tables their 40rem. */
+.world ~ main {
+  width: 42rem;
+  max-width: calc(100% - 2rem);
+  margin: 1rem;
+  border: 2px solid #2b2622;
+  border-radius: 12px;
+  background: #fff7e8;
+  color: #2b2622;
+}
+
+/* On a phone the card spans the window, so its tables keep the 288 px a
+   320 px screen gives them. */
+@media (max-width: 559px) {
+  .world ~ main {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    border-width: 0 0 2px;
+    border-radius: 0;
+  }
+}
