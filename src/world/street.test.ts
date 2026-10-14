@@ -1,6 +1,7 @@
-import { Container, Texture, type Ticker } from 'pixi.js'
+import { Container, Texture, type Text, type Ticker } from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState } from '../engine/clock.ts'
+import { FOOD_TRUCK } from '../engine/day.ts'
 import { createGameStore, type GameStore } from '../ui/store.ts'
 import { ASSETS } from './manifest.ts'
 import { startStreet, type StreetLoaders } from './street.ts'
@@ -103,6 +104,25 @@ describe('startStreet', () => {
     expect(piece(app, 'steam').visible).toBe(true)
     expect(piece(app, 'closed-sign').visible).toBe(false)
     expect(piece(app, 'croissants').children[0]?.visible).toBe(true)
+  })
+
+  it('writes the name of the game the start screen starts on the sign', async () => {
+    const app = createFakeApp()
+    const store = mondayStore()
+    await startStreet(app, store, createLoaders())
+    const name = () =>
+      (piece(app, 'truck-sign').getChildByLabel('name') as Text).text
+    expect(name()).toBe("Le P'tit Camion")
+
+    store.getState().startGame(
+      createInitialState(42, FOOD_TRUCK, {
+        businessName: 'Chez Mimi',
+        avatar: 'femme',
+        difficulty: 'difficile',
+      }),
+    )
+
+    expect(name()).toBe('Chez Mimi')
   })
 
   it('moves the steam on each frame', async () => {

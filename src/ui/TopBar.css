@@ -12,8 +12,22 @@
   color: #f5f7fa;
 }
 
-.top-bar__date {
+/* The business's name above the date. A long name wraps rather than
+   widening the column the media queries below size for the date. */
+.top-bar__title {
   grid-area: date;
+}
+
+.top-bar__name {
+  max-width: 16rem;
+  margin: 0;
+  color: #cbd2d9;
+  font-size: 0.875rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.top-bar__date {
   margin: 0;
   font-weight: 600;
   white-space: nowrap;

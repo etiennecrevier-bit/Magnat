@@ -25,6 +25,8 @@ function speedText(speed: number): string {
 const CASH = '1000' satisfies AccountCode
 
 interface TopBarViewProps {
+  /** The business's name, from the player's profile. */
+  businessName: string
   day: Day
   /** The encaisse after every entry posted so far. */
   cash: Cents
@@ -35,6 +37,7 @@ interface TopBarViewProps {
 }
 
 export function TopBarView({
+  businessName,
   day,
   cash,
   speed,
@@ -43,7 +46,10 @@ export function TopBarView({
 }: TopBarViewProps) {
   return (
     <header className="top-bar">
-      <p className="top-bar__date">{formatGameDate(day)}</p>
+      <div className="top-bar__title">
+        <p className="top-bar__name">{businessName}</p>
+        <p className="top-bar__date">{formatGameDate(day)}</p>
+      </div>
       <CashGaugeView cash={cash} />
       <button
         type="button"
@@ -76,6 +82,7 @@ export function TopBarView({
  * « Gérer le camion » panel while it is open.
  */
 export default function TopBar() {
+  const businessName = useGame((state) => state.game.profile.businessName)
   const day = useGame((state) => state.game.day)
   const journal = useGame((state) => state.game.journal)
   const speed = useGame((state) => state.speed)
@@ -104,6 +111,7 @@ export default function TopBar() {
   return (
     <>
       <TopBarView
+        businessName={businessName}
         day={day}
         cash={cash}
         speed={speed}

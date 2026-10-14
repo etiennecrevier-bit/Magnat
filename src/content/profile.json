@@ -1,0 +1,9 @@
+{
+  "_note": "Who the player is: the new game screen's defaults and the limit on the business name.",
+  "businessNameMaxLength": 30,
+  "defaultProfile": {
+    "businessName": "Le P'tit Camion",
+    "avatar": "femme",
+    "difficulty": "moyen"
+  }
+}

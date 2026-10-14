@@ -141,6 +141,11 @@ const WORLD_FORBIDDEN: { code: string; rule: string }[] = [
     code: 'gameStore.setState({ game })',
     rule: 'no-restricted-properties',
   },
+  {
+    code: 'gameStore.getState().startGame(game)',
+    rule: 'no-restricted-properties',
+  },
+  { code: 'useGame((s) => s.startGame)', rule: 'no-restricted-properties' },
   { code: "import('../engine/clock.ts')", rule: 'no-restricted-syntax' },
 ]
 

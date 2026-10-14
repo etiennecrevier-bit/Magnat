@@ -2,7 +2,13 @@
 // The contract the engine, the books, the UI and the tools share; see
 // docs/architecture.md for how the game uses it.
 
-import type { ProductId, RestockRule, SegmentId } from '../content/schema.ts'
+import type {
+  Avatar,
+  DifficultyId,
+  ProductId,
+  RestockRule,
+  SegmentId,
+} from '../content/schema.ts'
 import type { Journal } from '../finance/journal.ts'
 import type { Cents } from './money.ts'
 
@@ -95,6 +101,16 @@ export interface Decisions {
   readonly marketingDaily: Cents
 }
 
+/** Who the player is, as they set it up when the game started. */
+export interface Profile {
+  /** The business's name: on the truck's sign and in the top bar. */
+  readonly businessName: string
+  /** The owner's avatar. */
+  readonly avatar: Avatar
+  /** How the game started: the cash in the bank and how the truck came. */
+  readonly difficulty: DifficultyId
+}
+
 /**
  * The whole game. `createInitialState()` and `tick()` return it at the start
  * of business day `day`; `playDay()` returns it at the close of `day`, before
@@ -125,4 +141,6 @@ export interface GameState {
    * day's. Null when nothing is waiting.
    */
   readonly pendingDecisions: Decisions | null
+  /** Who the player is; it never changes once the game has started. */
+  readonly profile: Profile
 }

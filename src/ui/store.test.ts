@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
+import { FOOD_TRUCK } from '../engine/day.ts'
 import { cents } from '../engine/money.ts'
+import { defaultProfile } from '../engine/profile.ts'
+import type { Profile } from '../engine/types.ts'
 import {
   NORMAL_SPEED,
   PAUSED,
@@ -92,6 +95,30 @@ describe('newGame', () => {
     expect(newGame(search)).toEqual(createInitialState(123))
     expect(random).toHaveBeenCalledTimes(1)
   })
+
+  it('starts with the default profile', () => {
+    expect(newGame('?seed=42').profile).toEqual(defaultProfile())
+  })
+
+  it.each<Profile>([
+    { businessName: 'Café Facile', avatar: 'femme', difficulty: 'facile' },
+    { businessName: "Le P'tit Camion", avatar: 'homme', difficulty: 'moyen' },
+    { businessName: 'Chez Mimi', avatar: 'femme', difficulty: 'difficile' },
+  ])('keeps the $difficulty profile the player picked', (profile) => {
+    stubRandomSeed(123)
+    expect(newGame('', profile)).toEqual(
+      createInitialState(123, FOOD_TRUCK, profile),
+    )
+    expect(newGame('?seed=42', profile)).toEqual(
+      createInitialState(42, FOOD_TRUCK, profile),
+    )
+  })
+
+  it('rejects a profile the engine rejects', () => {
+    stubRandomSeed(123)
+    const profile = { ...defaultProfile(), businessName: '' }
+    expect(() => newGame('?seed=42', profile)).toThrow(RangeError)
+  })
 })
 
 describe('setSpeed', () => {
@@ -119,6 +146,40 @@ describe('togglePause', () => {
     store.getState().setSpeed(10)
     store.getState().setSpeed(PAUSED)
     store.getState().togglePause()
+    expect(store.getState().speed).toBe(10)
+  })
+})
+
+describe('startGame', () => {
+  it('plays the game it is given, from normal speed', () => {
+    const store = createGameStore(createInitialState(1))
+    store.getState().setSpeed(10)
+    store.getState().setSpeed(PAUSED)
+    const game = { ...createInitialState(7), day: 42 }
+
+    store.getState().startGame(game)
+
+    expect(store.getState()).toMatchObject({
+      game,
+      speed: NORMAL_SPEED,
+      lastSpeed: NORMAL_SPEED,
+    })
+    store.getState().togglePause()
+    store.getState().togglePause()
+    expect(store.getState().speed).toBe(NORMAL_SPEED)
+  })
+
+  it('closes a panel left open, so the new game is not stuck paused', () => {
+    const store = createGameStore(createInitialState(1))
+    store.getState().openPanel()
+
+    store.getState().startGame(createInitialState(7))
+
+    expect(store.getState()).toMatchObject({
+      speed: NORMAL_SPEED,
+      resumeSpeed: null,
+    })
+    store.getState().setSpeed(10)
     expect(store.getState().speed).toBe(10)
   })
 })

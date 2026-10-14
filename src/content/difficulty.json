@@ -1,0 +1,20 @@
+{
+  "_note": "The three ways to start a game (#44). Only what the new game screen shows for now; P2-14 adds what the opening books need.",
+  "difficulties": {
+    "facile": {
+      "name": "Facile",
+      "startingCashCents": 1500000,
+      "truck": { "kind": "owned" }
+    },
+    "moyen": {
+      "name": "Moyen",
+      "startingCashCents": 1000000,
+      "truck": { "kind": "loan", "loanCents": 7000000 }
+    },
+    "difficile": {
+      "name": "Difficile",
+      "startingCashCents": 500000,
+      "truck": { "kind": "lease", "monthlyLeaseCents": 180000 }
+    }
+  }
+}

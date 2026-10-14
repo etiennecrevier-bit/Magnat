@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import {
+  avatarSchema,
+  difficultyIdSchema,
   productIdSchema,
   segmentIdSchema,
   type FoodTruckContent,
@@ -18,6 +20,7 @@ import { FOOD_TRUCK } from './day.ts'
 import { validateDecisions } from './decisions.ts'
 import { PRODUCTS, inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
+import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
 import type { Decisions, GameState, VisitOutcome } from './types.ts'
 
@@ -30,7 +33,7 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
  * The format `serialize()` writes. Bump it when a save written before a
  * change can no longer load (rule 8 in CLAUDE.md).
  */
-export const SAVE_VERSION = 1
+export const SAVE_VERSION = 2
 
 const STOCKS: AccountCode = '1200'
 
@@ -132,6 +135,13 @@ const decisionsSchema = z.strictObject({
   marketingDaily: money,
 })
 
+// `validateProfile()` checks the business name.
+const profileSchema = z.strictObject({
+  businessName: z.string(),
+  avatar: avatarSchema,
+  difficulty: difficultyIdSchema,
+})
+
 const saveSchema = z.strictObject({
   saveVersion: z.literal(SAVE_VERSION),
   day: gameDay,
@@ -142,6 +152,7 @@ const saveSchema = z.strictObject({
   lastDay: daySummarySchema.nullable(),
   decisions: decisionsSchema,
   pendingDecisions: decisionsSchema.nullable(),
+  profile: profileSchema,
 })
 
 type Save = z.output<typeof saveSchema>
@@ -161,6 +172,7 @@ export function serialize(state: GameState): string {
     lastDay: state.lastDay,
     decisions: state.decisions,
     pendingDecisions: state.pendingDecisions,
+    profile: state.profile,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -175,8 +187,9 @@ export function serialize(state: GameState): string {
  * within the safe integer range; the lots are oldest first, none bought
  * after the save's day, and they cost what the Stocks account carries;
  * `lastDay` is the save's day or the day before, and null only on day 0;
- * and the decisions, and those pending if any, keep within the content's
- * limits and each product's kind of restock rule.
+ * the decisions, and those pending if any, keep within the content's
+ * limits and each product's kind of restock rule; and the profile passes
+ * `validateProfile()`.
  *
  * The products, limits and restock kinds are those of `content` as it is
  * now, so tuning that narrows them can stop older saves from loading.
@@ -194,6 +207,7 @@ export function deserialize(
   if (save.pendingDecisions !== null) {
     checkDecisions('pendingDecisions', save.pendingDecisions, content)
   }
+  attempt('profile', () => validateProfile(save.profile))
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -204,6 +218,7 @@ export function deserialize(
     lastDay: save.lastDay,
     decisions: save.decisions,
     pendingDecisions: save.pendingDecisions,
+    profile: save.profile,
   }
 }
 

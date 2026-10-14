@@ -1,7 +1,9 @@
 import { createStore, useStore, type StoreApi } from 'zustand'
 import { createInitialState, tick } from '../engine/clock.ts'
+import { FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
-import type { GameState } from '../engine/types.ts'
+import { defaultProfile } from '../engine/profile.ts'
+import type { GameState, Profile } from '../engine/types.ts'
 
 export const PAUSED = 0
 /** A multiplier of 1 is, by definition, the pace pacing.json calls normal. */
@@ -37,6 +39,8 @@ export interface GameStoreState {
    * change breaks the content's limits.
    */
   decide: (change: DecisionChange) => void
+  /** Plays `game` from now on, new or loaded, at normal speed. */
+  startGame: (game: GameState) => void
 }
 
 export type GameStore = StoreApi<GameStoreState>
@@ -61,19 +65,23 @@ export function seedFromSearch(search: string): number | null {
 }
 
 /**
- * A new game on the seed `search` names (see `seedFromSearch`), or on a
- * random one when it names none or one the engine rejects.
+ * A new game for `profile` on the seed `search` names (see
+ * `seedFromSearch`), or on a random one when it names none or one the
+ * engine rejects. Throws a RangeError if the engine rejects `profile`.
  */
-export function newGame(search: string): GameState {
+export function newGame(
+  search: string,
+  profile: Profile = defaultProfile(),
+): GameState {
   const seed = seedFromSearch(search)
   if (seed !== null) {
     try {
-      return createInitialState(seed)
+      return createInitialState(seed, FOOD_TRUCK, profile)
     } catch (error) {
       if (!(error instanceof RangeError)) throw error
     }
   }
-  return createInitialState(randomSeed())
+  return createInitialState(randomSeed(), FOOD_TRUCK, profile)
 }
 
 export function createGameStore(
@@ -110,12 +118,21 @@ export function createGameStore(
       set({ speed: resumeSpeed, resumeSpeed: null })
     },
     decide: (change) => set({ game: applyDecision(get().game, change) }),
+    startGame: (next) =>
+      set({
+        game: next,
+        speed: NORMAL_SPEED,
+        lastSpeed: NORMAL_SPEED,
+        resumeSpeed: null,
+      }),
   }))
 }
 
 /**
- * The store the app runs on, seeded from the page address when it has a
- * `?seed=`. Tests build their own with `createGameStore`.
+ * The store the app runs on. Until the start screen hands it the game to
+ * play, it holds a new game with the default profile, seeded from the page
+ * address when it has a `?seed=`, for the world to draw behind the menu.
+ * Tests build their own with `createGameStore`.
  */
 export const gameStore = createGameStore(
   newGame(typeof window === 'undefined' ? '' : window.location.search),
