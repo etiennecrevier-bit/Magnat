@@ -146,6 +146,26 @@ describe('statement properties', () => {
     )
   })
 
+  it('show no more cash coming in or going out than went through Encaisse', () => {
+    fc.assert(
+      fc.property(draft, (one) => {
+        const [entry] = toEntries([one])
+        if (entry === undefined) throw new Error('One draft makes one entry')
+        const cash = entry.lines.filter(({ account }) => account === '1000')
+        const rows = activities(cashFlowStatement(toJournalOf(entry), 0, 0))
+          .flatMap(({ lines }) => lines)
+          .map(({ amount }) => amount)
+        expect(total(rows.filter((amount) => amount > 0))).toBeLessThanOrEqual(
+          total(cash.map(({ debit }) => debit)),
+        )
+        expect(-total(rows.filter((amount) => amount < 0))).toBeLessThanOrEqual(
+          total(cash.map(({ credit }) => credit)),
+        )
+      }),
+      { numRuns: NUM_RUNS },
+    )
+  })
+
   it('make Bénéfices non répartis the account plus the net income to date', () => {
     fc.assert(
       fc.property(

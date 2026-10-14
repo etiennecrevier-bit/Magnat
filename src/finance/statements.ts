@@ -7,7 +7,7 @@
 import { add, cents, sub, sum, type Cents } from '../engine/money.ts'
 import type { Day } from '../engine/types.ts'
 import { ACCOUNTS, getAccount, type AccountCode } from './accounts.ts'
-import { entriesOf, type Journal } from './journal.ts'
+import { entriesOf, type Journal, type JournalLine } from './journal.ts'
 
 /** One row of a statement. */
 export interface StatementLine {
@@ -272,26 +272,24 @@ export function cashFlowStatement(
   let closingCash = ZERO
   const flows = new Map<CashFlowRow, Cents>()
   // Each entry that touches Encaisse, even one whose cash lines net to zero,
-  // feeds each of its other lines into the row of that line's account. A
-  // balanced entry's other lines add up to its net cash movement, so the rows
-  // add up to the change in Encaisse. Entries that leave Encaisse alone, such
-  // as purchases on credit, spoilage or depreciation, move no cash. Two other
-  // lines of one entry whose accounts feed different rows (depreciation
-  // posted with a sale, say) move cash between those rows, so the engine
-  // should post such pairs as entries of their own.
+  // feeds the rows its cash went through, and those add up to its net cash
+  // movement, so the rows add up to the change in Encaisse. Entries that
+  // leave Encaisse alone, such as purchases on credit, spoilage or
+  // depreciation, move no cash.
   for (const { day, lines } of entriesOf(journal)) {
     // Days never go down, so no later entry can be in range either.
     if (day > toDay) break
-    if (!lines.some(({ account }) => account === CASH)) continue
-    for (const { account, debit, credit } of lines) {
-      if (account === CASH) {
-        const net = sub(debit, credit)
-        closingCash = add(closingCash, net)
-        if (day < fromDay) openingCash = add(openingCash, net)
-      } else if (day >= fromDay) {
-        const row = CASH_FLOW_ROW[account]
-        flows.set(row, add(flows.get(row) ?? ZERO, sub(credit, debit)))
-      }
+    const cash = lines.filter(({ account }) => account === CASH)
+    if (cash.length === 0) continue
+    const cashIn = sum(cash.map(({ debit }) => debit))
+    const net = sub(cashIn, sum(cash.map(({ credit }) => credit)))
+    closingCash = add(closingCash, net)
+    if (day < fromDay) {
+      openingCash = add(openingCash, net)
+      continue
+    }
+    for (const [row, amount] of cashFlowsOf(lines, cashIn)) {
+      flows.set(row, add(flows.get(row) ?? ZERO, amount))
     }
   }
 
@@ -374,6 +372,58 @@ function placeSection(
     return line(name, adjust(code, amountOf(code, nets)), code)
   })
   return section(label, lines, total)
+}
+
+/**
+ * The cash a cash entry moved through each row. Its lines other than
+ * Encaisse feed the row of their account, net within each row, but some may
+ * have moved no cash: the part of a truck the bank paid for, say, or
+ * depreciation posted with a sale. Such a part brings as much into some rows
+ * as it takes out of others, so the rows coming in exceed the cash that came
+ * in, and the rows going out the cash that went out, by the same amount. It
+ * comes off both sides: first from a row coming in and a row going out by
+ * that same amount, which offset each other like an entry of their own, then
+ * from the rows lowest on the statement, as transactions that move no cash
+ * are mostly investing and financing ones.
+ */
+function cashFlowsOf(
+  lines: readonly JournalLine[],
+  cashIn: Cents,
+): ReadonlyMap<CashFlowRow, Cents> {
+  const rows = new Map<CashFlowRow, Cents>()
+  for (const { account, debit, credit } of lines) {
+    if (account === CASH) continue
+    const row = CASH_FLOW_ROW[account]
+    rows.set(row, add(rows.get(row) ?? ZERO, sub(credit, debit)))
+  }
+  const comingIn = [...rows.values()].filter((amount) => amount > 0)
+  let excess = sub(sum(comingIn), cashIn)
+  if (excess <= 0) return rows
+
+  const bottomUp = CASH_FLOW_ROWS.map(({ key }) => key)
+    .filter((key) => rows.has(key))
+    .reverse()
+  for (const into of bottomUp) {
+    const amount = rows.get(into) ?? ZERO
+    if (amount <= 0 || amount > excess) continue
+    const out = bottomUp.find((key) => rows.get(key) === -amount)
+    if (out === undefined) continue
+    rows.set(into, ZERO)
+    rows.set(out, ZERO)
+    excess = sub(excess, amount)
+  }
+  for (const side of ['in', 'out'] as const) {
+    let left = excess
+    for (const key of bottomUp) {
+      const amount = rows.get(key) ?? ZERO
+      const size = side === 'in' ? amount : sub(ZERO, amount)
+      if (size <= 0 || left <= 0) continue
+      const taken = size < left ? size : left
+      rows.set(key, side === 'in' ? sub(amount, taken) : add(amount, taken))
+      left = sub(left, taken)
+    }
+  }
+  return rows
 }
 
 function activitySection(

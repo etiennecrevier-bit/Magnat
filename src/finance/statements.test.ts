@@ -424,6 +424,27 @@ describe('cashFlowStatement', () => {
     expect(statement.netChange.amount).toBe(400_000)
   })
 
+  it('takes what moved no cash off the rows lowest on the statement first', () => {
+    const books = post(
+      entry(0, 'Mise de fonds', dr('1000', 1_000_000), cr('3000', 1_000_000)),
+      entry(
+        1,
+        'Camion et ventes du jour',
+        dr('1000', 45_000),
+        cr('4000', 45_000),
+        dr('1500', 3_000_000),
+        cr('1000', 500_000),
+        cr('2500', 2_500_000),
+      ),
+    )
+    const statement = cashFlowStatement(books, 1, 1)
+    expect(cashRows(statement)).toEqual([
+      row('Encaissements des clients', 45_000),
+      row('Équipement', -500_000),
+    ])
+    expect(statement.netChange.amount).toBe(-455_000)
+  })
+
   // The row each counterpart of Encaisse feeds, kept apart from
   // statements.ts so the test checks it against an independent spec.
   const COUNTERPARTS: {
