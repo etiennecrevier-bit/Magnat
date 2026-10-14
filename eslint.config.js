@@ -136,11 +136,13 @@ export default defineConfig([
           ],
         },
       ],
-      // The store's advance() calls tick(), and setState() replaces the game.
+      // The store's advance() calls tick(), and setState() and startGame()
+      // replace the game.
       'no-restricted-properties': [
         'error',
         { property: 'advance', message: `${WORLD}: read the store only.` },
         { property: 'setState', message: `${WORLD}: read the store only.` },
+        { property: 'startGame', message: `${WORLD}: read the store only.` },
       ],
       'no-restricted-syntax': ['error', NO_DYNAMIC_IMPORT],
     },

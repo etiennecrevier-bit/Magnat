@@ -3,16 +3,13 @@ import { toCalendar } from '../engine/clock.ts'
 import { onHand } from '../engine/inventory.ts'
 import type { GameState } from '../engine/types.ts'
 
-/** The business name on the truck's sign, until the player picks their own. */
-export const BUSINESS_NAME = "Le P'tit Camion"
-
 /** What the truck shows on the day the top bar names. */
 export interface TruckView {
   /** Whether the truck opens on day `game.day`. */
   readonly open: boolean
   /** The croissants on the rack: what the truck opens with that morning. */
   readonly croissants: number
-  /** The name written on the sign. */
+  /** The name written on the sign: the business's, from the profile. */
   readonly businessName: string
 }
 
@@ -21,7 +18,7 @@ export function truckView(game: GameState): TruckView {
   return {
     open: opensToday(game),
     croissants: openingStock(game, 'croissant'),
-    businessName: BUSINESS_NAME,
+    businessName: game.profile.businessName,
   }
 }
 

@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import FinancialStatements from './FinancialStatements.tsx'
+import { downloadSave } from './saves.ts'
+import { gameStore } from './store.ts'
 import TodayPanel from './TodayPanel.tsx'
 
 export type Screen = 'today' | 'statements'
@@ -12,15 +14,29 @@ const SCREENS: Record<Screen, string> = {
 interface GameScreensViewProps {
   screen: Screen
   onScreenChange: (screen: Screen) => void
+  onExport: () => void
+  /** Whether the last autosave failed, so the player should export. */
+  autosaveFailed: boolean
 }
 
-/** The page under the top bar: a button per screen, then that screen. */
+/**
+ * The page under the top bar: a button per screen and the export button,
+ * then that screen.
+ */
 export function GameScreensView({
   screen,
   onScreenChange,
+  onExport,
+  autosaveFailed,
 }: GameScreensViewProps) {
   return (
     <main>
+      {autosaveFailed && (
+        <p className="notice" role="status">
+          La sauvegarde automatique a échoué. Exportez la sauvegarde pour ne pas
+          perdre votre partie.
+        </p>
+      )}
       <nav className="screen-nav" aria-label="Écrans">
         <div className="toggle-group">
           {(Object.keys(SCREENS) as Screen[]).map((option) => (
@@ -35,14 +51,28 @@ export function GameScreensView({
             </button>
           ))}
         </div>
+        <button type="button" className="button" onClick={onExport}>
+          Exporter la sauvegarde
+        </button>
       </nav>
       {screen === 'today' ? <TodayPanel /> : <FinancialStatements />}
     </main>
   )
 }
 
-/** The screens, opening on Aujourd'hui. */
-export default function GameScreens() {
+/** The screens, opening on Aujourd'hui, exporting the app store's game. */
+export default function GameScreens({
+  autosaveFailed = false,
+}: {
+  autosaveFailed?: boolean
+}) {
   const [screen, setScreen] = useState<Screen>('today')
-  return <GameScreensView screen={screen} onScreenChange={setScreen} />
+  return (
+    <GameScreensView
+      screen={screen}
+      onScreenChange={setScreen}
+      onExport={() => downloadSave(gameStore.getState().game)}
+      autosaveFailed={autosaveFailed}
+    />
+  )
 }

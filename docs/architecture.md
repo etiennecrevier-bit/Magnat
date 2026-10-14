@@ -22,7 +22,7 @@ Engine and finance code never imports React, React DOM, Zustand or anything from
 
 The world draws the game state and never changes it (CLAUDE.md rule 9). `eslint.config.js` holds that line too:
 - engine, finance and content code never imports `src/world/`;
-- the world never imports the functions that change the game, listed in `GAME_CHANGERS` (`postEntry`, `applyDecision`, `tick` and `playDay`), nor a whole engine, finance or UI module with `import * as`, and never calls the store's `advance()` or `setState()`. Its tests may, to build the states they draw;
+- the world never imports the functions that change the game, listed in `GAME_CHANGERS` (`postEntry`, `applyDecision`, `tick` and `playDay`), nor a whole engine, finance or UI module with `import * as`, and never calls the store's `advance()`, `setState()` or `startGame()`. Its tests may, to build the states they draw;
 - neither content nor the world uses dynamic `import()`.
 
 Randomness and the browser are allowed in the world, since nothing it does reaches the engine.

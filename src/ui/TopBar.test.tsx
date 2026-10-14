@@ -6,9 +6,20 @@ import TopBar, { TopBarView } from './TopBar.tsx'
 // Every space in an amount is a no-break space (U+00A0).
 const S = '\u00a0'
 
-function render(day: number, speed: number, cash = cents(1_000_000)) {
+function render(
+  day: number,
+  speed: number,
+  cash = cents(1_000_000),
+  businessName = "Le P'tit Camion",
+) {
   return renderToStaticMarkup(
-    <TopBarView day={day} cash={cash} speed={speed} onSpeedChange={() => {}} />,
+    <TopBarView
+      businessName={businessName}
+      day={day}
+      cash={cash}
+      speed={speed}
+      onSpeedChange={() => {}}
+    />,
   )
 }
 
@@ -27,10 +38,16 @@ describe('TopBarView', () => {
     )
   })
 
+  it('shows the business name above the date', () => {
+    expect(render(0, 1, cents(0), 'Chez Mimi')).toMatch(
+      /^<header class="top-bar"><div class="top-bar__title"><p class="top-bar__name">Chez Mimi<\/p><p class="top-bar__date">Lundi 1er mai, an 1<\/p><\/div>/,
+    )
+  })
+
   it('shows the cash gauge between the date and the buttons', () => {
     const html = render(0, 1, cents(-12_345))
     expect(html).toMatch(
-      /^<header class="top-bar"><p class="top-bar__date">.*<\/p><p class="cash-gauge cash-gauge--negative">.*<\/p><div class="top-bar__speeds"/,
+      /^<header class="top-bar"><div class="top-bar__title">.*<\/div><p class="cash-gauge cash-gauge--negative">.*<\/p><div class="top-bar__speeds"/,
     )
     expect(html).toContain(`-123,45${S}$`)
   })
@@ -59,8 +76,9 @@ describe('TopBarView', () => {
 })
 
 describe('TopBar', () => {
-  it('shows the app store: day 0 at normal speed, with the starting cash', () => {
+  it("shows the app store: the profile's name, day 0 at normal speed, with the starting cash", () => {
     const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toContain('<p class="top-bar__name">Le P&#x27;tit Camion</p>')
     expect(html).toContain('Lundi 1er mai, an 1')
     expect(html).toContain('cash-gauge--healthy')
     expect(html).toContain(`10${S}000,00${S}$`)
