@@ -1,3 +1,5 @@
+import type { Journal } from '../finance/journal.ts'
+
 /** Game day index; day 0 is the first day of the game. */
 export type Day = number
 
@@ -7,4 +9,6 @@ export interface GameState {
   seed: number
   /** The seeded generator's state (see rng.ts); a save restores it as is. */
   rngState: number
+  /** The books: every money event of the game, as balanced entries. */
+  journal: Journal
 }
