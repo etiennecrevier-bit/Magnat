@@ -1,5 +1,6 @@
 import { createStore, useStore, type StoreApi } from 'zustand'
 import { createInitialState, tick } from '../engine/clock.ts'
+import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
 import type { GameState } from '../engine/types.ts'
 
 export const PAUSED = 0
@@ -12,10 +13,30 @@ export interface GameStoreState {
   speed: number
   /** The last speed above `PAUSED`, which `togglePause` resumes at. */
   lastSpeed: number
+  /**
+   * The speed the game resumes at when the open panel closes; null while no
+   * panel is open. A panel pauses the game for as long as it is open.
+   */
+  resumeSpeed: number | null
+  /** Ignored while a panel is open: the game stays paused. */
   setSpeed: (speed: number) => void
+  /** Ignored while a panel is open: the game stays paused. */
   togglePause: () => void
   /** Runs the engine's `tick()` `days` times, then notifies once. */
   advance: (days: number) => void
+  /**
+   * Opens a panel: remembers the speed, even `PAUSED`, and pauses. Does
+   * nothing if a panel is already open, so the speed it remembered stays.
+   */
+  openPanel: () => void
+  /** Closes the panel and resumes at the speed it remembered. */
+  closePanel: () => void
+  /**
+   * Hands the player's change to the engine's `applyDecision()`, which
+   * leaves it waiting for the next morning. Throws its RangeError if the
+   * change breaks the content's limits.
+   */
+  decide: (change: DecisionChange) => void
 }
 
 export type GameStore = StoreApi<GameStoreState>
@@ -62,10 +83,14 @@ export function createGameStore(
     game,
     speed: NORMAL_SPEED,
     lastSpeed: NORMAL_SPEED,
-    setSpeed: (speed) =>
-      set(speed > PAUSED ? { speed, lastSpeed: speed } : { speed }),
+    resumeSpeed: null,
+    setSpeed: (speed) => {
+      if (get().resumeSpeed !== null) return
+      set(speed > PAUSED ? { speed, lastSpeed: speed } : { speed })
+    },
     togglePause: () => {
-      const { speed, lastSpeed } = get()
+      const { speed, lastSpeed, resumeSpeed } = get()
+      if (resumeSpeed !== null) return
       set({ speed: speed > PAUSED ? PAUSED : lastSpeed })
     },
     advance: (days) => {
@@ -74,6 +99,17 @@ export function createGameStore(
       for (let i = 0; i < days; i += 1) next = tick(next)
       set({ game: next })
     },
+    openPanel: () => {
+      const { speed, resumeSpeed } = get()
+      if (resumeSpeed !== null) return
+      set({ resumeSpeed: speed, speed: PAUSED })
+    },
+    closePanel: () => {
+      const { resumeSpeed } = get()
+      if (resumeSpeed === null) return
+      set({ speed: resumeSpeed, resumeSpeed: null })
+    },
+    decide: (change) => set({ game: applyDecision(get().game, change) }),
   }))
 }
 

@@ -22,6 +22,18 @@ function isEditable(target: unknown): boolean {
   return typeof tagName === 'string' && TEXT_ENTRY_TAGS.has(tagName)
 }
 
+// A button that opens a dialog, and everything inside an open dialog, keep
+// Space for themselves: it opens the dialog, then clicks its buttons. The
+// store keeps the game paused while a panel is open anyway.
+const OWNS_SPACE = 'dialog, [aria-haspopup="dialog"]'
+
+function ownsSpace(target: unknown): boolean {
+  if (typeof target !== 'object' || target === null) return false
+  const { closest } = target as { closest?: unknown }
+  if (typeof closest !== 'function') return false
+  return closest.call(target, OWNS_SPACE) !== null
+}
+
 function isPauseKey(event: KeyEventLike): boolean {
   return (
     event.key === ' ' &&
@@ -29,7 +41,8 @@ function isPauseKey(event: KeyEventLike): boolean {
     !event.ctrlKey &&
     !event.metaKey &&
     !event.shiftKey &&
-    !isEditable(event.target)
+    !isEditable(event.target) &&
+    !ownsSpace(event.target)
   )
 }
 
