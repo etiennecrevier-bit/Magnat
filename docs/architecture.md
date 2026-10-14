@@ -10,6 +10,7 @@ How the game is put together at the end of phase 1: the folders and who may impo
 | `src/finance/` | The journal, the chart of accounts, the three statements | `src/engine/money.ts` and `src/engine/types.ts` only |
 | `src/content/` | Tunable numbers as JSON, and the zod schema that validates them | `src/engine/money.ts` only, to type money as `Cents` |
 | `src/ui/` | React screens, the Zustand store and the real-time loop | engine, finance and content |
+| `src/world/` | The living 2D world, drawn with PixiJS behind the panels; `src/App.tsx` mounts it | engine, finance, content and the UI store, to read only |
 | `tools/sim/` | The headless simulation behind `npm run sim` | engine and finance |
 | `tests/` | The 10-year invariant test | engine, finance and `tools/sim/` |
 
@@ -18,6 +19,13 @@ Engine and finance code never imports React, React DOM, Zustand or anything from
 - `tsconfig.engine.json` typechecks both folders (tests excepted) with the ES2023 library only, so browser globals such as `localStorage`, `fetch` or `setTimeout` do not compile there.
 
 `tools/lint-guardrails.test.ts` and `tools/engine-types.test.ts` prove the two checks stay wired up.
+
+The world draws the game state and never changes it (CLAUDE.md rule 9). `eslint.config.js` holds that line too:
+- engine, finance and content code never imports `src/world/`;
+- the world never imports the functions that change the game, listed in `GAME_CHANGERS` (`postEntry`, `applyDecision`, `tick` and `playDay`), nor a whole engine, finance or UI module with `import * as`, and never calls the store's `advance()` or `setState()`. Its tests may, to build the states they draw;
+- neither content nor the world uses dynamic `import()`.
+
+Randomness and the browser are allowed in the world, since nothing it does reaches the engine.
 
 ## The contract
 
@@ -212,7 +220,7 @@ The whole file must finish within 60 seconds. If it gets slower, make the slow p
 ### Also enforced elsewhere
 
 - `postEntry()` throws on an entry that does not balance or breaks another of the rules above, so the books cannot take one. `src/finance/journal.test.ts` covers each rule, and `src/finance/journal.property.test.ts` checks that the trial balance stays at zero after any run of balanced entries.
-- `tools/lint-guardrails.test.ts` checks that ESLint flags the forbidden imports and calls in `src/engine/` and `src/finance/`, and leaves the same code alone in `src/ui/`.
+- `tools/lint-guardrails.test.ts` checks that ESLint flags the forbidden imports and calls in `src/engine/` and `src/finance/`, any import of `src/world/` from engine, finance and content, and anything in `src/world/` that would change the game, and leaves the same code alone in `src/ui/`.
 - `tools/engine-types.test.ts` checks that `tsconfig.engine.json` rejects browser globals in both folders.
 - `tools/architecture-doc.test.ts` checks this page:
   - `src/engine/types.ts` starts with its frozen header;

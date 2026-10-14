@@ -18,6 +18,7 @@ Single-player browser tycoon game in French (Quebec). The player grows a food tr
 6. `src/engine/types.ts` is the shared contract. Do not change it unless your card explicitly says so.
 7. Every journal entry balances (debits = credits). Posting an unbalanced entry throws.
 8. Any card that adds a field to `GameState` extends the save schema and its tests. Bump `saveVersion` when an older save can no longer load.
+9. `src/world/` (PixiJS) draws the game state and never changes it. It reports player clicks to the UI layer, which calls the engine. Engine, finance and content never import `src/world/`, and the world never imports the functions that change the game, listed in `eslint.config.js` (`postEntry`, `applyDecision`, `tick`, `playDay`, …).
 
 ## Language
 - Code, comments, commits, pull requests and docs: English.
@@ -25,7 +26,7 @@ Single-player browser tycoon game in French (Quebec). The player grows a food tr
 - Money displays in fr-CA format: `1 234,56 $`. Negative amounts in parentheses on statements.
 
 ## Workflow
-- One card = one branch = one pull request. Branch: `feat/<area>-<short-task>` with area in engine, finance, ui, content, tooling.
+- One card = one branch = one pull request. Branch: `feat/<area>-<short-task>` with area in engine, finance, ui, world, content, tooling.
 - Stay inside the folder(s) named on the card. If you must touch another folder, explain why in the PR description.
 - Every feature ships with tests. Lint, typecheck and tests pass before the PR is opened.
 - Keep PRs small. If a card is bigger than one run, stop, ship what is coherent, and describe the remainder in the PR.
@@ -34,6 +35,7 @@ Single-player browser tycoon game in French (Quebec). The player grows a food tr
 - [ ] `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` pass.
 - [ ] From phase 1: the 10-year invariant test passes (balance sheet balances every day, simulation is deterministic).
 - [ ] No React, DOM or `src/ui/` imports in `src/engine/` or `src/finance/`; no game rules in `src/ui/`.
+- [ ] Nothing in `src/world/` changes the game state; engine, finance and content never import it.
 - [ ] No floats for money; no `Math.random()` or `Date.now()` in engine or finance.
 - [ ] New tunable numbers are in `src/content/` JSON, not in code.
 - [ ] The branch stayed in its folder(s) or justified why not.
