@@ -63,7 +63,8 @@ describe('TodayPanelView', () => {
   })
 
   it('shows what the engine reports for a played day', () => {
-    const { lastDay } = tick(createInitialState(42))
+    // Day 0 is a Monday, closed by default, so day 1 is the first that sells.
+    const { lastDay } = tick(tick(createInitialState(42)))
     if (lastDay === null) throw new Error('A played day has a summary')
     const html = render(lastDay)
     expect(productRows(html)).toEqual([

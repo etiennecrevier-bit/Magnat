@@ -13,7 +13,12 @@ import {
   type Journal,
   type JournalLine,
 } from '../finance/journal.ts'
-import { dayTypeOf, serveWalkIns } from './customers.ts'
+import {
+  dayTypeOf,
+  perSegment,
+  serveWalkIns,
+  type Served,
+} from './customers.ts'
 import {
   PRODUCTS,
   onHand,
@@ -22,7 +27,7 @@ import {
   takeFifo,
 } from './inventory.ts'
 import { add, cents, mulInt, type Cents } from './money.ts'
-import type { Day, GameState, Lot, PerProduct } from './types.ts'
+import type { Day, Decisions, GameState, Lot, PerProduct } from './types.ts'
 
 /** The shipped food truck content, validated once when the engine loads. */
 export const FOOD_TRUCK: FoodTruckContent = loadFoodTruckContent()
@@ -62,26 +67,20 @@ export function openingJournal(
   ])
 }
 
-/**
- * What one unit of `product` sells for today: for now, its base price in the
- * content. Everything that prices a sale reads it, so P2-04 lets the player
- * set prices by changing only this function.
- */
-export function currentPrice(
-  _state: GameState,
-  product: ProductId,
-  content: FoodTruckContent = FOOD_TRUCK,
-): Cents {
-  return content.products[product].basePriceCents
+/** What one unit of `product` sells for on day `state.day`. */
+export function currentPrice(state: GameState, product: ProductId): Cents {
+  return state.decisions.prices[product]
 }
 
 /**
- * Plays business day `state.day`, which falls on ISO `weekday` (1 = Monday):
- * the morning restock, the walk-in customers buying from the stock on hand
- * as they arrive, the fixed costs and the spoilage at the close. Every entry
- * is dated `state.day`. Returns a new state on the same day with the books,
- * the stock, the generator and `lastDay` brought up to the close; never
- * mutates `state`. Cash may go negative.
+ * Plays business day `state.day`, which falls on ISO `weekday` (1 = Monday),
+ * with `state.decisions`. On a day the truck opens: the morning restock,
+ * then the walk-in customers buying from the stock on hand as they arrive.
+ * On a day it is closed, nobody comes and nothing is bought, so the
+ * generator does not move. Every day: the fixed costs, and the spoilage at
+ * the close. Every entry is dated `state.day`. Returns a new state on the
+ * same day with the books, the stock, the generator and `lastDay` brought up
+ * to the close; never mutates `state`. Cash may go negative.
  */
 export function playDay(
   state: GameState,
@@ -89,36 +88,43 @@ export function playDay(
   content: FoodTruckContent = FOOD_TRUCK,
   customers: CustomerContent = CUSTOMERS,
 ): GameState {
-  const { day } = state
+  const { day, decisions } = state
   let journal = state.journal
+  let lots = state.inventory
+  let served = closed(state.rngState)
+  let revenue = ZERO
 
-  const restocked = restock(state.inventory, day, content)
-  journal = post(journal, day, MEMO.purchases, [
-    debit(INVENTORY, restocked.cost),
-    credit(CASH, restocked.cost),
-  ])
+  if (decisions.daysOpen.includes(weekday)) {
+    const restocked = restock(lots, day, decisions.restock, content)
+    journal = post(journal, day, MEMO.purchases, [
+      debit(INVENTORY, restocked.cost),
+      credit(CASH, restocked.cost),
+    ])
 
-  const price = (product: ProductId) => currentPrice(state, product, content)
-  const served = serveWalkIns(
-    state.rngState,
-    content.walkIns,
-    dayTypeOf(weekday),
-    customers,
-    price,
-    perProduct((product) => onHand(restocked.lots, product)),
-  )
+    const price = (product: ProductId) => currentPrice(state, product)
+    served = serveWalkIns(
+      state.rngState,
+      content.walkIns,
+      dayTypeOf(weekday),
+      customers,
+      price,
+      perProduct((product) => onHand(restocked.lots, product)),
+    )
 
-  // The sale and its cost are separate entries, so each cash entry's other
-  // lines stay on one row of the état des flux de trésorerie.
-  const sales = sell(restocked.lots, served.sold, price)
-  journal = post(journal, day, MEMO.sales, [
-    debit(CASH, sales.revenue),
-    credit(SALES, sales.revenue),
-  ])
-  journal = post(journal, day, MEMO.costOfSales, [
-    debit(COST_OF_GOODS_SOLD, sales.cost),
-    credit(INVENTORY, sales.cost),
-  ])
+    // The sale and its cost are separate entries, so each cash entry's other
+    // lines stay on one row of the état des flux de trésorerie.
+    const sales = sell(restocked.lots, served.sold, price)
+    journal = post(journal, day, MEMO.sales, [
+      debit(CASH, sales.revenue),
+      credit(SALES, sales.revenue),
+    ])
+    journal = post(journal, day, MEMO.costOfSales, [
+      debit(COST_OF_GOODS_SOLD, sales.cost),
+      credit(INVENTORY, sales.cost),
+    ])
+    lots = sales.lots
+    revenue = sales.revenue
+  }
 
   const { rentAndPermit, fuelAndMaintenance } = content.dailyFixedCostsCents
   journal = post(journal, day, MEMO.fixedCosts, [
@@ -128,7 +134,7 @@ export function playDay(
   ])
 
   const expired = removeExpired(
-    sales.lots,
+    lots,
     day,
     perProduct((product) => content.products[product].shelfLifeDays),
   )
@@ -145,12 +151,29 @@ export function playDay(
     lastDay: {
       day,
       sold: served.sold,
-      revenue: sales.revenue,
+      revenue,
       lostSales: served.lost,
       spoiled: expired.spoiled,
       segments: served.segments,
       visits: served.visits,
     },
+  }
+}
+
+/** A closed day's walk-ins: nobody, with no draw from `rngState`. */
+function closed(rngState: number): Served {
+  const none = perProduct(() => 0)
+  return {
+    visits: [],
+    segments: perSegment(() => ({
+      visits: 0,
+      buyers: 0,
+      tooExpensive: 0,
+      soldOut: 0,
+    })),
+    sold: none,
+    lost: none,
+    rngState,
   }
 }
 
@@ -161,13 +184,13 @@ export function playDay(
 function restock(
   lots: readonly Lot[],
   day: Day,
+  rules: Decisions['restock'],
   content: FoodTruckContent,
 ): { lots: readonly Lot[]; cost: Cents } {
   const bought: Lot[] = []
   let cost = ZERO
   for (const product of PRODUCTS) {
-    const rule = content.restockPolicy[product]
-    const quantity = orderSize(rule, onHand(lots, product))
+    const quantity = orderSize(rules[product], onHand(lots, product))
     if (quantity === 0) continue
     const unitCost = content.products[product].unitCostCents
     bought.push({ product, quantity, unitCost, boughtOnDay: day })

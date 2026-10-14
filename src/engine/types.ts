@@ -2,7 +2,7 @@
 // The contract the engine, the books, the UI and the tools share; see
 // docs/architecture.md for how the game uses it.
 
-import type { ProductId, SegmentId } from '../content/schema.ts'
+import type { ProductId, RestockRule, SegmentId } from '../content/schema.ts'
 import type { Journal } from '../finance/journal.ts'
 import type { Cents } from './money.ts'
 
@@ -73,6 +73,29 @@ export interface Visit {
 export type VisitOutcome = 'bought' | 'tooExpensive' | 'soldOut' | 'browsed'
 
 /**
+ * How the player runs the truck. `applyDecision()` in decisions.ts changes
+ * it and holds every field to the limits in the content.
+ */
+export interface Decisions {
+  /** What one unit of each product sells for. */
+  readonly prices: Readonly<Record<ProductId, Cents>>
+  /**
+   * How each product is restocked each morning the truck opens. A product
+   * keeps the kind of rule it starts the game with.
+   */
+  readonly restock: Readonly<Record<ProductId, RestockRule>>
+  /**
+   * The ISO weekdays the truck opens, 1 = Monday to 7 = Sunday: ascending,
+   * with no repeats and at least one.
+   */
+  readonly daysOpen: readonly number[]
+  /** What the owner pays themself each week. */
+  readonly ownerWeeklyPay: Cents
+  /** What the truck spends on marketing each day. */
+  readonly marketingDaily: Cents
+}
+
+/**
  * The whole game. `createInitialState()` and `tick()` return it at the start
  * of business day `day`; `playDay()` returns it at the close of `day`, before
  * `tick()` moves on. Every function that takes one returns a new one and
@@ -94,4 +117,12 @@ export interface GameState {
    * what `playDay()` returns. Null until the first day is played.
    */
   readonly lastDay: DaySummary | null
+  /** How the player runs the truck on business day `day`. */
+  readonly decisions: Decisions
+  /**
+   * What the player decided since day `day` began, waiting for the next
+   * morning: `tick()` plays `day` with `decisions`, then makes these the next
+   * day's. Null when nothing is waiting.
+   */
+  readonly pendingDecisions: Decisions | null
 }

@@ -6,7 +6,7 @@ How the game is put together at the end of phase 1: the folders and who may impo
 
 | Folder | Holds | Imports from other folders |
 | --- | --- | --- |
-| `src/engine/` | Game rules: the clock, a day of business, walk-in customers, lots and FIFO, money, the seeded generator, the shared types | `src/finance/` (journal, accounts) and `src/content/schema.ts` |
+| `src/engine/` | Game rules: the clock, a day of business, walk-in customers, the player's decisions, lots and FIFO, money, the seeded generator, the shared types | `src/finance/` (journal, accounts) and `src/content/schema.ts` |
 | `src/finance/` | The journal, the chart of accounts, the three statements | `src/engine/money.ts` and `src/engine/types.ts` only |
 | `src/content/` | Tunable numbers as JSON, and the zod schema that validates them | `src/engine/money.ts` only, to type money as `Cents` |
 | `src/ui/` | React screens, the Zustand store and the real-time loop | engine, finance and content |
@@ -21,9 +21,9 @@ Engine and finance code never imports React, React DOM, Zustand or anything from
 
 ## The contract
 
-`src/engine/types.ts` holds the types the engine, the books, the UI and the tools share. It is frozen at the end of phase 1: changing it needs a dedicated card. It holds types only, with no code. P2-02 (#45) was such a card: it added `segments` and `visits` to `DaySummary`, with `SegmentSummary`, `Visit` and `VisitOutcome`.
+`src/engine/types.ts` holds the types the engine, the books, the UI and the tools share. It is frozen at the end of phase 1: changing it needs a dedicated card. It holds types only, with no code. P2-02 (#45) was such a card: it added `segments` and `visits` to `DaySummary`, with `SegmentSummary`, `Visit` and `VisitOutcome`. So was P2-04 (#46): it added `decisions` and `pendingDecisions` to `GameState`, with `Decisions`.
 
-The engine is deterministic: the same seed, played with the same code and the same content, always posts the same journal, so it always gives the same `journalHash`. A replay is only guaranteed within one version of the code and content, though. Changing the order of the generator draws, the order of a day's entries or a number in `src/content/` can change the journal a seed produces without touching `types.ts`.
+The engine is deterministic: the same seed, played with the same code, the same content and the same decisions on the same days, always posts the same journal, so it always gives the same `journalHash`. A replay is only guaranteed within one version of the code and content, though. Changing the order of the generator draws, the order of a day's entries or a number in `src/content/` can change the journal a seed produces without touching `types.ts`.
 
 ## The shape of `GameState`
 
@@ -41,6 +41,22 @@ Every function that takes a state returns a new one and never mutates it. The fi
 | `journal` | `Journal` | The books: every entry posted since day 0, in order. |
 | `inventory` | `readonly Lot[]` | Stock on hand, oldest lot first, with no empty lot. Its cost is the balance of Stocks (1200). |
 | `lastDay` | `DaySummary \| null` | The last business day played. Null until the first day is played. |
+| `decisions` | `Decisions` | How the player runs the truck on day `day`: what `tick()` plays the day with. |
+| `pendingDecisions` | `Decisions \| null` | What the player decided since day `day` began, waiting for the next morning. Null when nothing waits. |
+
+A decision never changes the day under way. The UI shows `day` as today and plays it once its real time is over, so the player's changes land in `pendingDecisions`, and `tick()` makes them the next day's `decisions`. `latestDecisions(state)` in `src/engine/decisions.ts` gives what the player last left: `pendingDecisions`, or else `decisions`.
+
+### `Decisions`
+
+How the player runs the truck. `startingDecisions()` in `src/engine/decisions.ts` reads the ones a game starts with from `startingDecisions` in the content. `applyDecision(state, change)` makes one `DecisionChange` on top of the latest decisions and leaves the result in `pendingDecisions`. It returns a new state and never mutates. It throws a RangeError naming the field when the change names an unknown kind or product, gives a product another kind of restock rule than it has, or leaves a field outside `decisionLimits` in the content. `validateDecisions()` holds the decisions to those limits.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `prices` | `Readonly<Record<ProductId, Cents>>` | What one unit of each product sells for: a whole multiple of `priceCents.step` within `priceCents`. `currentPrice(state, product)` in `src/engine/day.ts` reads it. |
+| `restock` | `Readonly<Record<ProductId, RestockRule>>` | How each product is restocked each morning the truck opens: `buyDaily` buys `quantity` units, `topUp` buys back up to `upTo` units on hand once they fall below `whenBelow`. Each count is within `units`, and `whenBelow` is no higher than `upTo`. A product keeps the kind of rule it starts with: the croissants are a daily order, the drinks are topped up. |
+| `daysOpen` | `readonly number[]` | The ISO weekdays the truck opens, from 1 = Monday to 7 = Sunday: ascending, each once, at least `minDaysOpen` of them. `applyDecision` sorts the weekdays it is given. |
+| `ownerWeeklyPay` | `Cents` | What the owner pays themself each week, within `ownerWeeklyPayCents`. Stored only: P2-14 pays it. |
+| `marketingDaily` | `Cents` | What the truck spends on marketing each day, within `marketingDailyCents`. Stored only: P2-05 spends it. |
 
 ### `Lot`
 
@@ -101,7 +117,8 @@ One walk-in customer at the truck.
 `createInitialState(seed)` in `src/engine/clock.ts` throws a RangeError unless `seed` is an integer in [0, 2^32). Otherwise it returns:
 - `day` 0, the `seed`, and `rngState` from `seedRng(seed)`, which is the seed itself;
 - `journal` from `openingJournal()`: one entry on day 0, *Mise de fonds*, Dr 1000 Encaisse / Cr 3000 Capital-actions for `startingCapitalCents`;
-- an empty `inventory` and a null `lastDay`.
+- an empty `inventory` and a null `lastDay`;
+- `decisions` from `startingDecisions()`, which throws a RangeError if the content's starting decisions break its own limits, and a null `pendingDecisions`.
 
 ## Order of operations in `tick()`
 
@@ -109,16 +126,18 @@ One walk-in customer at the truck.
 italics below are exactly the entries each day posts, in the same order. Keep
 every memo in italics, once, and nothing else in italics in this section. -->
 
-`tick(state)` in `src/engine/clock.ts` calls `playDay(state, weekday)` in `src/engine/day.ts`, with the weekday of `state.day` from `toCalendar()`. It then returns the state `playDay` gave back with `day` + 1. `playDay` goes through these steps in this order. Every entry it posts is dated `state.day`.
+`tick(state)` in `src/engine/clock.ts` calls `playDay(state, weekday)` in `src/engine/day.ts`, with the weekday of `state.day` from `toCalendar()`. It then returns the state `playDay` gave back with `day` + 1, the pending decisions, if any, as its `decisions`, and a null `pendingDecisions`. `playDay` plays the day with `state.decisions` and never reads `pendingDecisions`. It goes through these steps in this order. Every entry it posts is dated `state.day`.
 
-1. **Morning restock.** For each product in `PRODUCTS` order, its rule in `restockPolicy` sets the order size. `buyDaily` buys `quantity` units. `topUp` buys up to `upTo` units on hand when the units on hand are below `whenBelow`. Each purchase becomes a new lot at the end of `inventory`, at the product's `unitCostCents`. Entry *Achat de marchandises*: Dr 1200 Stocks / Cr 1000 Encaisse for what the day's purchases cost.
-2. **Walk-ins.** `serveWalkIns()` in `src/engine/customers.ts` serves the day's customers. `dayTypeOf()` gives the crowd: `finDeSemaine` on Saturday and Sunday, `semaine` otherwise, each with its own traffic, segment shares, product appeal and arrival curve in `walkIns.dayTypes`. Prices come from `currentPrice(state, product)` in `src/engine/day.ts`, which returns the product's `basePriceCents` for now. The draws come in this order, and their number never depends on the prices or the stock, so a seed brings the same customers at every price:
+Steps 1 to 3 happen only on a day the truck opens, when `decisions.daysOpen` holds the weekday. On a closed day nobody comes and nothing is bought: no purchase, no sale, no draw from the generator, and a `lastDay` with no visit and nothing sold. Steps 4 to 6 happen every day.
+
+1. **Morning restock.** For each product in `PRODUCTS` order, its rule in `decisions.restock` sets the order size. `buyDaily` buys `quantity` units. `topUp` buys up to `upTo` units on hand when the units on hand are below `whenBelow`. Each purchase becomes a new lot at the end of `inventory`, at the product's `unitCostCents`. Entry *Achat de marchandises*: Dr 1200 Stocks / Cr 1000 Encaisse for what the day's purchases cost.
+2. **Walk-ins.** `serveWalkIns()` in `src/engine/customers.ts` serves the day's customers. `dayTypeOf()` gives the crowd: `finDeSemaine` on Saturday and Sunday, `semaine` otherwise, each with its own traffic, segment shares, product appeal and arrival curve in `walkIns.dayTypes`. Prices come from `currentPrice(state, product)` in `src/engine/day.ts`, which returns the product's price in `decisions.prices`. The draws come in this order, and their number never depends on the prices or the stock, so a seed brings the same customers at every price:
    1. `normal()` draws twice for a noise factor with a mean of 1 and a standard deviation of `noiseStdDevRatio`. The day's customers are the crowd's `customers` × noise, rounded and never below zero.
    2. Each customer draws once for an arrival minute (a slot of `arrivalSlotMinutes` picked by its weight in `arrivalWeights`, then the minute within it), then once for a segment, picked by its share.
    3. The customers line up by arrival minute; those arriving the same minute keep the order they were drawn in.
    4. In that order, each customer draws once per product, in `PRODUCTS` order. They want one unit when the draw is below `purchaseProbability()` in `src/engine/customers.ts`, whose doc comment gives the formula: the segment's base probability × the crowd's appeal for the product × a logistic curve in price ÷ reference price, clamped to [0, 1]. They buy it when a unit is left; otherwise it is a lost sale, so a stockout hits the customers who come later.
 
-   No other step draws, so these are all of a day's draws. This step posts nothing.
+   No other step draws, so these are all of a day's draws. This step posts nothing. A closed day draws nothing, so the days open change which draws the later days get.
 3. **Sales.** Product by product, in `PRODUCTS` order, the units the customers bought leave the stock, oldest lot first (FIFO, `takeFifo()` in `src/engine/inventory.ts`), priced at `currentPrice()`. Taking a product's day total at once takes the same units from the same lots as taking them one customer at a time. Entry *Ventes au comptant*: Dr 1000 Encaisse / Cr 4000 Ventes for the revenue. Then entry *Coût des marchandises vendues*: Dr 5000 Coût des marchandises vendues / Cr 1200 Stocks for what the units sold cost, each at its own lot's unit cost. These are two entries rather than one, so the other lines of each cash entry stay on one row of the état des flux de trésorerie.
 4. **Fixed costs.** Entry *Loyer, permis, carburant et entretien*: Dr 6100 Loyer et permis for `rentAndPermit` and Dr 6200 Carburant et entretien for `fuelAndMaintenance` / Cr 1000 Encaisse for both, from `dailyFixedCostsCents`.
 5. **Spoilage at the close.** `removeExpired()` in `src/engine/inventory.ts` writes off every lot whose shelf life ends that day, as `Lot` describes above. Entry *Marchandises périmées*: Dr 5100 Pertes sur stocks / Cr 1200 Stocks for what those lots cost.
@@ -157,16 +176,17 @@ Money is `Cents` from `src/engine/money.ts`: a branded number that only `cents()
 
 ## Where content is loaded
 
-- `src/content/foodtruck.json` holds the food truck's numbers: starting capital, products, fixed costs, walk-ins and restocking rules. The walk-ins are the crowds of the truck's spot: the opening hours, the arrival slots, the noise, and for each type of day (`semaine`, `finDeSemaine`) its traffic, segment shares, product appeal, patience and arrival curve. `loadFoodTruckContent()` in `src/content/schema.ts` validates it with zod and types its money as `Cents`. Every object is strict, so a mistyped key fails instead of being dropped.
+- `src/content/foodtruck.json` holds the food truck's numbers: starting capital, products, fixed costs, walk-ins, the decisions a game starts with (`startingDecisions`) and the limits the player's decisions are held to (`decisionLimits`). The walk-ins are the crowds of the truck's spot: the opening hours, the arrival slots, the noise, and for each type of day (`semaine`, `finDeSemaine`) its traffic, segment shares, product appeal, patience and arrival curve. `loadFoodTruckContent()` in `src/content/schema.ts` validates it with zod and types its money as `Cents`. Every object is strict, so a mistyped key fails instead of being dropped.
 - `src/content/segments.json` holds the customer segments: for each segment and product, a reference price, a base purchase probability and a sensitivity, and for the chic segment how a price far below its reference puts it off (`tooCheap`). `loadCustomerContent()` in `src/content/schema.ts` validates it the same way.
 - `src/engine/day.ts` calls both loaders once, when the module loads, and exports the results as `FOOD_TRUCK` and `CUSTOMERS`. An invalid file throws as soon as the engine is imported.
-- `createInitialState()`, `tick()`, `playDay()` and `openingJournal()` take a `content` argument that defaults to `FOOD_TRUCK`, and `tick()` and `playDay()` take a `customers` argument after it that defaults to `CUSTOMERS`, so a test can play with other numbers. The UI, the simulation and the invariant test use the defaults.
+- `createInitialState()`, `tick()`, `playDay()`, `openingJournal()`, `startingDecisions()` and `applyDecision()` take a `content` argument that defaults to `FOOD_TRUCK`, and `tick()` and `playDay()` take a `customers` argument after it that defaults to `CUSTOMERS`, so a test can play with other numbers. The UI, the simulation and the invariant test use the defaults.
 - The UI reads `FOOD_TRUCK` too: product names in `src/ui/TodayPanel.tsx`, and the daily fixed costs for the cash gauge in `src/ui/cashLevel.ts`.
 - `src/content/pacing.json` (real milliseconds per game day, the speeds, the most days per animation frame) is read by `src/ui/gameLoop.ts` and `src/ui/TopBar.tsx`. `src/content/cashGauge.json` is read by `src/ui/cashLevel.ts`. The engine reads neither: it knows nothing of real time.
 
 Some numbers stay in code on purpose, because they are facts rather than tunables:
 - the calendar, in `src/engine/clock.ts`;
 - the first weekend day, in `src/engine/customers.ts`;
+- the ISO weekdays, 1 = Monday to 7 = Sunday, in `src/engine/decisions.ts` and `src/content/schema.ts`;
 - the minutes in a day, in `src/content/schema.ts`;
 - the mulberry32 constants, in `src/engine/rng.ts`;
 - the chart of accounts, in `src/finance/accounts.ts`;
@@ -174,7 +194,7 @@ Some numbers stay in code on purpose, because they are facts rather than tunable
 
 ## Invariants enforced by `tests/invariants.test.ts`
 
-The test plays 3650 days, ten years, for each of the seeds 1, 42 and 2026, calling `tick()` with the shipped content.
+The test plays 3650 days, ten years, for each of the seeds 1, 42 and 2026, calling `tick()` with the shipped content and its starting decisions.
 
 After every day's close, it checks:
 - the trial balance up to that day: total debits equal total credits;

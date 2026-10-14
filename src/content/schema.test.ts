@@ -56,6 +56,8 @@ function expectRejected(
 }
 
 const WEEKDAY = 'walkIns.dayTypes.semaine'
+const START = 'startingDecisions'
+const LIMITS = 'decisionLimits'
 
 // Shape only, like pacing.test.ts: the values themselves are tunable.
 describe('loadFoodTruckContent', () => {
@@ -63,7 +65,10 @@ describe('loadFoodTruckContent', () => {
     const content = loadFoodTruckContent()
     const ids = [...productIdSchema.options].sort()
     expect(Object.keys(content.products).sort()).toEqual(ids)
-    expect(Object.keys(content.restockPolicy).sort()).toEqual(ids)
+    expect(Object.keys(content.startingDecisions.pricesCents).sort()).toEqual(
+      ids,
+    )
+    expect(Object.keys(content.startingDecisions.restock).sort()).toEqual(ids)
     expect(Object.keys(content.walkIns.dayTypes).sort()).toEqual(
       [...dayTypeIdSchema.options].sort(),
     )
@@ -77,14 +82,18 @@ describe('loadFoodTruckContent', () => {
 
   it('rejects a float price', () => {
     expectRejected(
-      withValue('products.cafe.basePriceCents', 2.5),
-      'products.cafe.basePriceCents',
+      withValue(`${START}.pricesCents.cafe`, 2.5),
+      `${START}.pricesCents.cafe`,
     )
   })
 
   it.each([
-    'products.croissant.basePriceCents',
-    'products.chocolat.basePriceCents',
+    `${START}.pricesCents.croissant`,
+    `${START}.pricesCents.chocolat`,
+    `${START}.ownerWeeklyPayCents`,
+    `${START}.marketingDailyCents`,
+    `${LIMITS}.priceCents.min`,
+    `${LIMITS}.ownerWeeklyPayCents.max`,
     'products.cafe.unitCostCents',
     'products.croissant.unitCostCents',
     'startingCapitalCents',
@@ -109,7 +118,8 @@ describe('loadFoodTruckContent', () => {
   )
 
   it.each([
-    'restockPolicy.chocolat',
+    `${START}.pricesCents.chocolat`,
+    `${START}.restock.chocolat`,
     `${WEEKDAY}.productAppeal.chocolat`,
     `${WEEKDAY}.segmentShares.chic`,
     'walkIns.dayTypes.finDeSemaine',
@@ -137,6 +147,16 @@ describe('loadFoodTruckContent', () => {
     )
   })
 
+  it.each([
+    ['products.cafe.basePriceCents', 250],
+    ['restockPolicy', foodTruckJson.startingDecisions.restock],
+  ])('rejects %s, which the starting decisions replaced', (path, value) => {
+    const key = path.split('.').at(-1) ?? ''
+    expect(() => loadFoodTruckContent(withValue(path, value))).toThrow(
+      `Unrecognized key: "${key}"`,
+    )
+  })
+
   it('rejects the walk-ins of phase 1', () => {
     const raw = withValue('walkIns', {
       weekdayCustomers: 120,
@@ -158,22 +178,57 @@ describe('loadFoodTruckContent', () => {
   it.each([
     [`${WEEKDAY}.customers`, -1],
     ['walkIns.dayTypes.finDeSemaine.customers', 90.5],
-    ['restockPolicy.croissant.quantity', -70],
+    [`${START}.restock.croissant.quantity`, -70],
+    [`${START}.restock.cafe.upTo`, 300.5],
+    [`${LIMITS}.units.max`, -1],
   ])('rejects %s = %d, which is not a count', (path, value) => {
     expectRejected(withValue(path, value), path)
   })
 
   it('rejects a top-up threshold above its target', () => {
     expectRejected(
-      withValue('restockPolicy.cafe.whenBelow', 400),
-      'restockPolicy.cafe.whenBelow',
+      withValue(`${START}.restock.cafe.whenBelow`, 400),
+      `${START}.restock.cafe.whenBelow`,
     )
   })
 
   it('rejects an unknown restock kind', () => {
     expectRejected(
-      withValue('restockPolicy.croissant.kind', 'buyWeekly'),
-      'restockPolicy.croissant.kind',
+      withValue(`${START}.restock.croissant.kind`, 'buyWeekly'),
+      `${START}.restock.croissant.kind`,
+    )
+  })
+
+  it.each([0, 8, 2.5])('rejects %d as a weekday the truck opens', (day) => {
+    expectRejected(
+      withValue(`${START}.daysOpen`, [2, day]),
+      `${START}.daysOpen[1]`,
+    )
+  })
+
+  it.each([
+    'priceCents',
+    'units',
+    'ownerWeeklyPayCents',
+    'marketingDailyCents',
+  ])('rejects a %s limit whose min is above its max', (limit) => {
+    expectRejected(
+      withValue(`${LIMITS}.${limit}.min`, 300_001),
+      `${LIMITS}.${limit}.min`,
+    )
+  })
+
+  it.each([0, -5, 2.5])('rejects a price step of %d', (step) => {
+    expectRejected(
+      withValue(`${LIMITS}.priceCents.step`, step),
+      `${LIMITS}.priceCents.step`,
+    )
+  })
+
+  it.each([0, 8, 1.5])('rejects %d as the fewest days open', (days) => {
+    expectRejected(
+      withValue(`${LIMITS}.minDaysOpen`, days),
+      `${LIMITS}.minDaysOpen`,
     )
   })
 
