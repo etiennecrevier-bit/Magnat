@@ -14,7 +14,7 @@ const DETERMINISTIC =
   'Engine and finance code is deterministic: use the seeded RNG in src/engine/rng.ts and advance time with tick() (CLAUDE.md rule 3)'
 
 export default defineConfig([
-  globalIgnores(['dist', 'coverage']),
+  globalIgnores(['dist', 'coverage', '.wrangler']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
