@@ -7,7 +7,7 @@
 import { add, cents, sub, sum, type Cents } from '../engine/money.ts'
 import type { Day } from '../engine/types.ts'
 import { ACCOUNTS, getAccount, type AccountCode } from './accounts.ts'
-import { entriesOf, type Journal, type JournalLine } from './journal.ts'
+import { entriesOf, type Journal, type JournalEntry } from './journal.ts'
 
 /** One row of a statement. */
 export interface StatementLine {
@@ -206,7 +206,9 @@ type CashFlowRow = (typeof CASH_FLOW_ROWS)[number]['key']
 // so a new account does not compile until it has a row. Interest paid is an
 // operating flow, as ASPE section 1540 has it. Stocks and Pertes sur stocks
 // go with the suppliers, so the cost of a sale and the stock it uses cancel
-// out within one row when the engine posts them with the sale.
+// out within one row when the engine posts them with the sale. Amortissement
+// goes with the equipment for the same reason: depreciation never moves cash,
+// and it cancels out against Amortissement cumulé.
 const CASH_FLOW_ROW: Record<Exclude<AccountCode, typeof CASH>, CashFlowRow> = {
   '1100': 'customers',
   '1200': 'suppliers',
@@ -223,7 +225,7 @@ const CASH_FLOW_ROW: Record<Exclude<AccountCode, typeof CASH>, CashFlowRow> = {
   '6100': 'otherExpenses',
   '6200': 'otherExpenses',
   '6300': 'otherExpenses',
-  '6400': 'otherExpenses',
+  '6400': 'equipment',
   '7000': 'otherExpenses',
 }
 
@@ -259,8 +261,9 @@ export function balanceSheet(journal: Journal, atDay: Day): BalanceSheet {
  * The état des flux de trésorerie over the entries from `fromDay` to `toDay`,
  * both included. Throws a RangeError unless both days are safe integers and
  * `fromDay` is no later than `toDay`, or if an amount leaves the safe integer
- * range, and a TypeError unless `emptyJournal()` or `postEntry()` made
- * `journal`.
+ * range, a TypeError unless `emptyJournal()` or `postEntry()` made `journal`,
+ * and an Error if an entry in the period does not say which rows its cash
+ * went through (see `cashFlowsOf`).
  */
 export function cashFlowStatement(
   journal: Journal,
@@ -276,19 +279,21 @@ export function cashFlowStatement(
   // movement, so the rows add up to the change in Encaisse. Entries that
   // leave Encaisse alone, such as purchases on credit, spoilage or
   // depreciation, move no cash.
-  for (const { day, lines } of entriesOf(journal)) {
+  for (const entry of entriesOf(journal)) {
+    const { day, lines } = entry
     // Days never go down, so no later entry can be in range either.
     if (day > toDay) break
     const cash = lines.filter(({ account }) => account === CASH)
     if (cash.length === 0) continue
     const cashIn = sum(cash.map(({ debit }) => debit))
-    const net = sub(cashIn, sum(cash.map(({ credit }) => credit)))
+    const cashOut = sum(cash.map(({ credit }) => credit))
+    const net = sub(cashIn, cashOut)
     closingCash = add(closingCash, net)
     if (day < fromDay) {
       openingCash = add(openingCash, net)
       continue
     }
-    for (const [row, amount] of cashFlowsOf(lines, cashIn)) {
+    for (const [row, amount] of cashFlowsOf(entry, cashIn, cashOut)) {
       flows.set(row, add(flows.get(row) ?? ZERO, amount))
     }
   }
@@ -375,20 +380,20 @@ function placeSection(
 }
 
 /**
- * The cash a cash entry moved through each row. Its lines other than
- * Encaisse feed the row of their account, net within each row, but some may
- * have moved no cash: the part of a truck the bank paid for, say, or
- * depreciation posted with a sale. Such a part brings as much into some rows
- * as it takes out of others, so the rows coming in exceed the cash that came
- * in, and the rows going out the cash that went out, by the same amount. It
- * comes off both sides: first from a row coming in and a row going out by
- * that same amount, which offset each other like an entry of their own, then
- * from the rows lowest on the statement, as transactions that move no cash
- * are mostly investing and financing ones.
+ * The cash a cash entry moved through each row, when the entry says. Its
+ * lines other than Encaisse feed the row of their account, net within each
+ * row. If those rows all go one way, the cash went through each of them.
+ * Otherwise some lines moved no cash, such as the part of a truck the bank
+ * paid for, and the entry only says which if its cash all went one way and
+ * a single row went that way: that row shows all the cash and the others
+ * none. Any other entry reads more than one way: a loan received and fuel
+ * paid in one entry could as well be fuel the bank paid for and cash that
+ * went from Encaisse to Encaisse. Throws an Error on such an entry.
  */
 function cashFlowsOf(
-  lines: readonly JournalLine[],
+  { day, memo, lines }: JournalEntry,
   cashIn: Cents,
+  cashOut: Cents,
 ): ReadonlyMap<CashFlowRow, Cents> {
   const rows = new Map<CashFlowRow, Cents>()
   for (const { account, debit, credit } of lines) {
@@ -396,34 +401,19 @@ function cashFlowsOf(
     const row = CASH_FLOW_ROW[account]
     rows.set(row, add(rows.get(row) ?? ZERO, sub(credit, debit)))
   }
-  const comingIn = [...rows.values()].filter((amount) => amount > 0)
-  let excess = sub(sum(comingIn), cashIn)
-  if (excess <= 0) return rows
+  const keys = [...rows.keys()]
+  const comingIn = keys.filter((key) => (rows.get(key) ?? ZERO) > 0)
+  const goingOut = keys.filter((key) => (rows.get(key) ?? ZERO) < 0)
+  if (comingIn.length === 0 || goingOut.length === 0) return rows
 
-  const bottomUp = CASH_FLOW_ROWS.map(({ key }) => key)
-    .filter((key) => rows.has(key))
-    .reverse()
-  for (const into of bottomUp) {
-    const amount = rows.get(into) ?? ZERO
-    if (amount <= 0 || amount > excess) continue
-    const out = bottomUp.find((key) => rows.get(key) === -amount)
-    if (out === undefined) continue
-    rows.set(into, ZERO)
-    rows.set(out, ZERO)
-    excess = sub(excess, amount)
+  const cashSide = cashOut === 0 ? comingIn : cashIn === 0 ? goingOut : []
+  const [row, ...others] = cashSide
+  if (row === undefined || others.length > 0) {
+    throw new Error(
+      `Cannot tell which rows the cash of "${memo}" on day ${day} went through: post its lines that move no cash as an entry of their own`,
+    )
   }
-  for (const side of ['in', 'out'] as const) {
-    let left = excess
-    for (const key of bottomUp) {
-      const amount = rows.get(key) ?? ZERO
-      const size = side === 'in' ? amount : sub(ZERO, amount)
-      if (size <= 0 || left <= 0) continue
-      const taken = size < left ? size : left
-      rows.set(key, side === 'in' ? sub(amount, taken) : add(amount, taken))
-      left = sub(left, taken)
-    }
-  }
-  return rows
+  return new Map([[row, sub(cashIn, cashOut)]])
 }
 
 function activitySection(

@@ -334,30 +334,6 @@ describe('cashFlowStatement', () => {
     expect(statement.closingCash.amount).toBe(359_000)
   })
 
-  it('classifies an entry whose cash lines net to zero', () => {
-    const books = post(
-      entry(
-        0,
-        'Ventes et paie',
-        dr('1000', 45_000),
-        cr('4000', 45_000),
-        dr('6000', 45_000),
-        cr('1000', 45_000),
-      ),
-    )
-    const statement = cashFlowStatement(books, 0, 0)
-    expect(statement.operating.lines).toEqual([
-      row('Encaissements des clients', 45_000),
-      row('Paiements aux fournisseurs', 0),
-      row('Salaires', -45_000),
-      row('Autres charges', 0),
-    ])
-    expect(statement.netChange).toEqual(
-      row("Augmentation nette de l'encaisse", 0),
-    )
-    expect(statement.closingCash.amount).toBe(0)
-  })
-
   it('leaves out entries that do not touch Encaisse', () => {
     const books = post(
       entry(0, 'Mise de fonds', dr('1000', 100_000), cr('3000', 100_000)),
@@ -424,11 +400,97 @@ describe('cashFlowStatement', () => {
     expect(statement.netChange.amount).toBe(400_000)
   })
 
-  it('takes what moved no cash off the rows lowest on the statement first', () => {
-    const books = post(
-      entry(0, 'Mise de fonds', dr('1000', 1_000_000), cr('3000', 1_000_000)),
+  // Posted apart, each part of these entries moves cash through one row at
+  // most, so the statement of the parts is the one to match.
+  it('reads a loan and depreciation in one entry as if posted apart', () => {
+    const together = post(
       entry(
-        1,
+        0,
+        'Prêt et amortissement',
+        dr('1000', 1_000),
+        cr('2500', 1_000),
+        dr('6400', 1_000),
+        cr('1510', 1_000),
+      ),
+    )
+    const apart = post(
+      entry(0, 'Prêt', dr('1000', 1_000), cr('2500', 1_000)),
+      entry(0, 'Amortissement', dr('6400', 1_000), cr('1510', 1_000)),
+    )
+    const statement = cashFlowStatement(together, 0, 0)
+    expect(statement).toEqual(cashFlowStatement(apart, 0, 0))
+    expect(cashRows(statement)).toEqual([row('Emprunts bancaires', 1_000)])
+  })
+
+  it('reads a sale, depreciation and cash moved within Encaisse as if posted apart', () => {
+    const together = post(
+      entry(
+        0,
+        'Clôture du jour',
+        dr('1000', 45_000),
+        cr('4000', 45_000),
+        dr('6400', 1_000),
+        cr('1510', 1_000),
+        dr('1000', 1_000),
+        cr('1000', 1_000),
+      ),
+    )
+    const apart = post(
+      entry(0, 'Ventes', dr('1000', 45_000), cr('4000', 45_000)),
+      entry(0, 'Amortissement', dr('6400', 1_000), cr('1510', 1_000)),
+      entry(0, 'Virement', dr('1000', 1_000), cr('1000', 1_000)),
+    )
+    const statement = cashFlowStatement(together, 0, 0)
+    expect(statement).toEqual(cashFlowStatement(apart, 0, 0))
+    expect(cashRows(statement)).toEqual([
+      row('Encaissements des clients', 45_000),
+    ])
+  })
+
+  // An entry whose rows go both ways, and whose cash goes both ways or
+  // through more than one row, reads more than one way, so the statement
+  // throws rather than guess.
+  const LOAN_AND_FUEL = entry(
+    0,
+    'Prêt, essence et amortissement',
+    dr('1000', 100_000),
+    cr('2500', 100_000),
+    dr('6200', 2_000),
+    cr('1000', 2_000),
+    dr('6400', 1_000),
+    cr('1510', 1_000),
+  )
+
+  it('rejects a loan received and fuel paid in one entry', () => {
+    // The bank could as well have paid for the fuel, with 2 000 going from
+    // Encaisse to Encaisse.
+    expect(() => cashFlowStatement(post(LOAN_AND_FUEL), 0, 0)).toThrow(
+      'Cannot tell which rows the cash of "Prêt, essence et amortissement" on day 0 went through',
+    )
+  })
+
+  it('rejects sales and wages paid in one entry, though its cash lines net to zero', () => {
+    const books = post(
+      entry(
+        0,
+        'Ventes et paie',
+        dr('1000', 45_000),
+        cr('4000', 45_000),
+        dr('6000', 45_000),
+        cr('1000', 45_000),
+      ),
+    )
+    expect(() => cashFlowStatement(books, 0, 0)).toThrow(
+      'Cannot tell which rows the cash of "Ventes et paie" on day 0 went through',
+    )
+  })
+
+  it('rejects a cash sale posted with a truck the bank pays part of', () => {
+    // The 45 000 that came in could as well be part of the loan, with the
+    // sale paying for part of the truck.
+    const books = post(
+      entry(
+        0,
         'Camion et ventes du jour',
         dr('1000', 45_000),
         cr('4000', 45_000),
@@ -437,12 +499,21 @@ describe('cashFlowStatement', () => {
         cr('2500', 2_500_000),
       ),
     )
+    expect(() => cashFlowStatement(books, 0, 0)).toThrow(
+      'Cannot tell which rows the cash of "Camion et ventes du jour" on day 0 went through',
+    )
+  })
+
+  it('still reads the periods that leave out an entry it cannot read', () => {
+    const books = post(
+      LOAN_AND_FUEL,
+      entry(1, 'Mise de fonds', dr('1000', 100_000), cr('3000', 100_000)),
+    )
     const statement = cashFlowStatement(books, 1, 1)
-    expect(cashRows(statement)).toEqual([
-      row('Encaissements des clients', 45_000),
-      row('Équipement', -500_000),
-    ])
-    expect(statement.netChange.amount).toBe(-455_000)
+    expect(cashRows(statement)).toEqual([row('Capital-actions', 100_000)])
+    expect(statement.openingCash.amount).toBe(98_000)
+    expect(statement.closingCash.amount).toBe(198_000)
+    expect(() => cashFlowStatement(books, 0, 1)).toThrow(/Cannot tell/)
   })
 
   // The row each counterpart of Encaisse feeds, kept apart from
@@ -494,7 +565,7 @@ describe('cashFlowStatement', () => {
     { account: '6100', activity: 'operating', label: 'Autres charges' },
     { account: '6200', activity: 'operating', label: 'Autres charges' },
     { account: '6300', activity: 'operating', label: 'Autres charges' },
-    { account: '6400', activity: 'operating', label: 'Autres charges' },
+    { account: '6400', activity: 'investing', label: 'Équipement' },
     { account: '7000', activity: 'operating', label: 'Autres charges' },
   ]
 
