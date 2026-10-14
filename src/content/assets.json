@@ -1,0 +1,285 @@
+{
+  "_note": "The world's pieces, drawn back to front in the order of `layers`, then in the order listed here. Positions and sizes are logical pixels of the 1440 × 900 design, which the world scales to the window. A piece with an `image` (a file path under src/world/art/) shows that image stretched to its size; without one, or when the image fails to load, the world draws a placeholder shape in its `color`. `shows` keeps a piece to open or closed days. `fill` makes the croissants follow the stock: `capacity` units fill the rack, shown in `steps` shelves.",
+  "designSize": { "width": 1440, "height": 900 },
+  "palette": {
+    "ink": "#2B2622",
+    "cream": "#FFF7E8",
+    "sky": "#CFE8F3",
+    "brickRed": "#B4532F",
+    "brickDark": "#9E4A2C",
+    "brickLight": "#C06A43",
+    "mustard": "#E8A93A",
+    "sidewalk": "#D8D0C2",
+    "moneyGreen": "#2E7D4F",
+    "warningAmber": "#C27A00",
+    "dangerRed": "#B3261E",
+    "playerBlue": "#2F6FB0",
+    "haze": "#A9C6D3",
+    "asphalt": "#67625D",
+    "foliage": "#5B8C47",
+    "wood": "#9A6A43",
+    "glass": "#9CC7DA",
+    "steel": "#B9C1C6"
+  },
+  "outlineWidth": 3,
+  "steamPuff": { "periodMs": 1600, "rise": 26 },
+  "signText": { "fontSize": 30, "color": "cream", "paddingX": 18 },
+  "layers": ["sky", "rooftops", "buildings", "sidewalk", "street", "truck"],
+  "pieces": [
+    {
+      "id": "cloud-1",
+      "kind": "cloud",
+      "layer": "sky",
+      "x": 120,
+      "y": 70,
+      "width": 220,
+      "height": 80,
+      "color": "cream"
+    },
+    {
+      "id": "cloud-2",
+      "kind": "cloud",
+      "layer": "sky",
+      "x": 560,
+      "y": 36,
+      "width": 280,
+      "height": 92,
+      "color": "cream"
+    },
+    {
+      "id": "cloud-3",
+      "kind": "cloud",
+      "layer": "sky",
+      "x": 1090,
+      "y": 96,
+      "width": 240,
+      "height": 80,
+      "color": "cream"
+    },
+    {
+      "id": "rooftops",
+      "kind": "rooftops",
+      "layer": "rooftops",
+      "x": -1440,
+      "y": 110,
+      "width": 4320,
+      "height": 530,
+      "color": "haze"
+    },
+    {
+      "id": "triplex-1",
+      "kind": "triplex",
+      "layer": "buildings",
+      "x": 0,
+      "y": 230,
+      "width": 288,
+      "height": 410,
+      "color": "brickRed"
+    },
+    {
+      "id": "triplex-2",
+      "kind": "triplex",
+      "layer": "buildings",
+      "x": 288,
+      "y": 230,
+      "width": 288,
+      "height": 410,
+      "color": "brickLight"
+    },
+    {
+      "id": "triplex-3",
+      "kind": "triplex",
+      "layer": "buildings",
+      "x": 576,
+      "y": 230,
+      "width": 288,
+      "height": 410,
+      "color": "brickDark"
+    },
+    {
+      "id": "triplex-4",
+      "kind": "triplex",
+      "layer": "buildings",
+      "x": 864,
+      "y": 230,
+      "width": 288,
+      "height": 410,
+      "color": "brickRed"
+    },
+    {
+      "id": "triplex-5",
+      "kind": "triplex",
+      "layer": "buildings",
+      "x": 1152,
+      "y": 230,
+      "width": 288,
+      "height": 410,
+      "color": "brickLight"
+    },
+    {
+      "id": "sidewalk",
+      "kind": "sidewalk",
+      "layer": "sidewalk",
+      "x": -1440,
+      "y": 640,
+      "width": 4320,
+      "height": 60,
+      "color": "sidewalk"
+    },
+    {
+      "id": "tree",
+      "kind": "tree",
+      "layer": "sidewalk",
+      "x": 300,
+      "y": 420,
+      "width": 180,
+      "height": 262,
+      "color": "foliage"
+    },
+    {
+      "id": "lamp-post",
+      "kind": "lampPost",
+      "layer": "sidewalk",
+      "x": 690,
+      "y": 380,
+      "width": 44,
+      "height": 302,
+      "color": "ink"
+    },
+    {
+      "id": "street",
+      "kind": "street",
+      "layer": "street",
+      "x": -1440,
+      "y": 700,
+      "width": 4320,
+      "height": 200,
+      "color": "asphalt"
+    },
+    {
+      "id": "lane-markings",
+      "kind": "laneMarkings",
+      "layer": "street",
+      "x": -1440,
+      "y": 856,
+      "width": 4320,
+      "height": 8,
+      "color": "cream"
+    },
+    {
+      "id": "truck",
+      "kind": "truck",
+      "layer": "truck",
+      "x": 790,
+      "y": 430,
+      "width": 580,
+      "height": 330,
+      "color": "mustard"
+    },
+    {
+      "id": "croissant-rack",
+      "kind": "rack",
+      "layer": "truck",
+      "x": 840,
+      "y": 498,
+      "width": 124,
+      "height": 136,
+      "color": "wood"
+    },
+    {
+      "id": "croissants",
+      "kind": "croissants",
+      "layer": "truck",
+      "x": 846,
+      "y": 504,
+      "width": 112,
+      "height": 128,
+      "color": "mustard",
+      "fill": { "capacity": 100, "steps": 4 }
+    },
+    {
+      "id": "espresso-machine",
+      "kind": "espressoMachine",
+      "layer": "truck",
+      "x": 1000,
+      "y": 556,
+      "width": 96,
+      "height": 78,
+      "color": "steel"
+    },
+    {
+      "id": "steam",
+      "kind": "steam",
+      "layer": "truck",
+      "x": 1024,
+      "y": 500,
+      "width": 44,
+      "height": 54,
+      "color": "cream",
+      "shows": "open"
+    },
+    {
+      "id": "hot-chocolate-pot",
+      "kind": "pot",
+      "layer": "truck",
+      "x": 1120,
+      "y": 580,
+      "width": 64,
+      "height": 54,
+      "color": "brickRed"
+    },
+    {
+      "id": "counter",
+      "kind": "counter",
+      "layer": "truck",
+      "x": 816,
+      "y": 634,
+      "width": 383,
+      "height": 60,
+      "color": "wood"
+    },
+    {
+      "id": "awning",
+      "kind": "awning",
+      "layer": "truck",
+      "x": 806,
+      "y": 452,
+      "width": 404,
+      "height": 56,
+      "color": "dangerRed",
+      "shows": "open"
+    },
+    {
+      "id": "awning-rolled",
+      "kind": "rolledAwning",
+      "layer": "truck",
+      "x": 806,
+      "y": 448,
+      "width": 404,
+      "height": 22,
+      "color": "dangerRed",
+      "shows": "closed"
+    },
+    {
+      "id": "closed-sign",
+      "kind": "closedSign",
+      "layer": "truck",
+      "x": 976,
+      "y": 470,
+      "width": 130,
+      "height": 78,
+      "color": "cream",
+      "shows": "closed"
+    },
+    {
+      "id": "truck-sign",
+      "kind": "truckSign",
+      "layer": "truck",
+      "x": 850,
+      "y": 376,
+      "width": 330,
+      "height": 54,
+      "color": "ink"
+    }
+  ]
+}
