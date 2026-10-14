@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { int, next, normal, seedRng } from './rng.ts'
+import { int, isRngState, next, normal, seedRng } from './rng.ts'
 
 /** Draws `count` values in a row from `state`. */
 function draws(state: number, count: number): number[] {
@@ -67,18 +67,21 @@ describe('next', () => {
   })
 })
 
-describe('seedRng and next', () => {
+describe('seedRng, next and isRngState', () => {
   it.each([-1, 1.5, 2 ** 32, Number.NaN, Number.POSITIVE_INFINITY])(
     'reject %s',
     (n) => {
       expect(() => seedRng(n)).toThrow(RangeError)
       expect(() => next(n)).toThrow(RangeError)
+      expect(isRngState(n)).toBe(false)
     },
   )
 
   it('accept the ends of the uint32 range', () => {
     expect(seedRng(0)).toBe(0)
     expect(seedRng(2 ** 32 - 1)).toBe(2 ** 32 - 1)
+    expect(isRngState(0)).toBe(true)
+    expect(isRngState(2 ** 32 - 1)).toBe(true)
   })
 })
 
