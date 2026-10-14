@@ -5,10 +5,16 @@ import {
   type UnresolvedAsset,
 } from 'pixi.js'
 import type { AssetManifest } from '../content/assets.ts'
+import pacing from '../content/pacing.json'
+import { FOOD_TRUCK } from '../engine/day.ts'
 import { gameStore, type GameStore } from '../ui/store.ts'
 import { loadArt, type LoadTexture } from './art.ts'
+import type { Span } from './crowd.ts'
+import { CROWD, type CrowdSettings } from './crowdSettings.ts'
+import { startCustomers } from './customers.ts'
 import { TITLE_FONT_ASSET } from './fonts.ts'
 import { fitScene } from './layout.ts'
+import type { GameState } from '../engine/types.ts'
 import { ASSETS } from './manifest.ts'
 import type { WorldApp } from './mountWorld.ts'
 import { buildScene, type MeasureWidth } from './scene.ts'
@@ -26,12 +32,21 @@ const PIXI_LOADERS: StreetLoaders = {
   loadTexture: (url) => Assets.load<Texture>(url),
 }
 
+/** How the street's customers look and move, and their luck: a test's own. */
+export interface StreetCrowd {
+  readonly settings: CrowdSettings
+  readonly random: () => number
+}
+
+const STREET_CROWD: StreetCrowd = { settings: CROWD, random: Math.random }
+
 /**
  * Draws the street on `app`: loads the title font and the manifest's art,
  * builds the scene, fits it to the screen and shows the game in `store`,
- * redrawing it each time the game changes. It only reads the store. Returns
- * the function that takes the street down, which does nothing the second
- * time.
+ * redrawing it each time the game changes. Each frame, the customers replay
+ * the last day at the store's speed (see `startCustomers`). It only reads
+ * the store. Returns the function that takes the street down, which does
+ * nothing the second time.
  *
  * A font or an image that fails to load warns and falls back to the system
  * font or the piece's placeholder, so the street still shows.
@@ -41,15 +56,27 @@ export async function startStreet(
   store: GameStore = gameStore,
   loaders: StreetLoaders = PIXI_LOADERS,
   manifest: AssetManifest = ASSETS,
+  people: StreetCrowd = STREET_CROWD,
 ): Promise<() => void> {
   const [, textures] = await Promise.all([
     loadTitleFont(loaders.loadFont),
     loadArt(manifest, loaders.loadTexture),
   ])
   const scene = buildScene(manifest, textures, loaders.measureWidth)
+  const customers = startCustomers({
+    street: scene.root,
+    manifest,
+    crowd: people.settings,
+    walkIns: FOOD_TRUCK.walkIns,
+    msPerDay: pacing.msPerDayAtNormalSpeed,
+    random: people.random,
+  })
+  scene.root.addChild(customers.root)
 
   // The screen follows the window; each frame refits the scene if it moved.
   let fitted = { width: -1, height: -1 }
+  // The part of the design on screen, where customers come and go.
+  let span: Span = { left: 0, right: manifest.designSize.width }
   const fit = () => {
     const { width, height } = app.screen
     if (width === fitted.width && height === fitted.height) return
@@ -58,17 +85,23 @@ export async function startStreet(
     const { scale, x, y } = fitScene(width, height, design.width, design.height)
     scene.root.scale.set(scale)
     scene.root.position.set(x, y)
+    span = { left: -x / scale, right: (width - x) / scale }
   }
   const onFrame = (ticker: Ticker) => {
     fit()
     scene.animate(ticker.deltaMS)
+    customers.frame(ticker.deltaMS, store.getState().speed, span)
   }
 
-  scene.update(truckView(store.getState().game))
+  const show = (game: GameState) => {
+    scene.update(truckView(game))
+    customers.onGame(game)
+  }
+  show(store.getState().game)
   fit()
   app.stage.addChild(scene.root)
   const unsubscribe = store.subscribe((state, previous) => {
-    if (state.game !== previous.game) scene.update(truckView(state.game))
+    if (state.game !== previous.game) show(state.game)
   })
   app.ticker.add(onFrame)
 
@@ -79,6 +112,7 @@ export async function startStreet(
     unsubscribe()
     app.ticker.remove(onFrame)
     scene.root.removeFromParent()
+    customers.destroy()
     // Leaves the textures to Pixi's Assets cache, which the next start reuses.
     scene.root.destroy({ children: true })
   }
