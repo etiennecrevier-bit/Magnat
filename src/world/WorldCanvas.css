@@ -1,0 +1,12 @@
+/* A fixed layer under everything else on the page. It shows through wherever
+   the panels and the body have no background of their own. */
+.world {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.world canvas {
+  display: block;
+}

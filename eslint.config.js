@@ -15,6 +15,22 @@ const PURE = 'Engine and finance code stays pure (CLAUDE.md rule 1)'
 const DETERMINISTIC =
   'Engine and finance code is deterministic: use the seeded RNG in src/engine/rng.ts and advance time with tick() (CLAUDE.md rule 3)'
 
+// Architecture rule 9 in CLAUDE.md: the world draws the game state and never
+// changes it. Engine, finance and content never import it, and it never
+// imports the functions that change the game. Add each new one to
+// GAME_CHANGERS.
+const WORLD =
+  'The world draws the game state and never changes it (CLAUDE.md rule 9)'
+const GAME_CHANGERS = ['postEntry', 'applyDecision', 'tick', 'playDay']
+const NO_WORLD = {
+  regex: '(^|/)world(/|$)',
+  message: `${WORLD}: engine, finance and content never import src/world/.`,
+}
+const NO_DYNAMIC_IMPORT = {
+  selector: 'ImportExpression',
+  message: 'No dynamic import(), which hides the module from these rules.',
+}
+
 export default defineConfig([
   globalIgnores(['dist', 'coverage', '.wrangler']),
   {
@@ -51,6 +67,7 @@ export default defineConfig([
               regex: '(^|/)ui(/|$)',
               message: `${PURE}: nothing from src/ui/.`,
             },
+            NO_WORLD,
           ],
         },
       ],
@@ -90,6 +107,42 @@ export default defineConfig([
           message: `${PURE}: no dynamic import(), which hides the module from these rules.`,
         },
       ],
+    },
+  },
+  {
+    files: ['src/content/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [NO_WORLD] }],
+      'no-restricted-syntax': ['error', NO_DYNAMIC_IMPORT],
+    },
+  },
+  {
+    // The world's own tests may play days to build the states they draw.
+    files: ['src/world/**/*.{ts,tsx}'],
+    ignores: ['src/world/**/*.test.{ts,tsx}'],
+    rules: {
+      // Scoped to engine, finance and ui so that `import * as PIXI` stays
+      // allowed: with importNames, a namespace import of a matching module
+      // is flagged, as is `export *` from it.
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '(^|/)(engine|finance|ui)(/|$)',
+              importNames: GAME_CHANGERS,
+              message: `${WORLD}: report the click to the UI, which calls the engine.`,
+            },
+          ],
+        },
+      ],
+      // The store's advance() calls tick(), and setState() replaces the game.
+      'no-restricted-properties': [
+        'error',
+        { property: 'advance', message: `${WORLD}: read the store only.` },
+        { property: 'setState', message: `${WORLD}: read the store only.` },
+      ],
+      'no-restricted-syntax': ['error', NO_DYNAMIC_IMPORT],
     },
   },
   prettier,

@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import App from './App.tsx'
 
 describe('App', () => {
-  it('renders the top bar, running at ×1 on day 0, above the screens', () => {
+  it('renders the world, then the top bar, running at ×1 on day 0, above the screens', () => {
     const html = renderToStaticMarkup(<App />)
-    expect(html).toMatch(/^<header class="top-bar">.*<\/header><main>/)
+    expect(html).toMatch(
+      /^<div class="world" aria-hidden="true"><\/div><header class="top-bar">.*<\/header><main>/,
+    )
     expect(html).toContain('Lundi 1er mai, an 1')
     expect(html).toContain('aria-label="Vitesse normale" aria-pressed="true"')
     expect(html).toContain('<span class="cash-gauge__label">Encaisse</span>')
