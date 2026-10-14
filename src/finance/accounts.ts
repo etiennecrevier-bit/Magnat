@@ -63,6 +63,7 @@ const CHART = [
     type: 'charge',
     normalBalance: 'debit',
   },
+  { code: '5200', name: 'Emballages', type: 'charge', normalBalance: 'debit' },
   { code: '6000', name: 'Salaires', type: 'charge', normalBalance: 'debit' },
   {
     code: '6100',
@@ -70,6 +71,13 @@ const CHART = [
     type: 'charge',
     normalBalance: 'debit',
   },
+  {
+    code: '6120',
+    name: 'Location du camion',
+    type: 'charge',
+    normalBalance: 'debit',
+  },
+  { code: '6150', name: 'Assurances', type: 'charge', normalBalance: 'debit' },
   {
     code: '6200',
     name: 'Carburant et entretien',
@@ -80,6 +88,12 @@ const CHART = [
   {
     code: '6400',
     name: 'Amortissement',
+    type: 'charge',
+    normalBalance: 'debit',
+  },
+  {
+    code: '6500',
+    name: 'Frais bancaires et de cartes',
     type: 'charge',
     normalBalance: 'debit',
   },

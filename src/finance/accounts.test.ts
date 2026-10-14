@@ -21,11 +21,15 @@ const CHART: { code: string; name: string; type: AccountType }[] = [
   { code: '4000', name: 'Ventes', type: 'produit' },
   { code: '5000', name: 'Coût des marchandises vendues', type: 'charge' },
   { code: '5100', name: 'Pertes sur stocks', type: 'charge' },
+  { code: '5200', name: 'Emballages', type: 'charge' },
   { code: '6000', name: 'Salaires', type: 'charge' },
   { code: '6100', name: 'Loyer et permis', type: 'charge' },
+  { code: '6120', name: 'Location du camion', type: 'charge' },
+  { code: '6150', name: 'Assurances', type: 'charge' },
   { code: '6200', name: 'Carburant et entretien', type: 'charge' },
   { code: '6300', name: 'Marketing', type: 'charge' },
   { code: '6400', name: 'Amortissement', type: 'charge' },
+  { code: '6500', name: 'Frais bancaires et de cartes', type: 'charge' },
   { code: '7000', name: 'Intérêts', type: 'charge' },
 ]
 

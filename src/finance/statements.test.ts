@@ -118,11 +118,15 @@ describe('incomeStatement', () => {
         label: 'Charges',
         lines: [
           accountRow('5100', 'Pertes sur stocks', 4_000),
+          accountRow('5200', 'Emballages', 0),
           accountRow('6000', 'Salaires', 25_000),
           accountRow('6100', 'Loyer et permis', 0),
+          accountRow('6120', 'Location du camion', 0),
+          accountRow('6150', 'Assurances', 0),
           accountRow('6200', 'Carburant et entretien', 6_000),
           accountRow('6300', 'Marketing', 0),
           accountRow('6400', 'Amortissement', 1_000),
+          accountRow('6500', 'Frais bancaires et de cartes', 0),
           accountRow('7000', 'Intérêts', 5_000),
         ],
         total: row('Total des charges', 41_000),
@@ -151,7 +155,7 @@ describe('incomeStatement', () => {
   it('shows every row at zero, with a Bénéfice net of zero, when nothing happened', () => {
     const empty = incomeStatement(emptyJournal(), 0, 10)
     expect(rowsOf(empty).every(({ amount }) => amount === 0)).toBe(true)
-    expect(empty.expenses.lines).toHaveLength(7)
+    expect(empty.expenses.lines).toHaveLength(11)
     expect(empty.netIncome).toEqual(row('Bénéfice net', 0))
     expect(incomeStatement(journal, -5, -1)).toEqual({
       ...empty,
@@ -277,7 +281,8 @@ describe('cashFlowStatement', () => {
           row('Encaissements des clients', 45_000),
           row('Paiements aux fournisseurs', -50_000),
           row('Salaires', -25_000),
-          row('Autres charges', -11_000),
+          row('Autres charges', -6_000),
+          row('Intérêts payés', -5_000),
         ],
         total: row(
           "Flux de trésorerie liés aux activités d'exploitation",
@@ -319,7 +324,8 @@ describe('cashFlowStatement', () => {
       row('Encaissements des clients', 0),
       row('Paiements aux fournisseurs', -50_000),
       row('Salaires', -25_000),
-      row('Autres charges', -11_000),
+      row('Autres charges', -6_000),
+      row('Intérêts payés', -5_000),
     ])
     expect(statement.operating.total.amount).toBe(-86_000)
     expect(statement.investing.total.amount).toBe(0)
@@ -561,12 +567,20 @@ describe('cashFlowStatement', () => {
       activity: 'operating',
       label: 'Paiements aux fournisseurs',
     },
+    {
+      account: '5200',
+      activity: 'operating',
+      label: 'Paiements aux fournisseurs',
+    },
     { account: '6000', activity: 'operating', label: 'Salaires' },
     { account: '6100', activity: 'operating', label: 'Autres charges' },
+    { account: '6120', activity: 'operating', label: 'Autres charges' },
+    { account: '6150', activity: 'operating', label: 'Autres charges' },
     { account: '6200', activity: 'operating', label: 'Autres charges' },
     { account: '6300', activity: 'operating', label: 'Autres charges' },
     { account: '6400', activity: 'investing', label: 'Équipement' },
-    { account: '7000', activity: 'operating', label: 'Autres charges' },
+    { account: '6500', activity: 'operating', label: 'Autres charges' },
+    { account: '7000', activity: 'operating', label: 'Intérêts payés' },
   ]
 
   it('has a row for every account other than Encaisse', () => {
