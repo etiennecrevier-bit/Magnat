@@ -1,15 +1,11 @@
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { Avatar, DifficultyId } from '../content/schema.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
 import { formatGameDate } from './formatGameDate.ts'
 import { DIFFICULTIES, difficultyLine, readBusinessName } from './newGame.ts'
-import {
-  browserStorage,
-  importSaveFile,
-  readStoredSave,
-  type StoredSave,
-} from './saves.ts'
+import { browserStorage, readStoredSave, type StoredSave } from './saves.ts'
+import { createSaveImports, startMenuActions } from './startMenu.ts'
 import { newGame } from './store.ts'
 import './StartScreen.css'
 
@@ -236,12 +232,23 @@ export default function StartScreen({
   onStart: (game: GameState) => void
 }) {
   const [stored] = useState(() => readStoredSave(browserStorage()))
+  const [imports] = useState(() => createSaveImports())
   const [defaults] = useState(defaultProfile)
   const [page, setPage] = useState<'menu' | 'newGame'>('menu')
   const [importError, setImportError] = useState<string | null>(null)
   const [difficulty, setDifficulty] = useState(defaults.difficulty)
   const [businessName, setBusinessName] = useState(defaults.businessName)
   const [avatar, setAvatar] = useState(defaults.avatar)
+  const actions = startMenuActions({
+    stored,
+    imports,
+    onStart,
+    onImportError: setImportError,
+    onNewGame: () => setPage('newGame'),
+  })
+
+  // Once the menu closes, a file still being read must not start its game.
+  useEffect(() => () => imports.cancel(), [imports])
 
   if (page === 'newGame') {
     return (
@@ -255,7 +262,7 @@ export default function StartScreen({
           onBusinessNameChange={setBusinessName}
           onAvatarChange={setAvatar}
           onStart={(name) =>
-            onStart(
+            actions.start(
               newGame(window.location.search, {
                 businessName: name,
                 avatar,
@@ -274,20 +281,9 @@ export default function StartScreen({
       <StartMenuView
         stored={stored}
         importError={importError}
-        onContinue={() => {
-          if (stored.status === 'found') onStart(stored.game)
-        }}
-        onNewGame={() => {
-          setImportError(null)
-          setPage('newGame')
-        }}
-        onImport={(file) => {
-          setImportError(null)
-          void importSaveFile(file).then((result) => {
-            if ('game' in result) onStart(result.game)
-            else setImportError(result.error)
-          })
-        }}
+        onContinue={actions.continueGame}
+        onNewGame={actions.newGame}
+        onImport={(file) => void actions.importFile(file)}
       />
     </main>
   )
