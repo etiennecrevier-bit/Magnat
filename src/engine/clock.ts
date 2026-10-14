@@ -1,4 +1,5 @@
-import { emptyJournal } from '../finance/journal.ts'
+import type { FoodTruckContent } from '../content/schema.ts'
+import { FOOD_TRUCK, openingJournal, playDay } from './day.ts'
 import { seedRng } from './rng.ts'
 import type { Day, GameState } from './types.ts'
 
@@ -30,16 +31,34 @@ export interface CalendarDate {
 }
 
 /**
- * Starts a game on day 0 with its generator seeded from `seed` and empty
- * books. Throws a RangeError unless `seed` is an integer in [0, 2^32).
+ * Starts a game on day 0 with its generator seeded from `seed`, no stock and
+ * books holding only the owner's capital. Throws a RangeError unless `seed`
+ * is an integer in [0, 2^32).
  */
-export function createInitialState(seed: number): GameState {
-  return { day: 0, seed, rngState: seedRng(seed), journal: emptyJournal() }
+export function createInitialState(
+  seed: number,
+  content: FoodTruckContent = FOOD_TRUCK,
+): GameState {
+  return {
+    day: 0,
+    seed,
+    rngState: seedRng(seed),
+    journal: openingJournal(content),
+    inventory: [],
+    lastDay: null,
+  }
 }
 
-/** Advances the game by one day. Returns a new state; never mutates `state`. */
-export function tick(state: GameState): GameState {
-  return { ...state, day: state.day + 1 }
+/**
+ * Plays business day `state.day` (see `playDay`), then moves on to the next
+ * day. Returns a new state; never mutates `state`.
+ */
+export function tick(
+  state: GameState,
+  content: FoodTruckContent = FOOD_TRUCK,
+): GameState {
+  const played = playDay(state, toCalendar(state.day).weekday, content)
+  return { ...played, day: state.day + 1 }
 }
 
 /** Throws a RangeError unless `day` is a non-negative safe integer. */
