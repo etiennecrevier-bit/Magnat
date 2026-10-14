@@ -1,0 +1,65 @@
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 1rem;
+  background: #1f2933;
+  color: #f5f7fa;
+}
+
+.top-bar__date {
+  margin: 0;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.top-bar__speeds {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.25rem;
+}
+
+.top-bar__speed {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border: 1px solid #52606d;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.top-bar__speed:hover {
+  background: #323f4b;
+}
+
+.top-bar__speed[aria-pressed='true'] {
+  border-color: #f0b429;
+  background: #f0b429;
+  color: #1f2933;
+  font-weight: 700;
+}
+
+.top-bar__speed:focus-visible {
+  outline: 3px solid #7cc4fa;
+  outline-offset: 2px;
+}
+
+/* The longest dates (about 250 px) and four 44 px buttons do not fit on one
+   row on narrow screens, so the date sits above the buttons there. */
+@media (max-width: 559px) {
+  .top-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .top-bar__speed {
+    flex: 1;
+  }
+}
