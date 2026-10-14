@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { emptyJournal } from '../finance/journal.ts'
 import {
   createInitialState,
   tick,
   toCalendar,
   type CalendarDate,
 } from './clock.ts'
+import { openingJournal, playDay } from './day.ts'
 import { seedRng } from './rng.ts'
 import type { Day } from './types.ts'
 
@@ -14,12 +14,14 @@ import type { Day } from './types.ts'
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 describe('createInitialState', () => {
-  it('starts on day 0 with the generator seeded and empty books', () => {
+  it('starts on day 0, seeded, with no stock and the capital paid in', () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
       rngState: seedRng(42),
-      journal: emptyJournal(),
+      journal: openingJournal(),
+      inventory: [],
+      lastDay: null,
     })
   })
 
@@ -29,19 +31,28 @@ describe('createInitialState', () => {
 })
 
 describe('tick', () => {
-  it('returns a new state one day later without mutating its input', () => {
+  it('plays the day on its weekday, then moves on to the next day', () => {
+    let state = createInitialState(42)
+    for (let day = 0; day < 8; day += 1) {
+      const { weekday } = toCalendar(day)
+      const next = tick(state)
+      expect(next).toEqual({ ...playDay(state, weekday), day: day + 1 })
+      expect(next.lastDay?.day).toBe(day)
+      state = next
+    }
+  })
+
+  it('returns a new state without mutating its input', () => {
     const state = Object.freeze(createInitialState(42))
     const next = tick(state)
-    expect(next).toEqual({ ...state, day: 1 })
     expect(next).not.toBe(state)
     expect(state).toEqual(createInitialState(42))
   })
 
-  it('counts one day per tick and keeps the seed and generator state', () => {
-    const start = createInitialState(7)
-    let state = start
+  it('counts one day per tick and keeps the seed', () => {
+    let state = createInitialState(7)
     for (let i = 0; i < 400; i += 1) state = tick(state)
-    expect(state).toEqual({ ...start, day: 400 })
+    expect(state).toMatchObject({ day: 400, seed: 7 })
   })
 })
 

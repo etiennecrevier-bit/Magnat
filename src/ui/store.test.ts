@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createInitialState } from '../engine/clock.ts'
+import { createInitialState, tick } from '../engine/clock.ts'
 import { NORMAL_SPEED, PAUSED, createGameStore } from './store.ts'
 
 describe('createGameStore', () => {
@@ -54,7 +54,10 @@ describe('advance', () => {
 
     store.getState().advance(5)
 
-    expect(store.getState().game).toEqual({ ...start, day: 5 })
+    let expected = start
+    for (let i = 0; i < 5; i += 1) expected = tick(expected)
+    expect(store.getState().game).toEqual(expected)
+    expect(store.getState().game.day).toBe(5)
     expect(listener).toHaveBeenCalledTimes(1)
     expect(start).toEqual(createInitialState(1))
   })
