@@ -11,8 +11,9 @@ import { FOOD_TRUCK, playDay } from './day.ts'
 import { applyDecision } from './decisions.ts'
 import { inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
+import { PROFILE_CONTENT } from './profile.ts'
 import { SAVE_VERSION, deserialize, serialize } from './save.ts'
-import type { GameState } from './types.ts'
+import type { GameState, Profile } from './types.ts'
 
 const SEED = 42
 const LIMITS = FOOD_TRUCK.decisionLimits
@@ -96,8 +97,19 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(1)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 1 })
+    expect(SAVE_VERSION).toBe(2)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 2 })
+  })
+
+  it.each<Profile>([
+    { businessName: 'Café Facile', avatar: 'femme', difficulty: 'facile' },
+    { businessName: "Le P'tit Camion", avatar: 'homme', difficulty: 'moyen' },
+    { businessName: 'Chez Mimi 🥐', avatar: 'femme', difficulty: 'difficile' },
+  ])('give back the profile of a $difficulty game', (profile) => {
+    const game = played(20, createInitialState(SEED, FOOD_TRUCK, profile))
+    const back = reloaded(game)
+    expect(back.profile).toStrictEqual(profile)
+    expect(back).toStrictEqual(game)
   })
 
   it('give back the state after 400 days', () => {
@@ -188,7 +200,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 2, '1', null])('saveVersion %j', (version) => {
+  it.each([0, 1, 3, '2', null])('saveVersion %j', (version) => {
     expectInvalid(withValue('saveVersion', version), [
       `unsupported saveVersion ${JSON.stringify(version)}`,
     ])
@@ -207,6 +219,7 @@ describe('deserialize rejects', () => {
       ['a visit', 'lastDay.visits.0.tip', 'lastDay.visits[0]'],
       ['the decisions', 'decisions.discount', 'decisions'],
       ['the prices', 'decisions.prices.poutine', 'decisions.prices'],
+      ['the profile', 'profile.level', 'profile'],
     ])('in %s', (_, path, at) => {
       const key = path.split('.').at(-1)
       expectInvalid(withValue(path, 1), [
@@ -229,6 +242,10 @@ describe('deserialize rejects', () => {
     'lastDay',
     'decisions',
     'pendingDecisions',
+    'profile',
+    'profile.businessName',
+    'profile.avatar',
+    'profile.difficulty',
     'journal.1.memo',
     'inventory.0.unitCost',
     'lastDay.segments.chic',
@@ -512,6 +529,47 @@ describe('deserialize rejects', () => {
         ['decisions: Invalid decision: prices.cafe must be a whole number'],
         narrowed,
       )
+    })
+  })
+
+  describe('a profile', () => {
+    it('saved before the profile, as version 1', () => {
+      const text = edited('profile', (save, key) => {
+        delete save[key]
+        save.saveVersion = 1
+      })
+      expectInvalid(text, ['unsupported saveVersion 1'])
+    })
+
+    it.each([
+      ['avatar', 'robot'],
+      ['avatar', null],
+      ['difficulty', 'extreme'],
+      ['difficulty', 2],
+    ])('with the %s %j', (field, value) => {
+      expectInvalid(withValue(`profile.${field}`, value), [
+        `→ at profile.${field}`,
+      ])
+    })
+
+    it.each([42, null])('with the business name %j', (name) => {
+      expectInvalid(withValue('profile.businessName', name), [
+        'expected string',
+        '→ at profile.businessName',
+      ])
+    })
+
+    const max = PROFILE_CONTENT.businessNameMaxLength
+
+    it.each([
+      ['', `must hold 1 to ${max} characters: 0`],
+      ['x'.repeat(max + 1), `must hold 1 to ${max} characters: ${max + 1}`],
+      [' Chez Mimi', 'must not start or end with a space'],
+      ['Chez\nMimi', 'must not hold a control character'],
+    ])('with the business name %j', (name, reason) => {
+      expectInvalid(withValue('profile.businessName', name), [
+        `profile: Invalid profile: businessName ${reason}`,
+      ])
     })
   })
 })

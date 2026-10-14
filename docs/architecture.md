@@ -29,7 +29,7 @@ Randomness and the browser are allowed in the world, since nothing it does reach
 
 ## The contract
 
-`src/engine/types.ts` holds the types the engine, the books, the UI and the tools share. It is frozen at the end of phase 1: changing it needs a dedicated card. It holds types only, with no code. P2-02 (#45) was such a card: it added `segments` and `visits` to `DaySummary`, with `SegmentSummary`, `Visit` and `VisitOutcome`. So was P2-04 (#46): it added `decisions` and `pendingDecisions` to `GameState`, with `Decisions`.
+`src/engine/types.ts` holds the types the engine, the books, the UI and the tools share. It is frozen at the end of phase 1: changing it needs a dedicated card. It holds types only, with no code. P2-02 (#45) was such a card: it added `segments` and `visits` to `DaySummary`, with `SegmentSummary`, `Visit` and `VisitOutcome`. So was P2-04 (#46): it added `decisions` and `pendingDecisions` to `GameState`, with `Decisions`. And P2-11 (#53): it added `profile` to `GameState`, with `Profile`.
 
 The engine is deterministic: the same seed, played with the same code, the same content and the same decisions on the same days, always posts the same journal, so it always gives the same `journalHash`. A replay is only guaranteed within one version of the code and content, though. Changing the order of the generator draws, the order of a day's entries or a number in `src/content/` can change the journal a seed produces without touching `types.ts`.
 
@@ -51,6 +51,7 @@ Every function that takes a state returns a new one and never mutates it. The fi
 | `lastDay` | `DaySummary \| null` | The last business day played. Null until the first day is played. |
 | `decisions` | `Decisions` | How the player runs the truck on day `day`: what `tick()` plays the day with. |
 | `pendingDecisions` | `Decisions \| null` | What the player decided since day `day` began, waiting for the next morning. Null when nothing waits. |
+| `profile` | `Profile` | Who the player is: the business name, the avatar and the difficulty picked on the new game screen. It never changes once the game has started. |
 
 A decision never changes the day under way. The UI shows `day` as today and plays it once its real time is over, so the player's changes land in `pendingDecisions`, and `tick()` makes them the next day's `decisions`. `latestDecisions(state)` in `src/engine/decisions.ts` gives what the player last left: `pendingDecisions`, or else `decisions`.
 
@@ -65,6 +66,16 @@ How the player runs the truck. `startingDecisions()` in `src/engine/decisions.ts
 | `daysOpen` | `readonly number[]` | The ISO weekdays the truck opens, from 1 = Monday to 7 = Sunday: ascending, each once, at least `minDaysOpen` of them. `applyDecision` sorts the weekdays it is given. |
 | `ownerWeeklyPay` | `Cents` | What the owner pays themself each week, within `ownerWeeklyPayCents`. Stored only: P2-14 pays it. |
 | `marketingDaily` | `Cents` | What the truck spends on marketing each day, within `marketingDailyCents`. Stored only: P2-05 spends it. |
+
+### `Profile`
+
+Who the player is, as they set it up on the new game screen. `defaultProfile()` in `src/engine/profile.ts` reads the screen's defaults from `src/content/profile.json`. `validateProfile()` throws a RangeError naming the field unless the business name holds 1 to `businessNameMaxLength` characters (counted as code points, so é or an emoji counts once) with no space at either end and no control character, and the avatar and the difficulty are ones the content knows. `createInitialState()` and `deserialize()` both hold the profile to it.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `businessName` | `string` | The business's name: on the truck's sign and in the top bar. |
+| `avatar` | `Avatar` | The owner's avatar: `femme` or `homme`, the zod enum in `src/content/schema.ts`. |
+| `difficulty` | `DifficultyId` | How the game started: `facile`, `moyen` or `difficile`, the zod enum in `src/content/schema.ts`. `src/content/difficulty.json` says what each one means. Every difficulty opens the same books until P2-14 makes them follow it. |
 
 ### `Lot`
 
@@ -122,11 +133,12 @@ One walk-in customer at the truck.
 
 ### The starting state
 
-`createInitialState(seed)` in `src/engine/clock.ts` throws a RangeError unless `seed` is an integer in [0, 2^32). Otherwise it returns:
+`createInitialState(seed, content, profile)` in `src/engine/clock.ts` throws a RangeError unless `seed` is an integer in [0, 2^32) and `profile` passes `validateProfile()`. Otherwise it returns:
 - `day` 0, the `seed`, and `rngState` from `seedRng(seed)`, which is the seed itself;
 - `journal` from `openingJournal()`: one entry on day 0, *Mise de fonds*, Dr 1000 Encaisse / Cr 3000 Capital-actions for `startingCapitalCents`;
 - an empty `inventory` and a null `lastDay`;
 - `decisions` from `startingDecisions()`, which throws a RangeError if the content's starting decisions break its own limits, and a null `pendingDecisions`.
+- a copy of `profile`, which is `defaultProfile()` unless the new game screen gives another.
 
 ## Order of operations in `tick()`
 

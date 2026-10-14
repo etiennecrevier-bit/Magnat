@@ -1,8 +1,9 @@
 import type { CustomerContent, FoodTruckContent } from '../content/schema.ts'
 import { CUSTOMERS, FOOD_TRUCK, openingJournal, playDay } from './day.ts'
 import { latestDecisions, startingDecisions } from './decisions.ts'
+import { defaultProfile, validateProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
-import type { Day, GameState } from './types.ts'
+import type { Day, GameState, Profile } from './types.ts'
 
 // The game calendar: 365-day years with real month lengths and no leap years.
 // Day 0 is Monday, May 1st, year 1, when food truck season starts. These are
@@ -33,14 +34,18 @@ export interface CalendarDate {
 
 /**
  * Starts a game on day 0 with its generator seeded from `seed`, no stock,
- * books holding only the owner's capital and the content's starting
- * decisions. Throws a RangeError unless `seed` is an integer in [0, 2^32),
- * or if the starting decisions break the content's limits.
+ * books holding only the owner's capital, the content's starting decisions
+ * and the player's `profile`. Every difficulty opens the same books until
+ * P2-14. Throws a RangeError unless `seed` is an integer in [0, 2^32), if
+ * the starting decisions break the content's limits, or if `profile` breaks
+ * `validateProfile()`.
  */
 export function createInitialState(
   seed: number,
   content: FoodTruckContent = FOOD_TRUCK,
+  profile: Profile = defaultProfile(),
 ): GameState {
+  validateProfile(profile)
   return {
     day: 0,
     seed,
@@ -50,6 +55,11 @@ export function createInitialState(
     lastDay: null,
     decisions: startingDecisions(content),
     pendingDecisions: null,
+    profile: {
+      businessName: profile.businessName,
+      avatar: profile.avatar,
+      difficulty: profile.difficulty,
+    },
   }
 }
 
