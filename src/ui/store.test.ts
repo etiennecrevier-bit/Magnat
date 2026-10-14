@@ -1,6 +1,26 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
-import { NORMAL_SPEED, PAUSED, createGameStore } from './store.ts'
+import {
+  NORMAL_SPEED,
+  PAUSED,
+  createGameStore,
+  newGame,
+  seedFromSearch,
+} from './store.ts'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+/** Makes `crypto.getRandomValues` return `seed`, the random seed's source. */
+function stubRandomSeed(seed: number) {
+  return vi
+    .spyOn(crypto, 'getRandomValues')
+    .mockImplementation(<T extends ArrayBufferView | null>(array: T): T => {
+      if (array instanceof Uint32Array) array.fill(seed)
+      return array
+    })
+}
 
 describe('createGameStore', () => {
   it('starts a new game on day 0, running at normal speed', () => {
@@ -13,6 +33,62 @@ describe('createGameStore', () => {
   it('can start from a given state', () => {
     const game = { ...createInitialState(7), day: 42 }
     expect(createGameStore(game).getState().game).toEqual(game)
+  })
+})
+
+describe('seedFromSearch', () => {
+  it.each([
+    ['?seed=42', 42],
+    ['?seed=0', 0],
+    ['?x=1&seed=7', 7],
+    ['?seed=4294967295', 4294967295],
+    ['?seed=4294967296', 4294967296],
+  ])('reads %s as %d', (search, seed) => {
+    expect(seedFromSearch(search)).toBe(seed)
+  })
+
+  it.each([
+    '',
+    '?x=1',
+    '?seed=',
+    '?seed=-1',
+    '?seed=1.5',
+    '?seed=1e3',
+    '?seed=0x2a',
+    '?seed=%207',
+    '?seed=+7',
+    `?seed=${'9'.repeat(400)}`,
+  ])('finds no seed in "%s"', (search) => {
+    expect(seedFromSearch(search)).toBeNull()
+  })
+})
+
+describe('newGame', () => {
+  it.each([
+    ['?seed=42', 42],
+    ['?seed=0', 0],
+    ['?x=1&seed=7', 7],
+    ['?seed=4294967295', 4294967295],
+  ])('starts %s on seed %d, without drawing one', (search, seed) => {
+    const random = stubRandomSeed(123)
+    expect(newGame(search)).toEqual(createInitialState(seed))
+    expect(random).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    '',
+    '?seed=',
+    '?seed=-1',
+    '?seed=1.5',
+    '?seed=1e3',
+    '?seed=0x2a',
+    '?seed=%207',
+    '?seed=4294967296',
+    `?seed=${'9'.repeat(400)}`,
+  ])('starts "%s" on a random seed', (search) => {
+    const random = stubRandomSeed(123)
+    expect(newGame(search)).toEqual(createInitialState(123))
+    expect(random).toHaveBeenCalledTimes(1)
   })
 })
 
