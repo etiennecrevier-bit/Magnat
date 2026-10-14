@@ -101,14 +101,14 @@ export interface CrowdSettings {
 export const CROWD: CrowdSettings = {
   speeds: {
     1: {
-      keepChance: 0.05,
+      keepChance: 0.08,
       minGapMs: 900,
       jitterMs: 300,
       maxOnScreen: 10,
       pace: 1,
     },
     3: {
-      keepChance: 0.015,
+      keepChance: 0.02,
       minGapMs: 1100,
       jitterMs: 400,
       maxOnScreen: 5,
