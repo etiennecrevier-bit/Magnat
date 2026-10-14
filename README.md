@@ -10,6 +10,7 @@ Single-player browser tycoon game in French (Quebec) where you grow a food truck
 - `npm run build`: production build into `dist/`
 - `npm test`: Vitest
 - `npm run lint`, `npm run typecheck`, `npm run format`
+- `npm run deploy`: build and deploy to Cloudflare (needs `wrangler login`)
 - `npm run sim -- --days 3650 --seed 42`: headless simulation (from phase 1)
 
 Jouer à la dernière version : (lien à venir)
