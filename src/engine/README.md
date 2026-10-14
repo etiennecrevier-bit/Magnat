@@ -1,0 +1,1 @@
+Pure, deterministic TypeScript game logic: randomness comes only from the seeded RNG in `rng.ts` and game time advances only through `tick()`; it never imports React, the DOM or anything from `src/ui/`.
