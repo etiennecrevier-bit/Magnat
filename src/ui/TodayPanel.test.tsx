@@ -1,0 +1,90 @@
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import { createInitialState, tick } from '../engine/clock.ts'
+import { cents } from '../engine/money.ts'
+import type { DaySummary } from '../engine/types.ts'
+import TodayPanel, { TodayPanelView } from './TodayPanel.tsx'
+
+// Every space in an amount is a no-break space (U+00A0).
+const S = '\u00a0'
+
+function render(lastDay: DaySummary | null) {
+  return renderToStaticMarkup(<TodayPanelView lastDay={lastDay} />)
+}
+
+/** Each product row: its name and the numbers in its cells. */
+function productRows(html: string) {
+  return [
+    ...html.matchAll(
+      /<tr><th scope="row">([^<]*)<\/th>((?:<td[^>]*>[^<]*<\/td>)*)<\/tr>/g,
+    ),
+  ].map(([, name, cells = '']) => [
+    name,
+    ...[...cells.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map(([, n]) => n),
+  ])
+}
+
+describe('TodayPanelView', () => {
+  it('says so before the first day is over', () => {
+    const html = render(null)
+    expect(html).toContain('<h1>Aujourd&#x27;hui</h1>')
+    expect(html).toContain(
+      'La première journée n&#x27;est pas encore terminée.',
+    )
+    expect(html).not.toContain('<table')
+  })
+
+  it("shows yesterday's units and revenue per product", () => {
+    const html = render({
+      day: 3,
+      sold: { cafe: 87, croissant: 54 },
+      revenue: cents(123_456),
+      lostSales: { cafe: 0, croissant: 6 },
+      spoiled: { cafe: 2, croissant: 10 },
+    })
+    expect(html).toContain(`Hier${S}: Jeudi 4 mai, an 1`)
+    expect(html).toContain(
+      '<tr><th scope="col">Produit</th><th scope="col" class="number">Vendus</th><th scope="col" class="number">Ventes perdues</th><th scope="col" class="number">Périmés</th></tr>',
+    )
+    expect(productRows(html)).toEqual([
+      ['Café', '87', '0', '2'],
+      ['Croissant', '54', '6', '10'],
+    ])
+    expect(html).toContain(
+      `Chiffre d&#x27;affaires${S}: <strong>1${S}234,56${S}$</strong>`,
+    )
+  })
+
+  it('shows what the engine reports for a played day', () => {
+    const { lastDay } = tick(createInitialState(42))
+    if (lastDay === null) throw new Error('A played day has a summary')
+    const html = render(lastDay)
+    expect(productRows(html)).toEqual([
+      [
+        'Café',
+        String(lastDay.sold.cafe),
+        String(lastDay.lostSales.cafe),
+        String(lastDay.spoiled.cafe),
+      ],
+      [
+        'Croissant',
+        String(lastDay.sold.croissant),
+        String(lastDay.lostSales.croissant),
+        String(lastDay.spoiled.croissant),
+      ],
+    ])
+    expect(lastDay.revenue).toBeGreaterThan(0)
+  })
+
+  it('has no tooltips', () => {
+    expect(render(tick(createInitialState(42)).lastDay)).not.toContain('title=')
+  })
+})
+
+describe('TodayPanel', () => {
+  it('shows the app store, where no day has been played yet', () => {
+    expect(renderToStaticMarkup(<TodayPanel />)).toContain(
+      'La première journée n&#x27;est pas encore terminée.',
+    )
+  })
+})

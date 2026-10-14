@@ -1,0 +1,46 @@
+.cash-gauge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5rem;
+  margin: 0;
+}
+
+.cash-gauge__label {
+  color: #cbd2d9;
+}
+
+.cash-gauge__amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cash-gauge__state {
+  padding: 0 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Text colours keep at least 4.5:1 against the top bar's #1f2933. */
+.cash-gauge--healthy .cash-gauge__state {
+  color: #7bd389;
+}
+
+.cash-gauge--low .cash-gauge__amount,
+.cash-gauge--low .cash-gauge__state {
+  color: #f7c948;
+}
+
+.cash-gauge--negative .cash-gauge__amount {
+  color: #ff9b9b;
+}
+
+.cash-gauge--negative .cash-gauge__state {
+  border-color: #cf1124;
+  background: #cf1124;
+  color: #ffffff;
+}

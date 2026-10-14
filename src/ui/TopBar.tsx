@@ -1,6 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import pacing from '../content/pacing.json'
+import type { Cents } from '../engine/money.ts'
 import type { Day } from '../engine/types.ts'
+import type { AccountCode } from '../finance/accounts.ts'
+import { balance } from '../finance/journal.ts'
+import { CashGaugeView } from './CashGauge.tsx'
 import { formatGameDate } from './formatGameDate.ts'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
 import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
@@ -17,16 +21,26 @@ function speedText(speed: number): string {
   return speed === PAUSED ? '⏸︎' : `×${speed}`
 }
 
+const CASH = '1000' satisfies AccountCode
+
 interface TopBarViewProps {
   day: Day
+  /** The encaisse after every entry posted so far. */
+  cash: Cents
   speed: number
   onSpeedChange: (speed: number) => void
 }
 
-export function TopBarView({ day, speed, onSpeedChange }: TopBarViewProps) {
+export function TopBarView({
+  day,
+  cash,
+  speed,
+  onSpeedChange,
+}: TopBarViewProps) {
   return (
     <header className="top-bar">
       <p className="top-bar__date">{formatGameDate(day)}</p>
+      <CashGaugeView cash={cash} />
       <div className="top-bar__speeds" role="group" aria-label="Vitesse du jeu">
         {pacing.speeds.map((option) => (
           <button
@@ -48,6 +62,7 @@ export function TopBarView({ day, speed, onSpeedChange }: TopBarViewProps) {
 /** The top bar wired to the app store, with the Space shortcut. */
 export default function TopBar() {
   const day = useGame((state) => state.game.day)
+  const journal = useGame((state) => state.game.journal)
   const speed = useGame((state) => state.speed)
   const setSpeed = useGame((state) => state.setSpeed)
   const togglePause = useGame((state) => state.togglePause)
@@ -63,5 +78,13 @@ export default function TopBar() {
     }
   }, [togglePause])
 
-  return <TopBarView day={day} speed={speed} onSpeedChange={setSpeed} />
+  // The books only change when a day is played, not on every frame.
+  const cash = useMemo(
+    () => balance(journal, CASH, { toDay: day }),
+    [journal, day],
+  )
+
+  return (
+    <TopBarView day={day} cash={cash} speed={speed} onSpeedChange={setSpeed} />
+  )
 }
