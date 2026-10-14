@@ -1,0 +1,35 @@
+{
+  "_note": "Starting values, tuned in phase 2",
+  "startingCapitalCents": 1000000,
+  "products": {
+    "cafe": {
+      "name": "Café",
+      "unitCostCents": 40,
+      "basePriceCents": 250,
+      "shelfLifeDays": 90
+    },
+    "croissant": {
+      "name": "Croissant",
+      "unitCostCents": 90,
+      "basePriceCents": 325,
+      "shelfLifeDays": 1
+    }
+  },
+  "dailyFixedCostsCents": {
+    "rentAndPermit": 4500,
+    "fuelAndMaintenance": 2000
+  },
+  "walkIns": {
+    "weekdayCustomers": 120,
+    "weekendCustomers": 80,
+    "noiseStdDevRatio": 0.15
+  },
+  "purchaseProbability": {
+    "cafe": 0.8,
+    "croissant": 0.5
+  },
+  "restockPolicy": {
+    "cafe": { "kind": "topUp", "whenBelow": 100, "upTo": 300 },
+    "croissant": { "kind": "buyDaily", "quantity": 70 }
+  }
+}
