@@ -20,8 +20,13 @@ export interface GameStoreState {
 
 export type GameStore = StoreApi<GameStoreState>
 
+/** Fresh luck for each new game; only the engine has to be deterministic. */
+function randomSeed(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] ?? 0
+}
+
 export function createGameStore(
-  game: GameState = createInitialState(),
+  game: GameState = createInitialState(randomSeed()),
 ): GameStore {
   return createStore<GameStoreState>()((set, get) => ({
     game,

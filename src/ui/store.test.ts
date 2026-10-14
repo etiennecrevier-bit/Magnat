@@ -1,16 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createInitialState } from '../engine/clock.ts'
 import { NORMAL_SPEED, PAUSED, createGameStore } from './store.ts'
 
 describe('createGameStore', () => {
-  it('starts on day 0, running at normal speed', () => {
+  it('starts a new game on day 0, running at normal speed', () => {
     const { game, speed, lastSpeed } = createGameStore().getState()
-    expect(game).toEqual({ day: 0 })
+    expect(game).toEqual(createInitialState(game.seed))
     expect(speed).toBe(NORMAL_SPEED)
     expect(lastSpeed).toBe(NORMAL_SPEED)
   })
 
   it('can start from a given state', () => {
-    expect(createGameStore({ day: 42 }).getState().game).toEqual({ day: 42 })
+    const game = { ...createInitialState(7), day: 42 }
+    expect(createGameStore(game).getState().game).toEqual(game)
   })
 })
 
@@ -45,16 +47,16 @@ describe('togglePause', () => {
 
 describe('advance', () => {
   it('ticks the given number of days with one update', () => {
-    const start = Object.freeze({ day: 0 })
+    const start = Object.freeze(createInitialState(1))
     const store = createGameStore(start)
     const listener = vi.fn()
     store.subscribe(listener)
 
     store.getState().advance(5)
 
-    expect(store.getState().game).toEqual({ day: 5 })
+    expect(store.getState().game).toEqual({ ...start, day: 5 })
     expect(listener).toHaveBeenCalledTimes(1)
-    expect(start).toEqual({ day: 0 })
+    expect(start).toEqual(createInitialState(1))
   })
 
   it('does nothing for zero days', () => {

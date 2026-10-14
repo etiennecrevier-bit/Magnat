@@ -1,3 +1,4 @@
+import { seedRng } from './rng.ts'
 import type { Day, GameState } from './types.ts'
 
 // The game calendar: 365-day years with real month lengths and no leap years.
@@ -27,8 +28,12 @@ export interface CalendarDate {
   weekday: number
 }
 
-export function createInitialState(): GameState {
-  return { day: 0 }
+/**
+ * Starts a game on day 0 with its generator seeded from `seed`. Throws a
+ * RangeError unless `seed` is an integer in [0, 2^32).
+ */
+export function createInitialState(seed: number): GameState {
+  return { day: 0, seed, rngState: seedRng(seed) }
 }
 
 /** Advances the game by one day. Returns a new state; never mutates `state`. */

@@ -5,6 +5,7 @@ import {
   toCalendar,
   type CalendarDate,
 } from './clock.ts'
+import { seedRng } from './rng.ts'
 import type { Day } from './types.ts'
 
 // Month lengths of a non-leap year, kept apart from clock.ts so the ten-year
@@ -12,24 +13,33 @@ import type { Day } from './types.ts'
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 describe('createInitialState', () => {
-  it('starts on day 0', () => {
-    expect(createInitialState()).toEqual({ day: 0 })
+  it('starts on day 0 with the generator seeded', () => {
+    expect(createInitialState(42)).toEqual({
+      day: 0,
+      seed: 42,
+      rngState: seedRng(42),
+    })
+  })
+
+  it.each([-1, 1.5, 2 ** 32, Number.NaN])('rejects seed %s', (seed) => {
+    expect(() => createInitialState(seed)).toThrow(RangeError)
   })
 })
 
 describe('tick', () => {
   it('returns a new state one day later without mutating its input', () => {
-    const state = Object.freeze(createInitialState())
+    const state = Object.freeze(createInitialState(42))
     const next = tick(state)
-    expect(next).toEqual({ day: 1 })
+    expect(next).toEqual({ ...state, day: 1 })
     expect(next).not.toBe(state)
-    expect(state).toEqual({ day: 0 })
+    expect(state).toEqual(createInitialState(42))
   })
 
-  it('counts one day per tick', () => {
-    let state = createInitialState()
+  it('counts one day per tick and keeps the seed and generator state', () => {
+    const start = createInitialState(7)
+    let state = start
     for (let i = 0; i < 400; i += 1) state = tick(state)
-    expect(state.day).toBe(400)
+    expect(state).toEqual({ ...start, day: 400 })
   })
 })
 
