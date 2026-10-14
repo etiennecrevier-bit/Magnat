@@ -31,7 +31,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['tools/**/*.ts', '*.config.{js,ts}'],
+    files: ['tools/**/*.ts', 'tests/**/*.ts', '*.config.{js,ts}'],
     languageOptions: {
       globals: globals.node,
     },
