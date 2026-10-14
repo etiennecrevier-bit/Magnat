@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { emptyJournal } from '../finance/journal.ts'
 import {
   createInitialState,
   tick,
@@ -13,11 +14,12 @@ import type { Day } from './types.ts'
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 describe('createInitialState', () => {
-  it('starts on day 0 with the generator seeded', () => {
+  it('starts on day 0 with the generator seeded and empty books', () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
       rngState: seedRng(42),
+      journal: emptyJournal(),
     })
   })
 

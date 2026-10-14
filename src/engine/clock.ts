@@ -1,3 +1,4 @@
+import { emptyJournal } from '../finance/journal.ts'
 import { seedRng } from './rng.ts'
 import type { Day, GameState } from './types.ts'
 
@@ -29,11 +30,11 @@ export interface CalendarDate {
 }
 
 /**
- * Starts a game on day 0 with its generator seeded from `seed`. Throws a
- * RangeError unless `seed` is an integer in [0, 2^32).
+ * Starts a game on day 0 with its generator seeded from `seed` and empty
+ * books. Throws a RangeError unless `seed` is an integer in [0, 2^32).
  */
 export function createInitialState(seed: number): GameState {
-  return { day: 0, seed, rngState: seedRng(seed) }
+  return { day: 0, seed, rngState: seedRng(seed), journal: emptyJournal() }
 }
 
 /** Advances the game by one day. Returns a new state; never mutates `state`. */
