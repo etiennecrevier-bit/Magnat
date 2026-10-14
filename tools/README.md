@@ -20,7 +20,7 @@ The code is in `sim/`: `simulate.ts` plays the game and sums it up without I/O, 
 
 ### Compare with the game
 
-A game opened with `?seed=<n>` in the page address, such as `http://localhost:5173/?seed=42`, plays the same days as `npm run sim -- --seed <n>`; without it, or with a seed outside [0, 2^32), each game starts on a random seed. Pause the game and count N, the days from May 1st, year 1, to the date in the top bar. `npm run sim -- --seed <n> --days N` then shows, for year 1, the numbers of the États financiers screen under "Depuis le début de l'année": Revenue is Ventes, Net income is Bénéfice net and Cash at year end is Encaisse. The screen's periods end on the day shown, which has not been played yet, so the sim's days 0 to N - 1 cover the same entries.
+A game opened with `?seed=<n>` in the page address, such as `http://localhost:5173/?seed=42`, plays the same days as `npm run sim -- --seed <n>`; without it, or with a seed outside [0, 2^32), each game starts on a random seed. Play at least one day, pause the game and count N, the days from May 1st, year 1, to the date in the top bar. `npm run sim -- --seed <n> --days N` then shows, for year 1, the numbers of the États financiers screen under "Depuis le début de l'année": Revenue is Ventes, Net income is Bénéfice net and Cash at year end is Encaisse. The screen's periods end on the day shown, which has not been played yet, so the sim's days 0 to N - 1 cover the same entries.
 
 This only holds while the top bar shows year 1 (N up to 244, December 31st): the sim's years run from May to April, while the screen's year starts on January 1st.
 
