@@ -31,6 +31,16 @@ function raw(account: string, debit: number, credit: number): JournalLine {
   }
 }
 
+/**
+ * Lines set by index, as an engine filling slots would: every index left out
+ * is a hole, with no cast needed.
+ */
+function byIndex(...slots: [number, JournalLine][]): JournalLine[] {
+  const lines: JournalLine[] = []
+  for (const [index, line] of slots) lines[index] = line
+  return lines
+}
+
 function entry(day: Day, memo: string, ...lines: JournalLine[]): JournalEntry {
   return { day, memo, lines }
 }
@@ -166,6 +176,48 @@ describe('postEntry', () => {
         when: 'an entry with no lines',
         entry: entry(5, 'Vente'),
         error: /it has no lines/,
+      },
+      {
+        when: 'a hole between two lines',
+        entry: {
+          day: 5,
+          memo: 'Vente',
+          lines: byIndex([0, dr('1000', 100)], [2, cr('4000', 100)]),
+        },
+        error: /line 2: missing/,
+      },
+      {
+        when: 'a hole before the first line',
+        entry: {
+          day: 5,
+          memo: 'Vente',
+          lines: byIndex([1, dr('1000', 100)], [2, cr('4000', 100)]),
+        },
+        error: /line 1: missing/,
+      },
+      {
+        // Its length is not zero and its holes add up to nothing on each side.
+        when: 'an entry whose lines are all holes',
+        entry: { day: 5, memo: 'Vente', lines: new Array<JournalLine>(1) },
+        error: /line 1: missing/,
+      },
+      {
+        when: 'a null line',
+        entry: {
+          day: 5,
+          memo: 'Vente',
+          lines: [dr('1000', 100), null, cr('4000', 100)] as JournalLine[],
+        },
+        error: /line 2: missing/,
+      },
+      {
+        when: 'an undefined line',
+        entry: {
+          day: 5,
+          memo: 'Vente',
+          lines: [dr('1000', 100), undefined, cr('4000', 100)] as JournalLine[],
+        },
+        error: /line 2: missing/,
       },
       {
         when: 'a day earlier than the last entry',
