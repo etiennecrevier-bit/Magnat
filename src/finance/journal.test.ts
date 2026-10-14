@@ -498,3 +498,61 @@ describe('trialBalance', () => {
     expect(() => trialBalance(rich, 1)).toThrow(RangeError)
   })
 })
+
+describe('a journal that emptyJournal() and postEntry() did not make', () => {
+  const journal = post(...FIRST_DAYS)
+  const sale = entry(4, 'Vente', dr('1000', 100), cr('4000', 100))
+
+  it('does not type-check, even as a spread of a real one', () => {
+    // @ts-expect-error: a spread copies the fields, not where the journal came from
+    const copy: Journal = { ...journal }
+    // @ts-expect-error: the usual immutable update makes no Journal either
+    const longer: Journal = { ...journal, entries: [...journal.entries, sale] }
+    expect([copy, longer]).not.toContain(journal)
+  })
+
+  /** Stands for any way past the type check: a cast, `any` or untyped data. */
+  function forge(value: object): Journal {
+    return value as Journal
+  }
+
+  const forgeries = [
+    { when: 'a copy of a posted journal', journal: forge({ ...journal }) },
+    {
+      when: 'one with an unbalanced entry added',
+      journal: forge({
+        ...journal,
+        entries: [
+          ...journal.entries,
+          entry(4, 'Vente (crédit oublié)', dr('1000', 10_000)),
+        ],
+      }),
+    },
+    {
+      when: 'one with a back-dated entry added',
+      journal: forge({
+        ...journal,
+        entries: [
+          ...journal.entries,
+          entry(1, 'Achat antidaté', dr('1200', 2_000), cr('1000', 2_000)),
+        ],
+      }),
+    },
+    {
+      when: 'one whose entries the caller can still change',
+      journal: forge({ ...journal, entries: [...journal.entries] }),
+    },
+  ]
+
+  it.each(forgeries)('is rejected by postEntry: $when', ({ journal }) => {
+    expect(() => postEntry(journal, sale)).toThrow(TypeError)
+  })
+
+  it.each(forgeries)(
+    'is rejected by balance and trialBalance: $when',
+    ({ journal }) => {
+      expect(() => balance(journal, '1000', { toDay: 10 })).toThrow(TypeError)
+      expect(() => trialBalance(journal, 10)).toThrow(TypeError)
+    },
+  )
+})

@@ -103,7 +103,7 @@ Outside unit tests, three callers advance the game:
 
 ## How journal entries are created
 
-`src/finance/journal.ts` owns the books. A `Journal` is a branded type that only `emptyJournal()` and `postEntry(journal, entry)` make. `postEntry` returns a new journal with the entry after the others. It throws an Error that names the memo and the day unless:
+`src/finance/journal.ts` owns the books. A `Journal` is a branded type that only `emptyJournal()` and `postEntry(journal, entry)` make: a spread of a journal does not type-check as one, and `postEntry()`, `balance()`, `trialBalance()` and the statements throw a TypeError on any other object, such as a cast or untyped data. `postEntry` returns a new journal with the entry after the others. It throws an Error that names the memo and the day unless:
 - the day is a whole number of at least 0, no earlier than the last entry's day;
 - the entry has at least one line;
 - every line uses an account from the chart;

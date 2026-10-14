@@ -494,6 +494,21 @@ describe('the statements together', () => {
     expect(() => cashFlowStatement(journal, 3, 2)).toThrow(RangeError)
   })
 
+  it('reject a journal that emptyJournal() and postEntry() did not make', () => {
+    // A spread does not type-check as a Journal; the cast stands for any
+    // way past the type check, to reach the runtime one.
+    const forged = {
+      ...journal,
+      entries: [
+        ...journal.entries,
+        entry(6, 'Vente (crédit oublié)', dr('1000', 10_000)),
+      ],
+    } as object as Journal
+    expect(() => incomeStatement(forged, 0, 6)).toThrow(TypeError)
+    expect(() => balanceSheet(forged, 6)).toThrow(TypeError)
+    expect(() => cashFlowStatement(forged, 0, 6)).toThrow(TypeError)
+  })
+
   it('throw when a total leaves the safe integer range', () => {
     const rich = post(
       entry(0, 'Mise de fonds', dr('1000', MAX), cr('3000', MAX)),

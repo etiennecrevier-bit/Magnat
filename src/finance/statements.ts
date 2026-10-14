@@ -7,7 +7,7 @@
 import { add, cents, sub, sum, type Cents } from '../engine/money.ts'
 import type { Day } from '../engine/types.ts'
 import { ACCOUNTS, getAccount, type AccountCode } from './accounts.ts'
-import type { Journal } from './journal.ts'
+import { entriesOf, type Journal } from './journal.ts'
 
 /** One row of a statement. */
 export interface StatementLine {
@@ -231,7 +231,8 @@ const CASH_FLOW_ROW: Record<Exclude<AccountCode, typeof CASH>, CashFlowRow> = {
  * The état des résultats over the entries from `fromDay` to `toDay`, both
  * included. Throws a RangeError unless both days are safe integers and
  * `fromDay` is no later than `toDay`, or if an amount leaves the safe integer
- * range.
+ * range, and a TypeError unless `emptyJournal()` or `postEntry()` made
+ * `journal`.
  */
 export function incomeStatement(
   journal: Journal,
@@ -246,7 +247,8 @@ export function incomeStatement(
 /**
  * The bilan after every entry up to and including `atDay`; a day before the
  * first entry gives zeros. Throws a RangeError unless `atDay` is a safe
- * integer, or if an amount leaves the safe integer range.
+ * integer, or if an amount leaves the safe integer range, and a TypeError
+ * unless `emptyJournal()` or `postEntry()` made `journal`.
  */
 export function balanceSheet(journal: Journal, atDay: Day): BalanceSheet {
   checkDay(atDay)
@@ -257,7 +259,8 @@ export function balanceSheet(journal: Journal, atDay: Day): BalanceSheet {
  * The état des flux de trésorerie over the entries from `fromDay` to `toDay`,
  * both included. Throws a RangeError unless both days are safe integers and
  * `fromDay` is no later than `toDay`, or if an amount leaves the safe integer
- * range.
+ * range, and a TypeError unless `emptyJournal()` or `postEntry()` made
+ * `journal`.
  */
 export function cashFlowStatement(
   journal: Journal,
@@ -276,7 +279,7 @@ export function cashFlowStatement(
   // lines of one entry whose accounts feed different rows (depreciation
   // posted with a sale, say) move cash between those rows, so the engine
   // should post such pairs as entries of their own.
-  for (const { day, lines } of journal.entries) {
+  for (const { day, lines } of entriesOf(journal)) {
     // Days never go down, so no later entry can be in range either.
     if (day > toDay) break
     if (!lines.some(({ account }) => account === CASH)) continue
@@ -441,7 +444,7 @@ function netDebits(
   { fromDay = -Infinity, toDay }: { fromDay?: Day; toDay: Day },
 ): Nets {
   const nets = new Map<AccountCode, Cents>()
-  for (const { day, lines } of journal.entries) {
+  for (const { day, lines } of entriesOf(journal)) {
     // Days never go down, so no later entry can be in range either.
     if (day > toDay) break
     if (day < fromDay) continue
