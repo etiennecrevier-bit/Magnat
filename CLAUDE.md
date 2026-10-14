@@ -17,6 +17,7 @@ Single-player browser tycoon game in French (Quebec). The player grows a food tr
 5. Every tunable number (prices, costs, pacing, demand) lives in JSON under `src/content/`. No magic numbers in engine code.
 6. `src/engine/types.ts` is the shared contract. Do not change it unless your card explicitly says so.
 7. Every journal entry balances (debits = credits). Posting an unbalanced entry throws.
+8. Any card that adds a field to `GameState` extends the save schema and its tests. Bump `saveVersion` when an older save can no longer load.
 
 ## Language
 - Code, comments, commits, pull requests and docs: English.
