@@ -1,5 +1,7 @@
 # Magnat
 
+[![CI](https://github.com/etiennecrevier-bit/Magnat/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/etiennecrevier-bit/Magnat/actions/workflows/ci.yml)
+
 Single-player browser tycoon game in French (Quebec) where you grow a food truck into a business empire and learn finance and operations without being taught.
 
 ## Requirements
