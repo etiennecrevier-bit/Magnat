@@ -2,7 +2,7 @@
 // The contract the engine, the books, the UI and the tools share; see
 // docs/architecture.md for how the game uses it.
 
-import type { ProductId } from '../content/schema.ts'
+import type { ProductId, SegmentId } from '../content/schema.ts'
 import type { Journal } from '../finance/journal.ts'
 import type { Cents } from './money.ts'
 
@@ -35,7 +35,42 @@ export interface DaySummary {
   readonly lostSales: PerProduct
   /** Units written off at the close because their shelf life was over. */
   readonly spoiled: PerProduct
+  /** Each customer segment's visits, counted by how they ended. */
+  readonly segments: Readonly<Record<SegmentId, SegmentSummary>>
+  /** Every walk-in's visit, in arrival order. */
+  readonly visits: readonly Visit[]
 }
+
+/** One customer segment's visits on a business day. */
+export interface SegmentSummary {
+  /** Walk-ins of this segment. */
+  readonly visits: number
+  /** Visits that bought at least one unit. */
+  readonly buyers: number
+  /** Visits that bought nothing because a price was above what they pay. */
+  readonly tooExpensive: number
+  /** Visits that bought nothing because what they wanted had sold out. */
+  readonly soldOut: number
+}
+
+/** One walk-in customer at the truck. */
+export interface Visit {
+  /** When they arrived, in minutes from midnight: 450 is 7 h 30. */
+  readonly arrivalMinute: number
+  /** The customer segment they belong to. */
+  readonly segment: SegmentId
+  /** Units they bought: 0 or 1 of each product. */
+  readonly bought: PerProduct
+  /** How the visit ended. */
+  readonly outcome: VisitOutcome
+}
+
+/**
+ * How a visit ended: `bought` if they bought anything. Otherwise `soldOut`
+ * if something they wanted had sold out, then `tooExpensive` if a price
+ * above their reference kept them from buying, and `browsed` if neither.
+ */
+export type VisitOutcome = 'bought' | 'tooExpensive' | 'soldOut' | 'browsed'
 
 /**
  * The whole game. `createInitialState()` and `tick()` return it at the start

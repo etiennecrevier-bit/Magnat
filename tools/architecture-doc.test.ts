@@ -3,8 +3,12 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
-import { loadFoodTruckContent } from '../src/content/schema.ts'
+import {
+  loadCustomerContent,
+  loadFoodTruckContent,
+} from '../src/content/schema.ts'
 import { createInitialState, tick } from '../src/engine/clock.ts'
+import { SEGMENTS } from '../src/engine/customers.ts'
 import { openingJournal } from '../src/engine/day.ts'
 import { PRODUCTS } from '../src/engine/inventory.ts'
 
@@ -29,7 +33,17 @@ const REPO_PATH = /`((?:src|tests|tools|docs)\/[^`\s]*)`/g
 
 // Content under which every step that posts an entry posts it every day: each
 // product is bought daily, far more than a day's customers want, and spoils
-// at its first close. The seed and the days are fixed, so the run is too.
+// at its first close. The seed, the customers and the days are fixed, so the
+// run is too.
+const CROWD = {
+  name: 'Test',
+  segmentShares: Object.fromEntries(
+    SEGMENTS.map((segment) => [segment, 1 / SEGMENTS.length]),
+  ),
+  productAppeal: Object.fromEntries(PRODUCTS.map((product) => [product, 1])),
+  patienceMultiplier: 1,
+  arrivalWeights: [1, 1, 1, 1],
+}
 const EVERY_ENTRY = loadFoodTruckContent({
   startingCapitalCents: 1_000_000,
   products: Object.fromEntries(
@@ -45,15 +59,39 @@ const EVERY_ENTRY = loadFoodTruckContent({
   ),
   dailyFixedCostsCents: { rentAndPermit: 4_000, fuelAndMaintenance: 2_000 },
   walkIns: {
-    weekdayCustomers: 50,
-    weekendCustomers: 40,
     noiseStdDevRatio: 0.1,
+    opensAtMinute: 420,
+    closesAtMinute: 900,
+    arrivalSlotMinutes: 120,
+    dayTypes: {
+      semaine: { ...CROWD, customers: 50 },
+      finDeSemaine: { ...CROWD, customers: 40 },
+    },
   },
-  purchaseProbability: Object.fromEntries(
-    PRODUCTS.map((product) => [product, 0.5]),
-  ),
   restockPolicy: Object.fromEntries(
     PRODUCTS.map((product) => [product, { kind: 'buyDaily', quantity: 1_000 }]),
+  ),
+})
+// Every segment pays 300 ¢ as its reference, so each wants each product with
+// a chance of one half.
+const EVERY_CUSTOMER = loadCustomerContent({
+  segments: Object.fromEntries(
+    SEGMENTS.map((segment) => [
+      segment,
+      {
+        name: segment,
+        products: Object.fromEntries(
+          PRODUCTS.map((product) => [
+            product,
+            {
+              referencePriceCents: 300,
+              purchaseProbability: 0.5,
+              sensitivity: 4,
+            },
+          ]),
+        ),
+      },
+    ]),
   ),
 })
 const SEED = 42
@@ -185,7 +223,7 @@ describe(DOC, () => {
     const posted: string[][] = []
     for (let day = 0; day < DAYS; day += 1) {
       const before = state.journal.entries.length
-      state = tick(state, EVERY_ENTRY)
+      state = tick(state, EVERY_ENTRY, EVERY_CUSTOMER)
       posted.push(state.journal.entries.slice(before).map(({ memo }) => memo))
     }
     expect(posted).toEqual(Array.from({ length: DAYS }, () => documented))

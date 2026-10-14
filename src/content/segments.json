@@ -1,0 +1,66 @@
+{
+  "_note": "Starting values, tuned in P2-16",
+  "segments": {
+    "aubaine": {
+      "name": "Chasseurs d'aubaines",
+      "products": {
+        "cafe": {
+          "referencePriceCents": 200,
+          "purchaseProbability": 0.9,
+          "sensitivity": 8
+        },
+        "chocolat": {
+          "referencePriceCents": 275,
+          "purchaseProbability": 0.6,
+          "sensitivity": 8
+        },
+        "croissant": {
+          "referencePriceCents": 250,
+          "purchaseProbability": 0.6,
+          "sensitivity": 8
+        }
+      }
+    },
+    "habitue": {
+      "name": "Habitués",
+      "products": {
+        "cafe": {
+          "referencePriceCents": 250,
+          "purchaseProbability": 0.95,
+          "sensitivity": 4
+        },
+        "chocolat": {
+          "referencePriceCents": 350,
+          "purchaseProbability": 0.5,
+          "sensitivity": 4
+        },
+        "croissant": {
+          "referencePriceCents": 325,
+          "purchaseProbability": 0.55,
+          "sensitivity": 4
+        }
+      }
+    },
+    "chic": {
+      "name": "Clientèle chic",
+      "products": {
+        "cafe": {
+          "referencePriceCents": 350,
+          "purchaseProbability": 0.7,
+          "sensitivity": 1.5
+        },
+        "chocolat": {
+          "referencePriceCents": 450,
+          "purchaseProbability": 0.5,
+          "sensitivity": 1.5
+        },
+        "croissant": {
+          "referencePriceCents": 450,
+          "purchaseProbability": 0.45,
+          "sensitivity": 1.5
+        }
+      },
+      "tooCheap": { "belowRatio": 0.4, "steepness": 15 }
+    }
+  }
+}

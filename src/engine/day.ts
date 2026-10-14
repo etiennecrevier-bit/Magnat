@@ -1,5 +1,7 @@
 import {
+  loadCustomerContent,
   loadFoodTruckContent,
+  type CustomerContent,
   type FoodTruckContent,
   type ProductId,
   type RestockRule,
@@ -11,6 +13,7 @@ import {
   type Journal,
   type JournalLine,
 } from '../finance/journal.ts'
+import { dayTypeOf, serveWalkIns } from './customers.ts'
 import {
   PRODUCTS,
   onHand,
@@ -19,11 +22,13 @@ import {
   takeFifo,
 } from './inventory.ts'
 import { add, cents, mulInt, type Cents } from './money.ts'
-import { next, normal } from './rng.ts'
 import type { Day, GameState, Lot, PerProduct } from './types.ts'
 
 /** The shipped food truck content, validated once when the engine loads. */
 export const FOOD_TRUCK: FoodTruckContent = loadFoodTruckContent()
+
+/** The shipped customer segments, validated once when the engine loads. */
+export const CUSTOMERS: CustomerContent = loadCustomerContent()
 
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
@@ -44,9 +49,6 @@ const MEMO = {
   spoilage: 'Marchandises périmées',
 } as const
 
-// ISO 8601 weekdays run from 1 = Monday to 7 = Sunday; a calendar fact.
-const FIRST_WEEKEND_DAY = 6
-
 const ZERO = cents(0)
 
 /** The books a game opens with: the owner's capital, paid in on day 0. */
@@ -61,17 +63,31 @@ export function openingJournal(
 }
 
 /**
+ * What one unit of `product` sells for today: for now, its base price in the
+ * content. Everything that prices a sale reads it, so P2-04 lets the player
+ * set prices by changing only this function.
+ */
+export function currentPrice(
+  _state: GameState,
+  product: ProductId,
+  content: FoodTruckContent = FOOD_TRUCK,
+): Cents {
+  return content.products[product].basePriceCents
+}
+
+/**
  * Plays business day `state.day`, which falls on ISO `weekday` (1 = Monday):
- * the morning restock, walk-in customers, sales from stock on hand, the fixed
- * costs and the spoilage at the close. Every entry is dated `state.day`.
- * Returns a new state on the same day with the books, the stock, the
- * generator and `lastDay` brought up to the close; never mutates `state`.
- * Cash may go negative.
+ * the morning restock, the walk-in customers buying from the stock on hand
+ * as they arrive, the fixed costs and the spoilage at the close. Every entry
+ * is dated `state.day`. Returns a new state on the same day with the books,
+ * the stock, the generator and `lastDay` brought up to the close; never
+ * mutates `state`. Cash may go negative.
  */
 export function playDay(
   state: GameState,
   weekday: number,
   content: FoodTruckContent = FOOD_TRUCK,
+  customers: CustomerContent = CUSTOMERS,
 ): GameState {
   const { day } = state
   let journal = state.journal
@@ -82,11 +98,19 @@ export function playDay(
     credit(CASH, restocked.cost),
   ])
 
-  const [demand, rngState] = walkInDemand(state.rngState, weekday, content)
+  const price = (product: ProductId) => currentPrice(state, product, content)
+  const served = serveWalkIns(
+    state.rngState,
+    content.walkIns,
+    dayTypeOf(weekday),
+    customers,
+    price,
+    perProduct((product) => onHand(restocked.lots, product)),
+  )
 
   // The sale and its cost are separate entries, so each cash entry's other
   // lines stay on one row of the état des flux de trésorerie.
-  const sales = sell(restocked.lots, demand, content)
+  const sales = sell(restocked.lots, served.sold, price)
   journal = post(journal, day, MEMO.sales, [
     debit(CASH, sales.revenue),
     credit(SALES, sales.revenue),
@@ -115,15 +139,17 @@ export function playDay(
 
   return {
     ...state,
-    rngState,
+    rngState: served.rngState,
     journal,
     inventory: expired.lots,
     lastDay: {
       day,
-      sold: sales.sold,
+      sold: served.sold,
       revenue: sales.revenue,
-      lostSales: sales.lost,
+      lostSales: served.lost,
       spoiled: expired.spoiled,
+      segments: served.segments,
+      visits: served.visits,
     },
   }
 }
@@ -159,71 +185,33 @@ function orderSize(rule: RestockRule, onHandNow: number): number {
   }
 }
 
-/**
- * The units customers ask for today. The day's traffic gets a normal noise
- * (two draws); then each customer draws once per product, in `PRODUCTS`
- * order, and wants one unit when the draw is below its probability.
- */
-function walkInDemand(
-  rngState: number,
-  weekday: number,
-  content: FoodTruckContent,
-): [PerProduct, number] {
-  const { weekdayCustomers, weekendCustomers, noiseStdDevRatio } =
-    content.walkIns
-  const traffic =
-    weekday >= FIRST_WEEKEND_DAY ? weekendCustomers : weekdayCustomers
-  const [noise, afterNoise] = normal(rngState, 1, noiseStdDevRatio)
-  const customers = Math.max(0, Math.round(traffic * noise))
-
-  let state = afterNoise
-  const wanted = new Map<ProductId, number>()
-  for (let customer = 0; customer < customers; customer += 1) {
-    for (const product of PRODUCTS) {
-      const [draw, nextState] = next(state)
-      state = nextState
-      if (draw < content.purchaseProbability[product]) {
-        wanted.set(product, (wanted.get(product) ?? 0) + 1)
-      }
-    }
-  }
-  return [perProduct((product) => wanted.get(product) ?? 0), state]
-}
-
 interface Sales {
   lots: readonly Lot[]
-  sold: PerProduct
-  lost: PerProduct
   revenue: Cents
   /** What the units sold cost, first in, first out. */
   cost: Cents
 }
 
-/** Sells what customers ask for, as far as the stock on hand goes. */
+/**
+ * Takes the units customers bought out of the stock, oldest lot first, and
+ * prices them. Customers buy one at a time as they arrive, but taking a
+ * product's day total at once takes the same units from the same lots.
+ */
 function sell(
   lots: readonly Lot[],
-  demand: PerProduct,
-  content: FoodTruckContent,
+  sold: PerProduct,
+  price: (product: ProductId) => Cents,
 ): Sales {
   let left = lots
   let revenue = ZERO
   let cost = ZERO
-  const sold = new Map<ProductId, number>()
   for (const product of PRODUCTS) {
-    const taken = takeFifo(left, product, demand[product])
+    const taken = takeFifo(left, product, sold[product])
     left = taken.lots
-    sold.set(product, taken.taken)
-    const price = content.products[product].basePriceCents
-    revenue = add(revenue, mulInt(price, taken.taken))
+    revenue = add(revenue, mulInt(price(product), taken.taken))
     cost = add(cost, taken.cost)
   }
-  return {
-    lots: left,
-    sold: perProduct((product) => sold.get(product) ?? 0),
-    lost: perProduct((product) => demand[product] - (sold.get(product) ?? 0)),
-    revenue,
-    cost,
-  }
+  return { lots: left, revenue, cost }
 }
 
 /**
