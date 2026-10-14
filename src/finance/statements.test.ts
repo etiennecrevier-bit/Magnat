@@ -51,6 +51,13 @@ function rowsOf(value: unknown): StatementLine[] {
   return Object.values(value).flatMap(rowsOf)
 }
 
+/** The rows of the three activities that show a cash flow. */
+function cashRows(statement: CashFlowStatement): StatementLine[] {
+  return [statement.operating, statement.investing, statement.financing]
+    .flatMap(({ lines }) => lines)
+    .filter(({ amount }) => amount !== 0)
+}
+
 function expectDeepFrozen(value: unknown): void {
   if (typeof value !== 'object' || value === null) return
   expect(Object.isFrozen(value)).toBe(true)
@@ -363,6 +370,58 @@ describe('cashFlowStatement', () => {
     expect(rowsOf(flows).every(({ amount }) => amount === 0)).toBe(true)
     expect(openingCash.amount).toBe(100_000)
     expect(closingCash.amount).toBe(100_000)
+  })
+
+  // A cash entry can also hold lines that move no cash, such as the part of a
+  // purchase a loan pays for or the depreciation of the day. Only the cash
+  // that went through Encaisse shows.
+  it('shows only the down payment on a truck the bank pays the rest of', () => {
+    const books = post(
+      entry(0, 'Mise de fonds', dr('1000', 1_000_000), cr('3000', 1_000_000)),
+      entry(
+        1,
+        'Camion',
+        dr('1500', 3_000_000),
+        cr('1000', 500_000),
+        cr('2500', 2_500_000),
+      ),
+    )
+    const statement = cashFlowStatement(books, 1, 1)
+    expect(cashRows(statement)).toEqual([row('Équipement', -500_000)])
+    expect(statement.netChange.amount).toBe(-500_000)
+  })
+
+  it('shows no cash flow for depreciation posted with a cash sale', () => {
+    const books = post(
+      entry(
+        0,
+        'Clôture du jour',
+        dr('1000', 45_000),
+        cr('4000', 45_000),
+        dr('6400', 1_000),
+        cr('1510', 1_000),
+      ),
+    )
+    const statement = cashFlowStatement(books, 0, 0)
+    expect(cashRows(statement)).toEqual([
+      row('Encaissements des clients', 45_000),
+    ])
+    expect(statement.netChange.amount).toBe(45_000)
+  })
+
+  it('shows only the part of a loan that reaches Encaisse', () => {
+    const books = post(
+      entry(
+        0,
+        'Prêt',
+        dr('1000', 400_000),
+        dr('2000', 600_000),
+        cr('2500', 1_000_000),
+      ),
+    )
+    const statement = cashFlowStatement(books, 0, 0)
+    expect(cashRows(statement)).toEqual([row('Emprunts bancaires', 400_000)])
+    expect(statement.netChange.amount).toBe(400_000)
   })
 
   // The row each counterpart of Encaisse feeds, kept apart from
