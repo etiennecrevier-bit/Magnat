@@ -59,9 +59,9 @@ export function emptyJournal(): Journal {
  * Returns a new journal with `entry` added after the others; never mutates
  * `journal` or `entry`, and later changes to `entry` do not reach the journal.
  * Throws unless the day is a game day no earlier than the last entry's, the
- * entry has at least one line, every line uses a known account and has a
- * whole, non-negative amount on exactly one side, and the debits add up to
- * the credits.
+ * entry has at least one line, every line is present (no hole, null or
+ * undefined), uses a known account and has a whole, non-negative amount on
+ * exactly one side, and the debits add up to the credits.
  */
 export function postEntry(journal: Journal, entry: JournalEntry): Journal {
   const { day, memo, lines } = entry
@@ -78,8 +78,14 @@ export function postEntry(journal: Journal, entry: JournalEntry): Journal {
 
   let totalDebit = ZERO
   let totalCredit = ZERO
-  const stored = lines.map(({ account, debit, credit }, index) => {
+  const stored: JournalLine[] = []
+  // An index loop, not map: map skips holes, which would then be stored and
+  // break every balance read after this entry.
+  for (let index = 0; index < lines.length; index++) {
     const where = `line ${index + 1}`
+    const line = lines[index]
+    if (typeof line !== 'object' || line === null) fail(`${where}: missing`)
+    const { account, debit, credit } = line
     if (!isAccountCode(account)) fail(`${where}: unknown account ${account}`)
     for (const amount of [debit, credit]) {
       if (!Number.isSafeInteger(amount)) {
@@ -96,12 +102,14 @@ export function postEntry(journal: Journal, entry: JournalEntry): Journal {
     } catch {
       fail('its total is out of range')
     }
-    return Object.freeze({
-      account,
-      debit: cents(debit),
-      credit: cents(credit),
-    })
-  })
+    stored.push(
+      Object.freeze({
+        account,
+        debit: cents(debit),
+        credit: cents(credit),
+      }),
+    )
+  }
 
   if (totalDebit !== totalCredit) {
     fail(`debits of ${totalDebit} do not equal credits of ${totalCredit}`)
