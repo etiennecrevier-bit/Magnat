@@ -6,6 +6,7 @@ import {
   type CalendarDate,
 } from './clock.ts'
 import { openingJournal, playDay } from './day.ts'
+import { startingDecisions } from './decisions.ts'
 import { seedRng } from './rng.ts'
 import type { Day } from './types.ts'
 
@@ -14,7 +15,7 @@ import type { Day } from './types.ts'
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 describe('createInitialState', () => {
-  it('starts on day 0, seeded, with no stock and the capital paid in', () => {
+  it('starts on day 0, seeded, with no stock, the capital paid in and the starting decisions', () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
@@ -22,6 +23,8 @@ describe('createInitialState', () => {
       journal: openingJournal(),
       inventory: [],
       lastDay: null,
+      decisions: startingDecisions(),
+      pendingDecisions: null,
     })
   })
 

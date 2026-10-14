@@ -9,7 +9,7 @@ import {
 } from '../src/content/schema.ts'
 import { createInitialState, tick } from '../src/engine/clock.ts'
 import { SEGMENTS } from '../src/engine/customers.ts'
-import { openingJournal } from '../src/engine/day.ts'
+import { FOOD_TRUCK, openingJournal } from '../src/engine/day.ts'
 import { PRODUCTS } from '../src/engine/inventory.ts'
 
 // Keeps docs/architecture.md in step with the code it describes: the frozen
@@ -31,10 +31,10 @@ const ITALIC = /(?<!\*)\*([^*\n]+)\*(?!\*)/g
 /** A repo path in a code span, such as `src/engine/day.ts`. */
 const REPO_PATH = /`((?:src|tests|tools|docs)\/[^`\s]*)`/g
 
-// Content under which every step that posts an entry posts it every day: each
-// product is bought daily, far more than a day's customers want, and spoils
-// at its first close. The seed, the customers and the days are fixed, so the
-// run is too.
+// Content under which every step that posts an entry posts it every day: the
+// truck opens every day, and each product is bought daily, far more than a
+// day's customers want, and spoils at its first close. The seed, the
+// customers and the days are fixed, so the run is too.
 const CROWD = {
   name: 'Test',
   segmentShares: Object.fromEntries(
@@ -52,7 +52,6 @@ const EVERY_ENTRY = loadFoodTruckContent({
       {
         name: product,
         unitCostCents: 100,
-        basePriceCents: 300,
         shelfLifeDays: 1,
       },
     ]),
@@ -68,9 +67,16 @@ const EVERY_ENTRY = loadFoodTruckContent({
       finDeSemaine: { ...CROWD, customers: 40 },
     },
   },
-  restockPolicy: Object.fromEntries(
-    PRODUCTS.map((product) => [product, { kind: 'buyDaily', quantity: 1_000 }]),
-  ),
+  startingDecisions: {
+    pricesCents: Object.fromEntries(PRODUCTS.map((product) => [product, 300])),
+    restock: Object.fromEntries(
+      PRODUCTS.map((product) => [product, { kind: 'buyDaily', quantity: 500 }]),
+    ),
+    daysOpen: [1, 2, 3, 4, 5, 6, 7],
+    ownerWeeklyPayCents: 70_000,
+    marketingDailyCents: 0,
+  },
+  decisionLimits: FOOD_TRUCK.decisionLimits,
 })
 // Every segment pays 300 ¢ as its reference, so each wants each product with
 // a chance of one half.

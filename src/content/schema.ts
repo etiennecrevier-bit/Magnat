@@ -23,6 +23,13 @@ const MINUTES_PER_DAY = 1440
 /** A minute of the day, counted from midnight: 450 is 7 h 30. */
 const minuteOfDay = z.int().min(0).max(MINUTES_PER_DAY)
 
+// A calendar fact, not a tunable: ISO 8601 weekdays run from 1 = Monday to
+// 7 = Sunday.
+const DAYS_PER_WEEK = 7
+
+/** An ISO 8601 weekday: 1 = Monday to 7 = Sunday. */
+const weekday = z.int().min(1).max(DAYS_PER_WEEK)
+
 // Shares that sum to 1 within this tolerance are taken as a whole.
 const SHARE_SUM_TOLERANCE = 1e-9
 
@@ -41,11 +48,14 @@ export type DayTypeId = z.infer<typeof dayTypeIdSchema>
 const productSchema = z.strictObject({
   name: z.string().min(1),
   unitCostCents: money,
-  basePriceCents: money,
   shelfLifeDays: z.int().positive(),
 })
 
-// Placeholder until the player controls restocking in phase 2.
+/**
+ * How a product is restocked each morning the truck opens: `buyDaily` buys
+ * `quantity` units; `topUp` buys back up to `upTo` units on hand once they
+ * fall below `whenBelow`.
+ */
 const restockRuleSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('buyDaily'), quantity: count }),
   z
@@ -125,6 +135,46 @@ const walkInsSchema = z
 
 export type WalkIns = z.output<typeof walkInsSchema>
 
+/**
+ * How the truck runs when a game starts, until the player changes it. Each
+ * product keeps the kind of restock rule it starts with.
+ */
+const startingDecisionsSchema = z.strictObject({
+  pricesCents: z.record(productIdSchema, money),
+  restock: z.record(productIdSchema, restockRuleSchema),
+  /** The weekdays the truck opens. */
+  daysOpen: z.array(weekday),
+  ownerWeeklyPayCents: money,
+  marketingDailyCents: money,
+})
+
+// A range of values the player may pick, both ends allowed.
+const orderedRange = {
+  check: ({ min, max }: { min: number; max: number }) => min <= max,
+  params: { message: 'min must not exceed max', path: ['min'] },
+}
+
+const moneyRange = z
+  .strictObject({ min: money, max: money })
+  .refine(orderedRange.check, orderedRange.params)
+
+/** What the player may decide; the engine rejects anything outside it. */
+const decisionLimitsSchema = z.strictObject({
+  /** Prices are whole multiples of `step`. */
+  priceCents: z
+    .strictObject({ min: money, max: money, step: z.int().positive() })
+    .refine(orderedRange.check, orderedRange.params),
+  /** The units a restock rule may name. */
+  units: z
+    .strictObject({ min: count, max: count })
+    .refine(orderedRange.check, orderedRange.params),
+  ownerWeeklyPayCents: moneyRange,
+  marketingDailyCents: moneyRange,
+  minDaysOpen: z.int().min(1).max(DAYS_PER_WEEK),
+})
+
+export type DecisionLimits = z.output<typeof decisionLimitsSchema>
+
 // A record keyed by the enum needs every product and rejects any other key.
 export const foodTruckSchema = z.strictObject({
   _note: z.string().optional(),
@@ -135,7 +185,8 @@ export const foodTruckSchema = z.strictObject({
     fuelAndMaintenance: money,
   }),
   walkIns: walkInsSchema,
-  restockPolicy: z.record(productIdSchema, restockRuleSchema),
+  startingDecisions: startingDecisionsSchema,
+  decisionLimits: decisionLimitsSchema,
 })
 
 export type FoodTruckContent = z.output<typeof foodTruckSchema>

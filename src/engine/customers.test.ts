@@ -82,9 +82,13 @@ function weekday(customers: number, change: Partial<DayType> = {}): WalkIns {
   }).walkIns
 }
 
+/** Prices from `set`, and for other products what habitués find fair. */
 function prices(set: Partial<Record<ProductId, number>> = {}) {
   return (product: ProductId): Cents =>
-    cents(set[product] ?? FOOD_TRUCK.products[product].basePriceCents)
+    cents(
+      set[product] ??
+        CUSTOMERS.segments.habitue.products[product].referencePriceCents,
+    )
 }
 
 function stock(units: number | Partial<Record<ProductId, number>>) {

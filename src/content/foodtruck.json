@@ -5,19 +5,16 @@
     "cafe": {
       "name": "Café",
       "unitCostCents": 40,
-      "basePriceCents": 250,
       "shelfLifeDays": 90
     },
     "chocolat": {
       "name": "Chocolat chaud",
       "unitCostCents": 55,
-      "basePriceCents": 350,
       "shelfLifeDays": 90
     },
     "croissant": {
       "name": "Croissant",
       "unitCostCents": 90,
-      "basePriceCents": 325,
       "shelfLifeDays": 1
     }
   },
@@ -49,9 +46,22 @@
       }
     }
   },
-  "restockPolicy": {
-    "cafe": { "kind": "topUp", "whenBelow": 100, "upTo": 300 },
-    "chocolat": { "kind": "topUp", "whenBelow": 50, "upTo": 150 },
-    "croissant": { "kind": "buyDaily", "quantity": 70 }
+  "startingDecisions": {
+    "pricesCents": { "cafe": 325, "chocolat": 350, "croissant": 375 },
+    "restock": {
+      "cafe": { "kind": "topUp", "whenBelow": 100, "upTo": 300 },
+      "chocolat": { "kind": "topUp", "whenBelow": 50, "upTo": 150 },
+      "croissant": { "kind": "buyDaily", "quantity": 70 }
+    },
+    "daysOpen": [2, 3, 4, 5, 6, 7],
+    "ownerWeeklyPayCents": 70000,
+    "marketingDailyCents": 0
+  },
+  "decisionLimits": {
+    "priceCents": { "min": 50, "max": 2000, "step": 5 },
+    "units": { "min": 0, "max": 500 },
+    "ownerWeeklyPayCents": { "min": 0, "max": 300000 },
+    "marketingDailyCents": { "min": 0, "max": 20000 },
+    "minDaysOpen": 1
   }
 }

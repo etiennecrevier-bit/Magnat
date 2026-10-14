@@ -17,6 +17,7 @@ import { balance, trialBalance, type JournalEntry } from '../finance/journal.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
 import { SEGMENTS, dayTypeOf, perSegment } from './customers.ts'
 import { CUSTOMERS, FOOD_TRUCK, currentPrice, openingJournal } from './day.ts'
+import { applyDecision } from './decisions.ts'
 import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
 import { cents } from './money.ts'
 import type { Day, DaySummary, GameState, PerProduct } from './types.ts'
@@ -60,11 +61,18 @@ function evenCrowd(customers: number): DayType {
   }
 }
 
+/** What one unit of each product sells for when a game starts. */
+const STARTING_PRICES = FOOD_TRUCK.startingDecisions.pricesCents
+
+/** Every ISO weekday, Monday to Sunday. */
+const EVERY_DAY = [1, 2, 3, 4, 5, 6, 7]
+
 /**
- * The baseline the day tests change: 120 customers on weekdays and 80 on
- * weekends, with the same tastes, and every segment's reference price is the
- * base price. So each customer wants a product with exactly its purchase
- * probability, whatever the segment (see `buying`).
+ * The baseline the day tests change: the truck opens every day, 120 customers
+ * come on weekdays and 80 on weekends, with the same tastes, and every
+ * segment's reference price is the starting price. So each customer wants a
+ * product with exactly its purchase probability, whatever the segment (see
+ * `buying`).
  */
 const FLAT: Content = {
   truck: loadFoodTruckContent({
@@ -73,12 +81,13 @@ const FLAT: Content = {
       ...FOOD_TRUCK.walkIns,
       dayTypes: { semaine: evenCrowd(120), finDeSemaine: evenCrowd(80) },
     },
+    startingDecisions: { ...FOOD_TRUCK.startingDecisions, daysOpen: EVERY_DAY },
   }),
   customers: loadCustomerContent({
     segments: perSegment((id) => ({
       name: CUSTOMERS.segments[id].name,
       products: byProduct((product) => ({
-        referencePriceCents: FOOD_TRUCK.products[product].basePriceCents,
+        referencePriceCents: STARTING_PRICES[product],
         purchaseProbability: { cafe: 0.8, chocolat: 0.3, croissant: 0.5 }[
           product
         ],
@@ -164,10 +173,23 @@ function buying(probability: Partial<Record<ProductId, number>>): Change {
   }))
 }
 
+type StartingDecisions = FoodTruckContent['startingDecisions']
+
+/** Changes the decisions a game starts with. */
+function deciding(change: Partial<StartingDecisions>): Change {
+  return truck((t) => ({
+    ...t,
+    startingDecisions: { ...t.startingDecisions, ...change },
+  }))
+}
+
 function restocking(rules: Partial<Record<ProductId, RestockRule>>): Change {
   return truck((t) => ({
     ...t,
-    restockPolicy: { ...t.restockPolicy, ...rules },
+    startingDecisions: {
+      ...t.startingDecisions,
+      restock: { ...t.startingDecisions.restock, ...rules },
+    },
   }))
 }
 
@@ -185,8 +207,14 @@ function unitCost(id: ProductId, unitCostCents: number): Change {
   return product(id, { unitCostCents: cents(unitCostCents) })
 }
 
-function pricing(id: ProductId, basePriceCents: number): Change {
-  return product(id, { basePriceCents: cents(basePriceCents) })
+function pricing(id: ProductId, price: number): Change {
+  return truck((t) => ({
+    ...t,
+    startingDecisions: {
+      ...t.startingDecisions,
+      pricesCents: { ...t.startingDecisions.pricesCents, [id]: cents(price) },
+    },
+  }))
 }
 
 function fixedCosts(rentAndPermit: number, fuelAndMaintenance: number): Change {
@@ -302,7 +330,8 @@ function units(count: PerProduct): number {
  * units, the Stocks account carries the lots' cost and the books balance.
  * The visits come in arrival order within opening hours, each buying at most
  * one unit of each product, and add up to the units sold and to the segments'
- * counts; the revenue is the units sold at `currentPrice`.
+ * counts; the revenue is the units sold at `currentPrice`, so the run must
+ * not change the prices.
  */
 function expectConsistent(state: GameState, content: Content): void {
   const lastDay = summary(state)
@@ -323,8 +352,7 @@ function expectConsistent(state: GameState, content: Content): void {
 
   const revenue = PRODUCTS.reduce(
     (total, product) =>
-      total +
-      lastDay.sold[product] * currentPrice(state, product, content.truck),
+      total + lastDay.sold[product] * currentPrice(state, product),
     0,
   )
   expect(lastDay.revenue).toBe(revenue)
@@ -386,15 +414,12 @@ describe('the opening books', () => {
 })
 
 describe('currentPrice', () => {
-  it("is each product's base price", () => {
-    const state = start()
+  it("is each product's price in the decisions", () => {
     for (const product of PRODUCTS) {
-      expect(currentPrice(state, product)).toBe(
-        FOOD_TRUCK.products[product].basePriceCents,
-      )
+      expect(currentPrice(start(), product)).toBe(STARTING_PRICES[product])
     }
-    const dearer = variant(pricing('chocolat', 425)).truck
-    expect(currentPrice(state, 'chocolat', dearer)).toBe(425)
+    const dearer = start(variant(pricing('chocolat', 425)))
+    expect(currentPrice(dearer, 'chocolat')).toBe(425)
   })
 })
 
@@ -415,7 +440,7 @@ describe('tick', () => {
     )
     const from = start(content)
     const state = step(from, content)
-    const price = (id: ProductId) => content.truck.products[id].basePriceCents
+    const price = (id: ProductId) => currentPrice(from, id)
     const revenue = 10 * price('cafe') + 10 * price('chocolat')
 
     expect(state.day).toBe(1)
@@ -489,9 +514,7 @@ describe('determinism', () => {
 
   it('brings the same customers whatever the prices', () => {
     const dearer = shipped(
-      ...PRODUCTS.map((id) =>
-        pricing(id, FOOD_TRUCK.products[id].basePriceCents + 100),
-      ),
+      ...PRODUCTS.map((id) => pricing(id, STARTING_PRICES[id] + 100)),
     )
     const base = play(30)
     const other = play(30, dearer)
@@ -561,7 +584,7 @@ describe('walk-in demand', () => {
       unitCost('croissant', 90),
     )
     const state = after(1, content)
-    const price = (id: ProductId) => content.truck.products[id].basePriceCents
+    const price = (id: ProductId) => currentPrice(start(content), id)
     const revenue =
       30 * price('cafe') + 20 * price('chocolat') + 10 * price('croissant')
 
@@ -609,7 +632,7 @@ describe('walk-in demand', () => {
       buying({ cafe: 1, chocolat: 1, croissant: 1 }),
       everySegment((odds, id) => ({
         ...odds,
-        referencePriceCents: cents(FOOD_TRUCK.products[id].basePriceCents / 5),
+        referencePriceCents: cents(Math.round(STARTING_PRICES[id] / 5)),
         sensitivity: 50,
       })),
     )
@@ -639,11 +662,22 @@ describe('walk-in demand', () => {
 })
 
 describe('prices and crowds over a year', () => {
-  // The shipped segments and crowds from seed 42, with so much stock that no
-  // sale is ever lost.
-  const AMPLE = restocking(byProduct(() => buyDaily(1_000)))
+  // The shipped segments, crowds and days open from seed 42, with so much
+  // stock that no sale is ever lost.
+  const AMPLE = restocking(byProduct(() => buyDaily(500)))
   const STEP_CENTS = 30
   const PRICES = 6
+  const { step } = FOOD_TRUCK.decisionLimits.priceCents
+
+  /** The price habitués find fair for `id`: where the price steps start. */
+  function fairPrice(id: ProductId): number {
+    return CUSTOMERS.segments.habitue.products[id].referencePriceCents
+  }
+
+  /** `price` rounded to a price the player may set. */
+  function settable(price: number): number {
+    return Math.round(price / step) * step
+  }
 
   interface Year {
     /** Units each segment bought of each product. */
@@ -675,8 +709,7 @@ describe('prices and crowds over a year', () => {
       expect(lastDay.revenue).toBe(
         PRODUCTS.reduce(
           (total, product) =>
-            total +
-            lastDay.sold[product] * currentPrice(state, product, content.truck),
+            total + lastDay.sold[product] * currentPrice(state, product),
           0,
         ),
       )
@@ -697,9 +730,8 @@ describe('prices and crowds over a year', () => {
   it.each(PRODUCTS)(
     'sells less %s to every segment at each higher price',
     (id) => {
-      const base = FOOD_TRUCK.products[id].basePriceCents
-      const played = Array.from({ length: PRICES }, (_, step) =>
-        yearAt(id, base + step * STEP_CENTS),
+      const played = Array.from({ length: PRICES }, (_, n) =>
+        yearAt(id, settable(fairPrice(id) + n * STEP_CENTS)),
       )
       expect(played.map(({ lostSales }) => lostSales)).toEqual(
         played.map(() => 0),
@@ -707,9 +739,9 @@ describe('prices and crowds over a year', () => {
       for (const segment of SEGMENTS) {
         const sold = played.map(({ bought }) => bought[segment][id])
         expect(sold[PRICES - 1]).toBeGreaterThan(0)
-        for (let step = 1; step < PRICES; step += 1) {
-          expect(sold[step], `${segment} at step ${step}`).toBeLessThan(
-            sold[step - 1] ?? 0,
+        for (let n = 1; n < PRICES; n += 1) {
+          expect(sold[n], `${segment} at step ${n}`).toBeLessThan(
+            sold[n - 1] ?? 0,
           )
         }
       }
@@ -719,9 +751,9 @@ describe('prices and crowds over a year', () => {
   it.each(PRODUCTS)(
     'loses more bargain hunters than chic customers when %s costs a fifth more',
     (id) => {
-      const base = FOOD_TRUCK.products[id].basePriceCents
-      const before = yearAt().bought
-      const dearer = yearAt(id, Math.round(base * 1.2)).bought
+      const fair = fairPrice(id)
+      const before = yearAt(id, settable(fair)).bought
+      const dearer = yearAt(id, settable(fair * 1.2)).bought
       const drop = (segment: SegmentId) =>
         1 - dearer[segment][id] / before[segment][id]
       expect(drop('aubaine')).toBeGreaterThan(drop('chic'))
@@ -777,30 +809,24 @@ describe('restocking', () => {
   it.each(['cafe', 'chocolat'] as const)(
     'costs %s sales first in, first out across lots bought at other prices',
     (id) => {
-      // Bought at 10 ¢, then at 20 ¢, and sold once it costs 40 ¢ to buy.
+      // Bought at 10 ¢, then at 20 ¢, and sold once it costs 40 ¢ to buy. Each
+      // order is decided the day before it is placed.
       const quiet = [
         NO_RESTOCK,
+        restocking({ [id]: buyDaily(3) }),
         buying({ cafe: 0, chocolat: 0, croissant: 0, [id]: 1 }),
       ]
+      const order = (state: GameState, quantity: number) =>
+        applyDecision(state, {
+          kind: 'restock',
+          product: id,
+          rule: buyDaily(quantity),
+        })
       let state = start(variant(...quiet))
-      state = step(
-        state,
-        variant(
-          ...quiet,
-          crowd(0),
-          unitCost(id, 10),
-          restocking({ [id]: buyDaily(3) }),
-        ),
-      )
-      state = step(
-        state,
-        variant(
-          ...quiet,
-          crowd(0),
-          unitCost(id, 20),
-          restocking({ [id]: buyDaily(5) }),
-        ),
-      )
+      state = order(state, 5)
+      state = step(state, variant(...quiet, crowd(0), unitCost(id, 10)))
+      state = order(state, 0)
+      state = step(state, variant(...quiet, crowd(0), unitCost(id, 20)))
       state = step(state, variant(...quiet, crowd(5), unitCost(id, 40)))
 
       expect(entry(state, 2, MEMO.costOfSales)).toEqual(
@@ -815,10 +841,12 @@ describe('restocking', () => {
 })
 
 describe('fixed costs', () => {
-  it('are paid every day, weekends included', () => {
+  it('are paid every day, weekends and closed days included', () => {
     const { rentAndPermit, fuelAndMaintenance } =
       FOOD_TRUCK.dailyFixedCostsCents
+    // Day 0 is a Monday, closed under the starting decisions.
     const last = after(7)
+    expect(summary(after(1)).visits).toEqual([])
     for (let day = 0; day < 7; day += 1) {
       expect(entry(last, day, MEMO.fixedCosts).lines).toEqual([
         { account: '6100', debit: rentAndPermit, credit: 0 },
@@ -958,6 +986,10 @@ describe('day properties', () => {
       .tuple(fc.integer({ min: 0, max: 300 }), fc.integer({ min: 0, max: 300 }))
       .map(([a, b]) => topUp(Math.min(a, b), Math.max(a, b))),
   )
+  const { min, max, step } = FOOD_TRUCK.decisionLimits.priceCents
+  const price = fc
+    .integer({ min: Math.ceil(min / step), max: Math.floor(max / step) })
+    .map((n) => n * step)
   const probability = fc.double({ min: 0, max: 1, noNaN: true })
   const perId = <T>(arbitrary: fc.Arbitrary<T>) =>
     fc.record(byProduct(() => arbitrary))
@@ -967,9 +999,10 @@ describe('day properties', () => {
     weekend: fc.integer({ min: 0, max: 200 }),
     noise: fc.double({ min: 0, max: 0.5, noNaN: true }),
     buying: perId(probability),
-    price: perId(fc.integer({ min: 0, max: 1_000 })),
+    price: perId(price),
     rules: perId(rule),
     shelfLife: perId(fc.integer({ min: 1, max: 10 })),
+    daysOpen: fc.subarray(EVERY_DAY, { minLength: 1 }),
   })
 
   it('keep the stock whole and the books in step with it', () => {
@@ -982,13 +1015,12 @@ describe('day properties', () => {
             walkIns: { ...t.walkIns, noiseStdDevRatio: s.noise },
           })),
           ...PRODUCTS.map((id) =>
-            product(id, {
-              basePriceCents: cents(s.price[id]),
-              shelfLifeDays: s.shelfLife[id],
-            }),
+            product(id, { shelfLifeDays: s.shelfLife[id] }),
           ),
+          ...PRODUCTS.map((id) => pricing(id, s.price[id])),
           buying(s.buying),
           restocking(s.rules),
+          deciding({ daysOpen: s.daysOpen }),
         )
         for (const state of play(40, content, start(content, s.seed))) {
           expectConsistent(state, content)
