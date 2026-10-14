@@ -70,8 +70,16 @@ export function normal(state: number, mean: number, sd: number): Draw {
   return [mean + sd * z, nextState]
 }
 
+/**
+ * Whether `n` is a seed or generator state the functions here accept: an
+ * integer in [0, 2^32).
+ */
+export function isRngState(n: number): boolean {
+  return Number.isInteger(n) && n >= 0 && n < UINT32_RANGE
+}
+
 function assertUint32(n: number, name: string): void {
-  if (!Number.isInteger(n) || n < 0 || n >= UINT32_RANGE) {
+  if (!isRngState(n)) {
     throw new RangeError(`Invalid ${name}: ${n}`)
   }
 }
