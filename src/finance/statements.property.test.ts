@@ -17,10 +17,11 @@ import {
   type StatementSection,
 } from './statements.ts'
 
-// The generators below copy those of journal.property.test.ts. Bounds keep
-// every run small: at most MAX_ENTRIES entries, MAX_GAP days apart, so the
-// checks below that walk every day stay cheap. Amounts stay far enough below
-// the safe integer range that no total can leave it.
+// The generators below copy those of journal.property.test.ts, but draw
+// Encaisse more often. Bounds keep every run small: at most MAX_ENTRIES
+// entries, MAX_GAP days apart, so the checks below that walk every day stay
+// cheap. Amounts stay far enough below the safe integer range that no total
+// can leave it.
 const MAX_ENTRIES = 30
 const MAX_GAP = 3
 const MAX_MOVEMENTS = 5
@@ -30,12 +31,20 @@ const LAST_DAY = MAX_ENTRIES * MAX_GAP + 1
 
 const CODES = ACCOUNTS.map(({ code }) => code)
 
+// Encaisse on about a third of the sides, so that a cash entry often moves
+// cash both ways, through more than one row, or from Encaisse to Encaisse.
+// Drawn from the whole chart alone, it would be one side in more than 20.
+const cashSide = fc.oneof(
+  { arbitrary: fc.constant<AccountCode>('1000'), weight: 1 },
+  { arbitrary: fc.constantFrom(...CODES), weight: 2 },
+)
+
 // An entry is a list of movements, each debiting one account and crediting
 // another (possibly the same one) by the same amount, so it balances by
 // construction. Days only go up, by gaps of zero or more.
 const movement = fc.record({
-  debit: fc.constantFrom(...CODES),
-  credit: fc.constantFrom(...CODES),
+  debit: cashSide,
+  credit: cashSide,
   amount: fc.integer({ min: 1, max: MAX_AMOUNT }),
 })
 const draft = fc.record({
@@ -44,21 +53,11 @@ const draft = fc.record({
 })
 const drafts = fc.array(draft, { maxLength: MAX_ENTRIES })
 
-// Single entries for the cash-flow properties, with Encaisse on about a third
-// of the sides, so that an entry often moves cash both ways and through more
-// than one row.
-const cashSide = fc.oneof(
-  { arbitrary: fc.constant<AccountCode>('1000'), weight: 1 },
-  { arbitrary: fc.constantFrom(...CODES), weight: 2 },
-)
-const cashMovements = fc.array(
-  fc.record({
-    debit: cashSide,
-    credit: cashSide,
-    amount: fc.integer({ min: 1, max: MAX_AMOUNT }),
-  }),
-  { minLength: 1, maxLength: MAX_MOVEMENTS },
-)
+// Single entries for the cash-flow properties.
+const cashMovements = fc.array(movement, {
+  minLength: 1,
+  maxLength: MAX_MOVEMENTS,
+})
 
 type Draft = typeof draft extends fc.Arbitrary<infer T> ? T : never
 type Movement = typeof movement extends fc.Arbitrary<infer T> ? T : never
