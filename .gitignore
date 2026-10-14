@@ -28,3 +28,6 @@ coverage
 
 # Wrangler local state (wrangler dev)
 .wrangler
+
+# Headless simulation results (npm run sim)
+/out/
