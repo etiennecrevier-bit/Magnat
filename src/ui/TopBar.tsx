@@ -6,6 +6,7 @@ import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
 import { CashGaugeView } from './CashGauge.tsx'
 import { formatGameDate } from './formatGameDate.ts'
+import ManagePanel from './ManagePanel.tsx'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
 import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
 import './TopBar.css'
@@ -31,6 +32,8 @@ interface TopBarViewProps {
   cash: Cents
   speed: number
   onSpeedChange: (speed: number) => void
+  /** Opens the « Gérer le camion » panel. */
+  onManage: () => void
 }
 
 export function TopBarView({
@@ -39,6 +42,7 @@ export function TopBarView({
   cash,
   speed,
   onSpeedChange,
+  onManage,
 }: TopBarViewProps) {
   return (
     <header className="top-bar">
@@ -47,6 +51,14 @@ export function TopBarView({
         <p className="top-bar__date">{formatGameDate(day)}</p>
       </div>
       <CashGaugeView cash={cash} />
+      <button
+        type="button"
+        className="top-bar__manage"
+        aria-haspopup="dialog"
+        onClick={onManage}
+      >
+        Gérer le camion
+      </button>
       <div className="top-bar__speeds" role="group" aria-label="Vitesse du jeu">
         {pacing.speeds.map((option) => (
           <button
@@ -65,7 +77,10 @@ export function TopBarView({
   )
 }
 
-/** The top bar wired to the app store, with the Space shortcut. */
+/**
+ * The top bar wired to the app store, with the Space shortcut, and the
+ * « Gérer le camion » panel while it is open.
+ */
 export default function TopBar() {
   const businessName = useGame((state) => state.game.profile.businessName)
   const day = useGame((state) => state.game.day)
@@ -73,6 +88,8 @@ export default function TopBar() {
   const speed = useGame((state) => state.speed)
   const setSpeed = useGame((state) => state.setSpeed)
   const togglePause = useGame((state) => state.togglePause)
+  const panelOpen = useGame((state) => state.resumeSpeed !== null)
+  const openPanel = useGame((state) => state.openPanel)
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) =>
@@ -92,12 +109,16 @@ export default function TopBar() {
   )
 
   return (
-    <TopBarView
-      businessName={businessName}
-      day={day}
-      cash={cash}
-      speed={speed}
-      onSpeedChange={setSpeed}
-    />
+    <>
+      <TopBarView
+        businessName={businessName}
+        day={day}
+        cash={cash}
+        speed={speed}
+        onSpeedChange={setSpeed}
+        onManage={openPanel}
+      />
+      {panelOpen && <ManagePanel />}
+    </>
   )
 }

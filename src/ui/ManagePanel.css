@@ -1,0 +1,199 @@
+/* The panels' cream card, in the art brief's colours: cream #fff7e8 and ink
+   #2b2622. Text colours keep at least 4.5:1 against the cream. */
+.manage {
+  width: min(64rem, calc(100% - 2rem));
+  max-width: none;
+  max-height: calc(100% - 2rem);
+  padding: 0;
+  overflow: auto;
+  border: 2px solid #2b2622;
+  border-radius: 12px;
+  background: #fff7e8;
+  color: #2b2622;
+}
+
+.manage::backdrop {
+  background: rgb(31 41 51 / 60%);
+}
+
+.manage__content {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+/* Fermer is first in the page so it gets the focus, but shows on the right. */
+.manage__header {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.manage__note {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid #2b2622;
+  background: #fbe7c2;
+  font-weight: 600;
+}
+
+.manage__sections {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem 2rem;
+  align-items: start;
+}
+
+.manage h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+/* Two columns once the facts table fits beside the fields: the facts sit
+   beside the prices and the orders. */
+@media (min-width: 900px) {
+  .manage__sections {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'prices facts'
+      'orders facts'
+      'days days'
+      'pay marketing';
+  }
+
+  .manage__prices {
+    grid-area: prices;
+  }
+
+  .manage__orders {
+    grid-area: orders;
+  }
+
+  .manage__facts {
+    grid-area: facts;
+  }
+
+  .manage__days {
+    grid-area: days;
+  }
+
+  .manage__pay {
+    grid-area: pay;
+  }
+
+  .manage__marketing {
+    grid-area: marketing;
+  }
+}
+
+.manage__rule {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem 0;
+  border: 1px solid #c9b48f;
+  border-radius: 8px;
+}
+
+.manage__rule legend {
+  padding: 0 0.25rem;
+  font-weight: 600;
+}
+
+.manage .toggle-group {
+  margin: 0;
+}
+
+.manage__step {
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.manage__step[aria-disabled='true'] {
+  border-color: #c9b48f;
+  color: #7b6f63;
+  cursor: not-allowed;
+}
+
+.manage__scroll {
+  overflow-x: auto;
+}
+
+.manage__scroll:focus-visible {
+  outline: 3px solid #2186eb;
+  outline-offset: 2px;
+}
+
+.manage__facts thead th[scope='colgroup'] {
+  text-align: center;
+}
+
+.manage__facts tfoot th,
+.manage__facts tfoot td {
+  border-top: 2px solid #2b2622;
+  font-weight: 700;
+}
+
+.field {
+  margin: 0 0 0.75rem;
+}
+
+.field__label {
+  display: block;
+  margin: 0 0 0.25rem;
+}
+
+.field__control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field__input {
+  width: 7rem;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border: 1px solid #616e7c;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2933;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.field__input:focus-visible {
+  outline: 3px solid #2186eb;
+  outline-offset: 2px;
+}
+
+.field__input[aria-invalid='true'] {
+  border: 2px solid #a61b1b;
+}
+
+.field__unit {
+  color: #52606d;
+}
+
+.field__error {
+  margin: 0.25rem 0 0;
+  color: #a61b1b;
+  font-weight: 600;
+}
+
+/* On a phone the panel takes the whole screen. */
+@media (max-width: 559px) {
+  .manage {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .manage__content {
+    padding: 0.75rem 1rem 1rem;
+  }
+}

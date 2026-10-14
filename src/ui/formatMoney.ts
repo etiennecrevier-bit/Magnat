@@ -8,15 +8,23 @@ const NO_BREAK_SPACE = '\u00a0'
 const CENTS_PER_DOLLAR = 100
 const DIGITS_PER_GROUP = /\B(?=(\d{3})+(?!\d))/g
 
-/** `1 234,56 $` for the size of `amount`, without its sign. */
-function formatMagnitude(amount: Cents): string {
+/**
+ * The size of `amount` without its sign or the dollar sign, e.g. `1 234,56`:
+ * the value of a field where the player types an amount.
+ */
+export function formatAmount(amount: Cents): string {
   const magnitude = Math.abs(amount)
   const centsPart = magnitude % CENTS_PER_DOLLAR
   // The difference is a whole multiple of 100, so the quotient is exact.
   const dollars = (magnitude - centsPart) / CENTS_PER_DOLLAR
   const grouped = String(dollars).replace(DIGITS_PER_GROUP, NO_BREAK_SPACE)
   const centsText = String(centsPart).padStart(2, '0')
-  return `${grouped},${centsText}${NO_BREAK_SPACE}$`
+  return `${grouped},${centsText}`
+}
+
+/** `1 234,56 $` for the size of `amount`, without its sign. */
+function formatMagnitude(amount: Cents): string {
+  return `${formatAmount(amount)}${NO_BREAK_SPACE}$`
 }
 
 /** fr-CA money, e.g. `1 234,56 $` or `-1 234,56 $`. */
