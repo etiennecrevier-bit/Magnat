@@ -1,3 +1,5 @@
 Owns the journal and the financial statements; only engine and finance write journal entries, and every entry balances (debits = credits).
 
 The three financial statements (`statements.ts`) are plain data read from the journal: French labels and amounts in cents, which only the UI formats.
+
+The état des flux de trésorerie shows only the cash that went through 1000 Encaisse. It nets the other lines of an entry that touches Encaisse within each row of the statement. If those rows all go one way, each shows what it got. Otherwise some lines moved no cash, such as the part of a truck a loan pays for, and the entry must say which: its cash goes only one way and a single row goes that way, as with a truck bought with a down payment and a loan. `cashFlowStatement` throws on any other entry in its period, such as a loan received and fuel paid in one entry, because it reads more than one way; post such parts as entries of their own. The 10-year invariant test reads every month, so an engine change that posts one fails it. Depreciation (6400 Amortissement against 1510 Amortissement cumulé) nets out within the Équipement row, so it can go with any entry.

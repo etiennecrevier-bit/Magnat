@@ -44,22 +44,127 @@ const draft = fc.record({
 })
 const drafts = fc.array(draft, { maxLength: MAX_ENTRIES })
 
-type Draft = typeof draft extends fc.Arbitrary<infer T> ? T : never
+// Single entries for the cash-flow properties, with Encaisse on about a third
+// of the sides, so that an entry often moves cash both ways and through more
+// than one row.
+const cashSide = fc.oneof(
+  { arbitrary: fc.constant<AccountCode>('1000'), weight: 1 },
+  { arbitrary: fc.constantFrom(...CODES), weight: 2 },
+)
+const cashMovements = fc.array(
+  fc.record({
+    debit: cashSide,
+    credit: cashSide,
+    amount: fc.integer({ min: 1, max: MAX_AMOUNT }),
+  }),
+  { minLength: 1, maxLength: MAX_MOVEMENTS },
+)
 
-function toEntries(list: readonly Draft[]): JournalEntry[] {
+type Draft = typeof draft extends fc.Arbitrary<infer T> ? T : never
+type Movement = typeof movement extends fc.Arbitrary<infer T> ? T : never
+
+/**
+ * One entry per draft. With `readable`, a draft the état des flux de
+ * trésorerie cannot read becomes one entry per movement, which it can.
+ */
+function toEntries(
+  list: readonly Draft[],
+  { readable = false }: { readable?: boolean } = {},
+): JournalEntry[] {
   let day = 0
-  return list.map(({ gap, movements }, index) => {
+  return list.flatMap(({ gap, movements }, index) => {
     day += gap
-    const lines = movements.flatMap(({ debit, credit, amount }) => [
-      { account: debit, debit: cents(amount), credit: cents(0) },
-      { account: credit, debit: cents(0), credit: cents(amount) },
-    ])
-    return { day, memo: `Écriture ${index + 1}`, lines }
+    const memo = `Écriture ${index + 1}`
+    const whole = toEntry(movements, day, memo)
+    if (!readable || saysWhereCashWent(whole)) return [whole]
+    return movements.map((one) => toEntry([one], day, memo))
   })
 }
 
-function toJournal(list: readonly Draft[]): Journal {
-  return toEntries(list).reduce(postEntry, emptyJournal())
+function toEntry(
+  movements: readonly Movement[],
+  day = 0,
+  memo = 'Écriture',
+): JournalEntry {
+  const lines = movements.flatMap(({ debit, credit, amount }) => [
+    { account: debit, debit: cents(amount), credit: cents(0) },
+    { account: credit, debit: cents(0), credit: cents(amount) },
+  ])
+  return { day, memo, lines }
+}
+
+function toJournal(
+  list: readonly Draft[],
+  options: { readable?: boolean } = {},
+): Journal {
+  return toEntries(list, options).reduce(postEntry, emptyJournal())
+}
+
+// The row of the état des flux de trésorerie that cash paid against each
+// account other than Encaisse feeds. statements.test.ts checks each one
+// against its own list.
+const ROW_OF = new Map<AccountCode, string>(
+  CODES.filter((code) => code !== '1000').map((code) => {
+    const payment = toEntry([{ debit: code, credit: '1000', amount: 1 }])
+    const [row] = activities(cashFlowStatement(toJournalOf(payment), 0, 0))
+      .flatMap(({ lines }) => lines)
+      .filter(({ amount }) => amount !== 0)
+    if (row === undefined) throw new Error(`No row for ${code}`)
+    return [code, row.label]
+  }),
+)
+
+function rowOf(code: AccountCode): string {
+  const row = ROW_OF.get(code)
+  if (row === undefined) throw new Error(`No row for ${code}`)
+  return row
+}
+
+/**
+ * The rule of src/finance/README.md, stated apart from statements.ts: an
+ * entry says which rows its cash went through if it moves no cash, if its
+ * other lines, net within each row, all go one way, or if its cash all goes
+ * one way and a single row goes that way.
+ */
+function saysWhereCashWent({ lines }: JournalEntry): boolean {
+  const cash = lines.filter(({ account }) => account === '1000')
+  const nets = new Map<string, number>()
+  for (const { account, debit, credit } of lines) {
+    if (account === '1000') continue
+    const row = rowOf(account)
+    nets.set(row, (nets.get(row) ?? 0) + credit - debit)
+  }
+  const comingIn = [...nets.values()].filter((net) => net > 0).length
+  const goingOut = [...nets.values()].filter((net) => net < 0).length
+  if (cash.length === 0 || comingIn === 0 || goingOut === 0) return true
+  if (cash.every(({ credit }) => credit === 0)) return comingIn === 1
+  if (cash.every(({ debit }) => debit === 0)) return goingOut === 1
+  return false
+}
+
+/**
+ * Whether a row both moves cash one way and moves no cash the other way
+ * among `movements`. The statement nets the lines of a row before it reads
+ * the cash, the way the cost of a sale cancels out the stock it uses, so it
+ * cannot see that part of the cash.
+ */
+function hidesCashInARow(movements: readonly Movement[]): boolean {
+  const cash = new Map<string, number>()
+  const noCash = new Map<string, number>()
+  const move = (rows: Map<string, number>, row: string, amount: number) =>
+    rows.set(row, (rows.get(row) ?? 0) + amount)
+  for (const { debit, credit, amount } of movements) {
+    if (debit === '1000' && credit === '1000') continue
+    if (debit === '1000') move(cash, rowOf(credit), amount)
+    else if (credit === '1000') move(cash, rowOf(debit), -amount)
+    else {
+      move(noCash, rowOf(credit), amount)
+      move(noCash, rowOf(debit), -amount)
+    }
+  }
+  return [...cash].some(
+    ([row, amount]) => Math.sign(amount) * Math.sign(noCash.get(row) ?? 0) < 0,
+  )
 }
 
 const day = fc.integer({ min: -1, max: LAST_DAY })
@@ -129,7 +234,7 @@ describe('statement properties', () => {
   it('make the net cash flow equal the change in Encaisse over any period', () => {
     fc.assert(
       fc.property(drafts, period, (list, [fromDay, toDay]) => {
-        const journal = toJournal(list)
+        const journal = toJournal(list, { readable: true })
         const statement = cashFlowStatement(journal, fromDay, toDay)
         const { netChange, openingCash, closingCash } = statement
         for (const section of activities(statement)) expectAddsUp(section)
@@ -141,6 +246,35 @@ describe('statement properties', () => {
         )
         expect(closingCash.amount).toBe(balance(journal, '1000', { toDay }))
         expect(netChange.amount).toBe(closingCash.amount - openingCash.amount)
+      }),
+      { numRuns: NUM_RUNS },
+    )
+  })
+
+  it('read a cash entry only when it says which rows its cash went through', () => {
+    fc.assert(
+      fc.property(cashMovements, (movements) => {
+        const entry = toEntry(movements)
+        const read = () => cashFlowStatement(toJournalOf(entry), 0, 0)
+        if (saysWhereCashWent(entry)) expect(read).not.toThrow()
+        else expect(read).toThrow(/^Cannot tell which rows the cash of/)
+      }),
+      { numRuns: NUM_RUNS },
+    )
+  })
+
+  it('show the cash of an entry they read as if each movement were posted apart', () => {
+    fc.assert(
+      fc.property(cashMovements, (movements) => {
+        fc.pre(!hidesCashInARow(movements))
+        const entry = toEntry(movements)
+        fc.pre(saysWhereCashWent(entry))
+        const apart = movements
+          .map((one) => toEntry([one]))
+          .reduce(postEntry, emptyJournal())
+        expect(cashFlowStatement(toJournalOf(entry), 0, 0)).toEqual(
+          cashFlowStatement(apart, 0, 0),
+        )
       }),
       { numRuns: NUM_RUNS },
     )
@@ -201,9 +335,16 @@ describe('statement properties', () => {
 describe('statement property generators', () => {
   const samples = fc.sample(drafts, { numRuns: 500, seed: 42 })
   const entries = samples.flatMap((list) => toEntries(list))
-  const cashEntries = entries.filter(({ lines }) =>
-    lines.some(({ account }) => account === '1000'),
-  )
+  const cashEntries = samples
+    .flatMap((list) => toEntries(list, { readable: true }))
+    .filter(({ lines }) => lines.some(({ account }) => account === '1000'))
+  const singles = fc
+    .sample(cashMovements, { numRuns: 500, seed: 42 })
+    .filter((movements) =>
+      movements.some(
+        ({ debit, credit }) => debit === '1000' || credit === '1000',
+      ),
+    )
 
   it('draw every account', () => {
     const seen = new Set<AccountCode>()
@@ -213,7 +354,7 @@ describe('statement property generators', () => {
     expect([...seen].sort()).toEqual([...CODES].sort())
   })
 
-  it('draw cash entries that feed more than one cash-flow row', () => {
+  it('draw cash entries the statement reads that feed more than one cash-flow row', () => {
     const rowsFed = cashEntries.map((cashEntry) => {
       const statement = cashFlowStatement(toJournalOf(cashEntry), 0, 0)
       return activities(statement)
@@ -231,6 +372,28 @@ describe('statement property generators', () => {
     expect(
       netsToZero.some(({ lines }) =>
         lines.some(({ account }) => account !== '1000'),
+      ),
+    ).toBe(true)
+  })
+
+  it('draw single cash entries the statement cannot read', () => {
+    expect(
+      singles.some((movements) => !saysWhereCashWent(toEntry(movements))),
+    ).toBe(true)
+  })
+
+  it('draw single cash entries it reads although some lines move no cash between rows', () => {
+    expect(
+      singles.some(
+        (movements) =>
+          saysWhereCashWent(toEntry(movements)) &&
+          !hidesCashInARow(movements) &&
+          movements.some(
+            ({ debit, credit }) =>
+              debit !== '1000' &&
+              credit !== '1000' &&
+              rowOf(debit) !== rowOf(credit),
+          ),
       ),
     ).toBe(true)
   })
