@@ -48,8 +48,12 @@ const FORBIDDEN: { code: string; rule: string }[] = [
   { code: 'crypto.randomUUID()', rule: 'no-restricted-properties' },
   { code: "window.alert('x')", rule: 'no-restricted-globals' },
   { code: 'document.title', rule: 'no-restricted-globals' },
+  { code: 'globalThis.Math.random()', rule: 'no-restricted-globals' },
+  { code: 'globalThis.Date.now()', rule: 'no-restricted-globals' },
   { code: 'new Date()', rule: 'no-restricted-syntax' },
   { code: 'Date()', rule: 'no-restricted-syntax' },
+  { code: "import('react')", rule: 'no-restricted-syntax' },
+  { code: "import('../ui/Screen')", rule: 'no-restricted-syntax' },
 ]
 
 const ALLOWED = [

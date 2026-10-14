@@ -7,8 +7,10 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 // Architecture rules 1 and 3 in CLAUDE.md: the engine and the books stay pure
-// and deterministic. These guardrails only see static code; a dynamic
-// `import('react')` or `globalThis.Math.random()` gets past them.
+// and deterministic. These guardrails only see static code, so the two ways
+// around them are banned too: `globalThis` (as in `globalThis.Math.random()`)
+// and dynamic `import()`. Browser globals other than window and document are
+// left to tsconfig.engine.json, which typechecks this code without the DOM.
 const PURE = 'Engine and finance code stays pure (CLAUDE.md rule 1)'
 const DETERMINISTIC =
   'Engine and finance code is deterministic: use the seeded RNG in src/engine/rng.ts and advance time with tick() (CLAUDE.md rule 3)'
@@ -68,6 +70,10 @@ export default defineConfig([
         'error',
         { name: 'window', message: `${PURE}: no DOM.` },
         { name: 'document', message: `${PURE}: no DOM.` },
+        {
+          name: 'globalThis',
+          message: `${PURE}: no globalThis, which hides globals from these rules.`,
+        },
       ],
       'no-restricted-syntax': [
         'error',
@@ -78,6 +84,10 @@ export default defineConfig([
         {
           selector: "CallExpression[callee.name='Date']",
           message: DETERMINISTIC,
+        },
+        {
+          selector: 'ImportExpression',
+          message: `${PURE}: no dynamic import(), which hides the module from these rules.`,
         },
       ],
     },
