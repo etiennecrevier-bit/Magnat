@@ -58,13 +58,21 @@ export function emptyJournal(): Journal {
 /**
  * Returns a new journal with `entry` added after the others; never mutates
  * `journal` or `entry`, and later changes to `entry` do not reach the journal.
- * Throws unless the day is a game day no earlier than the last entry's, the
- * entry has at least one line, every line is present (no hole, null or
- * undefined), uses a known account and has a whole, non-negative amount on
- * exactly one side, and the debits add up to the credits.
+ * Throws unless the memo is a string, the day is a game day no earlier than
+ * the last entry's, the entry has at least one line, every line is present
+ * (no hole, null or undefined), uses a known account and has a whole,
+ * non-negative amount on exactly one side, and the debits add up to the
+ * credits.
  */
 export function postEntry(journal: Journal, entry: JournalEntry): Journal {
   const { day, memo, lines } = entry
+  // First, since every other failure quotes the memo. An object memo would be
+  // stored by reference, so later changes would reach the journal.
+  if (typeof memo !== 'string') {
+    throw new Error(
+      `Cannot post an entry on day ${day}: memo is not a string (${typeof memo})`,
+    )
+  }
   function fail(reason: string): never {
     throw new Error(`Cannot post "${memo}" on day ${day}: ${reason}`)
   }

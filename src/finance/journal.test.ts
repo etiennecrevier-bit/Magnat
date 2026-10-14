@@ -45,6 +45,14 @@ function entry(day: Day, memo: string, ...lines: JournalLine[]): JournalEntry {
   return { day, memo, lines }
 }
 
+/** A balanced entry whose memo skips the type check, as untyped data could. */
+function withMemo(memo: unknown): JournalEntry {
+  return {
+    ...entry(5, '', dr('1000', 100), cr('4000', 100)),
+    memo,
+  } as JournalEntry
+}
+
 function post(...entries: JournalEntry[]): Journal {
   return entries.reduce(postEntry, emptyJournal())
 }
@@ -243,6 +251,21 @@ describe('postEntry', () => {
         ),
         error: /its total is out of range/,
       },
+      // Only a string is safe to store: anything else is either kept by
+      // reference, so later changes reach the frozen journal, or is not text.
+      ...[
+        { kind: 'an object', memo: { text: 'Vente' } },
+        { kind: 'an array', memo: ['Vente'] },
+        { kind: 'a String object', memo: new String('Vente') },
+        { kind: 'a number', memo: 42 },
+        { kind: 'a symbol', memo: Symbol('Vente') },
+        { kind: 'null', memo: null },
+        { kind: 'undefined', memo: undefined },
+      ].map(({ kind, memo }) => ({
+        when: `a memo that is ${kind}`,
+        entry: withMemo(memo),
+        error: /memo is not a string/,
+      })),
     ]
 
     it.each(cases)('$when', ({ entry, error }) => {
