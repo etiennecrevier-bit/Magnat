@@ -3,7 +3,16 @@
 // street turns on for them (see startStreet). Their sprites stay opaque:
 // the textures hold their opacity (see `strayOf` in noise.ts).
 import 'pixi.js/advanced-blend-modes'
-import { Container, Sprite, TilingSprite, type Texture } from 'pixi.js'
+import {
+  Container,
+  extensions,
+  OverlayBlend,
+  SoftLightBlend,
+  Sprite,
+  TilingSprite,
+  type Filter,
+  type Texture,
+} from 'pixi.js'
 import type { Light, Palette } from '../content/assets.ts'
 import type { VisualEffects } from '../ui/settings.ts'
 import { textureOf } from './materials.ts'
@@ -13,6 +22,20 @@ import {
   unevennessPixels,
   vignettePixels,
 } from './noise.ts'
+
+// Pixi copies the world behind a blended sprite at the screen's pixels, but
+// draws the sprite through the blend's filter at the filter's resolution, 1
+// by default, then reads both at the same place. On a screen of two pixels
+// per logical pixel each blend would zoom the world from its top-left
+// corner and push the truck off the screen (#110). These draw at the
+// screen's pixels and take Pixi's place under the same blend names.
+class ScreenOverlayBlend extends OverlayBlend {
+  override resolution: Filter['resolution'] = 'inherit'
+}
+class ScreenSoftLightBlend extends SoftLightBlend {
+  override resolution: Filter['resolution'] = 'inherit'
+}
+extensions.add(ScreenOverlayBlend, ScreenSoftLightBlend)
 
 /**
  * What is drawn over the whole world, under the panels: the sun's warm
