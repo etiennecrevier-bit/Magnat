@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { loadFoodTruckContent } from '../content/schema.ts'
+import {
+  loadEventContent,
+  loadFoodTruckContent,
+  type EventContent,
+} from '../content/schema.ts'
 import {
   balance,
   entriesOf,
@@ -7,9 +11,18 @@ import {
   type Journal,
 } from '../finance/journal.ts'
 import { createInitialState, tick } from './clock.ts'
-import { FOOD_TRUCK, playDay } from './day.ts'
+import {
+  CUSTOMERS,
+  DIFFICULTIES,
+  ENERGY,
+  EVENTS,
+  FOOD_TRUCK,
+  PERSONAL,
+  playDay,
+} from './day.ts'
 import { applyDecision } from './decisions.ts'
 import { FULL_ENERGY } from './energy.ts'
+import { drawEvent, noEvents, resolveEvent } from './events.ts'
 import { inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
 import { LABELS } from './personal.ts'
@@ -148,15 +161,94 @@ function without(path: string): string {
   })
 }
 
+/** The shipped essai card, drawn every morning from day 1. */
+const ESSAI: EventContent = {
+  pacing: { firstDay: 1, minDaysBetween: 0, dailyChance: 1 },
+  events: EVENTS.events.map((event) => ({ ...event, weight: 1 })),
+}
+
+function withEvents(state: GameState, events = ESSAI): GameState {
+  return tick(
+    state,
+    FOOD_TRUCK,
+    CUSTOMERS,
+    DIFFICULTIES,
+    PERSONAL,
+    ENERGY,
+    events,
+  )
+}
+
+/**
+ * A card every morning from `firstDay` whose « Oui » moves `amount` under
+ * `label` in the owner's pocket and takes 5 energy, and whose « Non » does
+ * nothing.
+ */
+function pocketCard(label: string, amount: number, firstDay = 1): EventContent {
+  return loadEventContent({
+    pacing: { firstDay, minDaysBetween: 0, dailyChance: 1 },
+    events: [
+      {
+        id: 'poche',
+        weight: 1,
+        character: { id: 'gilles', name: 'Gilles Lacasse', role: 'Proprio' },
+        title: 'Une carte',
+        situation: 'Il se passe quelque chose.',
+        choices: [
+          {
+            id: 'oui',
+            label: 'Oui',
+            tags: ['Poche'],
+            outcomes: [
+              {
+                chance: 1,
+                result: 'Fait.',
+                effects: [
+                  { kind: 'personal', amountCents: amount, label },
+                  { kind: 'energy', amount: -5 },
+                ],
+              },
+            ],
+          },
+          {
+            id: 'non',
+            label: 'Non',
+            tags: ['Rien ne change'],
+            outcomes: [{ chance: 1, result: 'Rien.', effects: [] }],
+          },
+        ],
+      },
+    ],
+  })
+}
+
+// The morning of day 1, a Tuesday, with the essai card waiting, then once
+// « Tout essayer » is chosen: a credit sale due on day 91, a collection
+// queued for Thursday, day 3, and a charge for day 4, the owner down to 90
+// energy, « Cadeau d'essai » in their pocket and a headline.
+const WAITING = withEvents(createInitialState(SEED))
+const CHOSEN = resolveEvent(WAITING, 'toutEssayer', ESSAI)
+const CHOSEN_SAVE = serialize(CHOSEN)
+// The close of day 2, the credit sale still owed.
+const CLOSE_2 = playDay(resolveEvent(withEvents(CHOSEN), 'rienFaire', ESSAI))
+// The morning of day 0, before it is played, with a card from day 0
+// waiting, then once « Oui » is chosen: the owner down to 95 energy and
+// « Cadeau » in their pocket.
+const DAY_0_CARD = pocketCard('Cadeau', 6_000, 0)
+const DAY_0_WAITING = drawEvent(createInitialState(SEED), DAY_0_CARD)
+const DAY_0_CHOSEN = resolveEvent(DAY_0_WAITING, 'oui', DAY_0_CARD)
+const DAY_0_SAVE = serialize(DAY_0_CHOSEN)
+
 /** Expects the load to fail, its message naming each of `reasons`. */
 function expectInvalid(
   text: string,
   reasons: readonly string[],
   content = FOOD_TRUCK,
+  events = EVENTS,
 ): void {
   let message: string | undefined
   try {
-    deserialize(text, content)
+    deserialize(text, content, events)
   } catch (error) {
     if (!(error instanceof Error)) throw error
     message = error.message
@@ -168,8 +260,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(7)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 7 })
+    expect(SAVE_VERSION).toBe(8)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 8 })
   })
 
   it.each<Profile>([
@@ -302,6 +394,129 @@ describe('serialize and deserialize', () => {
     expect(resumed).toStrictEqual(uninterrupted)
   })
 
+  it('give back an event waiting on its morning', () => {
+    expect(WAITING.events.pending).toEqual({ event: 'essai', followUp: false })
+    expect(reloaded(WAITING)).toEqual(WAITING)
+  })
+
+  it('give back what a choice left: receivables, effects to come, history, headlines, and the owner it tired that morning', () => {
+    expect(CHOSEN.receivables).toEqual([
+      { client: "Client d'essai", amount: 75_000, soldOnDay: 1, dueDay: 91 },
+    ])
+    expect(
+      CHOSEN.events.delayed.map(({ day, effect }) => [day, effect.kind]),
+    ).toEqual([
+      [3, 'collectReceivable'],
+      [4, 'charge'],
+    ])
+    expect(CHOSEN.events.history).toHaveLength(1)
+    expect(CHOSEN.events.headlines).toEqual([{ day: 1, id: 'essai' }])
+    expect(CHOSEN.energy).toBeLessThan(CHOSEN.lastDay?.energy ?? 0)
+    expect(CHOSEN.personal.movements.at(-1)).toEqual({
+      day: 1,
+      label: "Cadeau d'essai",
+      amount: 6_000,
+    })
+    expect(reloaded(CHOSEN)).toEqual(CHOSEN)
+    expect(reloaded(CLOSE_2)).toEqual(CLOSE_2)
+  })
+
+  it('give back queued follow-ups', () => {
+    const queued: GameState = {
+      ...CHOSEN,
+      events: {
+        ...CHOSEN.events,
+        followUps: [
+          { day: 20, event: 'essai' },
+          { day: 31, event: 'essai' },
+        ],
+      },
+    }
+    expect(reloaded(queued)).toEqual(queued)
+  })
+
+  it('load a game with events that continues as if it had never stopped', () => {
+    const choices = ['relancer', 'toutEssayer', 'rienFaire'] as const
+    const go = (from: GameState) => {
+      let state = from
+      for (let day = 0; day < 40; day += 1) {
+        state = withEvents(state)
+        const choice = choices[state.day % choices.length] ?? 'rienFaire'
+        state = resolveEvent(state, choice, ESSAI)
+      }
+      return state
+    }
+    const straight = go(CHOSEN)
+    expect(straight.events.history.length).toBeGreaterThan(40)
+    expect(serialize(go(deserialize(CHOSEN_SAVE)))).toBe(serialize(straight))
+  })
+
+  it('load a version 7 game as one with no event and no receivable', () => {
+    const text = edited('events', (save, key) => {
+      delete save[key]
+      delete save.receivables
+      save.saveVersion = 7
+    })
+    const back = deserialize(text)
+    expect(back).toEqual(FORTNIGHT)
+    expect(back.events).toEqual(noEvents())
+    expect(back.receivables).toEqual([])
+  })
+
+  it.each([
+    [LABELS.rent, -100],
+    [LABELS.rent, 100],
+    [LABELS.salary, 100],
+    [LABELS.salary, -100],
+    [LABELS.weeklyExpenses, 100],
+  ])(
+    "give back an event's « %s » of %i, the owner's own label, each morning it is chosen and each close after",
+    (label, amount) => {
+      const events = pocketCard(label, amount)
+      const load = (state: GameState) =>
+        deserialize(serialize(state), FOOD_TRUCK, events)
+      let state = createInitialState(SEED)
+      // Five weeks: their paydays, and the rent of June 1st, day 31.
+      for (let day = 1; day <= 35; day += 1) {
+        state = resolveEvent(withEvents(state, events), 'oui', events)
+        expect(state.personal.movements.at(-1)).toEqual({ day, label, amount })
+        expect(load(state)).toEqual(state)
+        const closed = playDay(state)
+        expect(load(closed)).toEqual(closed)
+      }
+      // The owner's own movements under the label, besides the card's 35.
+      const same = state.personal.movements.filter(
+        (movement) => movement.label === label,
+      )
+      expect(same.length).toBeGreaterThan(35)
+    },
+  )
+
+  it('give back a choice made on the morning of day 0, and the game goes on as if it had never stopped', () => {
+    expect(DAY_0_WAITING.events.pending).toEqual({
+      event: 'poche',
+      followUp: false,
+    })
+    expect(
+      deserialize(serialize(DAY_0_WAITING), FOOD_TRUCK, DAY_0_CARD),
+    ).toEqual(DAY_0_WAITING)
+    expect(DAY_0_CHOSEN.lastDay).toBeNull()
+    expect(DAY_0_CHOSEN.energy).toBe(FULL_ENERGY - 5)
+    expect(DAY_0_CHOSEN.personal.movements).toEqual([
+      { day: 0, label: 'Cadeau', amount: 6_000 },
+    ])
+    const back = deserialize(DAY_0_SAVE, FOOD_TRUCK, DAY_0_CARD)
+    expect(back).toEqual(DAY_0_CHOSEN)
+    const go = (from: GameState) => {
+      let state = from
+      for (let day = 0; day < 10; day += 1) {
+        state = resolveEvent(withEvents(state, DAY_0_CARD), 'oui', DAY_0_CARD)
+      }
+      return state
+    }
+    expect(serialize(go(back))).toBe(serialize(go(DAY_0_CHOSEN)))
+  })
+
   it('load books the finance functions accept, frozen', () => {
     const { journal, day } = reloaded(DAY_400)
     expect(Object.isFrozen(journal)).toBe(true)
@@ -348,7 +563,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 6, 8, '7', null])('saveVersion %j', (version) => {
+  it.each([0, 1, 6, 9, '8', '7', null])('saveVersion %j', (version) => {
     expectInvalid(withValue('saveVersion', version), [
       `unsupported saveVersion ${JSON.stringify(version)}`,
     ])
@@ -921,7 +1136,13 @@ describe('deserialize rejects', () => {
       expect(back.personal.cash).toBe(-500)
     })
 
-    it.each(['Loto', 'salaire', 42, null])('with the label %j', (label) => {
+    it.each(['Loto', 'salaire'])('with the label %j', (label) => {
+      expectInvalid(withValue('personal.movements.0.label', label), [
+        `personal movement 1 has an unknown label: « ${label} »`,
+      ])
+    })
+
+    it.each([42, null])('with the label %j', (label) => {
       expectInvalid(withValue('personal.movements.0.label', label), [
         '→ at personal.movements[0].label',
       ])
@@ -1060,6 +1281,362 @@ describe('deserialize rejects', () => {
       expectInvalid(withValue('profile.businessName', name), [
         `profile: Invalid profile: businessName ${reason}`,
       ])
+    })
+  })
+
+  describe('a version 7 game', () => {
+    const v7 = (change: (save: Json) => void = () => undefined) =>
+      edited('events', (save, key) => {
+        delete save[key]
+        delete save.receivables
+        save.saveVersion = 7
+        change(save)
+      })
+
+    it('with a key version 7 did not know', () => {
+      expectInvalid(
+        v7((save) => {
+          save.events = noEvents()
+        }),
+        ['Unrecognized key: "events"'],
+      )
+    })
+
+    it('with a field it breaks', () => {
+      expectInvalid(
+        v7((save) => {
+          save.energy = 101
+        }),
+        ['→ at energy'],
+      )
+    })
+  })
+
+  describe('receivables', () => {
+    const at = (path: string, value: unknown, text = CHOSEN_SAVE) =>
+      withValue(`receivables.0.${path}`, value, text)
+
+    it.each([
+      ['client', ''],
+      ['client', '  '],
+      ['client', 42],
+      ['amount', 0],
+      ['amount', -100],
+      ['amount', 12.5],
+      ['soldOnDay', -1],
+      ['dueDay', '91'],
+    ])('with the %s %j', (field, value) => {
+      expectInvalid(at(field, value), [`→ at receivables[0].${field}`])
+    })
+
+    it('with a key the game does not know', () => {
+      expectInvalid(at('paid', true), ['Unrecognized key: "paid"'])
+    })
+
+    it('sold after the save', () => {
+      expectInvalid(at('soldOnDay', 2), [
+        'receivable 1 was sold on day 2, after day 1',
+      ])
+    })
+
+    it('due no later than its sale', () => {
+      expectInvalid(at('dueDay', 1), [
+        'receivable 1 is due on day 1, not after its sale',
+      ])
+    })
+
+    it('due on a day already played, which collected it', () => {
+      expectInvalid(at('dueDay', 2, serialize(CLOSE_2)), [
+        'receivable 1 is due on day 2, a day already played',
+      ])
+    })
+
+    it('not by due day', () => {
+      const text = withValue(
+        'receivables',
+        [
+          { client: 'B', amount: 40_000, soldOnDay: 1, dueDay: 50 },
+          { client: 'A', amount: 35_000, soldOnDay: 1, dueDay: 40 },
+        ],
+        CHOSEN_SAVE,
+      )
+      expectInvalid(text, [
+        'receivable 2 is due before the one before it: day 40 < day 50',
+      ])
+    })
+
+    it('other than what Comptes clients carries', () => {
+      expectInvalid(at('amount', 75_001), [
+        'the Comptes clients balance of 75000 does not equal the 75001 the receivables add up to',
+      ])
+      expectInvalid(withValue('receivables', [], CHOSEN_SAVE), [
+        'the Comptes clients balance of 75000 does not equal the 0 the receivables add up to',
+      ])
+    })
+  })
+
+  describe('events', () => {
+    const at = (path: string, value: unknown, text = CHOSEN_SAVE) =>
+      withValue(`events.${path}`, value, text)
+
+    it('that are missing', () => {
+      expectInvalid(
+        edited('events', (save, key) => {
+          delete save[key]
+        }),
+        ['→ at events'],
+      )
+    })
+
+    it('with a key the game does not know', () => {
+      expectInvalid(at('cheat', 1), ['Unrecognized key: "cheat"'])
+    })
+
+    it('with an event waiting at the close of its day', () => {
+      expectInvalid(
+        at('pending', { event: 'essai', followUp: true }, serialize(CLOSE_2)),
+        ['an event waits at the close of day 2'],
+      )
+    })
+
+    it('with an event waiting on a morning one was already chosen', () => {
+      expectInvalid(at('pending', { event: 'essai', followUp: true }), [
+        'an event waits on day 1, after one was chosen that morning',
+      ])
+    })
+
+    it('with an unknown event waiting', () => {
+      const text = serialize(WAITING)
+      expectInvalid(at('pending.event', 'nope', text), [
+        'the event waiting is an unknown event: nope',
+      ])
+    })
+
+    it('with an event waiting that was drawn another day', () => {
+      const text = serialize(WAITING)
+      expectInvalid(at('lastDrawnDay', 0, text), [
+        'the event waiting was drawn on day 1, but lastDrawnDay is 0',
+      ])
+      // A follow-up is brought back, not drawn.
+      const followUp = at('pending.followUp', true, at('lastDrawnDay', 0, text))
+      expect(deserialize(followUp).events.pending).toEqual({
+        event: 'essai',
+        followUp: true,
+      })
+    })
+
+    it('known to the shipped content but not to the content it loads with', () => {
+      const text = serialize(WAITING)
+      expect(deserialize(text).events.pending?.event).toBe('essai')
+      expect(deserialize(text, FOOD_TRUCK, ESSAI)).toEqual(WAITING)
+      expect(() =>
+        deserialize(text, FOOD_TRUCK, { ...ESSAI, events: [] }),
+      ).toThrow('the event waiting is an unknown event: essai')
+    })
+
+    it('drawn after the save', () => {
+      expectInvalid(at('lastDrawnDay', 2), [
+        'lastDrawnDay is day 2, after day 1',
+      ])
+    })
+
+    it.each([
+      [
+        'delayed.0.day',
+        0,
+        'delayed effect 1 is due on day 0, a day already played',
+      ],
+      [
+        'delayed.0.day',
+        5,
+        'delayed effect 2 comes before the one before it: day 4 < day 5',
+      ],
+      ['delayed.0.event', 'nope', 'delayed effect 1 is an unknown event: nope'],
+      [
+        'followUps',
+        [{ day: 31, event: 'nope' }],
+        'follow-up 1 is an unknown event: nope',
+      ],
+      [
+        'followUps',
+        [
+          { day: 31, event: 'essai' },
+          { day: 30, event: 'essai' },
+        ],
+        'follow-up 2 comes before the one before it: day 30 < day 31',
+      ],
+      ['history.0.day', 2, 'event record 1 is on day 2, after day 1'],
+      ['history.0.event', 'nope', 'event record 1 is an unknown event: nope'],
+      [
+        'history.0.choice',
+        'nope',
+        'event record 1 is an unknown choice of essai: nope',
+      ],
+      [
+        'history.0.outcome',
+        1,
+        "event record 1 is outcome 1 of essai's toutEssayer, which has 1",
+      ],
+      ['headlines.0.day', 2, 'headline 1 is on day 2, after day 1'],
+    ])('with %s at %j', (path, value, reason) => {
+      expectInvalid(at(path, value), [reason])
+    })
+
+    it('with a delayed follow-up to an unknown event', () => {
+      const text = at('delayed.0.effect', {
+        kind: 'followUp',
+        event: 'nope',
+        days: 3,
+        chance: 1,
+      })
+      expectInvalid(text, [
+        "delayed effect 1's follow-up is an unknown event: nope",
+      ])
+    })
+
+    it.each([
+      [
+        { kind: 'collectReceivable', client: 'A', inDays: 2 },
+        'Unrecognized key: "inDays"',
+      ],
+      [
+        { kind: 'collectReceivable', client: 'A', onNextWeekday: 4 },
+        'Unrecognized key: "onNextWeekday"',
+      ],
+      [{ kind: 'lottery' }, '→ at events.delayed[0].effect.kind'],
+      [{ kind: 'energy', amount: 0 }, '→ at events.delayed[0].effect.amount'],
+      [
+        { kind: 'charge', amountCents: 100, description: 'x', account: '1000' },
+        '→ at events.delayed[0].effect.account',
+      ],
+    ])('with the delayed effect %j', (effect, reason) => {
+      expectInvalid(at('delayed.0.effect', effect), [reason])
+    })
+
+    it('whose history goes back in time', () => {
+      const record = CHOSEN.events.history[0]
+      const text = at('history', [record, { ...record, day: 0 }])
+      expectInvalid(text, [
+        'event record 2 comes before the one before it: day 0 < day 1',
+      ])
+    })
+
+    it('whose headlines go back in time', () => {
+      const text = at('headlines', [
+        { day: 1, id: 'essai' },
+        { day: 0, id: 'essai' },
+      ])
+      expectInvalid(text, [
+        'headline 2 comes before the one before it: day 0 < day 1',
+      ])
+    })
+
+    it("with the owner's energy below the close before, unless a choice was made that morning", () => {
+      const tired = CHOSEN.energy
+      expect(tired).toBeLessThan(CHOSEN.lastDay?.energy ?? 0)
+      expect(deserialize(CHOSEN_SAVE).energy).toBe(tired)
+      expectInvalid(at('history', []), [
+        `energy is ${tired} on the morning of day 1, below the 100 of the close before`,
+      ])
+    })
+  })
+
+  describe("an event's personal movement", () => {
+    const gift = 'personal.movements.1'
+
+    it('dated the morning of the save, which loads', () => {
+      expect(deserialize(CHOSEN_SAVE).personal.movements).toHaveLength(2)
+    })
+
+    it('of 0', () => {
+      expectInvalid(withValue(`${gift}.amount`, 0, CHOSEN_SAVE), [
+        "personal movement 2, « Cadeau d'essai », must not be 0",
+      ])
+    })
+
+    it('after the save', () => {
+      expectInvalid(withValue(`${gift}.day`, 2, CHOSEN_SAVE), [
+        'personal movement 2 is on day 2, after day 1',
+      ])
+    })
+
+    it('whose label no event gives', () => {
+      expectInvalid(withValue(`${gift}.label`, 'Loto', CHOSEN_SAVE), [
+        'personal movement 2 has an unknown label: « Loto »',
+      ])
+    })
+
+    it("dated after the last day played, for the owner's own labels", () => {
+      expectInvalid(
+        withValue(
+          `${gift}.label`,
+          LABELS.rent,
+          withValue(`${gift}.amount`, -100, CHOSEN_SAVE),
+        ),
+        ['personal movement 2 is on day 1, after day 0'],
+      )
+    })
+
+    it("under a label of the owner's no event gives, held to its own rule", () => {
+      const events = pocketCard(LABELS.rent, 100)
+      // FORTNIGHT's movement 1 is a « Loyer », 2 a « Salaire », 3 a
+      // « Dépenses de la semaine ».
+      expectInvalid(
+        withValue('personal.movements.1.amount', -70_000),
+        ['personal movement 2, « Salaire », must be above 0: -70000'],
+        FOOD_TRUCK,
+        events,
+      )
+      expectInvalid(
+        withValue('personal.movements.2.amount', 25_000),
+        [
+          'personal movement 3, « Dépenses de la semaine », must be below 0: 25000',
+        ],
+        FOOD_TRUCK,
+        events,
+      )
+      // The « Loyer » the card gives is held to the card's rule instead.
+      const refund = withValue('personal.movements.0.amount', 130_000)
+      expect(
+        deserialize(refund, FOOD_TRUCK, events).personal.movements[0]?.amount,
+      ).toBe(130_000)
+      expectInvalid(refund, [
+        'personal movement 1, « Loyer », must be below 0: 130000',
+      ])
+      expectInvalid(
+        withValue('personal.movements.0.amount', 0),
+        ['personal movement 1, « Loyer », must not be 0'],
+        FOOD_TRUCK,
+        events,
+      )
+    })
+
+    it('before day 0 is played, but for a choice made that morning', () => {
+      const unchosen = withValue('events.history', [], DAY_0_SAVE)
+      expectInvalid(
+        unchosen,
+        [`energy is ${FULL_ENERGY - 5} before day 0 is played, not 100`],
+        FOOD_TRUCK,
+        DAY_0_CARD,
+      )
+      for (const save of [
+        withValue('energy', FULL_ENERGY, unchosen),
+        withValue('personal.movements.0.label', LABELS.salary, DAY_0_SAVE),
+        withValue('personal.unpaidRents', [0], DAY_0_SAVE),
+      ]) {
+        expectInvalid(
+          save,
+          ['personal holds movements before day 0 is played'],
+          FOOD_TRUCK,
+          DAY_0_CARD,
+        )
+      }
+      expectInvalid(
+        withValue('personal.movements.0.amount', 0, DAY_0_SAVE),
+        ['personal movement 1, « Cadeau », must not be 0'],
+        FOOD_TRUCK,
+        DAY_0_CARD,
+      )
     })
   })
 })

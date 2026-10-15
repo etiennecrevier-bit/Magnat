@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { difficultyIdSchema } from '../../src/content/schema.ts'
 import { DIFFICULTIES } from '../../src/engine/day.ts'
-import { wholeNumber } from '../sim/cli.ts'
+import { eventPolicy, wholeNumber } from '../sim/cli.ts'
+import { EVENT_POLICIES, type EventPolicy } from '../sim/simulate.ts'
 import { formatReport, withHandWritten } from './report.ts'
 import { playAll } from './threads.ts'
 
@@ -17,6 +18,8 @@ import { playAll } from './threads.ts'
 export interface BalanceArgs {
   readonly years: number
   readonly games: number
+  /** How the event cards are answered. */
+  readonly events: EventPolicy
   /** Absolute path of the report. */
   readonly out: string
 }
@@ -24,16 +27,17 @@ export interface BalanceArgs {
 const DEFAULTS = {
   years: 1,
   games: 30,
+  events: 'none' as EventPolicy,
   out: fileURLToPath(new URL('../../docs/balance/phase-2.md', import.meta.url)),
 }
 
-export const USAGE =
-  'Usage: npm run balance -- [--years <n>] [--games <n>] [--out <file>]'
+export const USAGE = `Usage: npm run balance -- [--years <n>] [--games <n>] [--events ${EVENT_POLICIES.join('|')}] [--out <file>]`
 
 /**
- * Reads `--years` and `--games` (whole numbers from 1) and `--out` (resolved
- * from the current folder). Throws on anything else, including positional
- * arguments.
+ * Reads `--years` and `--games` (whole numbers from 1), `--events` (how the
+ * event cards are answered, by default `none`, so the report stays the
+ * economy without events) and `--out` (resolved from the current folder).
+ * Throws on anything else, including positional arguments.
  */
 export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
   const { values } = parseArgs({
@@ -41,6 +45,7 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
     options: {
       years: { type: 'string' },
       games: { type: 'string' },
+      events: { type: 'string' },
       out: { type: 'string' },
     },
     strict: true,
@@ -49,6 +54,7 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
   return {
     years: wholeNumber('--years', values.years, DEFAULTS.years, 1),
     games: wholeNumber('--games', values.games, DEFAULTS.games, 1),
+    events: eventPolicy(values.events, DEFAULTS.events),
     out: resolve(values.out ?? DEFAULTS.out),
   }
 }
@@ -70,13 +76,14 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 
   try {
-    const { years, games, out } = args
+    const { years, games, events, out } = args
     const started = performance.now()
     const difficulties = await playAll(
       difficultyIdSchema.options.map((difficulty) => ({
         years,
         games,
         difficulty,
+        events,
       })),
       ({ difficulty, strategies }) => {
         console.log(
@@ -86,7 +93,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     )
 
     const previous = existsSync(out) ? readFileSync(out, 'utf8') : null
-    const report = formatReport({ years, games, difficulties })
+    const report = formatReport({ years, games, events, difficulties })
     mkdirSync(dirname(out), { recursive: true })
     writeFileSync(out, withHandWritten(previous, report))
     console.log(`Wrote ${out} in ${seconds(performance.now() - started)}`)

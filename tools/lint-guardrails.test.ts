@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest'
 import { tick } from '../src/engine/clock.ts'
 import { playDay } from '../src/engine/day.ts'
 import { applyDecision } from '../src/engine/decisions.ts'
+import { applyEffect, startOfDay } from '../src/engine/effects.ts'
+import { drawEvent, resolveEvent } from '../src/engine/events.ts'
 import { postEntry } from '../src/finance/journal.ts'
 
 // Proves the guardrails in eslint.config.js stay wired up: each forbidden
@@ -93,7 +95,16 @@ const CONTENT_ALLOWED = [
  * The functions that change the game, as eslint.config.js names them. The
  * imports above stop typechecking when one of them is renamed or moved.
  */
-const GAME_CHANGERS = { postEntry, applyDecision, tick, playDay }
+const GAME_CHANGERS = {
+  postEntry,
+  applyDecision,
+  tick,
+  playDay,
+  drawEvent,
+  resolveEvent,
+  applyEffect,
+  startOfDay,
+}
 
 const WORLD_FORBIDDEN: { code: string; rule: string }[] = [
   {
@@ -110,6 +121,26 @@ const WORLD_FORBIDDEN: { code: string; rule: string }[] = [
   },
   {
     code: "import { playDay } from '../../engine/day.ts'",
+    rule: 'no-restricted-imports',
+  },
+  {
+    code: "import { drawEvent } from '../engine/events.ts'",
+    rule: 'no-restricted-imports',
+  },
+  {
+    code: "import { resolveEvent } from '../../engine/events.ts'",
+    rule: 'no-restricted-imports',
+  },
+  {
+    code: "import { applyEffect } from '../engine/effects.ts'",
+    rule: 'no-restricted-imports',
+  },
+  {
+    code: "import { startOfDay } from '../engine/effects.ts'",
+    rule: 'no-restricted-imports',
+  },
+  {
+    code: "export { resolveEvent as choose } from '../engine/events.ts'",
     rule: 'no-restricted-imports',
   },
   {
@@ -157,6 +188,8 @@ const WORLD_ALLOWED = [
   "import { toCalendar } from '../engine/clock.ts'",
   "import { balance } from '../finance/journal.ts'",
   "import { gameStore, useGame } from '../ui/store.ts'",
+  "import { NO_EVENTS, noEvents } from '../engine/events.ts'",
+  "import { whenDue } from '../engine/effects.ts'",
   'gameStore.getState().game',
   'Math.random()',
   'window.innerWidth',

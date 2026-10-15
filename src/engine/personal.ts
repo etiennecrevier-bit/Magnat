@@ -84,6 +84,26 @@ export function livePersonalDay(
 }
 
 /**
+ * Adds the movement `label` of `amount` on `day`, such as an event's, after
+ * the others. An amount of 0 records nothing. Older movements are dropped by
+ * the next `livePersonalDay()`. Returns a new account; never mutates
+ * `account`.
+ */
+export function addMovement(
+  account: PersonalAccount,
+  day: Day,
+  label: string,
+  amount: Cents,
+): PersonalAccount {
+  if (amount === 0) return account
+  return {
+    ...account,
+    cash: add(account.cash, amount),
+    movements: [...account.movements, { day, label, amount }],
+  }
+}
+
+/**
  * Whether the owner is in debt: their cash is below zero. Each payday it is,
  * after the week's expenses, the stress drains the owner's energy (P2-16).
  */

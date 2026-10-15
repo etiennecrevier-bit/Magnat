@@ -1,16 +1,34 @@
 import { createHash } from 'node:crypto'
-import type { DifficultyId } from '../../src/content/schema.ts'
+import type {
+  DifficultyId,
+  EventCard,
+  EventContent,
+} from '../../src/content/schema.ts'
 import { createInitialState, tick, toCalendar } from '../../src/engine/clock.ts'
-import { FOOD_TRUCK } from '../../src/engine/day.ts'
+import {
+  CUSTOMERS,
+  DIFFICULTIES,
+  ENERGY,
+  EVENTS,
+  FOOD_TRUCK,
+  PERSONAL,
+} from '../../src/engine/day.ts'
 import {
   applyDecision,
   latestDecisions,
   type DecisionChange,
 } from '../../src/engine/decisions.ts'
+import { NO_EVENTS, resolveEvent } from '../../src/engine/events.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import type { Cents } from '../../src/engine/money.ts'
 import { defaultProfile } from '../../src/engine/profile.ts'
-import type { Day, DaySummary, PerProduct } from '../../src/engine/types.ts'
+import { int, seedRng } from '../../src/engine/rng.ts'
+import type {
+  Day,
+  DaySummary,
+  EventRecord,
+  PerProduct,
+} from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import {
   balance,
@@ -23,6 +41,54 @@ import { incomeStatement } from '../../src/finance/statements.ts'
 // and writes it to disk.
 
 const CASH: AccountCode = '1000'
+
+/**
+ * How the headless player answers the event cards: always the `first`
+ * choice, a `random` one, or `none`, a game where no event ever comes up.
+ */
+export type EventPolicy = 'first' | 'random' | 'none'
+
+export const EVENT_POLICIES: readonly EventPolicy[] = [
+  'first',
+  'random',
+  'none',
+]
+
+// Mixed into the game's seed so the random choices draw from a stream of
+// their own, apart from the game's generator.
+const CHOICE_SALT = 0x5eed_c0de
+
+/**
+ * Picks the id of a choice for each event card `policy` answers, in turn:
+ * the first choice, or, for `random`, one drawn uniformly from a seeded
+ * generator of its own, seeded from `seed`, so the same game makes the same
+ * choices. Throws a RangeError for `none`, which never answers one.
+ */
+export function eventChooser(
+  policy: EventPolicy,
+  seed: number,
+): (event: EventCard) => string {
+  switch (policy) {
+    case 'first':
+      return ({ choices }) => idOf(choices, 0)
+    case 'random': {
+      let state = seedRng((seed ^ CHOICE_SALT) >>> 0)
+      return ({ choices }) => {
+        const [index, after] = int(state, 0, choices.length - 1)
+        state = after
+        return idOf(choices, index)
+      }
+    }
+    case 'none':
+      throw new RangeError('No event comes up in a game that plays none')
+  }
+}
+
+function idOf(choices: EventCard['choices'], index: number): string {
+  const choice = choices[index]
+  if (choice === undefined) throw new RangeError(`No choice ${index}`)
+  return choice.id
+}
 
 /**
  * One year of play. Years count from the first day of the game, so year 1
@@ -77,15 +143,22 @@ export interface SimulationResult {
   /** Every entry in the books at the end of the run. */
   readonly journal: readonly JournalEntry[]
   readonly owner: OwnerSummary
+  /** How the event cards were answered. */
+  readonly events: EventPolicy
+  /** Every event that came up and the choice made, oldest first. */
+  readonly eventHistory: readonly EventRecord[]
 }
 
 /**
  * Starts a game from `seed` at `difficulty`, by default the new game
  * screen's, makes `changes` to the starting decisions, in order, and plays
  * `days` business days, from day 0. The changes are in effect from day 0,
- * where the player's would wait for the next morning. Throws a RangeError
- * unless `days` is a safe integer of at least 1, `seed` and `difficulty` are
- * ones `createInitialState` accepts and every change is one `applyDecision`
+ * where the player's would wait for the next morning. With an `events`
+ * policy other than `none`, the event cards of `eventContent` come up, and
+ * each morning one does, before the owner's energy is read, `eventChooser`
+ * answers it for the game's seed. Throws a RangeError unless `days` is a safe
+ * integer of at least 1, `seed` and `difficulty` are ones
+ * `createInitialState` accepts and every change is one `applyDecision`
  * accepts.
  */
 export function simulate(
@@ -93,6 +166,8 @@ export function simulate(
   days: number,
   difficulty: DifficultyId = defaultProfile().difficulty,
   changes: readonly DecisionChange[] = [],
+  events: EventPolicy = 'none',
+  eventContent: EventContent = EVENTS,
 ): SimulationResult {
   if (!Number.isSafeInteger(days) || days < 1) {
     throw new RangeError(`Days to play must be a whole number from 1: ${days}`)
@@ -109,12 +184,27 @@ export function simulate(
     decisions: latestDecisions(state),
     pendingDecisions: null,
   }
+  const content = events === 'none' ? NO_EVENTS : eventContent
+  const choose = events === 'none' ? null : eventChooser(events, seed)
   const daySummaries: DaySummary[] = []
   const morningEnergy: number[] = []
   const unpaidRents: Day[] = []
   for (let day = 0; day < days; day += 1) {
+    const { pending } = state.events
+    const card = content.events.find(({ id }) => id === pending?.event)
+    if (choose !== null && card !== undefined) {
+      state = resolveEvent(state, choose(card), content)
+    }
     morningEnergy.push(state.energy)
-    state = tick(state)
+    state = tick(
+      state,
+      FOOD_TRUCK,
+      CUSTOMERS,
+      DIFFICULTIES,
+      PERSONAL,
+      ENERGY,
+      content,
+    )
     if (state.lastDay === null) throw new Error(`Day ${day} left no summary`)
     daySummaries.push(state.lastDay)
     if (state.personal.unpaidRents.at(-1) === day) unpaidRents.push(day)
@@ -129,6 +219,8 @@ export function simulate(
     daySummaries,
     journal: state.journal.entries,
     owner: { morningEnergy, personalCash: state.personal.cash, unpaidRents },
+    events,
+    eventHistory: state.events.history,
   }
 }
 

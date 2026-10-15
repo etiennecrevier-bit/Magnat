@@ -2,6 +2,7 @@ import {
   loadCustomerContent,
   loadDifficultyContent,
   loadEnergyContent,
+  loadEventContent,
   loadFoodTruckContent,
   loadPersonalContent,
   type CustomerContent,
@@ -9,6 +10,7 @@ import {
   type DifficultyContent,
   type DifficultyId,
   type EnergyContent,
+  type EventContent,
   type FoodTruckContent,
   type PersonalContent,
   type ProductId,
@@ -31,6 +33,7 @@ import {
   type Served,
   type Withdrawal,
 } from './customers.ts'
+import { startOfDay } from './effects.ts'
 import { effectsOf, energyAtClose } from './energy.ts'
 import {
   PRODUCTS,
@@ -62,6 +65,12 @@ export const PERSONAL: PersonalContent = loadPersonalContent()
  * the engine loads.
  */
 export const ENERGY: EnergyContent = loadEnergyContent()
+
+/**
+ * The shipped event cards and their pacing, validated once when the engine
+ * loads.
+ */
+export const EVENTS: EventContent = loadEventContent()
 
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
@@ -164,33 +173,43 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
 }
 
 /**
- * Plays business day `state.day` with `state.decisions`. On the 1st of the
- * month, open or closed: the month's charges (see `monthlyCharges`). On a
- * day the truck opens: the morning restock, then the walk-in customers,
- * with those the marketing of the days before brings on top (see
- * `marketingCrowd`), lining up at the counter, where `servers()` serve
- * them from the stock on hand, slower and botching units the more tired the
- * owner is that morning (see `effectsOf`), what the sales cost in packaging
- * and card fees, the fuel and the day's marketing budget. On a day it is
- * closed, nobody comes, nothing is bought and nothing is spent on
- * marketing, so the generator does not move. On payday, open or closed,
- * the owner's weekly pay. Every day: the spoilage at the close. Every entry
- * is dated `state.day`. Then the owner's own day, outside the books, with
- * `personal` as their living costs (see `livePersonalDay`), and what the
- * day did to their energy, with `energy` as what tires them (see
- * `energyAtClose`). Returns a new state on the same day with the books, the
- * stock, the generator, the marketing history, `lastDay`, the owner's
- * personal account and their energy brought up to the close; never mutates
- * `state`. Cash may go negative.
+ * Plays business day `morning.day` with `morning.decisions`. Throws an Error
+ * while an event waits for the player's choice. First the start of the day:
+ * the delayed effects of the events' choices due that day, then the
+ * receivables due (see `startOfDay`). On the 1st of the month, open or
+ * closed: the month's charges (see `monthlyCharges`). On a day the truck
+ * opens: the morning restock, then the walk-in customers, with those the
+ * marketing of the days before brings on top (see `marketingCrowd`), lining
+ * up at the counter, where `servers()` serve them from the stock on hand,
+ * slower and botching units the more tired the owner is that morning (see
+ * `effectsOf`), what the sales cost in packaging and card fees, the fuel
+ * and the day's marketing budget. On a day it is closed, nobody comes,
+ * nothing is bought and nothing is spent on marketing, so the generator does
+ * not move. On payday, open or closed, the owner's weekly pay. Every day:
+ * the spoilage at the close. Every entry is dated `morning.day`. Then the
+ * owner's own day, outside the books, with `personal` as their living costs
+ * (see `livePersonalDay`), and what the day did to their energy, with
+ * `energy` as what tires them (see `energyAtClose`). Returns a new state on
+ * the same day with the books, the stock, the generator, the marketing
+ * history, `lastDay`, the owner's personal account, their energy, the
+ * events and the receivables brought up to the close; never mutates
+ * `morning`. Cash may go negative.
  */
 export function playDay(
-  state: GameState,
+  morning: GameState,
   content: FoodTruckContent = FOOD_TRUCK,
   customers: CustomerContent = CUSTOMERS,
   difficulties: DifficultyContent = DIFFICULTIES,
   personal: PersonalContent = PERSONAL,
   energy: EnergyContent = ENERGY,
 ): GameState {
+  const { pending } = morning.events
+  if (pending !== null) {
+    throw new Error(
+      `Day ${morning.day} cannot be played: the event ${pending.event} is waiting for a choice`,
+    )
+  }
+  const state = startOfDay(morning, content)
   const { day, decisions } = state
   const { dayOfMonth, weekday } = toCalendar(day)
   const open = decisions.daysOpen.includes(weekday)

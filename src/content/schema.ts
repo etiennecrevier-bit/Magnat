@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { cents } from '../engine/money.ts'
 import difficultyJson from './difficulty.json'
 import energyJson from './energy.json'
+import eventsJson from './events.json'
 import foodTruckJson from './foodtruck.json'
 import personalJson from './personal.json'
 import profileJson from './profile.json'
@@ -49,6 +50,10 @@ const energyAmount = z.number().min(0).max(FULL_ENERGY)
 
 // Shares that sum to 1 within this tolerance are taken as a whole.
 const SHARE_SUM_TOLERANCE = 1e-9
+
+// Calendar facts, not tunables: the month lengths of the game's years, which
+// have no leap day, as in src/engine/calendar.ts.
+const MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const
 
 export const productIdSchema = z.enum(['cafe', 'chocolat', 'croissant'])
 
@@ -425,6 +430,332 @@ export const energyContentSchema = z
 
 export type EnergyContent = z.output<typeof energyContentSchema>
 
+// Rules the event card is held to, not tunables: what fits on the card.
+const SITUATION_MAX_LENGTH = 280
+const CHOICE_LABEL_MAX_LENGTH = 45
+const RESULT_MAX_LENGTH = 200
+
+/** French text the player reads: not blank, with no space at either end. */
+function frenchText(maxLength: number = Number.MAX_SAFE_INTEGER) {
+  return z
+    .string()
+    .min(1)
+    .max(maxLength)
+    .refine((text) => text === text.trim(), {
+      message: 'text starts and ends with a character, not a space',
+    })
+}
+
+/** The id of an event, a choice, a character or a headline: camelCase. */
+const idSchema = z
+  .string()
+  .regex(/^[a-z][A-Za-z0-9]*$/, 'expected a camelCase id, such as essai')
+
+/** Whole cents of either sign but never 0, typed as the engine's `Cents`. */
+const nonZeroMoney = z
+  .int()
+  .refine((n) => n !== 0, 'expected an amount other than 0')
+  .transform((n) => cents(n))
+
+/**
+ * The expense accounts an event may charge, from the chart in
+ * src/finance/accounts.ts: Emballages, Loyer et permis, Assurances,
+ * Carburant et entretien, Marketing, Frais bancaires et de cartes and Autres
+ * charges.
+ */
+export const eventChargeAccountSchema = z.enum([
+  '5200',
+  '6100',
+  '6150',
+  '6200',
+  '6300',
+  '6500',
+  '6900',
+])
+
+/**
+ * One kind of effect for each member, with `extra` added to each: nothing
+ * for the effect as the engine applies it, its timing for the content.
+ */
+function effectSchemas<Extra extends z.core.$ZodShape>(extra: Extra) {
+  return [
+    /** Pays `amountCents` now, Dr `account` (6900 by default) / Cr 1000. */
+    z.strictObject({
+      kind: z.literal('charge'),
+      amountCents: positiveMoney,
+      description: frenchText(),
+      account: eventChargeAccountSchema.optional(),
+      ...extra,
+    }),
+    /** Revenue paid now: Dr 1000 / Cr 4000. */
+    z.strictObject({
+      kind: z.literal('cashSale'),
+      amountCents: positiveMoney,
+      description: frenchText(),
+      ...extra,
+    }),
+    /** Revenue now, which `client` pays `dueInDays` days later. */
+    z.strictObject({
+      kind: z.literal('creditSale'),
+      amountCents: positiveMoney,
+      client: frenchText(),
+      dueInDays: z.int().positive(),
+      ...extra,
+    }),
+    /** `client` pays everything they owe now. */
+    z.strictObject({
+      kind: z.literal('collectReceivable'),
+      client: frenchText(),
+      ...extra,
+    }),
+    /** What `client` owes comes due `days` days later. */
+    z.strictObject({
+      kind: z.literal('delayReceivable'),
+      client: frenchText(),
+      days: z.int().positive(),
+      ...extra,
+    }),
+    /** What `client` owes will never be paid. */
+    z.strictObject({
+      kind: z.literal('writeOff'),
+      client: frenchText(),
+      ...extra,
+    }),
+    /** Buys `units` of `product` at its unit cost, paid now. */
+    z.strictObject({
+      kind: z.literal('buyStock'),
+      product: productIdSchema,
+      units: z.int().positive(),
+      ...extra,
+    }),
+    /**
+     * Takes up to `units` of `product` out of the stock, oldest first: sold
+     * in an `order`, or given away to 6300 Marketing.
+     */
+    z.strictObject({
+      kind: z.literal('useStock'),
+      product: productIdSchema,
+      units: z.int().positive(),
+      to: z.enum(['order', 'giveaway']),
+      ...extra,
+    }),
+    /** Changes the owner's energy, which stays between 0 and 100. */
+    z.strictObject({
+      kind: z.literal('energy'),
+      amount: z
+        .number()
+        .min(-FULL_ENERGY)
+        .max(FULL_ENERGY)
+        .refine((n) => n !== 0, 'expected an amount other than 0'),
+      ...extra,
+    }),
+    /** Changes the owner's own cash, outside the books, as `label`. */
+    z.strictObject({
+      kind: z.literal('personal'),
+      amountCents: nonZeroMoney,
+      label: frenchText(),
+      ...extra,
+    }),
+    /** Brings `event` `days` days later, with a `chance` of 1 by default. */
+    z.strictObject({
+      kind: z.literal('followUp'),
+      event: idSchema,
+      days: z.int().positive(),
+      chance: z.number().gt(0).max(1).default(1),
+      ...extra,
+    }),
+    /** Queues the La Presse-Citron headline `id`. */
+    z.strictObject({ kind: z.literal('headline'), id: idSchema, ...extra }),
+  ] as const
+}
+
+/**
+ * What an event does, as the engine applies it: on the day it starts,
+ * without the timing the content gives it. A save holds the effects still
+ * to come in this form.
+ */
+export const eventEffectSchema = z.discriminatedUnion('kind', effectSchemas({}))
+
+export type EventEffect = z.output<typeof eventEffectSchema>
+
+/**
+ * An effect as the content writes it: now, or later, after `inDays` days or
+ * on the next `onNextWeekday` (4 is next Thursday, a week away on a
+ * Thursday), never both.
+ */
+const timedEffectSchema = z
+  .discriminatedUnion(
+    'kind',
+    effectSchemas({
+      inDays: z.int().positive().optional(),
+      onNextWeekday: weekday.optional(),
+    }),
+  )
+  .refine(
+    (effect) =>
+      effect.inDays === undefined || effect.onNextWeekday === undefined,
+    { message: 'an effect starts after inDays or onNextWeekday, not both' },
+  )
+
+export type TimedEventEffect = z.output<typeof timedEffectSchema>
+
+/** One way a choice can turn out; the player never sees its chance. */
+const eventOutcomeSchema = z.strictObject({
+  chance: z.number().gt(0).max(1),
+  result: frenchText(RESULT_MAX_LENGTH),
+  effects: z.array(timedEffectSchema),
+})
+
+export type EventOutcome = z.output<typeof eventOutcomeSchema>
+
+const eventChoiceSchema = z
+  .strictObject({
+    id: idSchema,
+    label: frenchText(CHOICE_LABEL_MAX_LENGTH),
+    /** What the owner would know before choosing, as the card shows it. */
+    tags: z.array(frenchText()).min(1),
+    /** Their chances sum to 1. */
+    outcomes: z.array(eventOutcomeSchema).min(1),
+  })
+  .refine(
+    ({ outcomes }) =>
+      Math.abs(sumOf(outcomes.map(({ chance }) => chance)) - 1) <=
+      SHARE_SUM_TOLERANCE,
+    {
+      message: 'the chances of the outcomes must sum to 1',
+      path: ['outcomes'],
+    },
+  )
+
+export type EventChoice = z.output<typeof eventChoiceSchema>
+
+/** A calendar date of any year: `dayOfMonth` exists in `month`. */
+const calendarDateSchema = z
+  .strictObject({
+    month: z.int().min(1).max(MONTH_LENGTHS.length),
+    dayOfMonth: z.int().min(1),
+  })
+  .refine(
+    ({ month, dayOfMonth }) => dayOfMonth <= (MONTH_LENGTHS[month - 1] ?? 0),
+    { message: 'no such day in that month', path: ['dayOfMonth'] },
+  )
+
+/**
+ * When an event may be drawn: every condition given must hold on the
+ * morning of the draw.
+ */
+const eventConditionsSchema = z.strictObject({
+  /** The earliest game day. */
+  fromDay: z.int().nonnegative().optional(),
+  difficulties: z.array(difficultyIdSchema).min(1).optional(),
+  /** Calendar months, 1 = January. */
+  months: z.array(z.int().min(1).max(MONTH_LENGTHS.length)).min(1).optional(),
+  /** One date of the year, such as June 30. */
+  date: calendarDateSchema.optional(),
+  /** The morning's ISO weekday. */
+  weekdays: z.array(weekday).min(1).optional(),
+  /** The owner's morning energy is below this. */
+  energyBelow: energyAmount.optional(),
+  /** Encaisse is above this. */
+  cashAboveCents: z.int().optional(),
+  /** Encaisse is below this. */
+  cashBelowCents: z.int().optional(),
+  /** Never drawn again once it has come up. */
+  oncePerGame: z.boolean().optional(),
+  /** Days after it last came up before it may be drawn again. */
+  cooldownDays: z.int().positive().optional(),
+  /** The product's restock rule buys some. */
+  productOnMenu: productIdSchema.optional(),
+  /** Only ever comes as another event's follow-up. */
+  followUpOnly: z.boolean().optional(),
+})
+
+export type EventConditions = z.output<typeof eventConditionsSchema>
+
+const eventSchema = z.strictObject({
+  id: idSchema,
+  /** Relative odds among the events whose conditions hold; 0 never draws. */
+  weight: z.number().nonnegative(),
+  /** Who brings the dilemma: a portrait id, a French name and a role. */
+  character: z.strictObject({
+    id: idSchema,
+    name: frenchText(),
+    role: frenchText(),
+  }),
+  title: frenchText(),
+  situation: frenchText(SITUATION_MAX_LENGTH),
+  quote: frenchText().optional(),
+  conditions: eventConditionsSchema.optional(),
+  choices: z.array(eventChoiceSchema).min(2).max(3),
+})
+
+export type EventCard = z.output<typeof eventSchema>
+
+/** How often events come: the first day, the gap and the daily chance. */
+const eventPacingSchema = z.strictObject({
+  /** No event is drawn before this game day. */
+  firstDay: z.int().nonnegative(),
+  /** Days from one drawn event to the next; follow-ups do not count. */
+  minDaysBetween: z.int().nonnegative(),
+  /** The chance of an event on a morning one may be drawn. */
+  dailyChance: share,
+})
+
+export const eventContentSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    pacing: eventPacingSchema,
+    events: z.array(eventSchema),
+  })
+  .superRefine(({ events }, ctx) => {
+    const ids = new Set(events.map(({ id }) => id))
+    const seen = new Set<string>()
+    events.forEach(({ id, choices }, e) => {
+      if (seen.has(id)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `the event id ${id} appears twice`,
+          path: ['events', e, 'id'],
+        })
+      }
+      seen.add(id)
+      const choiceIds = new Set<string>()
+      choices.forEach((choice, c) => {
+        if (choiceIds.has(choice.id)) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `the choice id ${choice.id} appears twice in this event`,
+            path: ['events', e, 'choices', c, 'id'],
+          })
+        }
+        choiceIds.add(choice.id)
+        choice.outcomes.forEach(({ effects }, o) => {
+          effects.forEach((effect, f) => {
+            if (effect.kind === 'followUp' && !ids.has(effect.event)) {
+              ctx.addIssue({
+                code: 'custom',
+                message: `no event has the id ${effect.event}`,
+                path: [
+                  'events',
+                  e,
+                  'choices',
+                  c,
+                  'outcomes',
+                  o,
+                  'effects',
+                  f,
+                  'event',
+                ],
+              })
+            }
+          })
+        })
+      })
+    })
+  })
+
+export type EventContent = z.output<typeof eventContentSchema>
+
 /**
  * Validates the food truck's content and returns it typed, with money as
  * `Cents`. Throws an Error naming every invalid field. Pass `raw` only to
@@ -485,6 +816,18 @@ export function loadPersonalContent(
  */
 export function loadEnergyContent(raw: unknown = energyJson): EnergyContent {
   return parsed(energyContentSchema, raw, 'energy.json')
+}
+
+/**
+ * Validates the event cards and their pacing and returns them typed, with
+ * money as `Cents`. Throws an Error naming every invalid field: besides
+ * each field, event ids must be unique, choice ids unique within their
+ * event, each choice's chances must sum to 1 and every follow-up must name
+ * an event of the file. Pass `raw` only to check other data; by default it
+ * reads `events.json`.
+ */
+export function loadEventContent(raw: unknown = eventsJson): EventContent {
+  return parsed(eventContentSchema, raw, 'events.json')
 }
 
 function parsed<T extends z.ZodType>(

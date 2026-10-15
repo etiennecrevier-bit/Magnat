@@ -1,12 +1,12 @@
 # Architecture
 
-How the game is put together at the end of phase 1: the folders and who may import whom, the frozen contract in `src/engine/types.ts`, the order in which a day is played, how the books are written and read, where the tunable numbers come from and what the 10-year invariant test checks. `tools/architecture-doc.test.ts` keeps parts of this page in step with the code (see the last section).
+How the game is put together at the end of phase 1: the folders and who may import whom, the frozen contract in `src/engine/types.ts`, the order in which a day is played, the event cards, how the books are written and read, where the tunable numbers come from and what the 10-year invariant test checks. `tools/architecture-doc.test.ts` keeps parts of this page in step with the code (see the last section).
 
 ## Layout and dependencies
 
 | Folder | Holds | Imports from other folders |
 | --- | --- | --- |
-| `src/engine/` | Game rules: the clock, a day of business, walk-in customers, the marketing budget, the player's decisions, the owner's personal account and energy, lots and FIFO, money, the seeded generator, the shared types | `src/finance/` (journal, accounts) and `src/content/schema.ts` |
+| `src/engine/` | Game rules: the clock, a day of business, walk-in customers, the marketing budget, the player's decisions, the owner's personal account and energy, the event cards and what their choices do, the customers who pay later, lots and FIFO, money, the seeded generator, the shared types | `src/finance/` (journal, accounts, loan, receivables) and `src/content/schema.ts` |
 | `src/finance/` | The journal, the chart of accounts, the three statements | `src/engine/money.ts` and `src/engine/types.ts` only |
 | `src/content/` | Tunable numbers as JSON, and the zod schema that validates them | `src/engine/money.ts` only, to type money as `Cents` |
 | `src/ui/` | React screens, the Zustand store and the real-time loop | engine, finance and content |
@@ -23,14 +23,14 @@ Engine and finance code never imports React, React DOM, Zustand or anything from
 
 The world draws the game state and never changes it (CLAUDE.md rule 9). `eslint.config.js` holds that line too:
 - engine, finance and content code never imports `src/world/`;
-- the world never imports the functions that change the game, listed in `GAME_CHANGERS` (`postEntry`, `applyDecision`, `tick` and `playDay`), nor a whole engine, finance or UI module with `import * as`, and never calls the store's `advance()`, `setState()` or `startGame()`. Its tests may, to build the states they draw;
+- the world never imports the functions that change the game, listed in `GAME_CHANGERS` (`postEntry`, `applyDecision`, `tick`, `playDay`, `drawEvent`, `resolveEvent`, `applyEffect` and `startOfDay`), nor a whole engine, finance or UI module with `import * as`, and never calls the store's `advance()`, `setState()` or `startGame()`. Its tests may, to build the states they draw;
 - neither content nor the world uses dynamic `import()`.
 
 Randomness and the browser are allowed in the world, since nothing it does reaches the engine.
 
 ## The contract
 
-`src/engine/types.ts` holds the types the engine, the books, the UI and the tools share. It is frozen at the end of phase 1: changing it needs a dedicated card. It holds types only, with no code. P2-02 (#45) was such a card: it added `segments` and `visits` to `DaySummary`, with `SegmentSummary`, `Visit` and `VisitOutcome`. So was P2-04 (#46): it added `decisions` and `pendingDecisions` to `GameState`, with `Decisions`. And P2-11 (#53): it added `profile` to `GameState`, with `Profile`. And P2-03 (#62): it added `leftLine`, `averageWaitSeconds` and `longestWaitSeconds` to `DaySummary`, `servedMinute` and `leftMinute` to `Visit`, and `'leftLine'` to `VisitOutcome`. And P2-05 (#63): it added `marketingHistory` to `GameState`. And P2-17 (#83): it added `personal` to `GameState`, with `PersonalAccount` and `PersonalMovement`. And P2-16 (#82): it added `energy` to `GameState`, `energy` and `botched` to `DaySummary`, and `botched` to `Visit`.
+`src/engine/types.ts` holds the types the engine, the books, the UI and the tools share. It is frozen at the end of phase 1: changing it needs a dedicated card. It holds types only, with no code. P2-02 (#45) was such a card: it added `segments` and `visits` to `DaySummary`, with `SegmentSummary`, `Visit` and `VisitOutcome`. So was P2-04 (#46): it added `decisions` and `pendingDecisions` to `GameState`, with `Decisions`. And P2-11 (#53): it added `profile` to `GameState`, with `Profile`. And P2-03 (#62): it added `leftLine`, `averageWaitSeconds` and `longestWaitSeconds` to `DaySummary`, `servedMinute` and `leftMinute` to `Visit`, and `'leftLine'` to `VisitOutcome`. And P2-05 (#63): it added `marketingHistory` to `GameState`. And P2-17 (#83): it added `personal` to `GameState`, with `PersonalAccount` and `PersonalMovement`. And P2-16 (#82): it added `energy` to `GameState`, `energy` and `botched` to `DaySummary`, and `botched` to `Visit`. And P3-03 (#91): it added `events` and `receivables` to `GameState`, with `EventsState`, `PendingEvent`, `DelayedEffect`, `FollowUp`, `EventRecord`, `Headline` and `Receivable`. A version 7 save, from before it, loads as a game with no event yet and nobody owing anything (`SAVE_VERSION`, 8, in `src/engine/save.ts`).
 
 The engine is deterministic: the same seed, played with the same code, the same content and the same decisions on the same days, always posts the same journal, so it always gives the same `journalHash`. A replay is only guaranteed within one version of the code and content, though. Changing the order of the generator draws, the order of a day's entries or a number in `src/content/` can change the journal a seed produces without touching `types.ts`.
 
@@ -38,7 +38,7 @@ The engine is deterministic: the same seed, played with the same code, the same 
 
 ### `GameState`
 
-The whole game. `createInitialState()` and `tick()` return it at the start of business day `day`, with `lastDay` summing up the day before. `playDay()`, which `tick()` calls, returns it at the close of `day`: `day` has not moved yet and `lastDay.day` equals `day`. Only `tick()` moves on to the next day.
+The whole game. `createInitialState()` and `tick()` return it at the start of business day `day`, with `lastDay` summing up the day before. `playDay()`, which `tick()` calls, returns it at the close of `day`: `day` has not moved yet and `lastDay.day` equals `day`. Only `tick()` moves on to the next day. It may return the next morning with an event waiting for the player's choice, which `resolveEvent()` plays on that same morning, before the day can be played.
 
 Every function that takes a state returns a new one and never mutates it. The fields are `readonly`, so TypeScript rejects writes, but at run time only the journal (with its entries and lines) is frozen.
 
@@ -55,7 +55,9 @@ Every function that takes a state returns a new one and never mutates it. The fi
 | `pendingDecisions` | `Decisions \| null` | What the player decided since day `day` began, waiting for the next morning. Null when nothing waits. |
 | `profile` | `Profile` | Who the player is: the business name, the avatar and the difficulty picked on the new game screen. It never changes once the game has started. |
 | `personal` | `PersonalAccount` | The owner's own money, outside the company's books (step 7 below). |
-| `energy` | `number` | The owner's energy, from 0 to 100 (`FULL_ENERGY` in `src/engine/energy.ts`): on the morning of `day`, or at its close in what `playDay()` returns. A tired owner serves slower and botches units (steps 2 and 8 below). |
+| `energy` | `number` | The owner's energy, from 0 to 100 (`FULL_ENERGY` in `src/engine/energy.ts`): on the morning of `day`, or at its close in what `playDay()` returns. A tired owner serves slower and botches units (steps 2 and 8 below). An event's choice may change it, on the morning it is made or at the start of a later day. |
+| `events` | `EventsState` | The event cards: the one waiting for the player's choice, what the choices made still have to do, and every event that came up with what the player chose. |
+| `receivables` | `readonly Receivable[]` | What customers who pay later owe the business, by due day, then in the order they were sold. Their amounts add up to the balance of Comptes clients (1100). |
 
 A decision never changes the day under way. The UI shows `day` as today and plays it once its real time is over, so the player's changes land in `pendingDecisions`, and `tick()` makes them the next day's `decisions`. `latestDecisions(state)` in `src/engine/decisions.ts` gives what the player last left: `pendingDecisions`, or else `decisions`.
 
@@ -96,8 +98,77 @@ A `PersonalMovement` is one movement of the account:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `day` | `Day` | The day it happened. |
-| `label` | `string` | What it was, in French: « Salaire », « Loyer » or « Dépenses de la semaine », from `LABELS` in `src/engine/personal.ts`. |
-| `amount` | `Cents` | Above zero for « Salaire », below zero for the others. A movement of 0 is never recorded. |
+| `label` | `string` | What it was, in French: « Salaire », « Loyer » or « Dépenses de la semaine », from `LABELS` in `src/engine/personal.ts`, or the `label` of an event's `personal` effect, which `addMovement()` in the same file records. |
+| `amount` | `Cents` | Above zero for « Salaire », below zero for the other two, of either sign for an event's. A movement of 0 is never recorded. |
+
+### `EventsState` and `PendingEvent`
+
+The event cards of a game: dilemmas from `src/content/events.json` that come up on a morning and wait for the player's choice before the day can be played. `src/engine/events.ts` draws them and plays the choices, and `src/engine/effects.ts` applies what the choices do ("Event cards" below).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `pending` | `PendingEvent \| null` | The event waiting for the player's choice on the morning of `day`; null when none is. `playDay()`, and so `tick()`, throws an Error while one is. |
+| `delayed` | `readonly DelayedEffect[]` | Effects of the choices made that run on a later day, by day, then in the order they were queued. Each runs at the start of its day, before step 0. |
+| `followUps` | `readonly FollowUp[]` | Events another one brings back on a later morning, by day, then in the order they were queued. |
+| `history` | `readonly EventRecord[]` | Every event that came up and what the player chose, oldest first. The `oncePerGame` and `cooldownDays` conditions read it. |
+| `lastDrawnDay` | `Day \| null` | The last morning an event was drawn, follow-ups aside; null until one is. `pacing.minDaysBetween` counts from it. |
+| `headlines` | `readonly Headline[]` | The La Presse-Citron headlines the choices queued, oldest first. |
+
+A `PendingEvent` is the event waiting:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `event` | `string` | The event's `id` in the content. |
+| `followUp` | `boolean` | Whether another event brought it back, rather than the morning's draw. |
+
+### `DelayedEffect` and `FollowUp`
+
+What a choice leaves for later. A `DelayedEffect` is an effect that starts on a later day:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `day` | `Day` | The day it runs, at its start: after the effect's `inDays`, or on its next `onNextWeekday` (`whenDue()` in `src/engine/effects.ts`). Always after the morning the choice was made. |
+| `event` | `string` | The id of the event whose choice it comes from. |
+| `effect` | `EventEffect` | What it does: an effect as `eventEffectSchema` in `src/content/schema.ts` types it, without the timing the content gave it (`untimed()` in `src/engine/effects.ts`). |
+
+A `FollowUp` is an event another one brings back:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `day` | `Day` | The morning it comes up, or the first one after it with no other event waiting. |
+| `event` | `string` | The event's id in the content. |
+
+### `EventRecord`
+
+An event that came up, and what the player chose. `resolveEvent()` adds one each time it plays a choice.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `day` | `Day` | The morning it came up and was chosen. |
+| `event` | `string` | The event's id in the content. |
+| `followUp` | `boolean` | Whether another event brought it back, rather than the morning's draw. |
+| `choice` | `string` | The id of the choice made. |
+| `outcome` | `number` | Which of the choice's outcomes came, counting from 0. |
+
+### `Headline`
+
+A La Presse-Citron headline a choice queued with a `headline` effect. No screen shows them yet.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `day` | `Day` | The day it was queued. |
+| `id` | `string` | The headline's id, as the effect names it. |
+
+### `Receivable`
+
+What one customer owes for one sale on credit, an event's `creditSale` effect. `src/engine/effects.ts` keeps the list: the start of each day collects those due that day (before step 0 below), and the `collectReceivable`, `writeOff` and `delayReceivable` effects settle or put off what one client owes. `deserialize()` checks that the amounts add up to the balance of Comptes clients (1100).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `client` | `string` | Who owes it, as the journal names them: the sale's memo is « Vente à crédit · » followed by it. |
+| `amount` | `Cents` | What they owe; above zero. |
+| `soldOnDay` | `Day` | The day of the sale. |
+| `dueDay` | `Day` | The day it is collected, at the start of the day; after `soldOnDay`. |
 
 ### `Lot`
 
@@ -173,18 +244,23 @@ One walk-in customer at the truck.
 - `decisions` from `startingDecisions()`, which throws a RangeError if the content's starting decisions break its own limits, and a null `pendingDecisions`;
 - a copy of `profile`, which is `defaultProfile()` unless the new game screen gives another;
 - `personal` from `openingAccount()` in `src/engine/personal.ts`: the difficulty's `startingPersonalCashCents` as its cash, no movement and no unpaid rent. Day 0's rent is charged when day 0 is played;
-- `energy` at 100, `FULL_ENERGY`.
+- `energy` at 100, `FULL_ENERGY`;
+- `events` from `noEvents()` in `src/engine/events.ts`: no event waiting, nothing to come, no history, no headline and a null `lastDrawnDay`;
+- no `receivables`.
 
 ## Order of operations in `tick()`
 
 <!-- tools/architecture-doc.test.ts plays days of each difficulty and checks
 that every entry a day posts is one of the memos in italics below, in the same
 order, and that each of them posts. Keep every memo in italics, once, and
-nothing else in italics in this section. -->
+nothing else in italics in this section. It plays with no event, so the
+entries of the event cards are in « » instead. -->
 
-`tick(state)` in `src/engine/clock.ts` calls `playDay(state)` in `src/engine/day.ts`. It then returns the state `playDay` gave back with `day` + 1, the pending decisions, if any, as its `decisions`, a null `pendingDecisions`, and the night's rest: `nightRest()` in `src/engine/energy.ts` adds `nightRecovery` to the owner's `energy`, up to 100. `playDay` reads the date of `state.day` from `toCalendar()`, plays the day with `state.decisions` and never reads `pendingDecisions`. It goes through these steps in this order. Every entry it posts is dated `state.day`.
+`tick(state)` in `src/engine/clock.ts` calls `playDay(state)` in `src/engine/day.ts`, which throws an Error while an event waits for the player's choice, when `events.pending` is not null. It then takes the state `playDay` gave back to the next morning: `day` + 1, the pending decisions, if any, as its `decisions`, a null `pendingDecisions`, and the night's rest: `nightRest()` in `src/engine/energy.ts` adds `nightRecovery` to the owner's `energy`, up to 100. Last, `drawEvent()` in `src/engine/events.ts` may bring up that morning's event, which then waits in `events.pending` ("Event cards" below says how). It draws from the event content `tick()` takes as its last argument, `events`, which defaults to `NO_EVENTS`, an empty list in the same file: then no event ever comes up and the generator does not move. A caller turns the event cards on by passing `EVENTS` from `src/engine/day.ts`. `playDay` reads the date of `state.day` from `toCalendar()`, plays the day with `state.decisions` and never reads `pendingDecisions`. It goes through these steps in this order. Every entry it posts is dated `state.day`.
 
-Step 0 happens on the 1st of the month, open or closed. Steps 1 to 4 happen only on a day the truck opens, when `decisions.daysOpen` holds the weekday. On a closed day nobody comes, nothing is bought and nothing is spent on marketing: no purchase, no sale, no fuel, no marketing, no draw from the generator, and a `lastDay` with no visit and nothing sold. Step 5 happens on payday, open or closed, and steps 6 to 9 every day.
+Before step 0, every day, open or closed, comes the start of the day, by `startOfDay()` in `src/engine/effects.ts`. First the delayed effects due that day, in the order they were queued, each applied as "Event cards" below says, with the entries listed there. Then each receivable due that day, in the order they were sold, collected in full in an entry of its own, « Encaissement · » followed by the client: Dr 1000 Encaisse / Cr 1100 Comptes clients. A game with no event has neither, so its days start with step 0.
+
+Step 0 happens on the 1st of the month, open or closed. Steps 1 to 4 happen only on a day the truck opens, when `decisions.daysOpen` holds the weekday. On a closed day nobody comes, nothing is bought and nothing is spent on marketing: no purchase, no sale, no fuel, no marketing, no walk-in drawn from the generator, and a `lastDay` with no visit and nothing sold. Step 5 happens on payday, open or closed, and steps 6 to 9 every day.
 
 0. **The month's charges**, from `monthlyCostsCents` in the content and the difficulty in `state.profile`. Day 0 is May 1st, so the first month is charged on day 0. Entry *Permis, stationnement et cuisine*: Dr 6100 Loyer et permis / Cr 1000 Encaisse for `permitParkingAndCommissary`. Entry *Assurances*: Dr 6150 Assurances / Cr 1000 for `insurance`. Then the truck's, by how it came:
    - Moyen pays its loan from the month after the loan: the 1st of month `k` from `monthsSinceStart()`, for `k` from 1 to `termMonths`, pays payment `k` of `loanSchedule(loanCents, annualRateBasisPoints, termMonths)` in `src/finance/loan.ts`. Entry *Intérêts sur l'emprunt*: Dr 7000 Intérêts / Cr 1000 for its interest, which a loan without interest never posts. Entry *Remboursement de l'emprunt*: Dr 2500 Emprunts bancaires / Cr 1000 for its principal.
@@ -196,23 +272,53 @@ Step 0 happens on the 1st of the month, open or closed. Steps 1 to 4 happen only
    2. Each base customer in turn draws once for an arrival minute (a slot of `arrivalSlotMinutes` picked by its weight in `arrivalWeights`, then the minute within it), once for a segment, picked by its share, then once per product, in `PRODUCTS` order. They want one unit when the draw is below `purchaseProbability()` in `src/engine/customers.ts`, whose doc comment gives the formula: the segment's base probability × the crowd's appeal for the product × a logistic curve in price ÷ reference price, clamped to [0, 1]. Since each customer makes all their draws before the next one starts, a bigger crowd from the same generator state brings the same customers first, wanting the same things, then more.
    3. Then each extra customer draws the same way, with a segment picked by `marketing.segmentShares`. So marketing leaves the base customers' draws as they would be without it, then brings its own. A budget does change how many draws a day takes, so the days after it bring other customers than a game without it.
 
-   No other step draws, so these are all of a day's draws. Then the customers come to the counter by arrival minute, those of the same minute in the order they were drawn, base customers first, each at the start of their minute. Both crowds share the line and the stock. One who wants nothing walks on. One who wants something looks at the line, which `openLine()` in `src/engine/service.ts` keeps, first come, first served. They leave it at once, buying nothing, when more than `service.maxAheadInLine` customers are still waiting, not counting those at the counter, or when the wait for the first free server is longer than their patience: their segment's `patienceMinutes` × the crowd's `patienceMultiplier`. Otherwise they join and order what they want, which takes their server `service.baseSeconds` + `service.perItemSeconds` × the units ordered, divided by the server's speed; a sold-out unit takes its time too, so the line never depends on the stock. `servers(state, energy)` in the same file gives who serves: for now the avatar alone, at speed 1 when rested. How tired the owner is that morning, by `state.energy`, holds for the whole day (`fatigueOf()` and `effectsOf()` in `src/engine/energy.ts`, with the thresholds and effects of `src/content/energy.json`). Below `tired.below` (« Fatigué ») or `exhausted.below` (« Épuisé »), serving takes `serviceTimeIncrease` longer, so the avatar's speed is 1 ÷ (1 + `serviceTimeIncrease`). When they reach the counter they buy each unit they want that is left; one that is not is a lost sale, so a stockout hits the customers served later. A tired owner also botches `botchedShare` of the units they make, by a fixed quota rather than a draw: counting the units made for customers that day from 1, remakes aside, the n-th is botched when ⌊n × `botchedShare`⌋ goes up at it, so at 2 % every 50th. A botched unit leaves the stock and is thrown out, and the next unit left is made in its place; with none left, the customer loses it as a lost sale. Making it again takes no time, so the line still never depends on the stock. The counter keeps the order in which it took each product's units, sold or botched, for step 3. This step posts nothing. A closed day draws nothing, so the days open change which draws the later days get.
+   No other step draws. Only the event cards draw besides ("Event cards" below): at the start of the day, a delayed `followUp` effect with a chance below 1, before the walk-ins; at the end of `tick()`, the next morning's draw; and on that morning, before the day is played, the player's choice in `resolveEvent()`. So with no event, these are all of a day's draws. Then the customers come to the counter by arrival minute, those of the same minute in the order they were drawn, base customers first, each at the start of their minute. Both crowds share the line and the stock. One who wants nothing walks on. One who wants something looks at the line, which `openLine()` in `src/engine/service.ts` keeps, first come, first served. They leave it at once, buying nothing, when more than `service.maxAheadInLine` customers are still waiting, not counting those at the counter, or when the wait for the first free server is longer than their patience: their segment's `patienceMinutes` × the crowd's `patienceMultiplier`. Otherwise they join and order what they want, which takes their server `service.baseSeconds` + `service.perItemSeconds` × the units ordered, divided by the server's speed; a sold-out unit takes its time too, so the line never depends on the stock. `servers(state, energy)` in the same file gives who serves: for now the avatar alone, at speed 1 when rested. How tired the owner is that morning, by `state.energy`, holds for the whole day (`fatigueOf()` and `effectsOf()` in `src/engine/energy.ts`, with the thresholds and effects of `src/content/energy.json`). Below `tired.below` (« Fatigué ») or `exhausted.below` (« Épuisé »), serving takes `serviceTimeIncrease` longer, so the avatar's speed is 1 ÷ (1 + `serviceTimeIncrease`). When they reach the counter they buy each unit they want that is left; one that is not is a lost sale, so a stockout hits the customers served later. A tired owner also botches `botchedShare` of the units they make, by a fixed quota rather than a draw: counting the units made for customers that day from 1, remakes aside, the n-th is botched when ⌊n × `botchedShare`⌋ goes up at it, so at 2 % every 50th. A botched unit leaves the stock and is thrown out, and the next unit left is made in its place; with none left, the customer loses it as a lost sale. Making it again takes no time, so the line still never depends on the stock. The counter keeps the order in which it took each product's units, sold or botched, for step 3. This step posts nothing. A closed day draws no walk-in, so the days open change which draws the later days get.
 3. **Sales.** Product by product, in `PRODUCTS` order, the units the customers bought, and those botched, leave the stock, oldest lot first (FIFO, `takeFifo()` in `src/engine/inventory.ts`), in the order the counter took them, and those bought are priced at `currentPrice()`. Taking a run of a product's units at once takes the same units from the same lots as taking them one customer at a time; a rested day has a single run per product, its day total. Entry *Ventes au comptant*: Dr 1000 Encaisse / Cr 4000 Ventes for the revenue. Then entry *Coût des marchandises vendues*: Dr 5000 Coût des marchandises vendues / Cr 1200 Stocks for what the units sold cost, each at its own lot's unit cost. Then entry *Produits ratés*: Dr 5100 Pertes sur stocks / Cr 1200 for what the botched units cost, each at its own lot's unit cost; a botched unit takes no packaging. Then what the sales cost to make, paid the same day. Entry *Emballages*: Dr 5200 Emballages / Cr 1000 for each unit sold times its product's `packagingCents`. Entry *Frais de cartes*: Dr 6500 Frais bancaires et de cartes / Cr 1000 for the card fees: the revenue times `cardPayments.share` is what customers paid by card, and that times `cardPayments.feeRate` is the fee, each rounded to the cent half away from zero by `mulRatio()`. Each of these is an entry of its own, so the other lines of each cash entry stay on one row of the état des flux de trésorerie.
 4. **Fuel and marketing.** Entry *Carburant et entretien*: Dr 6200 Carburant et entretien / Cr 1000 for `fuelAndMaintenancePerOpenDayCents`. Then entry *Marketing*: Dr 6300 Marketing / Cr 1000 for `decisions.marketingDaily`.
 5. **Payday**, on the ISO weekday `ownerPayWeekday`. Entry *Paie du propriétaire*: Dr 6000 Salaires / Cr 1000 for `decisions.ownerWeeklyPay`. A change the player makes is paid from the next morning, like every decision.
 6. **Spoilage at the close.** `removeExpired()` in `src/engine/inventory.ts` writes off every lot whose shelf life ends that day, as `Lot` describes above. Entry *Marchandises périmées*: Dr 5100 Pertes sur stocks / Cr 1200 Stocks for what those lots cost.
 7. **The owner's personal account**, after the business's day, by `livePersonalDay()` in `src/engine/personal.ts`, with the owner's living costs from `src/content/personal.json`. It posts nothing and draws nothing. On payday, « Salaire » brings in `decisions.ownerWeeklyPay`, the amount the business paid in step 5. On the 1st of the month, day 0 included, « Loyer » takes out `rentCents`; when that leaves the cash below zero, the rent is unpaid and the day goes into `unpaidRents`. On payday again, « Dépenses de la semaine » takes out `weeklyExpensesCents`. So a Friday the 1st is paid, then charged its rent, then its week. A movement of 0 is not recorded. Then the movements and unpaid rents older than the months kept are dropped.
 8. **The owner's energy**, by `energyAtClose()` in `src/engine/energy.ts`, with `src/content/energy.json`. It posts nothing and draws nothing. A day the truck opens costs `openDayCost`, plus `costPerCustomerServed` for each customer who reached the counter, the visits with a `servedMinute`, so a busy day tires more. A closed day gives `closedDayRecovery` back. Then, on payday, when step 7 leaves the owner's cash below zero (`inDebt()`), the stress takes `debtStress`. Each change stops at 0 and at 100. The night's `nightRecovery` comes in `tick()`, after the close.
-9. **The new state.** `playDay` returns the state with the new `rngState`, `journal`, `inventory`, a `marketingHistory` with the day's spend added last (0 on a closed day) and only the last `awarenessDays` kept, a `lastDay` for `state.day`, with the day's visits, how the line went, the units botched and the energy at the close, the owner's `personal` account, and their `energy` at the close.
+9. **The new state.** `playDay` returns the state with the new `rngState`, `journal`, `inventory`, a `marketingHistory` with the day's spend added last (0 on a closed day) and only the last `awarenessDays` kept, a `lastDay` for `state.day`, with the day's visits, how the line went, the units botched and the energy at the close, the owner's `personal` account, their `energy` at the close, and the `events` and `receivables` the start of the day left.
 
 What every step shares:
 - A line with a zero amount is dropped, and an entry left with no line is not posted. A day with nothing bought, nothing sold or nothing spoiled has no entry for that step, and a pay or a marketing budget of 0 posts nothing.
 - Nothing checks the cash first: purchases and charges are paid even when Encaisse goes negative.
 
 Outside unit tests, three callers advance the game:
-- `advance(days)` in the UI store (`src/ui/store.ts`). The real-time loop in `src/ui/gameLoop.ts` calls it with the whole days that have passed at the current speed, paced by `src/content/pacing.json`.
-- `simulate()` in `tools/sim/simulate.ts`.
-- The invariant test.
+- `advance(days)` in the UI store (`src/ui/store.ts`). The real-time loop in `src/ui/gameLoop.ts` calls it with the whole days that have passed at the current speed, paced by `src/content/pacing.json`. It calls `tick()` with its defaults, so no event comes up in the game yet: P3-06 (#94) will pass `EVENTS` and let the player choose, through `resolveEvent()`.
+- `simulate()` in `tools/sim/simulate.ts`. With an event policy other than `none`, it passes its event content, `EVENTS` by default, to `tick()`, and each morning an event waits, answers it with `resolveEvent()` before playing the day (`eventChooser()` in the same file picks the choice).
+- The invariant test, which answers the event cards as `simulate()` does with the `random` policy.
+
+## Event cards
+
+An event card is a dilemma from `src/content/events.json`: a character, a situation and two or three choices, each with outcomes left to chance and the effects of each outcome (`src/content/README.md` describes the file). The shipped file holds only `essai`, a card that tries every effect for the tests, with a weight of 0, so even with `EVENTS` no event comes up yet.
+
+`drawEvent(state, content)` in `src/engine/events.ts`, at the end of `tick()`, brings up the morning's event, if any. One morning brings one event at most: nothing changes while one waits, or once one was chosen that morning. Otherwise, in this order:
+1. The first queued follow-up due that morning or before, whose event is in the content, comes up with no draw. It ignores the conditions, the first day and the gap, and leaves `lastDrawnDay` as it is. Another follow-up due waits for a later morning.
+2. Otherwise nothing comes before `pacing.firstDay`, nor less than `pacing.minDaysBetween` days after `lastDrawnDay`, nor ever with a `pacing.dailyChance` of 0.
+3. Otherwise the events that may come are those with a weight above 0, not `followUpOnly`, whose conditions all hold that morning, by `conditionsHold()` in the same file, whose doc comment lists them. With none, nothing is drawn.
+4. Otherwise one draw against `pacing.dailyChance`, then one draw to pick among them by weight, and the event picked comes up with `lastDrawnDay` set to the day. A chance of 1, or a single event to pick, takes no draw.
+
+`resolveEvent(state, choiceId, content, foodTruck)` in the same file plays the player's choice on the event waiting, on the same morning. One draw picks the outcome by its chance, unless the choice has a single outcome. The outcome's effects then run in order: those with no timing at once, by `applyEffect()`, and the others queued in `events.delayed` for their day, by `whenDue()` in `src/engine/effects.ts`: `inDays` days later, or the first day after the morning that falls on the ISO weekday `onNextWeekday`, so a week later when the morning is that weekday. The event goes into `history` and no longer waits, so the day can be played. It throws an Error when no event waits, and a RangeError when the content has no such event or the event no such choice.
+
+`applyEffect(state, effect, content)` in `src/engine/effects.ts` applies one effect on `state.day`: on the morning of the choice, or at the start of a later day for a delayed one. Every entry is dated that day, and an entry of 0 is not posted. Every money effect goes through the books, never straight into the cash.
+- `charge`: pays `amountCents` now, with its `description` as the memo: Dr its `account`, 6900 Autres charges by default / Cr 1000 Encaisse. The content may charge 5200, 6100, 6150, 6200, 6300, 6500 or 6900.
+- `cashSale`: revenue paid now, with its `description` as the memo: Dr 1000 / Cr 4000 Ventes.
+- `creditSale`: revenue now that `client` pays `dueInDays` later. « Vente à crédit · » followed by the client: Dr 1100 Comptes clients / Cr 4000, and a receivable.
+- `collectReceivable`: each receivable of `client`, in order, collected now, in an entry of its own: « Encaissement · » followed by the client, Dr 1000 / Cr 1100.
+- `writeOff`: each receivable of `client`, in order, written off in an entry of its own: « Mauvaise créance · » followed by the client, Dr 6950 Créances irrécouvrables / Cr 1100. For both, a client who owes nothing changes nothing.
+- `delayReceivable`: each receivable of `client` comes due `days` later. No entry.
+- `buyStock`: `units` of `product` bought now, a new lot after the others at the product's `unitCostCents`. « Achat de marchandises »: Dr 1200 Stocks / Cr 1000.
+- `useStock`: up to `units` of `product` taken out of the stock, oldest lot first (FIFO), at what they cost. For an `order`, « Coût des marchandises vendues »: Dr 5000 / Cr 1200; for a `giveaway`, « Marchandises offertes »: Dr 6300 Marketing / Cr 1200.
+- `energy`: the owner's energy moves by `amount`, held between 0 and 100 by `clampEnergy()` in `src/engine/energy.ts`. No entry.
+- `personal`: a movement `label` of `amountCents` in the owner's personal account, by `addMovement()` in `src/engine/personal.ts`. No entry.
+- `followUp`: `event` comes back `days` later, if one draw comes in below its `chance`; a chance of 1, the default, takes no draw.
+- `headline`: the headline `id` is queued in `events.headlines`.
+
+So the event cards draw from the game's generator at three points: the morning draw in `drawEvent()`, the outcome in `resolveEvent()`, and a `followUp` effect with a chance below 1, in `resolveEvent()` or, delayed, at the start of its day. The choices a player makes change the draws of the days after.
+
+A save holds the events and the receivables. `deserialize()` in `src/engine/save.ts` checks them against the event content, as its doc comment and `checkEvents()`'s say, so dropping an event or a choice from the content can stop an older save from loading.
 
 ## How journal entries are created
 
@@ -227,7 +333,9 @@ The journal, its entries and their lines are frozen. `postEntry` copies the entr
 
 In the game, only the engine posts entries. It goes through the private helpers `post()`, `debit()` and `credit()` in `src/engine/day.ts`, and keeps the memos the player reads in that file's `MEMO` table. Each step of the day posts its own entries, as listed above.
 
-The chart of accounts is in `src/finance/accounts.ts`: 22 accounts with their codes, French names, types and normal balances. The game posts to 19 of them: 1000 Encaisse, 1200 Stocks, 1500 Équipement, 1510 Amortissement cumulé, 2500 Emprunts bancaires, 3000 Capital-actions, 4000 Ventes, 5000 Coût des marchandises vendues, 5100 Pertes sur stocks, 5200 Emballages, 6000 Salaires, 6100 Loyer et permis, 6120 Location du camion, 6150 Assurances, 6200 Carburant et entretien, 6300 Marketing, 6400 Amortissement, 6500 Frais bancaires et de cartes and 7000 Intérêts. The other two (1100 Comptes clients and 2000 Comptes fournisseurs) are there for the cards to come; 3100 Bénéfices non répartis is never posted to, as the bilan below explains.
+The event cards' effects, and the receivables collected at the start of a day, post theirs through `src/engine/effects.ts`, which keeps its own `MEMO` table and posts with `postEntry()`. The entries of a customer who pays later, and a charge to 6900 Autres charges, come from the builders in `src/finance/receivables.ts`: `creditSale()`, `collection()`, `badDebt()` and `otherCharge()` each build one balanced entry and leave posting it to the engine. Their memos, « Vente à crédit », « Encaissement » and « Mauvaise créance », each followed by « · » and the client, are part of the structure of the books, so they stay in finance. A charge's or a cash sale's memo is its `description` in the content.
+
+The chart of accounts is in `src/finance/accounts.ts`: 24 accounts with their codes, French names, types and normal balances. The game posts to 22 of them: 1000 Encaisse, 1100 Comptes clients, 1200 Stocks, 1500 Équipement, 1510 Amortissement cumulé, 2500 Emprunts bancaires, 3000 Capital-actions, 4000 Ventes, 5000 Coût des marchandises vendues, 5100 Pertes sur stocks, 5200 Emballages, 6000 Salaires, 6100 Loyer et permis, 6120 Location du camion, 6150 Assurances, 6200 Carburant et entretien, 6300 Marketing, 6400 Amortissement, 6500 Frais bancaires et de cartes, 6900 Autres charges, 6950 Créances irrécouvrables and 7000 Intérêts. It posts to 1100, 6900 and 6950 only through the event cards. The other two: 2000 Comptes fournisseurs is there for the cards to come, and 3100 Bénéfices non répartis is never posted to, as the bilan below explains.
 
 Everything else only reads the books:
 - `balance()` and `trialBalance()` in `src/finance/journal.ts` sum the entries up to a day.
@@ -242,36 +350,42 @@ Money is `Cents` from `src/engine/money.ts`: a branded number that only `cents()
 - `src/content/difficulty.json` holds the three ways to start a game: the cash in the bank once the truck is settled, how the truck comes, owned, bought with a loan (its amount, yearly rate in basis points and term in months) or leased (its monthly lease), and the owner's own savings. `loadDifficultyContent()` in `src/content/schema.ts` validates it.
 - `src/content/personal.json` holds what the owner's own life costs: the rent on the 1st of each month (`rentCents`) and the week's other expenses on payday (`weeklyExpensesCents`). The savings the owner starts with are each difficulty's `startingPersonalCashCents` in `src/content/difficulty.json`. `loadPersonalContent()` in `src/content/schema.ts` validates it.
 - `src/content/energy.json` holds what tires the owner and what fatigue does, on the energy scale of 0 to 100: the cost of an open day (`openDayCost`) and of each customer served (`costPerCustomerServed`), what a night (`nightRecovery`) and a closed day (`closedDayRecovery`) give back, the stress of a payday in debt (`debtStress`), and for `tired` (« Fatigué ») and `exhausted` (« Épuisé ») the energy they start below, how much longer serving takes and the share of units botched. `loadEnergyContent()` in `src/content/schema.ts` validates it, with `exhausted.below` under `tired.below`.
+- `src/content/events.json` holds the event cards and how often they come. The `pacing` is the first day one may be drawn (`firstDay`), the fewest days from one drawn event to the next (`minDaysBetween`) and the chance of one on a morning one may be (`dailyChance`). Each of the `events` has its weight, character, French text, conditions and choices, and each choice its outcomes, their chances and their effects. `loadEventContent()` in `src/content/schema.ts` validates it: besides each field, the event ids are unique, the choice ids unique within their event, each choice's chances sum to 1 and every follow-up names an event of the file.
 - `src/content/segments.json` holds the customer segments: how long each waits in line (`patienceMinutes`), for each segment and product a reference price, a base purchase probability and a sensitivity, and for the chic segment how a price far below its reference puts it off (`tooCheap`). `loadCustomerContent()` in `src/content/schema.ts` validates it the same way.
-- `src/engine/day.ts` calls the five loaders once, when the module loads, and exports the results as `FOOD_TRUCK`, `CUSTOMERS`, `DIFFICULTIES`, `PERSONAL` and `ENERGY`. An invalid file throws as soon as the engine is imported.
-- `createInitialState()`, `tick()`, `playDay()`, `openingJournal()`, `startingDecisions()` and `applyDecision()` take a `content` argument that defaults to `FOOD_TRUCK`. `tick()` and `playDay()` take a `customers` argument after it that defaults to `CUSTOMERS`, `createInitialState()`, `tick()`, `playDay()` and `openingJournal()` a `difficulties` argument that defaults to `DIFFICULTIES`, and `tick()` and `playDay()` a `personal` argument that defaults to `PERSONAL`, then a last `energy` argument that defaults to `ENERGY`, so a test can play with other numbers. `servers()` takes the energy content it reads as its second argument. The UI, the simulation and the invariant test use the defaults.
+- `src/engine/day.ts` calls the six loaders once, when the module loads, and exports the results as `FOOD_TRUCK`, `CUSTOMERS`, `DIFFICULTIES`, `PERSONAL`, `ENERGY` and `EVENTS`. An invalid file throws as soon as the engine is imported.
+- `createInitialState()`, `tick()`, `playDay()`, `openingJournal()`, `startingDecisions()` and `applyDecision()` take a `content` argument that defaults to `FOOD_TRUCK`. `tick()` and `playDay()` take a `customers` argument after it that defaults to `CUSTOMERS`, `createInitialState()`, `tick()`, `playDay()` and `openingJournal()` a `difficulties` argument that defaults to `DIFFICULTIES`, and `tick()` and `playDay()` a `personal` argument that defaults to `PERSONAL`, then an `energy` argument that defaults to `ENERGY`, so a test can play with other numbers. `tick()` takes a last `events` argument that defaults to `NO_EVENTS` in `src/engine/events.ts`, not `EVENTS`, so a game turns the event cards on by passing them. `playDay()` takes none: the start of a day only runs effects already queued. `resolveEvent()` takes the event content after the choice, defaulting to `EVENTS`, then the food truck's for the unit costs, defaulting to `FOOD_TRUCK`; `deserialize()` in `src/engine/save.ts` takes the food truck's content, then the event content, defaulting to `FOOD_TRUCK` and `EVENTS`. `drawEvent()` and `applyEffect()` take theirs with no default. `servers()` takes the energy content it reads as its second argument. The UI uses the defaults, so no event comes up in the game yet. The simulation passes the shipped content, with `NO_EVENTS` under its `none` policy.
 - The UI reads `FOOD_TRUCK` too: product names in `src/ui/TodayPanel.tsx`, and the monthly costs for the cash gauge in `src/ui/cashLevel.ts`. The new game screen reads `src/content/difficulty.json` through `src/ui/newGame.ts`.
 - `src/content/pacing.json` (real milliseconds per game day, the speeds, the most days per animation frame) is read by `src/ui/gameLoop.ts` and `src/ui/TopBar.tsx`. `src/content/cashGauge.json` is read by `src/ui/cashLevel.ts`. The engine reads neither: it knows nothing of real time.
 
 Some numbers stay in code on purpose, because they are facts rather than tunables:
-- the calendar, in `src/engine/calendar.ts`;
+- the calendar, in `src/engine/calendar.ts`, with the month lengths repeated in `src/content/schema.ts` to check an event's date;
 - the 12 months the owner's personal account keeps, in `src/engine/personal.ts`;
 - the owner's energy scale, 0 to 100, in `src/engine/energy.ts` and `src/content/schema.ts`;
 - the first weekend day, in `src/engine/customers.ts`;
 - the ISO weekdays, 1 = Monday to 7 = Sunday, in `src/engine/decisions.ts` and `src/content/schema.ts`;
+- the days of a week, in `src/engine/effects.ts`, to find an effect's next weekday;
 - the minutes in a day, in `src/content/schema.ts`;
+- what fits on an event card: a situation of at most 280 characters, a choice's label of at most 45 and an outcome's result of at most 200, in `src/content/schema.ts`;
 - the mulberry32 constants, in `src/engine/rng.ts`;
 - the chart of accounts, in `src/finance/accounts.ts`;
 - the structure and labels of the statements, in `src/finance/statements.ts`.
 
 ## Invariants enforced by `tests/invariants.test.ts`
 
-The test plays 3650 days, ten years, for three games, one per difficulty: seed 1 at Facile, seed 42 at Moyen and seed 2026 at Difficile. It calls `tick()` with the shipped content and its starting decisions.
+The test plays 3650 days, ten years, for three games, one per difficulty: seed 1 at Facile, seed 42 at Moyen and seed 2026 at Difficile. It calls `tick()` with the shipped content and its starting decisions, and with the event cards on: the shipped `EVENTS`, its pacing included, with the `essai` card's weight raised to 1, so the effects every card may use, follow-ups included, come up a few hundred times a game. Each morning an event waits, it answers it with `resolveEvent()`, picking the choice with `eventChooser('random', seed)` in `tools/sim/simulate.ts`, as `npm run sim -- --events random` does.
 
 After every day's close, it checks:
 - the trial balance up to that day: total debits equal total credits. It keeps each account's balance as a running tally, adding each day's new entries once, rather than summing the whole journal again every day;
 - the bilan: Actifs = Passifs + Capitaux propres;
-- Stocks: the ledger balance of 1200, read from the tally, equals `inventoryValue()` of the lots on hand.
+- Stocks: the ledger balance of 1200, read from the tally, equals `inventoryValue()` of the lots on hand;
+- Comptes clients: the ledger balance of 1100, read from the tally, equals what the `receivables` add up to.
+
+Each morning an event waits, it checks that one drawn rather than brought back as a follow-up comes no earlier than `pacing.firstDay` and at least `pacing.minDaysBetween` days after the last one drawn. At the end, it checks that at least 100 events came up, follow-ups among them.
 
 At the end of every calendar month, it checks that `trialBalance()` in `src/finance/journal.ts` balances and agrees with the tally on every account, and that the état des flux de trésorerie's net change for the month equals the change in Encaisse. Day 0 is May 1st, so the run covers exactly 120 months: the whole of Moyen's loan and the whole useful life of the truck.
 
-It then plays each game again through `simulate()` in `tools/sim/simulate.ts`, at the same difficulty, and checks:
-- the replay's `journalHash`, the sha256 of the entries, equals the first run's, so the engine is deterministic;
+It then plays each game again through `simulate()` in `tools/sim/simulate.ts`, at the same difficulty, with the `random` policy and the same event content, and checks:
+- the replay's `journalHash`, the sha256 of the entries, equals the first run's, so the engine, the events and the choices drawn are deterministic;
 - the replay sums up as ten whole 365-day years: days 0 to 364, 365 to 729, and so on.
 
 The whole file must finish within 60 seconds. If it gets slower, make the slow part faster rather than checking fewer days or seeds. It reports at most 10 failures per rule.
@@ -281,6 +395,7 @@ The whole file must finish within 60 seconds. If it gets slower, make the slow p
 - `postEntry()` throws on an entry that does not balance or breaks another of the rules above, so the books cannot take one. `src/finance/journal.test.ts` covers each rule, and `src/finance/journal.property.test.ts` checks that the trial balance stays at zero after any run of balanced entries.
 - `tools/lint-guardrails.test.ts` checks that ESLint flags the forbidden imports and calls in `src/engine/` and `src/finance/`, any import of `src/world/` from engine, finance and content, and anything in `src/world/` that would change the game, and leaves the same code alone in `src/ui/`.
 - `tools/engine-types.test.ts` checks that `tsconfig.engine.json` rejects browser globals in both folders.
+- `src/engine/events.property.test.ts` walks ten years of mornings with random event cards, conditions and pacing, and checks every event that comes up against the conditions, the cooldowns, the follow-ups and the gap, written out in the test apart from the engine; with a daily chance of 1, it checks every morning that brings none too. A fixed sample of games checks that each rule alone holds a card back on some morning, so the property cannot pass without putting it to the test.
 - `tools/architecture-doc.test.ts` checks this page:
   - `src/engine/types.ts` starts with its frozen header;
   - every type it exports has a heading under "The shape of `GameState`", and every field of an interface has a row in that heading's table;

@@ -24,14 +24,38 @@ describe('parseBalanceArgs', () => {
     expect(parseBalanceArgs([])).toEqual({
       years: 1,
       games: 30,
+      events: 'none',
       out: join(root, 'docs', 'balance', 'phase-2.md'),
     })
   })
 
   it('reads every option, the out file from the current folder', () => {
     expect(
-      parseBalanceArgs(['--years', '2', '--games=5', '--out', 'tmp/b.md']),
-    ).toEqual({ years: 2, games: 5, out: resolve('tmp/b.md') })
+      parseBalanceArgs([
+        '--years',
+        '2',
+        '--games=5',
+        '--events',
+        'random',
+        '--out',
+        'tmp/b.md',
+      ]),
+    ).toEqual({
+      years: 2,
+      games: 5,
+      events: 'random',
+      out: resolve('tmp/b.md'),
+    })
+  })
+
+  it.each(['first', 'random', 'none'])('reads the events policy %s', (id) => {
+    expect(parseBalanceArgs([`--events=${id}`]).events).toBe(id)
+  })
+
+  it.each(['', 'all', 'Random'])('rejects the events policy %j', (text) => {
+    expect(() => parseBalanceArgs(['--events', text])).toThrow(
+      `--events must be one of first, random, none: ${text}`,
+    )
   })
 
   it.each(

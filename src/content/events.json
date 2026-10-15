@@ -1,0 +1,137 @@
+{
+  "_note": "Pacing from issue #91. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
+  "pacing": { "firstDay": 7, "minDaysBetween": 5, "dailyChance": 0.15 },
+  "events": [
+    {
+      "id": "essai",
+      "weight": 0,
+      "character": {
+        "id": "essai",
+        "name": "Thérèse Essai",
+        "role": "Vérificatrice des cartes"
+      },
+      "title": "La carte d'essai",
+      "situation": "Une carte qui fait un peu de tout, pour s'assurer que tout fonctionne. Vous ne devriez jamais la voir.",
+      "quote": "Si vous me lisez, quelque chose cloche.",
+      "choices": [
+        {
+          "id": "toutEssayer",
+          "label": "Tout essayer",
+          "tags": ["Ventes +950 $", "Énergie −10", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Tout a été essayé. Thérèse coche sa liste.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 10000,
+                  "description": "Amende d'essai"
+                },
+                {
+                  "kind": "charge",
+                  "amountCents": 5000,
+                  "description": "Gobelets d'essai",
+                  "account": "5200",
+                  "inDays": 3
+                },
+                {
+                  "kind": "cashSale",
+                  "amountCents": 20000,
+                  "description": "Vente d'essai"
+                },
+                {
+                  "kind": "creditSale",
+                  "amountCents": 75000,
+                  "client": "Client d'essai",
+                  "dueInDays": 60
+                },
+                {
+                  "kind": "creditSale",
+                  "amountCents": 10000,
+                  "client": "Client douteux",
+                  "dueInDays": 30
+                },
+                {
+                  "kind": "delayReceivable",
+                  "client": "Client d'essai",
+                  "days": 30
+                },
+                { "kind": "writeOff", "client": "Client douteux" },
+                {
+                  "kind": "collectReceivable",
+                  "client": "Client d'essai",
+                  "onNextWeekday": 4
+                },
+                { "kind": "buyStock", "product": "croissant", "units": 20 },
+                {
+                  "kind": "useStock",
+                  "product": "croissant",
+                  "units": 12,
+                  "to": "order"
+                },
+                {
+                  "kind": "useStock",
+                  "product": "croissant",
+                  "units": 6,
+                  "to": "giveaway"
+                },
+                { "kind": "energy", "amount": -10 },
+                {
+                  "kind": "personal",
+                  "amountCents": 6000,
+                  "label": "Cadeau d'essai"
+                },
+                {
+                  "kind": "followUp",
+                  "event": "essai",
+                  "days": 30,
+                  "chance": 0.5
+                },
+                { "kind": "headline", "id": "essai" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "relancer",
+          "label": "Relancer le client",
+          "tags": ["Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.5,
+              "result": "Le client paie tout. Thérèse est surprise.",
+              "effects": [
+                { "kind": "collectReceivable", "client": "Client d'essai" }
+              ]
+            },
+            {
+              "chance": 0.5,
+              "result": "Le client demande un mois de plus, puis disparaît.",
+              "effects": [
+                {
+                  "kind": "delayReceivable",
+                  "client": "Client d'essai",
+                  "days": 30
+                },
+                { "kind": "writeOff", "client": "Client d'essai", "inDays": 1 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "rienFaire",
+          "label": "Ne rien faire",
+          "tags": ["Rien ne change"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Rien ne se passe. Thérèse est rassurée.",
+              "effects": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

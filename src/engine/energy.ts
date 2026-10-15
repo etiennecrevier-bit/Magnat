@@ -70,21 +70,22 @@ export function energyAtClose(
   content: EnergyContent,
 ): number {
   let level = open
-    ? within(
+    ? clampEnergy(
         energy -
           (content.openDayCost +
             content.costPerCustomerServed * customersServed),
       )
-    : within(energy + content.closedDayRecovery)
-  if (stressed) level = within(level - content.debtStress)
+    : clampEnergy(energy + content.closedDayRecovery)
+  if (stressed) level = clampEnergy(level - content.debtStress)
   return level
 }
 
 /** The owner's energy the morning after a close at `energy`. */
 export function nightRest(energy: number, content: EnergyContent): number {
-  return within(energy + content.nightRecovery)
+  return clampEnergy(energy + content.nightRecovery)
 }
 
-function within(energy: number): number {
+/** `energy` held between 0 and `FULL_ENERGY`. */
+export function clampEnergy(energy: number): number {
   return Math.min(FULL_ENERGY, Math.max(0, energy))
 }

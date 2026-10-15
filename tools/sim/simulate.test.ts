@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { DifficultyId } from '../../src/content/schema.ts'
+import {
+  loadEventContent,
+  type DifficultyId,
+  type EventContent,
+} from '../../src/content/schema.ts'
 import { createInitialState, tick } from '../../src/engine/clock.ts'
 import { ENERGY, FOOD_TRUCK } from '../../src/engine/day.ts'
 import {
@@ -15,7 +19,12 @@ import { defaultProfile } from '../../src/engine/profile.ts'
 import type { DaySummary, PerProduct } from '../../src/engine/types.ts'
 import { getAccount } from '../../src/finance/accounts.ts'
 import { emptyJournal, postEntry } from '../../src/finance/journal.ts'
-import { journalHash, simulate, type SimulationResult } from './simulate.ts'
+import {
+  eventChooser,
+  journalHash,
+  simulate,
+  type SimulationResult,
+} from './simulate.ts'
 
 // The headless runner: what it plays, how it splits the run into years, and
 // that every number it sums up agrees with the books and the days played.
@@ -307,5 +316,124 @@ describe('journalHash', () => {
     }
     expect(journalHash(books(100_000))).toBe(journalHash(books(100_000)))
     expect(journalHash(books(100_001))).not.toBe(journalHash(books(100_000)))
+  })
+})
+
+/**
+ * A card that comes up every morning from day 1, whose three choices each
+ * leave their mark on the owner's own account.
+ */
+const EVERY_MORNING: EventContent = loadEventContent({
+  pacing: { firstDay: 1, minDaysBetween: 0, dailyChance: 1 },
+  events: [
+    {
+      id: 'chaqueMatin',
+      weight: 1,
+      character: { id: 'normand', name: 'Normand', role: 'Votre voisin' },
+      title: 'Chaque matin',
+      situation: 'Normand passe vous voir.',
+      choices: ['un', 'deux', 'trois'].map((id, index) => ({
+        id,
+        label: id,
+        tags: ['Rien ne change'],
+        outcomes: [
+          {
+            chance: 1,
+            result: 'Merci.',
+            effects: [
+              { kind: 'personal', amountCents: index + 1, label: 'Normand' },
+            ],
+          },
+        ],
+      })),
+    },
+  ],
+})
+
+describe('simulate with event cards', () => {
+  const DAYS = 30
+  const choices = (result: SimulationResult) =>
+    result.eventHistory.map(({ choice }) => choice)
+
+  it('plays none by default, whatever the content', () => {
+    const none = simulate(3, DAYS, 'moyen', [], 'none', EVERY_MORNING)
+    expect(none.events).toBe('none')
+    expect(none.eventHistory).toEqual([])
+    expect(simulate(3, DAYS)).toEqual(none)
+  })
+
+  it("answers each morning's card with its first choice", () => {
+    const first = simulate(3, DAYS, 'moyen', [], 'first', EVERY_MORNING)
+    expect(first.events).toBe('first')
+    // Days 1 to 29: day 0 has no morning draw, and the run ends before day 30.
+    expect(first.eventHistory.map(({ day }) => day)).toEqual(
+      Array.from({ length: DAYS - 1 }, (_, i) => i + 1),
+    )
+    expect(new Set(choices(first))).toEqual(new Set(['un']))
+  })
+
+  it('answers at random, the same way for the same seed', () => {
+    const random = simulate(3, DAYS, 'moyen', [], 'random', EVERY_MORNING)
+    expect(random.events).toBe('random')
+    expect(new Set(choices(random))).toEqual(new Set(['un', 'deux', 'trois']))
+    expect(simulate(3, DAYS, 'moyen', [], 'random', EVERY_MORNING)).toEqual(
+      random,
+    )
+    expect(
+      choices(simulate(4, DAYS, 'moyen', [], 'random', EVERY_MORNING)),
+    ).not.toEqual(choices(random))
+  })
+
+  it("answers before the morning's energy is read", () => {
+    const tiring = loadEventContent({
+      ...EVERY_MORNING,
+      events: EVERY_MORNING.events.map((event) => ({
+        ...event,
+        choices: event.choices.map((choice) => ({
+          ...choice,
+          outcomes: [
+            {
+              ...choice.outcomes[0],
+              effects: [{ kind: 'energy', amount: -40 }],
+            },
+          ],
+        })),
+      })),
+    })
+    const tired = simulate(3, 5, 'moyen', [], 'first', tiring)
+    const rested = simulate(3, 5)
+    expect(tired.owner.morningEnergy[0]).toBe(rested.owner.morningEnergy[0])
+    expect(tired.owner.morningEnergy[1]).toBe(
+      (rested.owner.morningEnergy[1] ?? 0) - 40,
+    )
+  })
+
+  it('leaves the books as they would be without a card that changes none', () => {
+    const first = simulate(3, DAYS, 'moyen', [], 'first', EVERY_MORNING)
+    expect(first.journalHash).toBe(simulate(3, DAYS).journalHash)
+  })
+})
+
+describe('eventChooser', () => {
+  const [card] = EVERY_MORNING.events
+  if (card === undefined) throw new Error('No card')
+
+  it('picks the first choice', () => {
+    const choose = eventChooser('first', 1)
+    expect([choose(card), choose(card)]).toEqual(['un', 'un'])
+  })
+
+  it('picks at random from a stream of its own, the same for the same seed', () => {
+    const picks = (seed: number) => {
+      const choose = eventChooser('random', seed)
+      return Array.from({ length: 40 }, () => choose(card))
+    }
+    expect(picks(9)).toEqual(picks(9))
+    expect(picks(9)).not.toEqual(picks(10))
+    expect(new Set(picks(9))).toEqual(new Set(['un', 'deux', 'trois']))
+  })
+
+  it('answers nothing for none', () => {
+    expect(() => eventChooser('none', 1)).toThrow(RangeError)
   })
 })
