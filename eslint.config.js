@@ -21,7 +21,16 @@ const DETERMINISTIC =
 // GAME_CHANGERS.
 const WORLD =
   'The world draws the game state and never changes it (CLAUDE.md rule 9)'
-const GAME_CHANGERS = ['postEntry', 'applyDecision', 'tick', 'playDay']
+const GAME_CHANGERS = [
+  'postEntry',
+  'applyDecision',
+  'tick',
+  'playDay',
+  'drawEvent',
+  'resolveEvent',
+  'applyEffect',
+  'startOfDay',
+]
 const NO_WORLD = {
   regex: '(^|/)world(/|$)',
   message: `${WORLD}: engine, finance and content never import src/world/.`,

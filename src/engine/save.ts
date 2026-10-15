@@ -2,8 +2,10 @@ import { z } from 'zod'
 import {
   avatarSchema,
   difficultyIdSchema,
+  eventEffectSchema,
   productIdSchema,
   segmentIdSchema,
+  type EventContent,
   type FoodTruckContent,
 } from '../content/schema.ts'
 import { isAccountCode, type AccountCode } from '../finance/accounts.ts'
@@ -16,11 +18,12 @@ import {
   type Journal,
   type JournalEntry,
 } from '../finance/journal.ts'
-import { FOOD_TRUCK } from './day.ts'
+import { EVENTS, FOOD_TRUCK } from './day.ts'
 import { validateDecisions } from './decisions.ts'
 import { FULL_ENERGY } from './energy.ts'
+import { noEvents } from './events.ts'
 import { PRODUCTS, inventoryValue } from './inventory.ts'
-import { cents } from './money.ts'
+import { cents, sum } from './money.ts'
 import { LABELS, isKept } from './personal.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
@@ -33,7 +36,9 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 7 adds the
+ * change can no longer load (rule 8 in CLAUDE.md). Version 8 adds the event
+ * cards and the receivables: a version 7 game still loads, as a game with
+ * no event yet and nobody owing anything. Version 7 adds the
  * owner's energy and botched units: a version 6 game has neither. Version 6
  * adds the owner's personal account: a version 5 game has none. Version 5
  * spends the marketing budget: a version 4 game has no marketing history.
@@ -43,8 +48,12 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 7
+export const SAVE_VERSION = 8
 
+/** The older format `deserialize()` still loads: see `SAVE_VERSION`. */
+const UPGRADED_VERSION = 7
+
+const RECEIVABLES: AccountCode = '1100'
 const STOCKS: AccountCode = '1200'
 
 // A calendar fact, not a tunable: arrivals are minutes of one day.
@@ -63,6 +72,8 @@ const money = z
 const signedMoney = z.int().transform((n) => cents(n))
 
 const count = z.int().nonnegative()
+
+const text = z.string().refine((t) => t.trim() !== '', 'expected some text')
 
 const gameDay = z.int().nonnegative()
 
@@ -169,17 +180,52 @@ const profileSchema = z.strictObject({
   difficulty: difficultyIdSchema,
 })
 
-// `checkPersonal()` checks the days, their order and each amount's sign.
+// `checkPersonal()` checks the labels, the days, their order and each
+// amount's sign.
 const personalSchema = z.strictObject({
   cash: signedMoney,
   movements: z.array(
-    z.strictObject({
-      day: gameDay,
-      label: z.enum([LABELS.salary, LABELS.rent, LABELS.weeklyExpenses]),
-      amount: signedMoney,
-    }),
+    z.strictObject({ day: gameDay, label: z.string(), amount: signedMoney }),
   ),
   unpaidRents: z.array(gameDay),
+})
+
+// `checkEvents()` checks the days, their order and the ids against the
+// event content. The effects still to come have no timing left.
+const eventsSchema = z.strictObject({
+  pending: z
+    .strictObject({ event: z.string(), followUp: z.boolean() })
+    .nullable(),
+  delayed: z.array(
+    z.strictObject({
+      day: gameDay,
+      event: z.string(),
+      effect: eventEffectSchema,
+    }),
+  ),
+  followUps: z.array(z.strictObject({ day: gameDay, event: z.string() })),
+  history: z.array(
+    z.strictObject({
+      day: gameDay,
+      event: z.string(),
+      followUp: z.boolean(),
+      choice: z.string(),
+      outcome: count,
+    }),
+  ),
+  lastDrawnDay: gameDay.nullable(),
+  headlines: z.array(z.strictObject({ day: gameDay, id: z.string() })),
+})
+
+// `checkReceivables()` checks the days, their order and the total.
+const receivableSchema = z.strictObject({
+  client: text,
+  amount: z
+    .int()
+    .positive()
+    .transform((n) => cents(n)),
+  soldOnDay: gameDay,
+  dueDay: gameDay,
 })
 
 const saveSchema = z.strictObject({
@@ -196,9 +242,16 @@ const saveSchema = z.strictObject({
   profile: profileSchema,
   personal: personalSchema,
   energy: energyLevel,
+  events: eventsSchema,
+  receivables: z.array(receivableSchema),
 })
 
 type Save = z.output<typeof saveSchema>
+
+/** A version 7 save: no event and no receivable. */
+const upgradedSchema = saveSchema
+  .omit({ saveVersion: true, events: true, receivables: true })
+  .extend({ saveVersion: z.literal(UPGRADED_VERSION) })
 
 /**
  * Writes the game as the JSON `deserialize()` loads. Throws a TypeError
@@ -219,6 +272,8 @@ export function serialize(state: GameState): string {
     profile: state.profile,
     personal: state.personal,
     energy: state.energy,
+    events: state.events,
+    receivables: state.receivables,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -227,7 +282,8 @@ export function serialize(state: GameState): string {
  * `emptyJournal()` by posting every saved entry again.
  *
  * Throws an Error that starts with "Invalid save:" and names the problem
- * unless: the text is JSON of the current `SAVE_VERSION`; every field has
+ * unless: the text is JSON of the current `SAVE_VERSION`, or of version 7,
+ * which loads with no event and no receivable; every field has
  * the right type and no other key appears; every entry posts again through
  * `postEntry()` and none is dated after the save's day; the books add up
  * within the safe integer range; the lots are oldest first, none bought
@@ -235,30 +291,38 @@ export function serialize(state: GameState): string {
  * `lastDay` is the save's day or the day before, and null only on day 0,
  * with its `botched` the sum of its visits'; the owner's energy is full
  * before day 0 is played, `lastDay`'s energy on its own day, and no lower
- * than it the morning after, since a night only gives energy back; the
- * marketing history holds one day for each day played up to the
+ * than it the morning after, since a night only gives energy back, unless
+ * an event's choice was made that morning; the marketing history holds one day for each day played up to the
  * content's `awarenessDays`, none above the most the budget may be; the
  * decisions, and those pending if any, keep within the content's limits
  * and each product's kind of restock rule; the profile passes
- * `validateProfile()`; and the personal account holds nothing before day 0
+ * `validateProfile()`; the personal account holds nothing before day 0
  * is played, and otherwise only movements and unpaid rents up to
  * `lastDay`'s day, in its months kept and in order, each « Salaire » above
- * zero and every other movement below, and a « Loyer » on each day the rent
- * went unpaid.
+ * zero and every other movement of `LABELS` below, and a « Loyer » on each
+ * day the rent went unpaid, besides the movements of the events' `personal`
+ * effects, of any amount but 0, up to the save's day; the receivables are
+ * by due day, each sold no later than the save's day and due after the
+ * sale and after `lastDay`'s day, and they add up to Comptes clients; and
+ * the events pass `checkEvents()`.
  *
  * The products, limits, restock kinds and `awarenessDays` are those of
- * `content` as it is now, so tuning that changes the days or narrows the
- * others can stop older saves from loading.
+ * `content` as it is now, and the events, choices, outcomes and personal
+ * labels those of `events`, so tuning that changes the days, narrows the
+ * others or drops an event can stop older saves from loading.
  */
 export function deserialize(
   text: string,
   content: FoodTruckContent = FOOD_TRUCK,
+  events: EventContent = EVENTS,
 ): GameState {
   const save = parsed(text)
   const journal = rebuilt(save.journal)
   checkBooks(save, journal)
   checkInventory(save, journal)
+  checkReceivables(save, journal)
   checkLastDay(save)
+  checkEvents(save, events)
   checkEnergy(save)
   checkMarketingHistory(save, content)
   checkDecisions('decisions', save.decisions, content)
@@ -266,7 +330,7 @@ export function deserialize(
     checkDecisions('pendingDecisions', save.pendingDecisions, content)
   }
   attempt('profile', () => validateProfile(save.profile))
-  checkPersonal(save)
+  checkPersonal(save, events)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -281,6 +345,8 @@ export function deserialize(
     profile: save.profile,
     personal: save.personal,
     energy: save.energy,
+    events: save.events,
+    receivables: save.receivables,
   }
 }
 
@@ -296,10 +362,24 @@ function parsed(text: string): Save {
   }
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
+  if (saveVersion === UPGRADED_VERSION) {
+    // Strict first, so a key version 7 did not know still fails the load.
+    checked(upgradedSchema, raw)
+    return checked(saveSchema, {
+      ...raw,
+      saveVersion: SAVE_VERSION,
+      events: noEvents(),
+      receivables: [],
+    })
+  }
   if (saveVersion !== SAVE_VERSION) {
     invalid(`unsupported saveVersion ${JSON.stringify(saveVersion)}`)
   }
-  const result = saveSchema.safeParse(raw)
+  return checked(saveSchema, raw)
+}
+
+function checked<T extends z.ZodType>(schema: T, raw: unknown): z.output<T> {
+  const result = schema.safeParse(raw)
   if (!result.success) {
     throw new Error(`Invalid save:\n${z.prettifyError(result.error)}`)
   }
@@ -351,6 +431,44 @@ function checkInventory(save: Save, journal: Journal): void {
   }
 }
 
+/**
+ * What customers could owe at the save's day: sales up to that day, by due
+ * day, each due after its sale and after `lastDay`'s day, since the start of
+ * each day played collected what was due, and adding up to Comptes clients.
+ */
+function checkReceivables(save: Save, journal: Journal): void {
+  const { day, lastDay, receivables } = save
+  const played = lastDay?.day ?? -1
+  receivables.forEach(({ soldOnDay, dueDay }, index) => {
+    const what = `receivable ${index + 1}`
+    if (soldOnDay > day) {
+      invalid(`${what} was sold on day ${soldOnDay}, after day ${day}`)
+    }
+    if (dueDay <= soldOnDay) {
+      invalid(`${what} is due on day ${dueDay}, not after its sale`)
+    }
+    if (dueDay <= played) {
+      invalid(`${what} is due on day ${dueDay}, a day already played`)
+    }
+    const before = receivables[index - 1]
+    if (before !== undefined && dueDay < before.dueDay) {
+      invalid(
+        `${what} is due before the one before it: day ${dueDay} < day ${before.dueDay}`,
+      )
+    }
+  })
+  const owed = attempt('the receivables', () =>
+    sum(receivables.map(({ amount }) => amount)),
+  )
+  // In range: checkBooks() already added up these same entries.
+  const books = balance(journal, RECEIVABLES, { toDay: day })
+  if (books !== owed) {
+    invalid(
+      `the Comptes clients balance of ${books} does not equal the ${owed} the receivables add up to`,
+    )
+  }
+}
+
 function checkLastDay({ day, lastDay }: Save): void {
   if (lastDay === null) {
     if (day !== 0) invalid(`lastDay is null on day ${day}`)
@@ -375,7 +493,7 @@ function checkLastDay({ day, lastDay }: Save): void {
  * played, `lastDay`'s at its close, and the morning after no lower, since
  * a night only gives energy back.
  */
-function checkEnergy({ day, lastDay, energy }: Save): void {
+function checkEnergy({ day, lastDay, energy, events }: Save): void {
   if (lastDay === null) {
     if (energy !== FULL_ENERGY) {
       invalid(`energy is ${energy} before day 0 is played, not ${FULL_ENERGY}`)
@@ -386,11 +504,106 @@ function checkEnergy({ day, lastDay, energy }: Save): void {
         `energy is ${energy} at the close of day ${day}, not lastDay's ${lastDay.energy}`,
       )
     }
-  } else if (energy < lastDay.energy) {
+  } else if (energy < lastDay.energy && events.history.at(-1)?.day !== day) {
     invalid(
       `energy is ${energy} on the morning of day ${day}, below the ${lastDay.energy} of the close before`,
     )
   }
+}
+
+/**
+ * What the events of `content` could leave at the save's day:
+ * - the event waiting, if any, waits on a morning, before the day is
+ *   played and before any other was chosen that morning, and is in
+ *   `content`; one drawn rather than brought back was drawn that day;
+ * - the last day drawn is no later than the save's day;
+ * - the effects still to come, by day, are due after `lastDay`'s day, each
+ *   from an event in `content`, and a follow-up among them brings one;
+ * - the follow-ups, by day, each bring an event in `content`;
+ * - the history, oldest first, holds days no later than the save's, each an
+ *   event in `content`, one of its choices and one of that choice's
+ *   outcomes;
+ * - the headlines, oldest first, are no later than the save's day.
+ */
+function checkEvents(
+  { day, lastDay, events }: Save,
+  content: EventContent,
+): void {
+  const known = new Map(content.events.map((event) => [event.id, event]))
+  const checkEvent = (what: string, id: string) => {
+    if (!known.has(id)) invalid(`${what} is an unknown event: ${id}`)
+  }
+  const checkOrder = (what: string, at: number, before: number | undefined) => {
+    if (before !== undefined && at < before) {
+      invalid(
+        `${what} comes before the one before it: day ${at} < day ${before}`,
+      )
+    }
+  }
+  const played = lastDay?.day ?? -1
+  const { pending, delayed, followUps, history, lastDrawnDay, headlines } =
+    events
+
+  if (pending !== null) {
+    if (played !== day - 1) {
+      invalid(`an event waits at the close of day ${day}`)
+    }
+    if (history.at(-1)?.day === day) {
+      invalid(`an event waits on day ${day}, after one was chosen that morning`)
+    }
+    checkEvent('the event waiting', pending.event)
+    if (!pending.followUp && lastDrawnDay !== day) {
+      invalid(
+        `the event waiting was drawn on day ${day}, but lastDrawnDay is ${lastDrawnDay}`,
+      )
+    }
+  }
+  if (lastDrawnDay !== null && lastDrawnDay > day) {
+    invalid(`lastDrawnDay is day ${lastDrawnDay}, after day ${day}`)
+  }
+  delayed.forEach(({ day: due, event, effect }, index) => {
+    const what = `delayed effect ${index + 1}`
+    if (due <= played) {
+      invalid(`${what} is due on day ${due}, a day already played`)
+    }
+    checkOrder(what, due, delayed[index - 1]?.day)
+    checkEvent(what, event)
+    if (effect.kind === 'followUp')
+      checkEvent(`${what}'s follow-up`, effect.event)
+  })
+  followUps.forEach(({ day: due, event }, index) => {
+    const what = `follow-up ${index + 1}`
+    checkOrder(what, due, followUps[index - 1]?.day)
+    checkEvent(what, event)
+  })
+  history.forEach((record, index) => {
+    const what = `event record ${index + 1}`
+    if (record.day > day) {
+      invalid(`${what} is on day ${record.day}, after day ${day}`)
+    }
+    checkOrder(what, record.day, history[index - 1]?.day)
+    checkEvent(what, record.event)
+    const choice = known
+      .get(record.event)
+      ?.choices.find(({ id }) => id === record.choice)
+    if (choice === undefined) {
+      invalid(
+        `${what} is an unknown choice of ${record.event}: ${record.choice}`,
+      )
+    }
+    if (record.outcome >= choice.outcomes.length) {
+      invalid(
+        `${what} is outcome ${record.outcome} of ${record.event}'s ${record.choice}, which has ${choice.outcomes.length}`,
+      )
+    }
+  })
+  headlines.forEach((headline, index) => {
+    const what = `headline ${index + 1}`
+    if (headline.day > day) {
+      invalid(`${what} is on day ${headline.day}, after day ${day}`)
+    }
+    checkOrder(what, headline.day, headlines[index - 1]?.day)
+  })
 }
 
 /**
@@ -435,12 +648,17 @@ function checkDecisions(
 }
 
 /**
- * What the owner's account could hold at the close of `lastDay`'s day: what
- * happened on the days played, in the months `isKept()` keeps, in order,
- * each amount with the sign of its label, and each unpaid rent a day the
- * rent was charged.
+ * What the owner's account could hold at the close of `lastDay`'s day, or
+ * on the morning after: what happened on the days played, in the months
+ * `isKept()` keeps, in order, each amount of `LABELS` with the sign of its
+ * label, each unpaid rent a day the rent was charged, and the movements of
+ * `content`'s `personal` effects, of any amount but 0, which a choice made
+ * that morning may have dated the save's day.
  */
-function checkPersonal({ lastDay, personal }: Save): void {
+function checkPersonal(
+  { day, lastDay, personal }: Save,
+  content: EventContent,
+): void {
   const { movements, unpaidRents } = personal
   if (lastDay === null) {
     if (movements.length > 0 || unpaidRents.length > 0) {
@@ -449,40 +667,65 @@ function checkPersonal({ lastDay, personal }: Save): void {
     return
   }
   const today = lastDay.day
-  const checkDay = (what: string, day: number, before: number | undefined) => {
-    if (day > today) invalid(`${what} is on day ${day}, after day ${today}`)
-    if (!isKept(day, today)) {
+  const checkDay = (
+    what: string,
+    at: number,
+    before: number | undefined,
+    latest: number,
+  ) => {
+    if (at > latest) invalid(`${what} is on day ${at}, after day ${latest}`)
+    if (!isKept(at, today)) {
       invalid(
-        `${what} is on day ${day}, outside the months kept on day ${today}`,
+        `${what} is on day ${at}, outside the months kept on day ${today}`,
       )
     }
-    if (before !== undefined && day < before) {
+    if (before !== undefined && at < before) {
       invalid(
-        `${what} is older than the one before it: day ${day} < day ${before}`,
+        `${what} is older than the one before it: day ${at} < day ${before}`,
       )
     }
   }
 
-  movements.forEach(({ day, label, amount }, index) => {
+  const ownLabels: readonly string[] = Object.values(LABELS)
+  const eventLabels = new Set(
+    content.events.flatMap(({ choices }) =>
+      choices.flatMap(({ outcomes }) =>
+        outcomes.flatMap(({ effects }) =>
+          effects.flatMap((effect) =>
+            effect.kind === 'personal' ? [effect.label] : [],
+          ),
+        ),
+      ),
+    ),
+  )
+  movements.forEach(({ day: at, label, amount }, index) => {
     const what = `personal movement ${index + 1}`
-    checkDay(what, day, movements[index - 1]?.day)
-    const comesIn = label === LABELS.salary
-    if (comesIn ? amount <= 0 : amount >= 0) {
-      invalid(
-        `${what}, « ${label} », must be ${comesIn ? 'above' : 'below'} 0: ${amount}`,
-      )
+    const before = movements[index - 1]?.day
+    if (ownLabels.includes(label)) {
+      checkDay(what, at, before, today)
+      const comesIn = label === LABELS.salary
+      if (comesIn ? amount <= 0 : amount >= 0) {
+        invalid(
+          `${what}, « ${label} », must be ${comesIn ? 'above' : 'below'} 0: ${amount}`,
+        )
+      }
+    } else if (eventLabels.has(label)) {
+      checkDay(what, at, before, day)
+      if (amount === 0) invalid(`${what}, « ${label} », must not be 0`)
+    } else {
+      invalid(`${what} has an unknown label: « ${label} »`)
     }
   })
-  unpaidRents.forEach((day, index) => {
+  unpaidRents.forEach((at, index) => {
     const what = `unpaid rent ${index + 1}`
     const before = unpaidRents[index - 1]
-    checkDay(what, day, before)
-    if (day === before) invalid(`${what} repeats day ${day}`)
+    checkDay(what, at, before, today)
+    if (at === before) invalid(`${what} repeats day ${at}`)
     const charged = movements.some(
-      (movement) => movement.day === day && movement.label === LABELS.rent,
+      (movement) => movement.day === at && movement.label === LABELS.rent,
     )
     if (!charged) {
-      invalid(`${what} is on day ${day}, with no « Loyer » that day`)
+      invalid(`${what} is on day ${at}, with no « Loyer » that day`)
     }
   })
 }

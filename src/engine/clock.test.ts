@@ -17,6 +17,7 @@ import {
 } from './day.ts'
 import { startingDecisions } from './decisions.ts'
 import { FULL_ENERGY } from './energy.ts'
+import { noEvents } from './events.ts'
 import { cents } from './money.ts'
 import { openingAccount } from './personal.ts'
 import { defaultProfile } from './profile.ts'
@@ -36,7 +37,7 @@ const DEFAULT_ACCOUNT = openingAccount(
 )
 
 describe('createInitialState', () => {
-  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile and the owner at full energy", () => {
+  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile, the owner at full energy, no event and nobody owing anything", () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
@@ -50,6 +51,8 @@ describe('createInitialState', () => {
       profile: defaultProfile(),
       personal: DEFAULT_ACCOUNT,
       energy: 100,
+      events: noEvents(),
+      receivables: [],
     })
     expect(FULL_ENERGY).toBe(100)
   })

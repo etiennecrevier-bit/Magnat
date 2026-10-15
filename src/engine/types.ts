@@ -5,6 +5,7 @@
 import type {
   Avatar,
   DifficultyId,
+  EventEffect,
   ProductId,
   RestockRule,
   SegmentId,
@@ -224,4 +225,103 @@ export interface GameState {
    * units.
    */
   readonly energy: number
+  /**
+   * The event cards: the one waiting for the player's choice, what the
+   * choices made still have to do, and what came up and was chosen.
+   */
+  readonly events: EventsState
+  /**
+   * What customers who pay later owe the business, by due day, then in the
+   * order they were sold. Their amounts add up to Comptes clients (1100).
+   */
+  readonly receivables: readonly Receivable[]
+}
+
+/** The event cards of a game. */
+export interface EventsState {
+  /**
+   * The event waiting for the player on the morning of `day`; null when
+   * none is. `tick()` throws while one is.
+   */
+  readonly pending: PendingEvent | null
+  /**
+   * Effects of the choices made that start on a later day, by day, then in
+   * the order they were queued. Each runs at the start of its day, before
+   * the sales.
+   */
+  readonly delayed: readonly DelayedEffect[]
+  /**
+   * Events another one brings back on a later morning, by day, then in the
+   * order they were queued.
+   */
+  readonly followUps: readonly FollowUp[]
+  /** Every event that came up and what the player chose, oldest first. */
+  readonly history: readonly EventRecord[]
+  /**
+   * The last day an event was drawn, follow-ups aside; null until one is.
+   * The gap to the next draw counts from it.
+   */
+  readonly lastDrawnDay: Day | null
+  /** The La Presse-Citron headlines events queued, oldest first. */
+  readonly headlines: readonly Headline[]
+}
+
+/** The event waiting for the player's choice. */
+export interface PendingEvent {
+  /** The event's id in the content. */
+  readonly event: string
+  /** Whether another event brought it, rather than the morning's draw. */
+  readonly followUp: boolean
+}
+
+/** An effect of a choice that starts on a later day. */
+export interface DelayedEffect {
+  /** The day it runs, at the start of the day. */
+  readonly day: Day
+  /** The id of the event whose choice it comes from. */
+  readonly event: string
+  /** What it does, without the timing the content gave it. */
+  readonly effect: EventEffect
+}
+
+/** An event another one brings back. */
+export interface FollowUp {
+  /** The morning it comes up, or the first one after with no other event. */
+  readonly day: Day
+  /** The event's id in the content. */
+  readonly event: string
+}
+
+/** An event that came up, and what the player chose. */
+export interface EventRecord {
+  /** The morning it came up and was chosen. */
+  readonly day: Day
+  /** The event's id in the content. */
+  readonly event: string
+  /** Whether another event brought it, rather than the morning's draw. */
+  readonly followUp: boolean
+  /** The id of the choice made. */
+  readonly choice: string
+  /** Which of the choice's outcomes came, counting from 0. */
+  readonly outcome: number
+}
+
+/** A La Presse-Citron headline an event queued. */
+export interface Headline {
+  /** The day it was queued. */
+  readonly day: Day
+  /** The headline's id in the content. */
+  readonly id: string
+}
+
+/** What one customer owes for one sale on credit. */
+export interface Receivable {
+  /** Who owes it, as the journal names them. */
+  readonly client: string
+  /** What they owe; above zero. */
+  readonly amount: Cents
+  /** The day of the sale. */
+  readonly soldOnDay: Day
+  /** The day it is collected, at the start of the day. */
+  readonly dueDay: Day
 }
