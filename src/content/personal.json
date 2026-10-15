@@ -1,0 +1,5 @@
+{
+  "_note": "The owner's own living costs (#83), paid from their personal account, never by the business: the rent on the 1st of each month, and the week's other expenses (groceries, phone, transit) on payday. The savings the owner starts with are in difficulty.json.",
+  "rentCents": 130000,
+  "weeklyExpensesCents": 25000
+}

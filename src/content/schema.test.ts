@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import difficultyJson from './difficulty.json'
 import foodTruckJson from './foodtruck.json'
+import personalJson from './personal.json'
 import profileJson from './profile.json'
 import {
   dayTypeIdSchema,
@@ -8,6 +9,7 @@ import {
   loadCustomerContent,
   loadDifficultyContent,
   loadFoodTruckContent,
+  loadPersonalContent,
   loadProfileContent,
   productIdSchema,
   segmentIdSchema,
@@ -593,8 +595,20 @@ describe('loadDifficultyContent', () => {
     reject(raw, 'difficulties.facile.truck')
   })
 
+  it('gives each difficulty its starting savings', () => {
+    const { difficulties } = loadDifficultyContent()
+    for (const id of difficultyIdSchema.options) {
+      expect(
+        Number.isSafeInteger(difficulties[id].startingPersonalCashCents),
+      ).toBe(true)
+    }
+  })
+
   it.each([
     ['difficulties.facile.startingCashCents', 12.5],
+    ['difficulties.facile.startingPersonalCashCents', 12.5],
+    ['difficulties.difficile.startingPersonalCashCents', -1],
+    ['difficulties.moyen.startingPersonalCashCents', '250000'],
     ['difficulties.moyen.truck.loanCents', -1],
     // loanSchedule() takes no loan of nothing; a game without one is Facile.
     ['difficulties.moyen.truck.loanCents', 0],
@@ -612,6 +626,11 @@ describe('loadDifficultyContent', () => {
     'difficulties.moyen.truck.annualRateBasisPoints',
     'difficulties.moyen.truck.termMonths',
   ])('rejects a loan without %s', (path) => {
+    reject(without(path, difficultyJson), path)
+  })
+
+  it('rejects a difficulty without its starting savings', () => {
+    const path = 'difficulties.facile.startingPersonalCashCents'
     reject(without(path, difficultyJson), path)
   })
 
@@ -667,5 +686,52 @@ describe('loadProfileContent', () => {
     const raw = withProfileValue('defaultProfile.name', 'Chez Nous')
     reject(raw, 'defaultProfile')
     expect(() => loadProfileContent(raw)).toThrow('Unrecognized key: "name"')
+  })
+})
+
+describe('loadPersonalContent', () => {
+  const loadPersonal: Load = loadPersonalContent
+  const reject = (raw: unknown, path: string) =>
+    expectRejected(raw, path, loadPersonal)
+  const withPersonalValue = (path: string, value: unknown) =>
+    withValue(path, value, personalJson)
+
+  it('loads the shipped personal.json', () => {
+    const { rentCents, weeklyExpensesCents } = loadPersonalContent()
+    expect(Number.isSafeInteger(rentCents)).toBe(true)
+    expect(Number.isSafeInteger(weeklyExpensesCents)).toBe(true)
+  })
+
+  it('names personal.json in its error', () => {
+    expect(() => loadPersonalContent({})).toThrow(/^personal\.json is invalid/)
+  })
+
+  it('accepts living costs of nothing', () => {
+    expect(
+      loadPersonalContent({ rentCents: 0, weeklyExpensesCents: 0 }),
+    ).toEqual({ rentCents: 0, weeklyExpensesCents: 0 })
+  })
+
+  it.each([
+    ['rentCents', -1],
+    ['rentCents', 1300.5],
+    ['rentCents', '130000'],
+    ['weeklyExpensesCents', -1],
+    ['weeklyExpensesCents', 250.5],
+    ['weeklyExpensesCents', null],
+  ])('rejects %s = %j', (path, value) => {
+    reject(withPersonalValue(path, value), path)
+  })
+
+  it.each(['rentCents', 'weeklyExpensesCents'])(
+    'rejects a missing %s',
+    (path) => {
+      reject(without(path, personalJson), path)
+    },
+  )
+
+  it('rejects a mistyped key', () => {
+    const raw = withPersonalValue('rent', 130_000)
+    expect(() => loadPersonalContent(raw)).toThrow('Unrecognized key: "rent"')
   })
 })

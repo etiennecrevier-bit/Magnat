@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { loadDifficultyContent } from '../content/schema.ts'
+import { difficultyIdSchema, loadDifficultyContent } from '../content/schema.ts'
 import * as calendar from './calendar.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
 import { DIFFICULTIES, FOOD_TRUCK, openingJournal, playDay } from './day.ts'
 import { startingDecisions } from './decisions.ts'
+import { cents } from './money.ts'
+import { openingAccount } from './personal.ts'
 import { defaultProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
 import type { Profile } from './types.ts'
@@ -14,8 +16,14 @@ const CUSTOM: Profile = {
   difficulty: 'difficile',
 }
 
+/** The personal account a game of the default difficulty opens with. */
+const DEFAULT_ACCOUNT = openingAccount(
+  DIFFICULTIES.difficulties[defaultProfile().difficulty]
+    .startingPersonalCashCents,
+)
+
 describe('createInitialState', () => {
-  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books, the starting decisions and the default profile", () => {
+  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions and the default profile", () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
@@ -27,6 +35,7 @@ describe('createInitialState', () => {
       decisions: startingDecisions(),
       pendingDecisions: null,
       profile: defaultProfile(),
+      personal: DEFAULT_ACCOUNT,
     })
   })
 
@@ -34,18 +43,58 @@ describe('createInitialState', () => {
     expect(() => createInitialState(seed)).toThrow(RangeError)
   })
 
-  it("keeps the player's profile, as a copy, and opens its difficulty's books", () => {
+  it("keeps the player's profile, as a copy, and opens its difficulty's books and savings", () => {
     const profile = { ...CUSTOM }
     const state = createInitialState(42, FOOD_TRUCK, profile)
     expect(state.profile).toEqual(CUSTOM)
     expect(state.profile).not.toBe(profile)
     expect(state.journal).toEqual(openingJournal(CUSTOM.difficulty))
     expect(state.journal).not.toEqual(createInitialState(42).journal)
+    expect(state.personal).toEqual(
+      openingAccount(
+        DIFFICULTIES.difficulties[CUSTOM.difficulty].startingPersonalCashCents,
+      ),
+    )
+    expect(state.personal).not.toEqual(DEFAULT_ACCOUNT)
     expect({
       ...state,
       profile: defaultProfile(),
       journal: openingJournal(defaultProfile().difficulty),
+      personal: DEFAULT_ACCOUNT,
     }).toEqual(createInitialState(42))
+  })
+
+  it.each(difficultyIdSchema.options)(
+    "opens the owner's account of a %s game with its savings, and nothing moved",
+    (difficulty) => {
+      const { startingPersonalCashCents } =
+        DIFFICULTIES.difficulties[difficulty]
+      const state = createInitialState(42, FOOD_TRUCK, {
+        ...CUSTOM,
+        difficulty,
+      })
+      expect(state.personal).toEqual({
+        cash: startingPersonalCashCents,
+        movements: [],
+        unpaidRents: [],
+      })
+    },
+  )
+
+  it('reads the savings from the difficulties it is given', () => {
+    const difficulties = loadDifficultyContent({
+      difficulties: {
+        ...DIFFICULTIES.difficulties,
+        facile: {
+          ...DIFFICULTIES.difficulties.facile,
+          startingPersonalCashCents: 12_345,
+        },
+      },
+    })
+    const profile = { ...CUSTOM, difficulty: 'facile' } as const
+    expect(
+      createInitialState(42, FOOD_TRUCK, profile, difficulties).personal,
+    ).toEqual(openingAccount(cents(12_345)))
   })
 
   it('rejects a loan above the truck and the starting cash together', () => {

@@ -20,6 +20,7 @@ import { FOOD_TRUCK } from './day.ts'
 import { validateDecisions } from './decisions.ts'
 import { PRODUCTS, inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
+import { LABELS, isKept } from './personal.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
 import type { Decisions, GameState, VisitOutcome } from './types.ts'
@@ -31,7 +32,8 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 5 spends the
+ * change can no longer load (rule 8 in CLAUDE.md). Version 6 adds the
+ * owner's personal account: a version 5 game has none. Version 5 spends the
  * marketing budget: a version 4 game has no marketing history. Version 4
  * adds the line at the counter: a version 3 `lastDay` has no visits served
  * or left and no waits. Version 3 opened the books by difficulty and
@@ -39,7 +41,7 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
  * loan, so it would repay a loan it never took and depreciate a truck it
  * never bought.
  */
-export const SAVE_VERSION = 5
+export const SAVE_VERSION = 6
 
 const STOCKS: AccountCode = '1200'
 
@@ -54,6 +56,9 @@ const money = z
   .int()
   .nonnegative()
   .transform((n) => cents(n))
+
+/** Whole cents of either sign, typed as the engine's `Cents`. */
+const signedMoney = z.int().transform((n) => cents(n))
 
 const count = z.int().nonnegative()
 
@@ -157,6 +162,19 @@ const profileSchema = z.strictObject({
   difficulty: difficultyIdSchema,
 })
 
+// `checkPersonal()` checks the days, their order and each amount's sign.
+const personalSchema = z.strictObject({
+  cash: signedMoney,
+  movements: z.array(
+    z.strictObject({
+      day: gameDay,
+      label: z.enum([LABELS.salary, LABELS.rent, LABELS.weeklyExpenses]),
+      amount: signedMoney,
+    }),
+  ),
+  unpaidRents: z.array(gameDay),
+})
+
 const saveSchema = z.strictObject({
   saveVersion: z.literal(SAVE_VERSION),
   day: gameDay,
@@ -169,6 +187,7 @@ const saveSchema = z.strictObject({
   decisions: decisionsSchema,
   pendingDecisions: decisionsSchema.nullable(),
   profile: profileSchema,
+  personal: personalSchema,
 })
 
 type Save = z.output<typeof saveSchema>
@@ -190,6 +209,7 @@ export function serialize(state: GameState): string {
     decisions: state.decisions,
     pendingDecisions: state.pendingDecisions,
     profile: state.profile,
+    personal: state.personal,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -207,8 +227,12 @@ export function serialize(state: GameState): string {
  * the marketing history holds one day for each day played up to the
  * content's `awarenessDays`, none above the most the budget may be; the
  * decisions, and those pending if any, keep within the content's limits
- * and each product's kind of restock rule; and the profile passes
- * `validateProfile()`.
+ * and each product's kind of restock rule; the profile passes
+ * `validateProfile()`; and the personal account holds nothing before day 0
+ * is played, and otherwise only movements and unpaid rents up to
+ * `lastDay`'s day, in its months kept and in order, each « Salaire » above
+ * zero and every other movement below, and a « Loyer » on each day the rent
+ * went unpaid.
  *
  * The products, limits, restock kinds and `awarenessDays` are those of
  * `content` as it is now, so tuning that changes the days or narrows the
@@ -229,6 +253,7 @@ export function deserialize(
     checkDecisions('pendingDecisions', save.pendingDecisions, content)
   }
   attempt('profile', () => validateProfile(save.profile))
+  checkPersonal(save)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -241,6 +266,7 @@ export function deserialize(
     decisions: save.decisions,
     pendingDecisions: save.pendingDecisions,
     profile: save.profile,
+    personal: save.personal,
   }
 }
 
@@ -358,6 +384,59 @@ function checkDecisions(
       invalid(`${field}.restock.${product} must be a ${kind} rule: ${saved}`)
     }
   }
+}
+
+/**
+ * What the owner's account could hold at the close of `lastDay`'s day: what
+ * happened on the days played, in the months `isKept()` keeps, in order,
+ * each amount with the sign of its label, and each unpaid rent a day the
+ * rent was charged.
+ */
+function checkPersonal({ lastDay, personal }: Save): void {
+  const { movements, unpaidRents } = personal
+  if (lastDay === null) {
+    if (movements.length > 0 || unpaidRents.length > 0) {
+      invalid('personal holds movements before day 0 is played')
+    }
+    return
+  }
+  const today = lastDay.day
+  const checkDay = (what: string, day: number, before: number | undefined) => {
+    if (day > today) invalid(`${what} is on day ${day}, after day ${today}`)
+    if (!isKept(day, today)) {
+      invalid(
+        `${what} is on day ${day}, outside the months kept on day ${today}`,
+      )
+    }
+    if (before !== undefined && day < before) {
+      invalid(
+        `${what} is older than the one before it: day ${day} < day ${before}`,
+      )
+    }
+  }
+
+  movements.forEach(({ day, label, amount }, index) => {
+    const what = `personal movement ${index + 1}`
+    checkDay(what, day, movements[index - 1]?.day)
+    const comesIn = label === LABELS.salary
+    if (comesIn ? amount <= 0 : amount >= 0) {
+      invalid(
+        `${what}, « ${label} », must be ${comesIn ? 'above' : 'below'} 0: ${amount}`,
+      )
+    }
+  })
+  unpaidRents.forEach((day, index) => {
+    const what = `unpaid rent ${index + 1}`
+    const before = unpaidRents[index - 1]
+    checkDay(what, day, before)
+    if (day === before) invalid(`${what} repeats day ${day}`)
+    const charged = movements.some(
+      (movement) => movement.day === day && movement.label === LABELS.rent,
+    )
+    if (!charged) {
+      invalid(`${what} is on day ${day}, with no « Loyer » that day`)
+    }
+  })
 }
 
 /** Runs `step`, turning what it throws into an invalid save about `what`. */

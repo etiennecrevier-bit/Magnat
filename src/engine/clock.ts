@@ -2,15 +2,18 @@ import type {
   CustomerContent,
   DifficultyContent,
   FoodTruckContent,
+  PersonalContent,
 } from '../content/schema.ts'
 import {
   CUSTOMERS,
   DIFFICULTIES,
   FOOD_TRUCK,
+  PERSONAL,
   openingJournal,
   playDay,
 } from './day.ts'
 import { latestDecisions, startingDecisions } from './decisions.ts'
+import { openingAccount } from './personal.ts'
 import { defaultProfile, validateProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
 import type { GameState, Profile } from './types.ts'
@@ -22,8 +25,9 @@ export { toCalendar, type CalendarDate } from './calendar.ts'
 /**
  * Starts a game on day 0 with its generator seeded from `seed`, no stock,
  * no marketing spent yet, the opening books of the profile's difficulty
- * (see `openingJournal`), the content's starting decisions and the
- * player's `profile`. Throws a RangeError unless `seed` is an integer in
+ * (see `openingJournal`), the content's starting decisions, the player's
+ * `profile`, and the owner's personal account holding the difficulty's
+ * starting savings. Throws a RangeError unless `seed` is an integer in
  * [0, 2^32), if the starting decisions break the content's limits, if
  * `profile` breaks `validateProfile()`, or if the difficulty leaves a
  * negative Mise de fonds.
@@ -35,6 +39,8 @@ export function createInitialState(
   difficulties: DifficultyContent = DIFFICULTIES,
 ): GameState {
   validateProfile(profile)
+  const { startingPersonalCashCents } =
+    difficulties.difficulties[profile.difficulty]
   return {
     day: 0,
     seed,
@@ -50,6 +56,7 @@ export function createInitialState(
       avatar: profile.avatar,
       difficulty: profile.difficulty,
     },
+    personal: openingAccount(startingPersonalCashCents),
   }
 }
 
@@ -63,8 +70,9 @@ export function tick(
   content: FoodTruckContent = FOOD_TRUCK,
   customers: CustomerContent = CUSTOMERS,
   difficulties: DifficultyContent = DIFFICULTIES,
+  personal: PersonalContent = PERSONAL,
 ): GameState {
-  const played = playDay(state, content, customers, difficulties)
+  const played = playDay(state, content, customers, difficulties, personal)
   return {
     ...played,
     day: state.day + 1,

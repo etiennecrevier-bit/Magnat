@@ -6,7 +6,7 @@ How the game is put together at the end of phase 1: the folders and who may impo
 
 | Folder | Holds | Imports from other folders |
 | --- | --- | --- |
-| `src/engine/` | Game rules: the clock, a day of business, walk-in customers, the marketing budget, the player's decisions, lots and FIFO, money, the seeded generator, the shared types | `src/finance/` (journal, accounts) and `src/content/schema.ts` |
+| `src/engine/` | Game rules: the clock, a day of business, walk-in customers, the marketing budget, the player's decisions, the owner's personal account, lots and FIFO, money, the seeded generator, the shared types | `src/finance/` (journal, accounts) and `src/content/schema.ts` |
 | `src/finance/` | The journal, the chart of accounts, the three statements | `src/engine/money.ts` and `src/engine/types.ts` only |
 | `src/content/` | Tunable numbers as JSON, and the zod schema that validates them | `src/engine/money.ts` only, to type money as `Cents` |
 | `src/ui/` | React screens, the Zustand store and the real-time loop | engine, finance and content |
@@ -30,7 +30,7 @@ Randomness and the browser are allowed in the world, since nothing it does reach
 
 ## The contract
 
-`src/engine/types.ts` holds the types the engine, the books, the UI and the tools share. It is frozen at the end of phase 1: changing it needs a dedicated card. It holds types only, with no code. P2-02 (#45) was such a card: it added `segments` and `visits` to `DaySummary`, with `SegmentSummary`, `Visit` and `VisitOutcome`. So was P2-04 (#46): it added `decisions` and `pendingDecisions` to `GameState`, with `Decisions`. And P2-11 (#53): it added `profile` to `GameState`, with `Profile`. And P2-03 (#62): it added `leftLine`, `averageWaitSeconds` and `longestWaitSeconds` to `DaySummary`, `servedMinute` and `leftMinute` to `Visit`, and `'leftLine'` to `VisitOutcome`. And P2-05 (#63): it added `marketingHistory` to `GameState`.
+`src/engine/types.ts` holds the types the engine, the books, the UI and the tools share. It is frozen at the end of phase 1: changing it needs a dedicated card. It holds types only, with no code. P2-02 (#45) was such a card: it added `segments` and `visits` to `DaySummary`, with `SegmentSummary`, `Visit` and `VisitOutcome`. So was P2-04 (#46): it added `decisions` and `pendingDecisions` to `GameState`, with `Decisions`. And P2-11 (#53): it added `profile` to `GameState`, with `Profile`. And P2-03 (#62): it added `leftLine`, `averageWaitSeconds` and `longestWaitSeconds` to `DaySummary`, `servedMinute` and `leftMinute` to `Visit`, and `'leftLine'` to `VisitOutcome`. And P2-05 (#63): it added `marketingHistory` to `GameState`. And P2-17 (#83): it added `personal` to `GameState`, with `PersonalAccount` and `PersonalMovement`.
 
 The engine is deterministic: the same seed, played with the same code, the same content and the same decisions on the same days, always posts the same journal, so it always gives the same `journalHash`. A replay is only guaranteed within one version of the code and content, though. Changing the order of the generator draws, the order of a day's entries or a number in `src/content/` can change the journal a seed produces without touching `types.ts`.
 
@@ -54,6 +54,7 @@ Every function that takes a state returns a new one and never mutates it. The fi
 | `decisions` | `Decisions` | How the player runs the truck on day `day`: what `tick()` plays the day with. |
 | `pendingDecisions` | `Decisions \| null` | What the player decided since day `day` began, waiting for the next morning. Null when nothing waits. |
 | `profile` | `Profile` | Who the player is: the business name, the avatar and the difficulty picked on the new game screen. It never changes once the game has started. |
+| `personal` | `PersonalAccount` | The owner's own money, outside the company's books (step 7 below). |
 
 A decision never changes the day under way. The UI shows `day` as today and plays it once its real time is over, so the player's changes land in `pendingDecisions`, and `tick()` makes them the next day's `decisions`. `latestDecisions(state)` in `src/engine/decisions.ts` gives what the player last left: `pendingDecisions`, or else `decisions`.
 
@@ -78,6 +79,24 @@ Who the player is, as they set it up on the new game screen. `defaultProfile()` 
 | `businessName` | `string` | The business's name: on the truck's sign and in the top bar. |
 | `avatar` | `Avatar` | The owner's avatar: `femme` or `homme`, the zod enum in `src/content/schema.ts`. |
 | `difficulty` | `DifficultyId` | How the game started: `facile`, `moyen` or `difficile`, the zod enum in `src/content/schema.ts`. `src/content/difficulty.json` says what each one means. It sets the books the game opens with (see the starting state below) and what the truck costs each month. |
+
+### `PersonalAccount` and `PersonalMovement`
+
+The owner is not the company. The business pays the owner's weekly pay (step 5 below); from there the money is the owner's, and their own life costs money. The account lives outside the books: nothing in it posts a journal entry or draws from the generator, so two games that differ only in living costs or savings post the same journal. `src/engine/personal.ts` keeps it. `inDebt()` there says whether the owner's cash is below zero; each payday it is, the stress will drain the owner's energy (P2-16).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `cash` | `Cents` | What the owner has of their own. It may be negative. |
+| `movements` | `readonly PersonalMovement[]` | Every movement of the calendar month of `lastDay.day` and the 11 before, by `monthsSinceStart()`, oldest first and in the order they happened. `isKept()` in `src/engine/personal.ts` is that rule. Empty until the first day is played. |
+| `unpaidRents` | `readonly Day[]` | The days the rent went unpaid, « Loyer impayé », ascending, over the same months. Each is a day with a « Loyer » movement. |
+
+A `PersonalMovement` is one movement of the account:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `day` | `Day` | The day it happened. |
+| `label` | `string` | What it was, in French: « Salaire », « Loyer » or « Dépenses de la semaine », from `LABELS` in `src/engine/personal.ts`. |
+| `amount` | `Cents` | Above zero for « Salaire », below zero for the others. A movement of 0 is never recorded. |
 
 ### `Lot`
 
@@ -147,8 +166,9 @@ One walk-in customer at the truck.
   - Moyen: *Mise de fonds*, Dr 1000 / Cr 3000 for the starting cash plus the truck's price minus the loan; then *Emprunt de démarrage*, Dr 1000 / Cr 2500 Emprunts bancaires for `loanCents`; then *Achat du camion*, Dr 1500 / Cr 1000 for the truck's price.
   - Difficile: *Mise de fonds* only. The truck is leased, so the books never carry it.
 - an empty `inventory`, a null `lastDay` and an empty `marketingHistory`;
-- `decisions` from `startingDecisions()`, which throws a RangeError if the content's starting decisions break its own limits, and a null `pendingDecisions`.
-- a copy of `profile`, which is `defaultProfile()` unless the new game screen gives another.
+- `decisions` from `startingDecisions()`, which throws a RangeError if the content's starting decisions break its own limits, and a null `pendingDecisions`;
+- a copy of `profile`, which is `defaultProfile()` unless the new game screen gives another;
+- `personal` from `openingAccount()` in `src/engine/personal.ts`: the difficulty's `startingPersonalCashCents` as its cash, no movement and no unpaid rent. Day 0's rent is charged when day 0 is played.
 
 ## Order of operations in `tick()`
 
@@ -159,7 +179,7 @@ nothing else in italics in this section. -->
 
 `tick(state)` in `src/engine/clock.ts` calls `playDay(state)` in `src/engine/day.ts`. It then returns the state `playDay` gave back with `day` + 1, the pending decisions, if any, as its `decisions`, and a null `pendingDecisions`. `playDay` reads the date of `state.day` from `toCalendar()`, plays the day with `state.decisions` and never reads `pendingDecisions`. It goes through these steps in this order. Every entry it posts is dated `state.day`.
 
-Step 0 happens on the 1st of the month, open or closed. Steps 1 to 4 happen only on a day the truck opens, when `decisions.daysOpen` holds the weekday. On a closed day nobody comes, nothing is bought and nothing is spent on marketing: no purchase, no sale, no fuel, no marketing, no draw from the generator, and a `lastDay` with no visit and nothing sold. Step 5 happens on payday, open or closed, and steps 6 and 7 every day.
+Step 0 happens on the 1st of the month, open or closed. Steps 1 to 4 happen only on a day the truck opens, when `decisions.daysOpen` holds the weekday. On a closed day nobody comes, nothing is bought and nothing is spent on marketing: no purchase, no sale, no fuel, no marketing, no draw from the generator, and a `lastDay` with no visit and nothing sold. Step 5 happens on payday, open or closed, and steps 6 to 8 every day.
 
 0. **The month's charges**, from `monthlyCostsCents` in the content and the difficulty in `state.profile`. Day 0 is May 1st, so the first month is charged on day 0. Entry *Permis, stationnement et cuisine*: Dr 6100 Loyer et permis / Cr 1000 Encaisse for `permitParkingAndCommissary`. Entry *Assurances*: Dr 6150 Assurances / Cr 1000 for `insurance`. Then the truck's, by how it came:
    - Moyen pays its loan from the month after the loan: the 1st of month `k` from `monthsSinceStart()`, for `k` from 1 to `termMonths`, pays payment `k` of `loanSchedule(loanCents, annualRateBasisPoints, termMonths)` in `src/finance/loan.ts`. Entry *Intérêts sur l'emprunt*: Dr 7000 Intérêts / Cr 1000 for its interest, which a loan without interest never posts. Entry *Remboursement de l'emprunt*: Dr 2500 Emprunts bancaires / Cr 1000 for its principal.
@@ -176,7 +196,8 @@ Step 0 happens on the 1st of the month, open or closed. Steps 1 to 4 happen only
 4. **Fuel and marketing.** Entry *Carburant et entretien*: Dr 6200 Carburant et entretien / Cr 1000 for `fuelAndMaintenancePerOpenDayCents`. Then entry *Marketing*: Dr 6300 Marketing / Cr 1000 for `decisions.marketingDaily`.
 5. **Payday**, on the ISO weekday `ownerPayWeekday`. Entry *Paie du propriétaire*: Dr 6000 Salaires / Cr 1000 for `decisions.ownerWeeklyPay`. A change the player makes is paid from the next morning, like every decision.
 6. **Spoilage at the close.** `removeExpired()` in `src/engine/inventory.ts` writes off every lot whose shelf life ends that day, as `Lot` describes above. Entry *Marchandises périmées*: Dr 5100 Pertes sur stocks / Cr 1200 Stocks for what those lots cost.
-7. **The new state.** `playDay` returns the state with the new `rngState`, `journal`, `inventory`, a `marketingHistory` with the day's spend added last (0 on a closed day) and only the last `awarenessDays` kept, and a `lastDay` for `state.day`, with the day's visits and how the line went.
+7. **The owner's personal account**, after the business's day, by `livePersonalDay()` in `src/engine/personal.ts`, with the owner's living costs from `src/content/personal.json`. It posts nothing and draws nothing. On payday, « Salaire » brings in `decisions.ownerWeeklyPay`, the amount the business paid in step 5. On the 1st of the month, day 0 included, « Loyer » takes out `rentCents`; when that leaves the cash below zero, the rent is unpaid and the day goes into `unpaidRents`. On payday again, « Dépenses de la semaine » takes out `weeklyExpensesCents`. So a Friday the 1st is paid, then charged its rent, then its week. A movement of 0 is not recorded. Then the movements and unpaid rents older than the months kept are dropped.
+8. **The new state.** `playDay` returns the state with the new `rngState`, `journal`, `inventory`, a `marketingHistory` with the day's spend added last (0 on a closed day) and only the last `awarenessDays` kept, a `lastDay` for `state.day`, with the day's visits and how the line went, and the owner's `personal` account.
 
 What every step shares:
 - A line with a zero amount is dropped, and an entry left with no line is not posted. A day with nothing bought, nothing sold or nothing spoiled has no entry for that step, and a pay or a marketing budget of 0 posts nothing.
@@ -212,15 +233,17 @@ Money is `Cents` from `src/engine/money.ts`: a branded number that only `cents()
 ## Where content is loaded
 
 - `src/content/foodtruck.json` holds the food truck's numbers: the products (with their packaging), the truck's price and useful life, the monthly costs, the fuel per open day, the card payments, payday, walk-ins, the decisions a game starts with (`startingDecisions`) and the limits the player's decisions are held to (`decisionLimits`). The walk-ins are the crowds of the truck's spot: the opening hours, the arrival slots, the noise, and for each type of day (`semaine`, `finDeSemaine`) its traffic, segment shares, product appeal, patience and arrival curve. The `service` is how long serving a customer takes, a base plus a time per unit ordered, and how many customers still waiting a newcomer will stand behind. The `marketing` is what the budget brings: the days awareness averages (`awarenessDays`), the extra walk-ins per square root of a cent of awareness (`extraCustomersPerSqrtCent`) and their segment shares. `loadFoodTruckContent()` in `src/content/schema.ts` validates it with zod and types its money as `Cents`. Every object is strict, so a mistyped key fails instead of being dropped.
-- `src/content/difficulty.json` holds the three ways to start a game: the cash in the bank once the truck is settled, and how the truck comes, owned, bought with a loan (its amount, yearly rate in basis points and term in months) or leased (its monthly lease). `loadDifficultyContent()` in `src/content/schema.ts` validates it.
+- `src/content/difficulty.json` holds the three ways to start a game: the cash in the bank once the truck is settled, how the truck comes, owned, bought with a loan (its amount, yearly rate in basis points and term in months) or leased (its monthly lease), and the owner's own savings. `loadDifficultyContent()` in `src/content/schema.ts` validates it.
+- `src/content/personal.json` holds what the owner's own life costs: the rent on the 1st of each month (`rentCents`) and the week's other expenses on payday (`weeklyExpensesCents`). The savings the owner starts with are each difficulty's `startingPersonalCashCents` in `src/content/difficulty.json`. `loadPersonalContent()` in `src/content/schema.ts` validates it.
 - `src/content/segments.json` holds the customer segments: how long each waits in line (`patienceMinutes`), for each segment and product a reference price, a base purchase probability and a sensitivity, and for the chic segment how a price far below its reference puts it off (`tooCheap`). `loadCustomerContent()` in `src/content/schema.ts` validates it the same way.
-- `src/engine/day.ts` calls the three loaders once, when the module loads, and exports the results as `FOOD_TRUCK`, `CUSTOMERS` and `DIFFICULTIES`. An invalid file throws as soon as the engine is imported.
-- `createInitialState()`, `tick()`, `playDay()`, `openingJournal()`, `startingDecisions()` and `applyDecision()` take a `content` argument that defaults to `FOOD_TRUCK`. `tick()` and `playDay()` take a `customers` argument after it that defaults to `CUSTOMERS`, and `createInitialState()`, `tick()`, `playDay()` and `openingJournal()` a last `difficulties` argument that defaults to `DIFFICULTIES`, so a test can play with other numbers. The UI, the simulation and the invariant test use the defaults.
+- `src/engine/day.ts` calls the four loaders once, when the module loads, and exports the results as `FOOD_TRUCK`, `CUSTOMERS`, `DIFFICULTIES` and `PERSONAL`. An invalid file throws as soon as the engine is imported.
+- `createInitialState()`, `tick()`, `playDay()`, `openingJournal()`, `startingDecisions()` and `applyDecision()` take a `content` argument that defaults to `FOOD_TRUCK`. `tick()` and `playDay()` take a `customers` argument after it that defaults to `CUSTOMERS`, `createInitialState()`, `tick()`, `playDay()` and `openingJournal()` a `difficulties` argument that defaults to `DIFFICULTIES`, and `tick()` and `playDay()` a last `personal` argument that defaults to `PERSONAL`, so a test can play with other numbers. The UI, the simulation and the invariant test use the defaults.
 - The UI reads `FOOD_TRUCK` too: product names in `src/ui/TodayPanel.tsx`, and the monthly costs for the cash gauge in `src/ui/cashLevel.ts`. The new game screen reads `src/content/difficulty.json` through `src/ui/newGame.ts`.
 - `src/content/pacing.json` (real milliseconds per game day, the speeds, the most days per animation frame) is read by `src/ui/gameLoop.ts` and `src/ui/TopBar.tsx`. `src/content/cashGauge.json` is read by `src/ui/cashLevel.ts`. The engine reads neither: it knows nothing of real time.
 
 Some numbers stay in code on purpose, because they are facts rather than tunables:
 - the calendar, in `src/engine/calendar.ts`;
+- the 12 months the owner's personal account keeps, in `src/engine/personal.ts`;
 - the first weekend day, in `src/engine/customers.ts`;
 - the ISO weekdays, 1 = Monday to 7 = Sunday, in `src/engine/decisions.ts` and `src/content/schema.ts`;
 - the minutes in a day, in `src/content/schema.ts`;

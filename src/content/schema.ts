@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { cents } from '../engine/money.ts'
 import difficultyJson from './difficulty.json'
 import foodTruckJson from './foodtruck.json'
+import personalJson from './personal.json'
 import profileJson from './profile.json'
 import segmentsJson from './segments.json'
 
@@ -335,6 +336,8 @@ const difficultySchema = z.strictObject({
   name: z.string().min(1),
   /** What the business has in the bank once the truck is settled. */
   startingCashCents: money,
+  /** What the owner has saved of their own, outside the business. */
+  startingPersonalCashCents: money,
   truck: startingTruckSchema,
 })
 
@@ -360,6 +363,20 @@ export const profileContentSchema = z.strictObject({
 })
 
 export type ProfileContent = z.output<typeof profileContentSchema>
+
+/**
+ * What the owner's own life costs, paid from their personal account and
+ * never by the business.
+ */
+export const personalContentSchema = z.strictObject({
+  _note: z.string().optional(),
+  /** The owner's rent, due on the 1st of each month. */
+  rentCents: money,
+  /** Groceries, phone, transit and the rest of the week, paid on payday. */
+  weeklyExpensesCents: money,
+})
+
+export type PersonalContent = z.output<typeof personalContentSchema>
 
 /**
  * Validates the food truck's content and returns it typed, with money as
@@ -401,6 +418,17 @@ export function loadDifficultyContent(
  */
 export function loadProfileContent(raw: unknown = profileJson): ProfileContent {
   return parsed(profileContentSchema, raw, 'profile.json')
+}
+
+/**
+ * Validates the owner's living costs and returns them typed, with money as
+ * `Cents`. Throws an Error naming every invalid field. Pass `raw` only to
+ * check other data; by default it reads `personal.json`.
+ */
+export function loadPersonalContent(
+  raw: unknown = personalJson,
+): PersonalContent {
+  return parsed(personalContentSchema, raw, 'personal.json')
 }
 
 function parsed<T extends z.ZodType>(

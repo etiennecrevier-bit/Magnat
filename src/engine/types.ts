@@ -126,6 +126,35 @@ export interface Decisions {
   readonly marketingDaily: Cents
 }
 
+/**
+ * The owner's own money, outside the company's books: their pay comes in,
+ * their living costs go out, and nothing in it ever posts a journal entry.
+ */
+export interface PersonalAccount {
+  /** What the owner has of their own. May be negative. */
+  readonly cash: Cents
+  /**
+   * Every movement of this calendar month and the 11 before, oldest first,
+   * in the order they happened.
+   */
+  readonly movements: readonly PersonalMovement[]
+  /**
+   * The days the rent went unpaid (« Loyer impayé »), ascending, over the
+   * same months as `movements`.
+   */
+  readonly unpaidRents: readonly Day[]
+}
+
+/** Money coming into or going out of the owner's personal account. */
+export interface PersonalMovement {
+  /** The day it happened. */
+  readonly day: Day
+  /** What it was, in French, as the player reads it. */
+  readonly label: string
+  /** Above zero when money comes in, below zero when it goes out. */
+  readonly amount: Cents
+}
+
 /** Who the player is, as they set it up when the game started. */
 export interface Profile {
   /** The business's name: on the truck's sign and in the top bar. */
@@ -175,4 +204,6 @@ export interface GameState {
   readonly pendingDecisions: Decisions | null
   /** Who the player is; it never changes once the game has started. */
   readonly profile: Profile
+  /** The owner's own money, outside the company's books. */
+  readonly personal: PersonalAccount
 }

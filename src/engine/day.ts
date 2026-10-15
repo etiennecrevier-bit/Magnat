@@ -2,11 +2,13 @@ import {
   loadCustomerContent,
   loadDifficultyContent,
   loadFoodTruckContent,
+  loadPersonalContent,
   type CustomerContent,
   type Difficulty,
   type DifficultyContent,
   type DifficultyId,
   type FoodTruckContent,
+  type PersonalContent,
   type ProductId,
   type RestockRule,
 } from '../content/schema.ts'
@@ -34,6 +36,7 @@ import {
 } from './inventory.ts'
 import { marketingCrowd, rememberSpend } from './marketing.ts'
 import { add, cents, mulInt, mulRatio, sub, type Cents } from './money.ts'
+import { livePersonalDay } from './personal.ts'
 import { servers } from './service.ts'
 import type { Day, Decisions, GameState, Lot, PerProduct } from './types.ts'
 
@@ -45,6 +48,9 @@ export const CUSTOMERS: CustomerContent = loadCustomerContent()
 
 /** The shipped difficulties, validated once when the engine loads. */
 export const DIFFICULTIES: DifficultyContent = loadDifficultyContent()
+
+/** The owner's shipped living costs, validated once when the engine loads. */
+export const PERSONAL: PersonalContent = loadPersonalContent()
 
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
@@ -156,15 +162,18 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * nobody comes, nothing is bought and nothing is spent on marketing, so the
  * generator does not move. On payday, open or closed, the owner's weekly
  * pay. Every day: the spoilage at the close. Every entry is dated
- * `state.day`. Returns a new state on the same day with the books, the
- * stock, the generator, the marketing history and `lastDay` brought up to
- * the close; never mutates `state`. Cash may go negative.
+ * `state.day`. Then the owner's own day, outside the books, with
+ * `personal` as their living costs (see `livePersonalDay`). Returns a new
+ * state on the same day with the books, the stock, the generator, the
+ * marketing history, `lastDay` and the owner's personal account brought up
+ * to the close; never mutates `state`. Cash may go negative.
  */
 export function playDay(
   state: GameState,
   content: FoodTruckContent = FOOD_TRUCK,
   customers: CustomerContent = CUSTOMERS,
   difficulties: DifficultyContent = DIFFICULTIES,
+  personal: PersonalContent = PERSONAL,
 ): GameState {
   const { day, decisions } = state
   const { dayOfMonth, weekday } = toCalendar(day)
@@ -264,6 +273,13 @@ export function playDay(
       averageWaitSeconds: served.averageWaitSeconds,
       longestWaitSeconds: served.longestWaitSeconds,
     },
+    personal: livePersonalDay(
+      state.personal,
+      day,
+      decisions.ownerWeeklyPay,
+      content.ownerPayWeekday,
+      personal,
+    ),
   }
 }
 

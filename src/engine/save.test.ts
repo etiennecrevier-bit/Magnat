@@ -11,6 +11,7 @@ import { FOOD_TRUCK, playDay } from './day.ts'
 import { applyDecision } from './decisions.ts'
 import { inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
+import { LABELS } from './personal.ts'
 import { PROFILE_CONTENT } from './profile.ts'
 import { SAVE_VERSION, deserialize, serialize } from './save.ts'
 import type { GameState, Profile } from './types.ts'
@@ -66,6 +67,18 @@ function marketed(days: number, budget = cents(3_000)): GameState {
 
 const MARKETED = marketed(40)
 
+/**
+ * A game that pays the owner 400 $ a week from day 1, played past the days
+ * their rent went unpaid.
+ */
+const LOW_PAY = played(
+  200,
+  applyDecision(createInitialState(SEED), {
+    kind: 'ownerWeeklyPay',
+    pay: cents(40_000),
+  }),
+)
+
 /** A cheaper price for café, waiting for the next morning. */
 function withPendingPrice(state: GameState): GameState {
   return applyDecision(state, {
@@ -83,14 +96,15 @@ const SAVED = serialize(FORTNIGHT)
 const ENTRIES = entriesOf(FORTNIGHT.journal).length
 
 /**
- * The valid save, parsed, with `change` applied to the object holding the
- * last key of the dotted `path`, as text again.
+ * The valid save `text`, by default `SAVED`, parsed, with `change` applied
+ * to the object holding the last key of the dotted `path`, as text again.
  */
 function edited(
   path: string,
   change: (parent: Json, key: string) => void,
+  text = SAVED,
 ): string {
-  const save = JSON.parse(SAVED) as Json
+  const save = JSON.parse(text) as Json
   const keys = path.split('.')
   const key = keys.pop() as string
   const parent = keys.reduce((node, k) => node[k] as Json, save)
@@ -98,10 +112,14 @@ function edited(
   return JSON.stringify(save)
 }
 
-function withValue(path: string, value: unknown): string {
-  return edited(path, (parent, key) => {
-    parent[key] = value
-  })
+function withValue(path: string, value: unknown, text = SAVED): string {
+  return edited(
+    path,
+    (parent, key) => {
+      parent[key] = value
+    },
+    text,
+  )
 }
 
 /** On an array index, this leaves a hole, which JSON writes as null. */
@@ -131,8 +149,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(5)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 5 })
+    expect(SAVE_VERSION).toBe(6)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 6 })
   })
 
   it.each<Profile>([
@@ -183,6 +201,33 @@ describe('serialize and deserialize', () => {
     expect(closed.day).toBe(1)
     expect(closed.marketingHistory).toEqual([0, 3_000])
     expect(reloaded(closed)).toStrictEqual(closed)
+  })
+
+  it("give back the owner's account at the close of day 0, then the next morning", () => {
+    for (const difficulty of ['moyen', 'difficile'] as const) {
+      const profile = { ...createInitialState(SEED).profile, difficulty }
+      const closed = playDay(createInitialState(SEED, FOOD_TRUCK, profile))
+      expect(closed.personal.movements).toEqual([
+        { day: 0, label: LABELS.rent, amount: expect.any(Number) },
+      ])
+      expect(reloaded(closed)).toStrictEqual(closed)
+      const morning = tick(createInitialState(SEED, FOOD_TRUCK, profile))
+      expect(reloaded(morning)).toStrictEqual(morning)
+    }
+  })
+
+  it('give back an owner who missed their rent, in debt', () => {
+    expect(LOW_PAY.personal.unpaidRents.length).toBeGreaterThan(1)
+    expect(LOW_PAY.personal.cash).toBeLessThan(0)
+    expect(reloaded(LOW_PAY)).toStrictEqual(LOW_PAY)
+  })
+
+  it('load an owner in debt, who lives on the same', () => {
+    const resumed = played(60, reloaded(LOW_PAY))
+    expect(resumed).toStrictEqual(played(60, LOW_PAY))
+    expect(resumed.personal.unpaidRents).not.toEqual(
+      LOW_PAY.personal.unpaidRents,
+    )
   })
 
   it('give back decisions waiting for the next morning', () => {
@@ -273,7 +318,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 4, 6, '5', null])('saveVersion %j', (version) => {
+  it.each([0, 1, 5, 7, '6', null])('saveVersion %j', (version) => {
     expectInvalid(withValue('saveVersion', version), [
       `unsupported saveVersion ${JSON.stringify(version)}`,
     ])
@@ -293,6 +338,12 @@ describe('deserialize rejects', () => {
       ['the decisions', 'decisions.discount', 'decisions'],
       ['the prices', 'decisions.prices.poutine', 'decisions.prices'],
       ['the profile', 'profile.level', 'profile'],
+      ['the personal account', 'personal.bonus', 'personal'],
+      [
+        'a personal movement',
+        'personal.movements.0.note',
+        'personal.movements[0]',
+      ],
     ])('in %s', (_, path, at) => {
       const key = path.split('.').at(-1)
       expectInvalid(withValue(path, 1), [
@@ -323,6 +374,13 @@ describe('deserialize rejects', () => {
     'inventory.0.unitCost',
     'lastDay.segments.chic',
     'decisions.prices.croissant',
+    'personal',
+    'personal.cash',
+    'personal.movements',
+    'personal.unpaidRents',
+    'personal.movements.0.day',
+    'personal.movements.0.label',
+    'personal.movements.0.amount',
   ])('a save missing %s', (path) => {
     const at = path.replace(/\.(\d+)/g, '[$1]')
     expectInvalid(without(path), [`→ at ${at}`])
@@ -730,6 +788,134 @@ describe('deserialize rejects', () => {
     // Its books hold no truck and no loan, so it cannot play on under the
     // rules of version 3.
     expectInvalid(withValue('saveVersion', 2), ['unsupported saveVersion 2'])
+  })
+
+  describe('a personal account', () => {
+    // FORTNIGHT's movements, as the tests below break them.
+    it('starts from a fortnight of movements', () => {
+      expect(
+        FORTNIGHT.personal.movements.map(({ day, label }) => [day, label]),
+      ).toEqual([
+        [0, LABELS.rent],
+        [4, LABELS.salary],
+        [4, LABELS.weeklyExpenses],
+        [11, LABELS.salary],
+        [11, LABELS.weeklyExpenses],
+      ])
+      expect(FORTNIGHT.personal.unpaidRents).toEqual([])
+    })
+
+    it.each([12.5, '100', null, Number.MAX_SAFE_INTEGER + 1])(
+      'with the cash %j',
+      (cash) => {
+        expectInvalid(withValue('personal.cash', cash), ['→ at personal.cash'])
+      },
+    )
+
+    it('with cash below zero, which loads', () => {
+      const back = deserialize(withValue('personal.cash', -500))
+      expect(back.personal.cash).toBe(-500)
+    })
+
+    it.each(['Loto', 'salaire', 42, null])('with the label %j', (label) => {
+      expectInvalid(withValue('personal.movements.0.label', label), [
+        '→ at personal.movements[0].label',
+      ])
+    })
+
+    it.each([-12.5, '-130000', null])('with the amount %j', (amount) => {
+      expectInvalid(withValue('personal.movements.0.amount', amount), [
+        '→ at personal.movements[0].amount',
+      ])
+    })
+
+    it.each([
+      [0, 130_000, 'below'],
+      [0, 0, 'below'],
+      [1, -70_000, 'above'],
+      [1, 0, 'above'],
+      [2, 25_000, 'below'],
+    ])('with movement %i of the amount %i, not %s 0', (index, amount, side) => {
+      const label = FORTNIGHT.personal.movements[index]?.label ?? ''
+      expectInvalid(withValue(`personal.movements.${index}.amount`, amount), [
+        `personal movement ${index + 1}, « ${label} », must be ${side} 0: ${amount}`,
+      ])
+    })
+
+    it('whose movements are not oldest first', () => {
+      expectInvalid(withValue('personal.movements.1.day', 12), [
+        'personal movement 3 is older than the one before it: day 4 < day 12',
+      ])
+    })
+
+    it('with a movement after the last day played', () => {
+      expectInvalid(withValue('personal.movements.4.day', 14), [
+        'personal movement 5 is on day 14, after day 13',
+      ])
+    })
+
+    it('with a movement older than the months kept', () => {
+      // On day 399, in June of year 2, the account keeps July of year 1 on.
+      const text = serialize(DAY_400)
+      expect(DAY_400.personal.movements[0]?.day).toBe(61)
+      expectInvalid(withValue('personal.movements.0.day', 60, text), [
+        'personal movement 1 is on day 60, outside the months kept on day 399',
+      ])
+    })
+
+    it('with anything before day 0 is played', () => {
+      const text = serialize(createInitialState(SEED))
+      const rent = { day: 0, label: LABELS.rent, amount: -130_000 }
+      expectInvalid(withValue('personal.movements', [rent], text), [
+        'personal holds movements before day 0 is played',
+      ])
+      expectInvalid(withValue('personal.unpaidRents', [0], text), [
+        'personal holds movements before day 0 is played',
+      ])
+    })
+
+    it('with an unpaid rent on a day with no « Loyer »', () => {
+      expect(
+        deserialize(withValue('personal.unpaidRents', [0])).personal,
+      ).toMatchObject({ unpaidRents: [0] })
+      expectInvalid(withValue('personal.unpaidRents', [4]), [
+        'unpaid rent 1 is on day 4, with no « Loyer » that day',
+      ])
+    })
+
+    it('with an unpaid rent twice', () => {
+      expectInvalid(withValue('personal.unpaidRents', [0, 0]), [
+        'unpaid rent 2 repeats day 0',
+      ])
+    })
+
+    it('with an unpaid rent after the last day played', () => {
+      expectInvalid(withValue('personal.unpaidRents', [14]), [
+        'unpaid rent 1 is on day 14, after day 13',
+      ])
+    })
+
+    it('whose unpaid rents are not in order', () => {
+      const [first, second] = LOW_PAY.personal.unpaidRents
+      const text = serialize(LOW_PAY)
+      expectInvalid(withValue('personal.unpaidRents', [second, first], text), [
+        `unpaid rent 2 is older than the one before it: day ${first} < day ${second}`,
+      ])
+    })
+
+    it.each([-1, 1.5, '0', null])('with the unpaid rent %j', (day) => {
+      expectInvalid(withValue('personal.unpaidRents', [day]), [
+        '→ at personal.unpaidRents[0]',
+      ])
+    })
+
+    it('in a game saved before the personal account, as version 5', () => {
+      const text = edited('personal', (save, key) => {
+        delete save[key]
+        save.saveVersion = 5
+      })
+      expectInvalid(text, ['unsupported saveVersion 5'])
+    })
   })
 
   describe('a profile', () => {
