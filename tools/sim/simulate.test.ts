@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { DifficultyId } from '../../src/content/schema.ts'
-import { FOOD_TRUCK } from '../../src/engine/day.ts'
-import type { DecisionChange } from '../../src/engine/decisions.ts'
+import { createInitialState, tick } from '../../src/engine/clock.ts'
+import { ENERGY, FOOD_TRUCK } from '../../src/engine/day.ts'
+import {
+  applyDecision,
+  type DecisionChange,
+} from '../../src/engine/decisions.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
+import { latestDecisions } from '../../src/engine/decisions.ts'
+import { FULL_ENERGY, nightRest } from '../../src/engine/energy.ts'
 import { cents } from '../../src/engine/money.ts'
+import { isKept } from '../../src/engine/personal.ts'
+import { defaultProfile } from '../../src/engine/profile.ts'
 import type { DaySummary, PerProduct } from '../../src/engine/types.ts'
 import { getAccount } from '../../src/finance/accounts.ts'
 import { emptyJournal, postEntry } from '../../src/finance/journal.ts'
@@ -206,6 +214,75 @@ describe('simulate with decision changes', () => {
         { kind: 'price', product: 'cafe', price: cents(327) },
       ]),
     ).toThrow(RangeError)
+  })
+})
+
+describe("simulate's owner", () => {
+  const lowPay: DecisionChange = { kind: 'ownerWeeklyPay', pay: cents(40_000) }
+
+  it('reads the energy each morning, before the day is played', () => {
+    const days = 60
+    const result = simulate(7, days)
+    // The same game by hand: no changes, so the starting decisions.
+    let state = createInitialState(7, FOOD_TRUCK, {
+      ...defaultProfile(),
+      difficulty: 'moyen',
+    })
+    state = {
+      ...state,
+      decisions: latestDecisions(state),
+      pendingDecisions: null,
+    }
+    const mornings: number[] = []
+    for (let day = 0; day < days; day += 1) {
+      mornings.push(state.energy)
+      state = tick(state)
+    }
+    expect(result.owner.morningEnergy).toEqual(mornings)
+    expect(result.owner.morningEnergy[0]).toBe(FULL_ENERGY)
+    expect(result.owner.personalCash).toBe(state.personal.cash)
+    // Each morning is the day before's close, after its night.
+    expect(result.owner.morningEnergy.slice(1)).toEqual(
+      result.daySummaries
+        .slice(0, -1)
+        .map(({ energy }) => nightRest(energy, ENERGY)),
+    )
+  })
+
+  it('counts every unpaid rent, longer ago than the account keeps', () => {
+    const days = 2 * 365
+    const result = simulate(7, days, 'moyen', [lowPay])
+    const { unpaidRents } = result.owner
+    // The 1sts of the month, in order, from the first unpaid one.
+    expect(unpaidRents.length).toBeGreaterThan(12)
+    expect(unpaidRents).toEqual([...unpaidRents].sort((a, b) => a - b))
+    // Each is a day the game's own account recorded while it kept it.
+    let state = createInitialState(7, FOOD_TRUCK, {
+      ...defaultProfile(),
+      difficulty: 'moyen',
+    })
+    state = applyDecision(state, lowPay)
+    state = {
+      ...state,
+      decisions: latestDecisions(state),
+      pendingDecisions: null,
+    }
+    const seen = new Set<number>()
+    for (let day = 0; day < days; day += 1) {
+      state = tick(state)
+      for (const rentDay of state.personal.unpaidRents) seen.add(rentDay)
+    }
+    expect([...seen].sort((a, b) => a - b)).toEqual(unpaidRents)
+    // The account itself only keeps the last 12 months of them.
+    const lastDay = days - 1
+    expect(state.personal.unpaidRents).toEqual(
+      unpaidRents.filter((day) => isKept(day, lastDay)),
+    )
+    expect(state.personal.unpaidRents.length).toBeLessThan(unpaidRents.length)
+  })
+
+  it('keeps an owner who pays the rent free of unpaid rents', () => {
+    expect(simulate(7, 365, 'facile').owner.unpaidRents).toEqual([])
   })
 })
 

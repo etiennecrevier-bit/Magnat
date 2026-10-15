@@ -131,6 +131,25 @@ const SHIPPED_COUNTER: Counter = {
 }
 
 /**
+ * Service times of the tests' own, so the line's arithmetic does not move
+ * when the content is tuned: 40 s a customer and 15 s a unit.
+ */
+const TIMES: Service = {
+  baseSeconds: 40,
+  perItemSeconds: 15,
+  maxAheadInLine: 8,
+}
+
+/** A counter at `TIMES`, with a server at each speed, rested. */
+function timed(speeds = [1]): Counter {
+  return {
+    service: TIMES,
+    servers: speeds.map((speed) => ({ speed })),
+    botchedShare: 0,
+  }
+}
+
+/**
  * The shipped service with `change` made, a server at each speed, and
  * `botchedShare` of the units made botched.
  */
@@ -737,7 +756,7 @@ describe('the line', () => {
       customers: keen(20),
       price: () => cents(300),
       available: stock({ cafe: 50, chocolat: 50, croissant: 10 }),
-      counter: SHIPPED_COUNTER,
+      counter: timed(),
     })
     expect(outcomes(served)).toEqual([
       ...times(10, 'bought'),
@@ -767,7 +786,7 @@ describe('the line', () => {
     const served = serve(oneMinute(12), {
       customers: keen(2),
       price: () => cents(300),
-      counter: SHIPPED_COUNTER,
+      counter: timed(),
     })
     expect(outcomes(served)).toEqual([
       ...times(2, 'bought'),
@@ -803,7 +822,7 @@ describe('the line', () => {
       customers: keen(20),
       price: () => cents(300),
       available: stock({ croissant: 1 }),
-      counter: SHIPPED_COUNTER,
+      counter: timed(),
     })
     expect(outcomes(served)).toEqual(['bought', 'soldOut', 'soldOut'])
     expect(served.visits.map(({ servedMinute }) => servedMinute)).toEqual([
@@ -819,14 +838,11 @@ describe('the line', () => {
     const options = {
       customers: keen(20),
       price: () => cents(300),
-      counter: SHIPPED_COUNTER,
+      counter: timed(),
     }
     const alone = serve(oneMinute(12), options)
-    const two = serve(oneMinute(12), {
-      ...options,
-      counter: counter({}, [1, 1]),
-    })
-    const fast = serve(oneMinute(12), { ...options, counter: counter({}, [2]) })
+    const two = serve(oneMinute(12), { ...options, counter: timed([1, 1]) })
+    const fast = serve(oneMinute(12), { ...options, counter: timed([2]) })
     // Two at the counter: the 12th still finds 9 waiting, against the 11th
     // and 12th with one server.
     expect(alone.leftLine).toBe(2)

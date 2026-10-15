@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { difficultyIdSchema } from '../../src/content/schema.ts'
+import { ENERGY } from '../../src/engine/day.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { cents } from '../../src/engine/money.ts'
 import type { DaySummary, PerProduct } from '../../src/engine/types.ts'
@@ -14,6 +15,7 @@ import { incomeStatement } from '../../src/finance/statements.ts'
 import { simulate } from '../sim/simulate.ts'
 import {
   DAYS_PER_YEAR,
+  firstDayBelowZero,
   lowestCash,
   playStrategy,
   runBalance,
@@ -29,6 +31,7 @@ const BASE: Strategy = {
   croissantsPerDay: 70,
   marketingDaily: cents(0),
   daysOpen: 6,
+  ownerWeeklyPay: cents(70_000),
 }
 const EVERY_DAY: Strategy = { ...BASE, daysOpen: 7 }
 
@@ -135,6 +138,65 @@ describe('playStrategy', () => {
     expect(game.wentBelowZero).toBe(game.lowestCash < 0)
   })
 
+  it("sums up the owner's side, the counter and the line from the days played", () => {
+    // Every day open and paid $400 a week at Moyen: the owner tires out and
+    // misses rents, the counter botches and the line turns customers away.
+    const strategy: Strategy = {
+      ...EVERY_DAY,
+      priceChange: -20,
+      ownerWeeklyPay: cents(40_000),
+    }
+    const days = 120
+    const game = playStrategy(strategy, 'moyen', 2, days)
+    const run = simulate(2, days, 'moyen', strategyChanges(strategy))
+    const { morningEnergy, personalCash, unpaidRents } = run.owner
+
+    expect(game.personalCash).toBe(personalCash)
+    expect(game.unpaidRents).toBe(unpaidRents.length)
+    expect(game.averageEnergy).toBeCloseTo(
+      morningEnergy.reduce((total, energy) => total + energy, 0) / days,
+      12,
+    )
+    expect(game.daysExhausted).toBe(
+      morningEnergy.filter((energy) => energy < ENERGY.exhausted.below).length,
+    )
+    const visits = run.daySummaries.flatMap(({ visits }) => visits)
+    expect(game.visits).toBe(visits.length)
+    expect(game.lostToLine).toBe(
+      visits.filter(({ outcome }) => outcome === 'leftLine').length,
+    )
+    expect(game.botched).toBe(
+      visits.reduce((total, { botched }) => total + botched, 0),
+    )
+    for (const count of [
+      game.unpaidRents,
+      game.daysExhausted,
+      game.botched,
+      game.lostToLine,
+    ]) {
+      expect(count).toBeGreaterThan(0)
+    }
+    expect(game.averageEnergy).toBeLessThan(100)
+  })
+
+  it('finds the first day the cash went below zero, or none', () => {
+    // Difficile pays its charges before its first sale: in the red on day 0
+    // with nothing but croissants to sell at the starting prices.
+    const broke: Strategy = { ...BASE, croissantsPerDay: 500 }
+    const days = 200
+    const game = playStrategy(broke, 'difficile', 1, days)
+    const run = simulate(1, days, 'difficile', strategyChanges(broke))
+    const cash = cashAfterEachEntry(run.journal)
+    const first = cash.findIndex((amount) => amount < 0)
+    expect(first).toBeGreaterThan(-1)
+    expect(game.firstDayBelowZero).toBe(run.journal[first]?.day)
+    expect(game.wentBelowZero).toBe(true)
+
+    const safe = playStrategy(BASE, 'facile', 1, 30)
+    expect(safe.firstDayBelowZero).toBeNull()
+    expect(safe.wentBelowZero).toBe(false)
+  })
+
   it("counts the cash between a day's purchases and its sales", () => {
     // Day 0 opens: the 1st of the month's charges and the morning's
     // purchases are paid before any sale comes in, so the cash at the close
@@ -211,6 +273,51 @@ describe('lowestCash', () => {
 
   it('rejects books with no entries', () => {
     expect(() => lowestCash([])).toThrow(RangeError)
+  })
+})
+
+describe('firstDayBelowZero', () => {
+  const paidIn = entry(0, 'Mise de fonds', [
+    ['1000', 10_000, 0],
+    ['3000', 0, 10_000],
+  ])
+
+  it('gives the day of the first entry that left the cash below zero', () => {
+    expect(
+      firstDayBelowZero([
+        paidIn,
+        entry(3, 'Achats', [
+          ['1200', 10_000, 0],
+          ['1000', 0, 10_000],
+        ]),
+        entry(5, 'Achats', [
+          ['1200', 1, 0],
+          ['1000', 0, 1],
+        ]),
+        entry(9, 'Achats', [
+          ['1200', 5_000, 0],
+          ['1000', 0, 5_000],
+        ]),
+      ]),
+    ).toBe(5)
+  })
+
+  it('is null when the cash never goes below zero, or with no entries', () => {
+    expect(firstDayBelowZero([paidIn])).toBeNull()
+    expect(firstDayBelowZero([])).toBeNull()
+  })
+
+  it('takes an entry whole, by its net change in cash', () => {
+    expect(
+      firstDayBelowZero([
+        paidIn,
+        entry(2, 'Aller-retour', [
+          ['1000', 0, 30_000],
+          ['1000', 25_000, 0],
+          ['6000', 5_000, 0],
+        ]),
+      ]),
+    ).toBeNull()
   })
 })
 

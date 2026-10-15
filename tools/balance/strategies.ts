@@ -5,7 +5,8 @@ import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { cents, mulRatio, type Cents } from '../../src/engine/money.ts'
 
 // The scripted strategies the balance bot plays: every combination of the
-// values below, which are the test grid of #57, not tunables of the game.
+// values below, which are the test grid of #57 and #58, not tunables of the
+// game.
 
 /** How far every price sits from the content's starting price, in %. */
 export const PRICE_CHANGES = [-20, 0, 20, 40] as const
@@ -14,10 +15,20 @@ export const CROISSANTS_PER_DAY = [40, 70, 110] as const
 /** The marketing budget, each day: $0, $30 and $80. */
 export const MARKETING_DAILY = [cents(0), cents(3000), cents(8000)] as const
 /** Days the truck opens each week. */
-export const DAYS_OPEN = [6, 7] as const
+export const DAYS_OPEN = [5, 6, 7] as const
+/** The owner's pay, each week: $400, $700 and $1,000. */
+export const OWNER_WEEKLY_PAY = [
+  cents(40000),
+  cents(70000),
+  cents(100000),
+] as const
 
-/** ISO weekdays: 6 days closes on Monday, the quietest weekday. */
-const WEEKDAYS: Record<DaysOpen, readonly number[]> = {
+/**
+ * ISO weekdays. The schedules nest: 6 days closes on Monday, the quietest
+ * weekday, and 5 days on Sunday too, Tuesday to Saturday.
+ */
+export const WEEKDAYS: Readonly<Record<DaysOpen, readonly number[]>> = {
+  5: [2, 3, 4, 5, 6],
   6: [2, 3, 4, 5, 6, 7],
   7: [1, 2, 3, 4, 5, 6, 7],
 }
@@ -31,30 +42,34 @@ export interface Strategy {
   readonly croissantsPerDay: number
   readonly marketingDaily: Cents
   readonly daysOpen: DaysOpen
+  readonly ownerWeeklyPay: Cents
 }
 
 /** What a strategy sets, each with the values the grid tries. */
 export type Axis = keyof Strategy
 
-/** Every combination of the grid, prices first and days open last. */
+/** Every combination of the grid, prices first and the owner's pay last. */
 export const STRATEGIES: readonly Strategy[] = PRICE_CHANGES.flatMap(
   (priceChange) =>
     CROISSANTS_PER_DAY.flatMap((croissantsPerDay) =>
       MARKETING_DAILY.flatMap((marketingDaily) =>
-        DAYS_OPEN.map((daysOpen) => ({
-          priceChange,
-          croissantsPerDay,
-          marketingDaily,
-          daysOpen,
-        })),
+        DAYS_OPEN.flatMap((daysOpen) =>
+          OWNER_WEEKLY_PAY.map((ownerWeeklyPay) => ({
+            priceChange,
+            croissantsPerDay,
+            marketingDaily,
+            daysOpen,
+            ownerWeeklyPay,
+          })),
+        ),
       ),
     ),
 )
 
 /**
  * The decision changes that put `strategy` in place: every product's price,
- * the croissants bought each day, the marketing budget and the days open.
- * Café and chocolat restock and the owner's pay keep their starting values.
+ * the croissants bought each day, the marketing budget, the days open and
+ * the owner's pay. Café and chocolat restock keep their starting rules.
  */
 export function strategyChanges(
   strategy: Strategy,
@@ -73,6 +88,7 @@ export function strategyChanges(
     },
     { kind: 'marketingDaily', budget: strategy.marketingDaily },
     { kind: 'daysOpen', weekdays: WEEKDAYS[strategy.daysOpen] },
+    { kind: 'ownerWeeklyPay', pay: strategy.ownerWeeklyPay },
   ]
 }
 
@@ -90,4 +106,10 @@ export function changedPrice(
   const moved = mulRatio(start, (100 + priceChange) / 100)
   const remainder = moved % step
   return cents(moved - remainder + (2 * remainder >= step ? step : 0))
+}
+
+/** `-20%`, `base`, `+20%`. */
+export function formatPriceChange(priceChange: number): string {
+  if (priceChange === 0) return 'base'
+  return `${priceChange > 0 ? '+' : ''}${priceChange}%`
 }

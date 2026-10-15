@@ -135,6 +135,7 @@ describe('formatReport', () => {
       ],
       daySummaries: [],
       journal: [],
+      owner: { morningEnergy: [], personalCash: cents(0), unpaidRents: [] },
     }
     expect(formatReport(result)).toEqual([
       'Seed 7, 400 days, difficulty facile',

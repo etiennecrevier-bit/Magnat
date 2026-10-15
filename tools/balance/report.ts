@@ -1,52 +1,32 @@
-import { DIFFICULTIES, FOOD_TRUCK } from '../../src/engine/day.ts'
+import { DIFFICULTIES, ENERGY, FOOD_TRUCK } from '../../src/engine/day.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
-import { cents, mulRatio, type Cents } from '../../src/engine/money.ts'
 import { formatDollars } from '../sim/cli.ts'
-import {
-  DAYS_PER_YEAR,
-  type BalanceRun,
-  type DifficultyRun,
-  type GameResult,
-} from './play.ts'
+import { DAYS_PER_YEAR, type BalanceRun, type DifficultyRun } from './play.ts'
 import {
   CROISSANTS_PER_DAY,
   DAYS_OPEN,
+  formatPriceChange,
   MARKETING_DAILY,
+  OWNER_WEEKLY_PAY,
   PRICE_CHANGES,
   type Axis,
-  type Strategy,
 } from './strategies.ts'
+import { ranked, type RankedStrategy } from './summary.ts'
+import { designTargets, type RankedRun, type TargetCheck } from './targets.ts'
 
-// Sums up the games of each strategy, ranks the strategies and writes the
-// report, with no I/O. The report is for developers, so it is in English.
+// Writes the report from the games summed up and ranked (summary.ts) and
+// checked against the design targets (targets.ts), with no I/O. The report
+// is for developers, so it is in English.
 
 /** Strategies in each of the best and worst tables. */
 export const TOP = 10
-
-/** One strategy's games at one difficulty, summed up. */
-export interface StrategySummary {
-  readonly strategy: Strategy
-  /** The strategy's place in the run, from 0: the ranking's last tie-break. */
-  readonly index: number
-  readonly games: number
-  readonly medianCashAtEnd: Cents
-  readonly worstCashAtEnd: Cents
-  readonly medianNetIncome: Cents
-  /** The lowest cash of any game. */
-  readonly lowestCash: Cents
-  /** Games whose cash went below zero. */
-  readonly gamesBelowZero: number
-  /** Spoiled ÷ (sold + spoiled), every product, from 0 to 1. */
-  readonly medianSpoilageRate: number
-  readonly medianLostToStockouts: number
-  readonly medianLostToPrices: number
-}
 
 const AXES: Readonly<Record<Axis, string>> = {
   priceChange: 'prices',
   croissantsPerDay: 'croissants per day',
   marketingDaily: 'marketing budget',
   daysOpen: 'days open',
+  ownerWeeklyPay: "owner's pay",
 }
 
 const COLUMNS: readonly (readonly [string, 'left' | 'right'])[] = [
@@ -55,89 +35,30 @@ const COLUMNS: readonly (readonly [string, 'left' | 'right'])[] = [
   ['Croissants/day', 'right'],
   ['Marketing/day', 'right'],
   ['Days open', 'right'],
+  ['Pay/week', 'right'],
+  ['Median wealth at end', 'right'],
   ['Median cash at end', 'right'],
   ['Worst cash at end', 'right'],
   ['Median net income', 'right'],
+  ['Personal cash at end', 'right'],
+  ['Unpaid rents', 'right'],
   ['Lowest cash', 'right'],
   ['Below zero', 'right'],
+  ['Average energy', 'right'],
+  ['Days exhausted', 'right'],
+  ['Botched', 'right'],
   ['Spoilage', 'right'],
   ['Lost to stockouts', 'right'],
   ['Lost to prices', 'right'],
+  ['Lost to the line', 'right'],
 ]
 
 /**
- * The middle value, or the mean of the middle two for an even count. Throws
- * a RangeError on no values.
+ * Where the hand-written part of the report starts. `npm run balance` keeps
+ * everything from this line to the end of the file it writes over.
  */
-export function median(values: readonly number[]): number {
-  const [low, high] = middle(values)
-  return low === high ? low : (low + high) / 2
-}
-
-/**
- * The middle amount, or the mean of the middle two for an even count,
- * rounded half away from zero to the cent. Throws a RangeError on no values.
- */
-export function medianCents(values: readonly Cents[]): Cents {
-  const [low, high] = middle(values)
-  return low === high ? cents(low) : mulRatio(cents(low + high), 0.5)
-}
-
-/**
- * Sums up `games`, the games of `strategy`, whose place in the run, from 0,
- * is `index`. Throws a RangeError on no games.
- */
-export function summarize(
-  strategy: Strategy,
-  games: readonly GameResult[],
-  index: number,
-): StrategySummary {
-  const cashAtEnd = games.map(({ cashAtEnd }) => cashAtEnd)
-  return {
-    strategy,
-    index,
-    games: games.length,
-    medianCashAtEnd: medianCents(cashAtEnd),
-    worstCashAtEnd: cents(Math.min(...cashAtEnd)),
-    medianNetIncome: medianCents(games.map(({ netIncome }) => netIncome)),
-    lowestCash: cents(Math.min(...games.map(({ lowestCash }) => lowestCash))),
-    gamesBelowZero: games.filter(({ wentBelowZero }) => wentBelowZero).length,
-    medianSpoilageRate: median(games.map(spoilageRate)),
-    medianLostToStockouts: median(
-      games.map(({ lostToStockouts }) => lostToStockouts),
-    ),
-    medianLostToPrices: median(games.map(({ lostToPrices }) => lostToPrices)),
-  }
-}
-
-/**
- * Best first: the highest median cash at the end, then the highest median
- * net income, then the earlier in the run. Never mutates `summaries`.
- */
-export function rank(summaries: readonly StrategySummary[]): StrategySummary[] {
-  return [...summaries].sort(
-    (a, b) =>
-      b.medianCashAtEnd - a.medianCashAtEnd ||
-      b.medianNetIncome - a.medianNetIncome ||
-      a.index - b.index,
-  )
-}
-
-/** A strategy's summary and its rank, from 1 for the best. */
-export interface RankedStrategy extends StrategySummary {
-  readonly rank: number
-}
-
-/** Every strategy of `run`, summed up and ranked, best first. */
-export function ranked(run: DifficultyRun): RankedStrategy[] {
-  const summaries = run.strategies.map(({ strategy, games }, index) =>
-    summarize(strategy, games, index),
-  )
-  return rank(summaries).map((summary, index) => ({
-    ...summary,
-    rank: index + 1,
-  }))
-}
+export const HAND_WRITTEN =
+  '<!-- Written by hand: npm run balance keeps everything below this line. -->'
 
 /**
  * The choices that changed nothing in `run`: those where every seed played
@@ -174,9 +95,13 @@ export function unchangedDecisions(run: DifficultyRun): Axis[] {
   })
 }
 
-/** The whole report, in Markdown. */
+/**
+ * The whole report, in Markdown. A one-year run also checks the design
+ * targets of #58.
+ */
 export function formatReport(run: BalanceRun): string {
   const tables = run.difficulties.map((difficultyRun) => ({
+    run: difficultyRun,
     name: DIFFICULTIES.difficulties[difficultyRun.difficulty].name,
     ranked: ranked(difficultyRun),
     unchanged: unchangedDecisions(difficultyRun),
@@ -184,6 +109,7 @@ export function formatReport(run: BalanceRun): string {
 
   return [
     ...header(run),
+    ...(run.years === 1 ? targets(tables) : []),
     '## Best and worst',
     '',
     ...tables.flatMap(({ name, ranked, unchanged }) => [
@@ -215,10 +141,19 @@ export function formatReport(run: BalanceRun): string {
   ].join('\n')
 }
 
-/** `-20%`, `base`, `+20%`. */
-export function formatPriceChange(priceChange: number): string {
-  if (priceChange === 0) return 'base'
-  return `${priceChange > 0 ? '+' : ''}${priceChange}%`
+/**
+ * `report` with the hand-written part of `previous`, the report it writes
+ * over, if any: from the line `HAND_WRITTEN` to the end, after a blank line.
+ * `report` alone when `previous` is null or has no such line.
+ */
+export function withHandWritten(
+  previous: string | null,
+  report: string,
+): string {
+  const lines = previous?.split('\n') ?? []
+  const start = lines.indexOf(HAND_WRITTEN)
+  if (start === -1) return report
+  return [report.trimEnd(), '', ...lines.slice(start)].join('\n')
 }
 
 /** `1,234` or `1,234.5`: a count, or the median of two. */
@@ -240,7 +175,7 @@ function header(run: BalanceRun): string[] {
   return [
     '# Balance report: phase 2',
     '',
-    `Generated by \`npm run balance -- --years ${run.years} --games ${run.games}\`: do not edit by hand. The numbers go stale whenever the engine or the content changes; run the command again then.`,
+    `Generated by \`npm run balance -- --years ${run.years} --games ${run.games}\`: do not edit by hand, except under the comment at the end that says so. The numbers go stale whenever the engine or the content changes; run the command again then.`,
     '',
     '## What each game plays',
     '',
@@ -249,23 +184,51 @@ function header(run: BalanceRun): string[] {
     `- every price at ${PRICE_CHANGES.map(formatPriceChange).join(', ')} from the starting prices (${startingPrices}), rounded half up to the price step;`,
     `- the croissants bought each morning the truck opens: ${CROISSANTS_PER_DAY.join(', ')};`,
     `- the marketing budget, a day: ${MARKETING_DAILY.map(formatDollars).join(', ')};`,
-    `- the days open, a week: ${DAYS_OPEN.join(' or ')}, where 6 closes on Monday.`,
+    `- the days open, a week: ${DAYS_OPEN.join(', ')}, where 6 closes on Monday and 5 on Sunday and Monday;`,
+    `- the owner's pay, a week: ${OWNER_WEEKLY_PAY.map(formatDollars).join(', ')}.`,
     '',
-    `Café and chocolat chaud keep their starting restock rules and the owner keeps the starting pay of ${formatDollars(start.ownerWeeklyPayCents)} a week. Each difficulty plays ${strategies} strategies × ${run.games} games.`,
+    `Café and chocolat chaud keep their starting restock rules. Each difficulty plays ${strategies} strategies × ${run.games} games.`,
     '',
     '## Columns',
     '',
-    '- **#**: the rank by median cash at the end, highest first; ties go to the higher median net income, then to the strategy listed first in the grid.',
+    '- **#**: the rank by median wealth at the end, highest first; ties go to the fewer median unpaid rents, then to the higher median net income, then to the strategy listed first in the grid.',
+    "- **Median wealth at end**: the Encaisse plus the owner's personal cash at the close of the last day, median over the seeds. The owner's pay moves money from one to the other, so it counts only through what it does to the owner.",
     '- **Median cash at end**, **Worst cash at end**: the Encaisse at the close of the last day, median and lowest over the seeds.',
-    '- **Median net income**: the Bénéfice net over every day played, median over the seeds; negative is a Perte nette.',
+    "- **Median net income**: the Bénéfice net over every day played, after the owner's pay, median over the seeds; negative is a Perte nette.",
+    "- **Personal cash at end**: the owner's own cash, outside the books, at the close of the last day, median over the seeds.",
+    "- **Unpaid rents**: the 1sts of the month whose rent left the owner's personal cash below zero, over every day played, median over the seeds.",
     '- **Lowest cash**: the lowest Encaisse after any journal entry of any game. A day pays its purchases, and the 1st of the month its charges, before its sales come in, so this can be lower than the cash at any close.',
     '- **Below zero**: the share of games whose cash went below zero at any point, when the truck would have needed the bank.',
+    `- **Average energy**, **Days exhausted**: the owner's energy each morning, averaged over every day played, and the mornings it started below ${ENERGY.exhausted.below}, « Épuisé »; median over the seeds.`,
+    '- **Botched**: units botched at the counter and made again, median over the seeds.',
     '- **Spoilage**: units written off ÷ (units sold + units written off), every product together, median over the seeds.',
-    '- **Lost to stockouts**, **Lost to prices**: visits over the whole game that bought nothing because what the customer wanted had sold out, or because a price was above what they pay; median over the seeds.',
-    '- Customers lost to the line are not counted: the game has no line until #62 (P2-03).',
+    '- **Lost to stockouts**, **Lost to prices**, **Lost to the line**: visits over the whole game that bought nothing because what the customer wanted had sold out, because a price was above what they pay, or because the line was too long for them; median over the seeds.',
     '- For an even number of seeds, a median is the mean of the middle two, rounded half away from zero to the cent for money.',
     '',
   ]
+}
+
+/** The design targets of #58, one row each, a column per difficulty. */
+function targets(
+  tables: readonly (RankedRun & { readonly name: string })[],
+): string[] {
+  return [
+    '## Design targets',
+    '',
+    'The targets of #58 for year 1, checked on this run: ✓ met, ✗ missed, n/a where a target does not apply to the difficulty or the run lacks the strategies it needs. A strategy beats another only by what it played: a tie that only the order of the grid breaks does not count.',
+    '',
+    row(['Target', ...tables.map(({ name }) => name)]),
+    row(['---', ...tables.map(() => '---')]),
+    ...designTargets(tables).map(({ target, checks }) =>
+      row([target, ...checks.map(verdict)]),
+    ),
+    '',
+  ]
+}
+
+function verdict({ met, measured }: TargetCheck): string {
+  if (met === null) return 'n/a'
+  return `${met ? '✓' : '✗'} ${measured}`
 }
 
 function table(summaries: readonly RankedStrategy[]): string[] {
@@ -284,31 +247,25 @@ function cells(summary: RankedStrategy): string[] {
     String(strategy.croissantsPerDay),
     formatDollars(strategy.marketingDaily),
     String(strategy.daysOpen),
+    formatDollars(strategy.ownerWeeklyPay),
+    formatDollars(summary.medianWealth),
     formatDollars(summary.medianCashAtEnd),
     formatDollars(summary.worstCashAtEnd),
     formatDollars(summary.medianNetIncome),
+    formatDollars(summary.medianPersonalCash),
+    formatCount(summary.medianUnpaidRents),
     formatDollars(summary.lowestCash),
     `${Math.round((100 * summary.gamesBelowZero) / summary.games)}%`,
+    summary.medianAverageEnergy.toFixed(1),
+    formatCount(summary.medianDaysExhausted),
+    formatCount(summary.medianBotched),
     `${(100 * summary.medianSpoilageRate).toFixed(1)}%`,
     formatCount(summary.medianLostToStockouts),
     formatCount(summary.medianLostToPrices),
+    formatCount(summary.medianLostToLine),
   ]
 }
 
 function row(values: readonly string[]): string {
   return `| ${values.join(' | ')} |`
-}
-
-function spoilageRate({ unitsSold, unitsSpoiled }: GameResult): number {
-  const units = unitsSold + unitsSpoiled
-  return units === 0 ? 0 : unitsSpoiled / units
-}
-
-function middle(values: readonly number[]): [number, number] {
-  if (values.length === 0) throw new RangeError('No values to take a median of')
-  const sorted = [...values].sort((a, b) => a - b)
-  const half = Math.floor(sorted.length / 2)
-  const high = sorted[half] ?? 0
-  const low = sorted.length % 2 === 0 ? (sorted[half - 1] ?? 0) : high
-  return [low, high]
 }

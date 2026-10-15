@@ -1,10 +1,18 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 import { parseBalanceArgs, USAGE } from './cli.ts'
+import { HAND_WRITTEN } from './report.ts'
 
 // `npm run balance`: its options, and the real command run in a child
 // process the way npm runs it.
@@ -65,18 +73,28 @@ describe('npm run balance', () => {
     )
   }
 
-  it('plays the whole grid at each difficulty and writes the report', () => {
+  it('plays the whole grid at each difficulty and writes the report, keeping its hand-written part', () => {
     const file = join(out, 'nested', 'report.md')
+    const tail = [HAND_WRITTEN, '', '## Before and after', '', 'Mine.', '']
+    mkdirSync(join(out, 'nested'))
+    writeFileSync(file, ['# Old report', '', ...tail].join('\n'))
     const { status, stdout, stderr } = balance('--games', '1', '--out', file)
     expect(stderr).toBe('')
     expect(status).toBe(0)
     const progress = stdout.trimEnd().split('\n')
     expect(progress).toHaveLength(4)
-    ;['Facile', 'Moyen', 'Difficile'].forEach((name, index) => {
-      expect(progress[index]).toMatch(
-        new RegExp(`^${name}: 72 strategies × 1 games in \\d+\\.\\d s$`),
+    // The difficulties play side by side, so they end in any order.
+    expect(
+      progress
+        .slice(0, 3)
+        .map((line) => line.split(':')[0])
+        .sort(),
+    ).toEqual(['Difficile', 'Facile', 'Moyen'])
+    for (const line of progress.slice(0, 3)) {
+      expect(line).toMatch(
+        /^(Facile|Moyen|Difficile): 324 strategies × 1 games in \d+\.\d s$/,
       )
-    })
+    }
     expect(progress[3]).toMatch(/ in \d+\.\d s$/)
     expect(progress[3]?.replace(/ in \d+\.\d s$/, '')).toBe(`Wrote ${file}`)
 
@@ -89,6 +107,7 @@ describe('npm run balance', () => {
       '# Balance report: phase 2',
       '## What each game plays',
       '## Columns',
+      '## Design targets',
       '## Best and worst',
       '### Facile',
       '### Moyen',
@@ -97,11 +116,21 @@ describe('npm run balance', () => {
       '### Facile',
       '### Moyen',
       '### Difficile',
+      '## Before and after',
     ])
-    // 10 best, 10 worst and all 72 at each difficulty.
+    // 10 best, 10 worst and all 324 at each difficulty.
     const rows = report.split('\n').filter((line) => /^\| \d+ \|/.test(line))
-    expect(rows).toHaveLength(3 * (10 + 10 + 72))
-  }, 60_000)
+    expect(rows).toHaveLength(3 * (10 + 10 + 324))
+    // The difficulties in their own order, whichever ended first.
+    expect(report.indexOf('### Facile')).toBeLessThan(
+      report.indexOf('### Moyen'),
+    )
+    expect(report.indexOf('### Moyen')).toBeLessThan(
+      report.indexOf('### Difficile'),
+    )
+    expect(report.endsWith(`\n\n${tail.join('\n')}`)).toBe(true)
+    expect(report).not.toContain('# Old report')
+  }, 90_000)
 
   it('exits with 1 and the usage on a bad option, writing nothing', () => {
     const file = join(out, 'bad.md')
