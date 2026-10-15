@@ -41,6 +41,7 @@ function render(
       businessName={businessName}
       day={day}
       cash={cash}
+      fixedCosts={cents(175_000)}
       energy={energy}
       avatar="homme"
       speed={speed}

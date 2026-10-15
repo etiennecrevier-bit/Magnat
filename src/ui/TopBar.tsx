@@ -6,6 +6,7 @@ import type { Day } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
 import { CashGaugeView } from './CashGauge.tsx'
+import { monthlyFixedCosts } from './cashLevel.ts'
 import { EnergyGaugeView } from './EnergyGauge.tsx'
 import EventCard from './EventCard.tsx'
 import FinancesPanel from './FinancesPanel.tsx'
@@ -34,6 +35,8 @@ interface TopBarViewProps {
   day: Day
   /** The encaisse after every entry posted so far. */
   cash: Cents
+  /** What the next 1st of the month takes from the encaisse. */
+  fixedCosts: Cents
   /** The owner's energy this morning. */
   energy: number
   /** The owner's avatar, which the energy's word agrees with. */
@@ -50,6 +53,7 @@ export function TopBarView({
   businessName,
   day,
   cash,
+  fixedCosts,
   energy,
   avatar,
   speed,
@@ -64,7 +68,7 @@ export function TopBarView({
         <p className="top-bar__date">{formatGameDate(day)}</p>
       </div>
       <div className="top-bar__gauges">
-        <CashGaugeView cash={cash} />
+        <CashGaugeView cash={cash} fixedCosts={fixedCosts} />
         <EnergyGaugeView energy={energy} avatar={avatar} />
       </div>
       <div className="top-bar__panels">
@@ -110,6 +114,7 @@ export function TopBarView({
 export default function TopBar() {
   const businessName = useGame((state) => state.game.profile.businessName)
   const avatar = useGame((state) => state.game.profile.avatar)
+  const difficulty = useGame((state) => state.game.profile.difficulty)
   const day = useGame((state) => state.game.day)
   const journal = useGame((state) => state.game.journal)
   const energy = useGame((state) => state.game.energy)
@@ -135,6 +140,10 @@ export default function TopBar() {
     () => balance(journal, CASH, { toDay: day }),
     [journal, day],
   )
+  const fixedCosts = useMemo(
+    () => monthlyFixedCosts(day, difficulty),
+    [day, difficulty],
+  )
 
   return (
     <>
@@ -142,6 +151,7 @@ export default function TopBar() {
         businessName={businessName}
         day={day}
         cash={cash}
+        fixedCosts={fixedCosts}
         energy={energy}
         avatar={avatar}
         speed={speed}

@@ -2,14 +2,17 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { cents } from '../engine/money.ts'
 import { CashGaugeView } from './CashGauge.tsx'
-import { LOW_BELOW_MONTHS, MONTHLY_FIXED_COSTS } from './cashLevel.ts'
+import { LOW_BELOW_MONTHS } from './cashLevel.ts'
 
 // Every space in an amount is a no-break space (U+00A0).
 const S = '\u00a0'
-const LOW_THRESHOLD = MONTHLY_FIXED_COSTS * LOW_BELOW_MONTHS
+const FIXED_COSTS = 355_000
+const LOW_THRESHOLD = FIXED_COSTS * LOW_BELOW_MONTHS
 
-function render(cash: number) {
-  return renderToStaticMarkup(<CashGaugeView cash={cents(cash)} />)
+function render(cash: number, fixedCosts = FIXED_COSTS) {
+  return renderToStaticMarkup(
+    <CashGaugeView cash={cents(cash)} fixedCosts={cents(fixedCosts)} />,
+  )
 }
 
 describe('CashGaugeView', () => {
@@ -46,6 +49,11 @@ describe('CashGaugeView', () => {
         `<span class="cash-gauge__state"><span aria-hidden="true">.+</span> ${word}</span>`,
       ),
     )
+  })
+
+  it('reads the same cash against the fixed costs it is given', () => {
+    expect(render(300_000, 175_000)).toContain('cash-gauge--healthy')
+    expect(render(300_000, 355_000)).toContain('cash-gauge--low')
   })
 
   it('hides the icon from screen readers, which read the word', () => {

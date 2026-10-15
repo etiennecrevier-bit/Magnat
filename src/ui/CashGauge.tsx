@@ -11,9 +11,18 @@ const LEVELS: Record<CashLevel, { word: string; icon: string }> = {
   negative: { word: 'Négative', icon: '✖︎' },
 }
 
-/** The encaisse and how it reads: saine, faible or négative. */
-export function CashGaugeView({ cash }: { cash: Cents }) {
-  const level = cashLevel(cash)
+/**
+ * The encaisse and how it reads against `fixedCosts`, what the next 1st of
+ * the month takes: saine, faible or négative.
+ */
+export function CashGaugeView({
+  cash,
+  fixedCosts,
+}: {
+  cash: Cents
+  fixedCosts: Cents
+}) {
+  const level = cashLevel(cash, fixedCosts)
   const { word, icon } = LEVELS[level]
   return (
     <p className={`cash-gauge cash-gauge--${level}`}>
