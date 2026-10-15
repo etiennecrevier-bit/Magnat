@@ -28,6 +28,7 @@ function visit(segment: SegmentId, outcome: VisitOutcome): Visit {
     bought: { cafe: outcome === 'bought' ? 1 : 0, chocolat: 0, croissant: 0 },
     servedMinute: outcome === 'bought' || outcome === 'soldOut' ? 450 : null,
     leftMinute: outcome === 'leftLine' ? 450 : null,
+    botched: 0,
   }
 }
 

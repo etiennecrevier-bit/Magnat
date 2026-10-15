@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   loadCustomerContent,
   loadDifficultyContent,
+  loadEnergyContent,
   loadFoodTruckContent,
   loadPersonalContent,
   type CustomerContent,
@@ -11,6 +12,7 @@ import {
   type DifficultyId,
   type DayType,
   type DayTypeId,
+  type EnergyContent,
   type FoodTruckContent,
   type PersonalContent,
   type ProductId,
@@ -36,12 +38,14 @@ import { SEGMENTS, dayTypeOf, perSegment, serveWalkIns } from './customers.ts'
 import {
   CUSTOMERS,
   DIFFICULTIES,
+  ENERGY,
   FOOD_TRUCK,
   PERSONAL,
   currentPrice,
   playDay,
 } from './day.ts'
 import { applyDecision } from './decisions.ts'
+import { FULL_ENERGY, fatigueOf } from './energy.ts'
 import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
 import { cents, mulRatio, type Cents } from './money.ts'
 import { LABELS } from './personal.ts'
@@ -59,6 +63,7 @@ const MEMO = {
   purchases: 'Achat de marchandises',
   sales: 'Ventes au comptant',
   costOfSales: 'Coût des marchandises vendues',
+  botched: 'Produits ratés',
   packaging: 'Emballages',
   cardFees: 'Frais de cartes',
   fuel: 'Carburant et entretien',
@@ -67,20 +72,30 @@ const MEMO = {
 }
 
 /**
- * What a day is played with: the truck's numbers, its customers and the
- * ways to start a game.
+ * What a day is played with: the truck's numbers, its customers, the ways
+ * to start a game and what tires the owner.
  */
 interface Content {
   truck: FoodTruckContent
   customers: CustomerContent
   difficulties: DifficultyContent
+  energy: EnergyContent
 }
 
 const SHIPPED: Content = {
   truck: FOOD_TRUCK,
   customers: CUSTOMERS,
   difficulties: DIFFICULTIES,
+  energy: ENERGY,
 }
+
+/** An owner nothing tires, so every day plays as rested. */
+const TIRELESS = loadEnergyContent({
+  ...ENERGY,
+  openDayCost: 0,
+  costPerCustomerServed: 0,
+  debtStress: 0,
+})
 
 function byProduct<T>(value: (product: ProductId) => T): Record<ProductId, T> {
   return Object.fromEntries(
@@ -120,7 +135,8 @@ const INSTANT_SERVICE: FoodTruckContent['service'] = {
  * segment's reference price is the starting price. So each customer wants a
  * product with exactly its purchase probability, whatever the segment (see
  * `buying`). Service takes no time, so everyone who wants something reaches
- * the counter; the line's tests bring the shipped service back.
+ * the counter; the line's tests bring the shipped service back. The owner
+ * never tires; the energy's tests bring the shipped energy back.
  */
 const FLAT: Content = {
   truck: loadFoodTruckContent({
@@ -146,6 +162,7 @@ const FLAT: Content = {
     })),
   }),
   difficulties: DIFFICULTIES,
+  energy: TIRELESS,
 }
 
 // Content variants: each change returns new content, and `variant` validates
@@ -164,11 +181,17 @@ function shipped(...changes: Change[]): Content {
   )
 }
 
-function validated({ truck, customers, difficulties }: Content): Content {
+function validated({
+  truck,
+  customers,
+  difficulties,
+  energy,
+}: Content): Content {
   return {
     truck: loadFoodTruckContent(truck),
     customers: loadCustomerContent(customers),
     difficulties: loadDifficultyContent(difficulties),
+    energy: loadEnergyContent(energy),
   }
 }
 
@@ -290,6 +313,14 @@ function fuel(perOpenDay: number): Change {
   }))
 }
 
+/** Changes what tires the owner and what fatigue does. */
+function tiring(change: Partial<EnergyContent>): Change {
+  return (content) => ({
+    ...content,
+    energy: { ...content.energy, ...change },
+  })
+}
+
 /** Changes how long serving a customer takes at the counter. */
 function serving(change: Partial<Service>): Change {
   return truck((t) => ({ ...t, service: { ...t.service, ...change } }))
@@ -352,7 +383,14 @@ function start(
 
 /** One tick with this content. */
 function step(state: GameState, content: Content): GameState {
-  return tick(state, content.truck, content.customers, content.difficulties)
+  return tick(
+    state,
+    content.truck,
+    content.customers,
+    content.difficulties,
+    PERSONAL,
+    content.energy,
+  )
 }
 
 /** The state after each of `days` ticks, in order. */
@@ -435,7 +473,9 @@ function units(count: PerProduct): number {
  * counts; the revenue is the units sold at `currentPrice`, so the run must
  * not change the prices. Those who left the line bought nothing and add up
  * to `leftLine`; the others reached the counter, in arrival order and no
- * sooner than they came, unless they wanted nothing.
+ * sooner than they came, unless they wanted nothing. The visits' botched
+ * units add up to the day's, and the owner's energy is within 0 to 100,
+ * the night after the close giving some back.
  */
 function expectConsistent(state: GameState, content: Content): void {
   const lastDay = summary(state)
@@ -517,6 +557,13 @@ function expectConsistent(state: GameState, content: Content): void {
   )
   expect(lastDay.averageWaitSeconds).toBeGreaterThanOrEqual(0)
 
+  expect(
+    lastDay.visits.reduce((total, { botched }) => total + botched, 0),
+  ).toBe(lastDay.botched)
+  expect(lastDay.energy).toBeGreaterThanOrEqual(0)
+  expect(state.energy).toBeGreaterThanOrEqual(lastDay.energy)
+  expect(state.energy).toBeLessThanOrEqual(FULL_ENERGY)
+
   expect(balance(state.journal, INVENTORY, { toDay: lastDay.day })).toBe(
     inventoryValue(state.inventory),
   )
@@ -592,6 +639,8 @@ describe('tick', () => {
       leftLine: 0,
       averageWaitSeconds: 0,
       longestWaitSeconds: 0,
+      energy: FULL_ENERGY,
+      botched: 0,
     })
     expect(visits).toHaveLength(10)
     for (const visit of visits) {
@@ -799,7 +848,11 @@ describe('the line', () => {
       CUSTOMERS,
       (id) => currentPrice(from, id),
       { cafe: 300, chocolat: 150, croissant: 70 },
-      { service: FOOD_TRUCK.service, servers: servers(from) },
+      {
+        service: FOOD_TRUCK.service,
+        servers: servers(from, ENERGY),
+        botchedShare: 0,
+      },
     )
     expect(lastDay.visits).toEqual(expected.visits)
     expect(lastDay).toMatchObject({
@@ -860,6 +913,8 @@ describe('marketing', () => {
       content.truck,
       content.customers,
       content.difficulties,
+      PERSONAL,
+      content.energy,
     )
     return summary(played).visits.length
   }
@@ -1039,6 +1094,7 @@ describe("the owner's personal account", () => {
         content.customers,
         content.difficulties,
         personal,
+        content.energy,
       )
     }
     return state
@@ -1061,19 +1117,21 @@ describe("the owner's personal account", () => {
     return shipped(deciding({ ownerWeeklyPayCents: cents(pay) }))
   }
 
-  it("never changes the company's books, whatever the living costs", () => {
-    const shippedCosts = lived(400)
-    const free = lived(
-      400,
-      loadPersonalContent({ rentCents: 0, weeklyExpensesCents: 0 }),
-    )
-    const crushing = lived(
-      400,
-      loadPersonalContent({
-        rentCents: 100_000_000,
-        weeklyExpensesCents: 10_000_000,
-      }),
-    )
+  const FREE = loadPersonalContent({ rentCents: 0, weeklyExpensesCents: 0 })
+  const CRUSHING = loadPersonalContent({
+    rentCents: 100_000_000,
+    weeklyExpensesCents: 10_000_000,
+  })
+
+  // Debt reaches the business only by the stress that tires the owner (see
+  // the tests below), so these leave it out.
+  const UNSTRESSED = tiring({ debtStress: 0 })
+
+  it("posts nothing in the company's books, whatever the living costs", () => {
+    const content = shipped(UNSTRESSED)
+    const shippedCosts = lived(400, PERSONAL, content)
+    const free = lived(400, FREE, content)
+    const crushing = lived(400, CRUSHING, content)
     expect(free.personal.cash).toBeGreaterThan(shippedCosts.personal.cash)
     expect(crushing.personal.cash).toBeLessThan(-1_000_000_000)
     expect(crushing.personal.unpaidRents.length).toBeGreaterThan(0)
@@ -1081,17 +1139,21 @@ describe("the owner's personal account", () => {
     expect(business(crushing)).toEqual(business(shippedCosts))
   })
 
-  it("never changes the company's books, whatever the savings", () => {
-    const shippedSavings = lived(400)
+  it("posts nothing in the company's books, whatever the savings", () => {
+    const shippedSavings = lived(400, PERSONAL, shipped(UNSTRESSED))
     const broke = lived(
       400,
       PERSONAL,
-      shipped(difficulty('moyen', { startingPersonalCashCents: cents(0) })),
+      shipped(
+        UNSTRESSED,
+        difficulty('moyen', { startingPersonalCashCents: cents(0) }),
+      ),
     )
     const rich = lived(
       400,
       PERSONAL,
       shipped(
+        UNSTRESSED,
         difficulty('moyen', { startingPersonalCashCents: cents(100_000_000) }),
       ),
     )
@@ -1102,6 +1164,55 @@ describe("the owner's personal account", () => {
     expect(broke.personal.cash).toBeLessThan(shippedSavings.personal.cash)
     expect(business(broke)).toEqual(business(shippedSavings))
     expect(business(rich)).toEqual(business(shippedSavings))
+  })
+
+  it('stresses the owner each payday in debt, and on no other day', () => {
+    // Day 4 is the first Friday, payday. CRUSHING's rent leaves the owner
+    // in debt from day 0; FREE never does.
+    const thursday = (personal: PersonalContent) =>
+      summary(lived(4, personal)).energy
+    const friday = (personal: PersonalContent) =>
+      summary(lived(5, personal)).energy
+    expect(lived(1, CRUSHING).personal.cash).toBeLessThan(0)
+    expect(thursday(CRUSHING)).toBe(thursday(FREE))
+    expect(friday(FREE) - friday(CRUSHING)).toBeCloseTo(ENERGY.debtStress, 9)
+    expect(friday(PERSONAL)).toBe(friday(FREE))
+  })
+
+  it('tires an owner in debt sooner, so they serve slower and botch units sooner', () => {
+    const everyDay = shipped(deciding({ daysOpen: EVERY_DAY }))
+    /** The first day played by a worn-out owner, and the one botching. */
+    function firstTired(personal: PersonalContent) {
+      let state = start(everyDay)
+      let slower: number | null = null
+      for (let day = 0; day < 42; day += 1) {
+        if (slower === null && (servers(state, ENERGY)[0]?.speed ?? 1) < 1) {
+          slower = day
+        }
+        state = tick(
+          state,
+          everyDay.truck,
+          everyDay.customers,
+          everyDay.difficulties,
+          personal,
+          everyDay.energy,
+        )
+        if (summary(state).botched > 0) {
+          return { slower, botched: day, state }
+        }
+      }
+      throw new Error('The owner never botched a unit')
+    }
+    const free = firstTired(FREE)
+    const inDebt = firstTired(CRUSHING)
+    expect(inDebt.slower).not.toBeNull()
+    expect(inDebt.slower).toBeLessThan(free.slower ?? 0)
+    expect(inDebt.botched).toBeLessThan(free.botched)
+    // Until the stress tired them, the two businesses ran the same.
+    const before = (state: GameState) =>
+      entriesOf(state.journal).filter(({ day }) => day < (inDebt.slower ?? 0))
+    expect(before(inDebt.state).length).toBeGreaterThan(0)
+    expect(before(inDebt.state)).toEqual(before(free.state))
   })
 
   it('charges the rent of May on day 0, open or closed', () => {
@@ -1159,6 +1270,188 @@ describe("the owner's personal account", () => {
     expect(lived(YEAR, PERSONAL, paying(40_000)).personal).toEqual(
       first.personal,
     )
+  })
+})
+
+describe("the owner's energy", () => {
+  const LOSSES: AccountCode = '5100'
+
+  /** The shipped truck, open on `weekdays`. */
+  function openOn(weekdays: number[]): Content {
+    return shipped(deciding({ daysOpen: weekdays }))
+  }
+
+  it('ends 8 weeks lower open 7 days a week than 6, and higher open 5', () => {
+    // 56 days from a Monday: each game ends after Sunday, which all three
+    // open, so none has just rested to full.
+    const five = after(56, openOn([3, 4, 5, 6, 7])).energy
+    const six = after(56, openOn([2, 3, 4, 5, 6, 7])).energy
+    const seven = after(56, openOn(EVERY_DAY)).energy
+    expect(seven).toBeLessThan(six)
+    expect(five).toBeGreaterThan(six)
+    expect(fatigueOf(six, ENERGY)).toBe('rested')
+    expect(fatigueOf(seven, ENERGY)).toBe('exhausted')
+  })
+
+  it('records the energy at the close, before the night', () => {
+    for (const state of play(14, openOn(EVERY_DAY))) {
+      expect(state.energy).toBe(
+        Math.min(FULL_ENERGY, summary(state).energy + ENERGY.nightRecovery),
+      )
+    }
+    const closed = playDay(after(3, openOn(EVERY_DAY)))
+    expect(closed.energy).toBe(summary(closed).energy)
+  })
+
+  it('slows service and botches units below each threshold, then not after days off', () => {
+    const everyDay = openOn(EVERY_DAY)
+    const days = play(42, everyDay)
+    const mornings = [start(everyDay), ...days.slice(0, -1)]
+    const seen = {
+      rested: { days: 0, botched: 0, waited: 0, restedWait: 0 },
+      tired: { days: 0, botched: 0, waited: 0, restedWait: 0 },
+      exhausted: { days: 0, botched: 0, waited: 0, restedWait: 0 },
+    }
+    days.forEach((state, day) => {
+      const morning = mornings[day] as GameState
+      const fatigue = fatigueOf(morning.energy, ENERGY)
+      const speed =
+        fatigue === 'rested' ? 1 : 1 / (1 + ENERGY[fatigue].serviceTimeIncrease)
+      expect(servers(morning, ENERGY)).toEqual([{ speed }])
+      // The same day played by a rested owner: the same customers.
+      const rested = summary(
+        playDay(
+          { ...morning, energy: FULL_ENERGY },
+          everyDay.truck,
+          everyDay.customers,
+          everyDay.difficulties,
+          PERSONAL,
+          everyDay.energy,
+        ),
+      )
+      const lastDay = summary(state)
+      expect(arrivals(state)).toEqual(
+        rested.visits.map(({ arrivalMinute, segment }) => ({
+          arrivalMinute,
+          segment,
+        })),
+      )
+      expect(rested.botched).toBe(0)
+      expect(lastDay.averageWaitSeconds).toBeGreaterThanOrEqual(
+        rested.averageWaitSeconds,
+      )
+      seen[fatigue].days += 1
+      seen[fatigue].botched += lastDay.botched
+      seen[fatigue].waited += lastDay.averageWaitSeconds
+      seen[fatigue].restedWait += rested.averageWaitSeconds
+    })
+    expect(seen.rested.botched).toBe(0)
+    expect(seen.rested.waited).toBe(seen.rested.restedWait)
+    for (const fatigue of ['tired', 'exhausted'] as const) {
+      expect(seen[fatigue].days).toBeGreaterThan(0)
+      expect(seen[fatigue].botched).toBeGreaterThan(0)
+      expect(seen[fatigue].waited).toBeGreaterThan(seen[fatigue].restedWait)
+    }
+
+    // Day 42 is a Monday. Open Sundays only from day 43: five days off.
+    const drained = days.at(-1) as GameState
+    expect(fatigueOf(drained.energy, ENERGY)).toBe('exhausted')
+    const sundays = applyDecision(drained, { kind: 'daysOpen', weekdays: [7] })
+    const week = play(7, everyDay, sundays)
+    const sunday = week[5] as GameState
+    expect(toCalendar(sunday.day).weekday).toBe(7)
+    expect(sunday.energy).toBe(FULL_ENERGY)
+    expect(servers(sunday, ENERGY)).toEqual([{ speed: 1 }])
+    const played = summary(week[6] as GameState)
+    expect(played.visits.length).toBeGreaterThan(0)
+    expect(played.botched).toBe(0)
+  })
+
+  it('writes botched units off at their own lots’ cost, in the order the counter took them', () => {
+    // Two cafés at 40 ¢ on hand, then three more bought at 90 ¢. Three
+    // customers want one café each from a tired owner who botches every 2nd
+    // unit made: sold at 40 ¢, botched at 40 ¢ and made again at 90 ¢, then
+    // sold at 90 ¢. Costing the sales first would give 170 ¢ and 90 ¢.
+    const quiet = [
+      NO_RESTOCK,
+      restocking({ cafe: buyDaily(2) }),
+      buying({ cafe: 1, chocolat: 0, croissant: 0 }),
+      tiring({ tired: { ...ENERGY.tired, botchedShare: 0.5 } }),
+    ]
+    // Each order is decided the day before it is placed.
+    let state = applyDecision(start(variant(...quiet)), {
+      kind: 'restock',
+      product: 'cafe',
+      rule: buyDaily(3),
+    })
+    state = step(state, variant(...quiet, crowd(0), unitCost('cafe', 40)))
+    const tired = { ...state, energy: ENERGY.tired.below - 1 }
+    const content = variant(...quiet, crowd(3), unitCost('cafe', 90))
+    state = step(tired, content)
+
+    expect(summary(state)).toMatchObject({
+      sold: { cafe: 3, chocolat: 0, croissant: 0 },
+      lostSales: { cafe: 0, chocolat: 0, croissant: 0 },
+      botched: 1,
+    })
+    expect(summary(state).visits.map(({ botched }) => botched)).toEqual([
+      0, 1, 0,
+    ])
+    expect(entry(state, 1, MEMO.costOfSales)).toEqual(
+      transfer(1, MEMO.costOfSales, '5000', INVENTORY, 40 + 90 + 90),
+    )
+    expect(entry(state, 1, MEMO.botched)).toEqual(
+      transfer(1, MEMO.botched, LOSSES, INVENTORY, 40),
+    )
+    // Only the units sold go out in a cup.
+    expect(entry(state, 1, MEMO.packaging)).toEqual(
+      transfer(
+        1,
+        MEMO.packaging,
+        '5200',
+        CASH,
+        3 * content.truck.products.cafe.packagingCents,
+      ),
+    )
+    expect(state.inventory).toEqual([
+      { product: 'cafe', quantity: 1, unitCost: 90, boughtOnDay: 1 },
+    ])
+    const memos = entriesOn(state, 1).map(({ memo }) => memo)
+    expect(memos.indexOf(MEMO.botched)).toBe(
+      memos.indexOf(MEMO.costOfSales) + 1,
+    )
+    expect(memos.indexOf(MEMO.packaging)).toBe(memos.indexOf(MEMO.botched) + 1)
+  })
+
+  it('keeps the books in step with the stock every day of 10 weeks open every day', () => {
+    const everyDay = openOn(EVERY_DAY)
+    let botched = 0
+    for (const state of play(70, everyDay)) {
+      expectConsistent(state, everyDay)
+      const lastDay = summary(state)
+      const writeOffs = entriesOn(state, lastDay.day).filter(
+        ({ memo }) => memo === MEMO.botched,
+      )
+      expect(writeOffs).toHaveLength(lastDay.botched > 0 ? 1 : 0)
+      for (const { lines } of writeOffs) {
+        expect(lines.map(({ account }) => account)).toEqual([LOSSES, INVENTORY])
+      }
+      botched += lastDay.botched
+    }
+    expect(botched).toBeGreaterThan(0)
+  })
+
+  it('plays a rested 6-day week exactly as an owner nothing tires', () => {
+    const tireless = shipped(tiring(TIRELESS))
+    const tired = play(56, SHIPPED)
+    const fresh = play(56, tireless)
+    expect(tired.map(({ journal }) => entriesOf(journal))).toEqual(
+      fresh.map(({ journal }) => entriesOf(journal)),
+    )
+    expect(tired.map(({ rngState }) => rngState)).toEqual(
+      fresh.map(({ rngState }) => rngState),
+    )
+    expect(tired.at(-1)?.energy).toBeLessThan(FULL_ENERGY)
   })
 })
 
@@ -1464,6 +1757,8 @@ describe('cash', () => {
       leftLine: 0,
       averageWaitSeconds: 0,
       longestWaitSeconds: 0,
+      energy: FULL_ENERGY,
+      botched: 0,
     })
     expect(visits.map(({ outcome }) => outcome)).toEqual(
       Array.from({ length: 10 }, () => 'soldOut'),

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { Service } from '../content/schema.ts'
 import { createInitialState, tick } from './clock.ts'
-import { CUSTOMERS, FOOD_TRUCK } from './day.ts'
+import { CUSTOMERS, ENERGY, FOOD_TRUCK } from './day.ts'
 import { SEGMENTS } from './customers.ts'
+import { FULL_ENERGY } from './energy.ts'
 import {
   openLine,
   patienceSeconds,
@@ -38,11 +39,33 @@ function together(count: number) {
 }
 
 describe('servers', () => {
-  it('is the avatar alone, at speed 1', () => {
+  it('is the avatar alone, at speed 1 when rested', () => {
     let state = createInitialState(42)
-    expect(servers(state)).toEqual([{ speed: 1 }])
+    expect(servers(state, ENERGY)).toEqual([{ speed: 1 }])
     for (let day = 0; day < 10; day += 1) state = tick(state)
-    expect(servers(state)).toEqual([{ speed: 1 }])
+    expect(servers(state, ENERGY)).toEqual([{ speed: 1 }])
+  })
+
+  it.each([
+    [FULL_ENERGY, 1],
+    [ENERGY.tired.below, 1],
+    [ENERGY.tired.below - 0.01, 1 / (1 + ENERGY.tired.serviceTimeIncrease)],
+    [ENERGY.exhausted.below, 1 / (1 + ENERGY.tired.serviceTimeIncrease)],
+    [
+      ENERGY.exhausted.below - 0.01,
+      1 / (1 + ENERGY.exhausted.serviceTimeIncrease),
+    ],
+    [0, 1 / (1 + ENERGY.exhausted.serviceTimeIncrease)],
+  ])('serves at energy %d at speed %d', (energy, speed) => {
+    const state = { ...createInitialState(42), energy }
+    expect(servers(state, ENERGY)).toEqual([{ speed }])
+  })
+
+  it('takes 20 % longer tired and 40 % longer exhausted, as shipped', () => {
+    const at = (energy: number) =>
+      servers({ ...createInitialState(42), energy }, ENERGY)[0]?.speed
+    expect(at(49)).toBe(1 / 1.2)
+    expect(at(24)).toBe(1 / 1.4)
   })
 })
 

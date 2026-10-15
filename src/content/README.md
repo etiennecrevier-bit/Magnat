@@ -12,4 +12,6 @@ Every tunable number (prices, costs, pacing, demand) lives here as JSON; no magi
 
 `personal.json` holds what the owner's own life costs, paid from their personal account and never by the business: `rentCents` on the 1st of each month, and `weeklyExpensesCents` (groceries, phone, transit) on payday. `schema.ts` validates it.
 
+`energy.json` holds what tires the owner and what fatigue does, on an energy scale of 0 to 100 where a game starts at 100: each open day costs `openDayCost` plus `costPerCustomerServed` for each customer who reaches the counter, each closed day gives `closedDayRecovery` back and each night `nightRecovery`, and each payday the owner's personal cash is below zero takes `debtStress`. Below `tired.below` the owner is « Fatigué », below `exhausted.below` « Épuisé »: serving takes `serviceTimeIncrease` longer (0.2 is 20 %), and `botchedShare` of the units made are botched, written off and made again. `schema.ts` validates it.
+
 `cashGauge.json` sets when the top bar's cash reads low: below this many months of what every truck pays monthly.

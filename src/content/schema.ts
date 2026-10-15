@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { cents } from '../engine/money.ts'
 import difficultyJson from './difficulty.json'
+import energyJson from './energy.json'
 import foodTruckJson from './foodtruck.json'
 import personalJson from './personal.json'
 import profileJson from './profile.json'
@@ -38,6 +39,13 @@ const DAYS_PER_WEEK = 7
 
 /** An ISO 8601 weekday: 1 = Monday to 7 = Sunday. */
 const weekday = z.int().min(1).max(DAYS_PER_WEEK)
+
+// A scale, not a tunable: the owner's energy runs from 0 to 100, as in
+// src/engine/energy.ts.
+const FULL_ENERGY = 100
+
+/** An amount of the owner's energy, on its scale of 0 to 100. */
+const energyAmount = z.number().min(0).max(FULL_ENERGY)
 
 // Shares that sum to 1 within this tolerance are taken as a whole.
 const SHARE_SUM_TOLERANCE = 1e-9
@@ -378,6 +386,45 @@ export const personalContentSchema = z.strictObject({
 
 export type PersonalContent = z.output<typeof personalContentSchema>
 
+/** How the owner works once their energy falls below `below`. */
+const fatigueSchema = z.strictObject({
+  /** The energy under which these effects apply. */
+  below: z.number().gt(0).max(FULL_ENERGY),
+  /** How much longer serving a customer takes: 0.2 is 20 % longer. */
+  serviceTimeIncrease: z.number().nonnegative(),
+  /** The share of the units made that are botched and made again. */
+  botchedShare: share,
+})
+
+/**
+ * What wears the owner out and what brings them back, on an energy scale of
+ * 0 to 100, and how they work once tired, then exhausted.
+ */
+export const energyContentSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    /** What each day the truck opens costs, however quiet. */
+    openDayCost: energyAmount,
+    /** What each customer who reaches the counter adds to that cost. */
+    costPerCustomerServed: energyAmount,
+    /** What each night gives back. */
+    nightRecovery: energyAmount,
+    /** What each day the truck is closed gives back. */
+    closedDayRecovery: energyAmount,
+    /** What each payday costs when the owner's personal cash is below zero. */
+    debtStress: energyAmount,
+    /** « Fatigué ». */
+    tired: fatigueSchema,
+    /** « Épuisé », below `tired`. */
+    exhausted: fatigueSchema,
+  })
+  .refine(({ tired, exhausted }) => exhausted.below < tired.below, {
+    message: 'exhausted.below must be below tired.below',
+    path: ['exhausted', 'below'],
+  })
+
+export type EnergyContent = z.output<typeof energyContentSchema>
+
 /**
  * Validates the food truck's content and returns it typed, with money as
  * `Cents`. Throws an Error naming every invalid field. Pass `raw` only to
@@ -429,6 +476,15 @@ export function loadPersonalContent(
   raw: unknown = personalJson,
 ): PersonalContent {
   return parsed(personalContentSchema, raw, 'personal.json')
+}
+
+/**
+ * Validates what tires the owner and what fatigue does, and returns it
+ * typed. Throws an Error naming every invalid field. Pass `raw` only to check
+ * other data; by default it reads `energy.json`.
+ */
+export function loadEnergyContent(raw: unknown = energyJson): EnergyContent {
+  return parsed(energyContentSchema, raw, 'energy.json')
 }
 
 function parsed<T extends z.ZodType>(
