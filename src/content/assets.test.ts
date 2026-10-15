@@ -6,6 +6,7 @@ import { colorNameSchema, loadAssetManifest } from './assets.ts'
 function shipped() {
   return structuredClone(assetsJson) as {
     palette: Record<string, string>
+    light: typeof assetsJson.light & Record<string, unknown>
     layers: string[]
     pieces: Record<string, unknown>[]
     [key: string]: unknown
@@ -28,10 +29,49 @@ describe('assets.json', () => {
       'buildings',
       'sidewalk',
       'street',
+      'shadows',
+      'furniture',
       'truck',
     ])
     for (const p of manifest.pieces) {
       expect(manifest.layers).toContain(p.layer)
+    }
+  })
+
+  it('stands the tree and the lamp post over the shadows, which hold no piece', () => {
+    const manifest = loadAssetManifest()
+    const { layers, light, pieces } = manifest
+    expect(light.shadowLayer).toBe('shadows')
+    expect(pieces.filter((p) => p.layer === light.shadowLayer)).toEqual([])
+    expect(layers.indexOf('shadows')).toBeGreaterThan(layers.indexOf('street'))
+    for (const id of ['tree', 'lamp-post']) {
+      expect(pieces.find((p) => p.id === id)?.layer, id).toBe('furniture')
+    }
+  })
+
+  it('holds the light of the rule sheet', () => {
+    const { light, palette } = loadAssetManifest()
+    expect(light).toMatchObject({
+      sun: '#FFF1CF',
+      slate: '#34404F',
+      topFace: { light: 0.22 },
+      litSide: { topLight: 0.26, footSlate: 0.3 },
+      shadeSide: { slate: 0.4 },
+      castShadow: { opacity: 0.38, blur: 2 },
+      ledgeShadow: { opacity: 0.55 },
+      material: { lineOpacity: { min: 0.12, max: 0.2 } },
+      unevenness: { blend: 'soft-light', opacity: 0.3 },
+      grain: { blend: 'overlay', opacity: 0.4 },
+      vignette: { color: 'ink', opacity: 0.26, clear: 0.62 },
+    })
+    expect(palette.ink).toBe('#2B2622')
+    expect(palette.asphalt).toBe('#5C5752')
+    for (const opacity of Object.values(light.contactShadow.opacity)) {
+      expect(opacity).toBeGreaterThanOrEqual(0.45)
+      expect(opacity).toBeLessThanOrEqual(0.55)
+    }
+    for (const depth of Object.values(light.ledgeShadow.depth)) {
+      expect(depth).toBeLessThanOrEqual(30)
     }
   })
 
@@ -224,6 +264,49 @@ describe('loadAssetManifest', () => {
       piece(raw, 'croissants').fill = { capacity: 100, steps: 0 }
     },
     /fill\.steps/,
+  )
+
+  rejects(
+    'an opacity above 1',
+    (raw) => {
+      raw.light.castShadow.opacity = 1.2
+    },
+    /light\.castShadow\.opacity/,
+  )
+  rejects(
+    'a light colour that is not #RRGGBB',
+    (raw) => {
+      raw.light.slate = 'slate'
+    },
+    /light\.slate/,
+  )
+  rejects(
+    'a grain blended any other way',
+    (raw) => {
+      ;(raw.light.grain as { blend: string }).blend = 'multiply'
+    },
+    /light\.grain\.blend/,
+  )
+  rejects(
+    'a shadow layer the manifest does not list',
+    (raw) => {
+      raw.light.shadowLayer = 'ground'
+    },
+    /unknown layer: ground/,
+  )
+  rejects(
+    'a piece in the shadow layer',
+    (raw) => {
+      piece(raw, 'tree').layer = 'shadows'
+    },
+    /the shadow layer holds no piece/,
+  )
+  rejects(
+    'material lines whose least opacity is above the most',
+    (raw) => {
+      raw.light.material.lineOpacity = { min: 0.3, max: 0.2 }
+    },
+    /the least line opacity is above the most/,
   )
 
   for (const image of [
