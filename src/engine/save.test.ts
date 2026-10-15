@@ -52,6 +52,20 @@ function lineDay(): GameState {
   throw new Error('No one left the line in 60 days')
 }
 
+/**
+ * A game that spends `budget` a day on marketing from day 1, played `days`
+ * days; closed Mondays spend nothing.
+ */
+function marketed(days: number, budget = cents(3_000)): GameState {
+  const start = applyDecision(createInitialState(SEED), {
+    kind: 'marketingDaily',
+    budget,
+  })
+  return played(days, start)
+}
+
+const MARKETED = marketed(40)
+
 /** A cheaper price for café, waiting for the next morning. */
 function withPendingPrice(state: GameState): GameState {
   return applyDecision(state, {
@@ -117,8 +131,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(4)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 4 })
+    expect(SAVE_VERSION).toBe(5)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 5 })
   })
 
   it.each<Profile>([
@@ -150,6 +164,27 @@ describe('serialize and deserialize', () => {
     expect(reloaded(start)).toStrictEqual(start)
   })
 
+  it('give back a game that spends on marketing', () => {
+    const history = MARKETED.marketingHistory
+    expect(history).toHaveLength(FOOD_TRUCK.marketing.awarenessDays)
+    expect(history).toContain(3_000)
+    // Day 35 was a Monday, when the truck stays closed.
+    expect(history).toContain(0)
+    expect(reloaded(MARKETED)).toStrictEqual(MARKETED)
+  })
+
+  it("give back the close of a day, with that day's marketing", () => {
+    const start = applyDecision(createInitialState(SEED), {
+      kind: 'marketingDaily',
+      budget: cents(3_000),
+    })
+    // Day 0 is a Monday, when the truck is closed; day 1 spends.
+    const closed = playDay(tick(start))
+    expect(closed.day).toBe(1)
+    expect(closed.marketingHistory).toEqual([0, 3_000])
+    expect(reloaded(closed)).toStrictEqual(closed)
+  })
+
   it('give back decisions waiting for the next morning', () => {
     const pending = withPendingPrice(DAY_400)
     expect(pending.pendingDecisions).not.toBeNull()
@@ -166,6 +201,15 @@ describe('serialize and deserialize', () => {
     const resumed = played(30, reloaded(DAY_400))
     const uninterrupted = played(30, DAY_400)
     // The bytes tools/sim's journalHash hashes.
+    expect(JSON.stringify(entriesOf(resumed.journal))).toBe(
+      JSON.stringify(entriesOf(uninterrupted.journal)),
+    )
+    expect(resumed).toStrictEqual(uninterrupted)
+  })
+
+  it('load a game that spends on marketing, and continues the same', () => {
+    const resumed = played(30, reloaded(MARKETED))
+    const uninterrupted = played(30, MARKETED)
     expect(JSON.stringify(entriesOf(resumed.journal))).toBe(
       JSON.stringify(entriesOf(uninterrupted.journal)),
     )
@@ -229,7 +273,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 3, 5, '4', null])('saveVersion %j', (version) => {
+  it.each([0, 1, 4, 6, '5', null])('saveVersion %j', (version) => {
     expectInvalid(withValue('saveVersion', version), [
       `unsupported saveVersion ${JSON.stringify(version)}`,
     ])
@@ -588,6 +632,81 @@ describe('deserialize rejects', () => {
         ['decisions: Invalid decision: prices.cafe must be a whole number'],
         narrowed,
       )
+    })
+  })
+
+  describe('a marketing history', () => {
+    const { awarenessDays } = FOOD_TRUCK.marketing
+    const { max } = LIMITS.marketingDailyCents
+    const days = (spent: number) => Array.from({ length: 7 }, () => spent)
+
+    /** A save of `state` with `history` as its marketing history. */
+    function withHistory(state: GameState, history: unknown): string {
+      return JSON.stringify({
+        ...(JSON.parse(serialize(state)) as Json),
+        marketingHistory: history,
+      })
+    }
+
+    it('that is missing', () => {
+      expectInvalid(without('marketingHistory'), ['→ at marketingHistory'])
+    })
+
+    it.each([-1, 12.5, '100', null])('with the spend %j', (spent) => {
+      expectInvalid(withValue('marketingHistory.3', spent), [
+        '→ at marketingHistory[3]',
+      ])
+    })
+
+    it('shorter than the days played', () => {
+      // Its oldest day of spend is gone, so the awareness would drop.
+      expect(FORTNIGHT.marketingHistory).toHaveLength(awarenessDays)
+      expectInvalid(withValue('marketingHistory', days(0).slice(1)), [
+        `marketingHistory holds 6 days, not ${awarenessDays}`,
+      ])
+      expectInvalid(withValue('marketingHistory', []), [
+        `marketingHistory holds 0 days, not ${awarenessDays}`,
+      ])
+    })
+
+    it('longer than awarenessDays', () => {
+      expectInvalid(withValue('marketingHistory', [...days(0), 0]), [
+        `marketingHistory holds 8 days, not ${awarenessDays}`,
+      ])
+    })
+
+    it('longer than the days played', () => {
+      expectInvalid(withHistory(played(3), [0, 0, 0, 0]), [
+        'marketingHistory holds 4 days, not 3',
+      ])
+      expectInvalid(withHistory(createInitialState(SEED), [0]), [
+        'marketingHistory holds 1 days, not 0',
+      ])
+    })
+
+    it('with a day that spent more than the budget may be', () => {
+      expectInvalid(withValue('marketingHistory.6', max + 1), [
+        `marketingHistory day 7 spent ${max + 1}, more than the ${max} the budget may be`,
+      ])
+      expect(deserialize(withValue('marketingHistory.6', max))).toMatchObject({
+        marketingHistory: [...days(0).slice(1), max],
+      })
+    })
+
+    it('of other days than the content it loads with', () => {
+      const longer = loadFoodTruckContent({
+        ...FOOD_TRUCK,
+        marketing: { ...FOOD_TRUCK.marketing, awarenessDays: 10 },
+      })
+      expectInvalid(SAVED, ['marketingHistory holds 7 days, not 10'], longer)
+    })
+
+    it('in a game saved before marketing, as version 4', () => {
+      const text = edited('marketingHistory', (save, key) => {
+        delete save[key]
+        save.saveVersion = 4
+      })
+      expectInvalid(text, ['unsupported saveVersion 4'])
     })
   })
 

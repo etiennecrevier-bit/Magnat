@@ -110,13 +110,22 @@ const restockRuleSchema = z.discriminatedUnion('kind', [
 
 export type RestockRule = z.output<typeof restockRuleSchema>
 
+/** Each segment's share of a crowd: every segment, summing to 1. */
+const segmentSharesSchema = z
+  .record(segmentIdSchema, share)
+  .refine(
+    (shares) =>
+      Math.abs(sumOf(Object.values(shares)) - 1) <= SHARE_SUM_TOLERANCE,
+    'segment shares must sum to 1',
+  )
+
 /** The crowd one type of day brings to the truck. */
 const dayTypeSchema = z
   .strictObject({
     name: z.string().min(1),
     /** Walk-in traffic before the day's noise. */
     customers: count,
-    segmentShares: z.record(segmentIdSchema, share),
+    segmentShares: segmentSharesSchema,
     /** Multiplies each segment's purchase probability for the product. */
     productAppeal: z.record(productIdSchema, z.number().nonnegative()),
     /** How long this crowd waits in line, relative to the usual. */
@@ -124,11 +133,6 @@ const dayTypeSchema = z
     /** Relative arrivals in each slot of the opening hours, in order. */
     arrivalWeights: z.array(z.number().nonnegative()).min(1),
   })
-  .refine(
-    ({ segmentShares }) =>
-      Math.abs(sumOf(Object.values(segmentShares)) - 1) <= SHARE_SUM_TOLERANCE,
-    { message: 'segment shares must sum to 1', path: ['segmentShares'] },
-  )
   .refine(({ arrivalWeights }) => sumOf(arrivalWeights) > 0, {
     message: 'at least one arrival weight must be above 0',
     path: ['arrivalWeights'],
@@ -193,6 +197,23 @@ const serviceSchema = z.strictObject({
 export type Service = z.output<typeof serviceSchema>
 
 /**
+ * What the daily marketing budget brings. Awareness is the average spend of
+ * the last `awarenessDays` business days, today not included, so spending
+ * pays off from the next day. Each open day brings k × √awareness extra
+ * walk-ins, with awareness in cents, before the day's noise.
+ */
+const marketingSchema = z.strictObject({
+  /** The business days awareness averages, a closed day counting as 0. */
+  awarenessDays: z.int().positive(),
+  /** k: the extra walk-ins per square root of a cent of awareness. */
+  extraCustomersPerSqrtCent: z.number().nonnegative(),
+  /** Who the extra walk-ins are. */
+  segmentShares: segmentSharesSchema,
+})
+
+export type Marketing = z.output<typeof marketingSchema>
+
+/**
  * How the truck runs when a game starts, until the player changes it. Each
  * product keeps the kind of restock rule it starts with.
  */
@@ -244,6 +265,7 @@ export const foodTruckSchema = z.strictObject({
   ownerPayWeekday: weekday,
   walkIns: walkInsSchema,
   service: serviceSchema,
+  marketing: marketingSchema,
   startingDecisions: startingDecisionsSchema,
   decisionLimits: decisionLimitsSchema,
 })

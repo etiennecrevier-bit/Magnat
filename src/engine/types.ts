@@ -158,6 +158,13 @@ export interface GameState {
    * what `playDay()` returns. Null until the first day is played.
    */
   readonly lastDay: DaySummary | null
+  /**
+   * What marketing spent on each of the last business days played, oldest
+   * first, 0 on a day the truck was closed: the content's `awarenessDays`
+   * of them, or every day played until there are that many. Awareness, and
+   * the extra walk-ins it brings, follows it.
+   */
+  readonly marketingHistory: readonly Cents[]
   /** How the player runs the truck on business day `day`. */
   readonly decisions: Decisions
   /**

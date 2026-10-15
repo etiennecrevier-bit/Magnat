@@ -121,25 +121,43 @@ export interface Counter {
 }
 
 /**
- * Serves one day's walk-ins, with the `dayType`'s crowd, `available` units
- * of each product on hand and `counter` serving them. The draws always come
- * in this order and number, whatever the prices, the stock and the counter,
- * so the same generator state brings the same customers at every price, and
- * a bigger crowd brings the same customers first, then more:
+ * Walk-ins who come on top of the day type's crowd, such as those marketing
+ * brings. They come and behave like that crowd, but for who they are.
+ */
+export interface ExtraCrowd {
+  /** How many come, before the day's noise; not always a whole number. */
+  readonly customers: number
+  /** Each segment's share of them, summing to 1. */
+  readonly segmentShares: Readonly<Record<SegmentId, number>>
+}
+
+/**
+ * Serves one day's walk-ins, with the `dayType`'s crowd and the `extra`
+ * crowd on top, if any, `available` units of each product on hand and
+ * `counter` serving them. The draws always come in this order and number,
+ * whatever the prices, the stock and the counter, so the same generator
+ * state brings the same customers at every price, and a bigger crowd, base
+ * or extra, brings the same customers first, then more:
  *
  * 1. `normal()` draws twice for the day's noise, with a mean of 1 and a
- *    standard deviation of `noiseStdDevRatio`. The day's customers are the
- *    day type's `customers` × noise, rounded and never below zero.
- * 2. Each customer, one after the other, draws once for their arrival
+ *    standard deviation of `noiseStdDevRatio`. The day's base customers are
+ *    the day type's `customers` × noise, and its extra customers the extra
+ *    crowd's `customers` × the same noise, each rounded and never below
+ *    zero.
+ * 2. Each base customer, one after the other, draws once for their arrival
  *    minute (a slot by its `arrivalWeights`, then the minute within it from
- *    where the draw fell), once for their segment (by its share), then once
- *    per product, in `PRODUCTS` order. They want one unit when the draw is
- *    below `purchaseProbability()`. One who does not want it, at a price
- *    above their reference, but whose draw is below what they would buy at
- *    the reference, found it too expensive.
+ *    where the draw fell), once for their segment (by the day type's
+ *    share), then once per product, in `PRODUCTS` order. They want one unit
+ *    when the draw is below `purchaseProbability()`. One who does not want
+ *    it, at a price above their reference, but whose draw is below what
+ *    they would buy at the reference, found it too expensive.
+ * 3. Then each extra customer draws the same way, but for their segment by
+ *    the extra crowd's share. So the extra crowd leaves the base customers'
+ *    draws as they would be without it.
  *
  * Then customers line up by arrival minute; those arriving the same minute
- * keep the order they were drawn in, and arrive at the start of the minute.
+ * keep the order they were drawn in, base customers first, and arrive at
+ * the start of the minute. Both crowds share one line and one stock.
  * One who wants nothing walks on. One who wants something looks at the line
  * (`openLine()` in service.ts) and leaves it, buying nothing, if more than
  * `maxAheadInLine` customers are still waiting or the wait is longer than
@@ -158,45 +176,38 @@ export function serveWalkIns(
   price: (product: ProductId) => Cents,
   available: PerProduct,
   counter: Counter,
+  extra: ExtraCrowd | null = null,
 ): Served {
   const crowd = walkIns.dayTypes[dayType]
-  const odds = dayOdds(customers, crowd.productAppeal, price)
-  const pickSlot = picker(crowd.arrivalWeights)
-  const pickSegment = picker(SEGMENTS.map((id) => crowd.segmentShares[id]))
-  const { opensAtMinute, arrivalSlotMinutes } = walkIns
+  const draws: Draws = {
+    walkIns,
+    pickSlot: picker(crowd.arrivalWeights),
+    odds: dayOdds(customers, crowd.productAppeal, price),
+  }
 
   const [noise, afterNoise] = normal(rngState, 1, walkIns.noiseStdDevRatio)
-  const count = Math.max(0, Math.round(crowd.customers * noise))
+  const headcount = (expected: number) =>
+    Math.max(0, Math.round(expected * noise))
 
-  let state = afterNoise
-  const arrivals: Arrival[] = []
-  for (let customer = 0; customer < count; customer += 1) {
-    const [when, afterWhen] = next(state)
-    const [who, afterWho] = next(afterWhen)
-    state = afterWho
-    const [slot, within] = pickSlot(when)
-    const minute = Math.min(
-      arrivalSlotMinutes - 1,
-      Math.floor(within * arrivalSlotMinutes),
-    )
-    const segment = SEGMENTS[pickSegment(who)[0]] as SegmentId
-    const wanted: ProductId[] = []
-    let tooExpensive = false
-    for (const { product, wants, wouldAtReference } of odds[segment]) {
-      const [draw, after] = next(state)
-      state = after
-      if (draw < wants) wanted.push(product)
-      else if (draw < wouldAtReference) tooExpensive = true
-    }
-    arrivals.push({
-      arrivalMinute: opensAtMinute + slot * arrivalSlotMinutes + minute,
-      segment,
-      wanted,
-      tooExpensive,
-    })
-  }
+  const base = drawArrivals(
+    afterNoise,
+    headcount(crowd.customers),
+    crowd.segmentShares,
+    draws,
+  )
+  const more =
+    extra === null
+      ? { arrivals: [], rngState: base.rngState }
+      : drawArrivals(
+          base.rngState,
+          headcount(extra.customers),
+          extra.segmentShares,
+          draws,
+        )
   // Array.prototype.sort is stable, so ties keep the order they were drawn.
-  arrivals.sort((a, b) => a.arrivalMinute - b.arrivalMinute)
+  const arrivals = [...base.arrivals, ...more.arrivals].sort(
+    (a, b) => a.arrivalMinute - b.arrivalMinute,
+  )
 
   const { service } = counter
   const line = openLine(counter.servers, service)
@@ -273,8 +284,58 @@ export function serveWalkIns(
     averageWaitSeconds:
       reachedCounter === 0 ? 0 : Math.round(totalWait / reachedCounter),
     longestWaitSeconds: Math.round(longestWait),
-    rngState: state,
+    rngState: more.rngState,
   }
+}
+
+/** What every customer of the day draws with. */
+interface Draws {
+  walkIns: WalkIns
+  /** Picks the arrival slot, by the day type's `arrivalWeights`. */
+  pickSlot: (draw: number) => [index: number, within: number]
+  odds: Record<SegmentId, readonly Odds[]>
+}
+
+/**
+ * Draws `count` customers from `rngState`, one after the other, each from a
+ * segment picked by `segmentShares` (see `serveWalkIns`).
+ */
+function drawArrivals(
+  rngState: number,
+  count: number,
+  segmentShares: Readonly<Record<SegmentId, number>>,
+  { walkIns, pickSlot, odds }: Draws,
+): { arrivals: Arrival[]; rngState: number } {
+  const { opensAtMinute, arrivalSlotMinutes } = walkIns
+  const pickSegment = picker(SEGMENTS.map((id) => segmentShares[id]))
+  let state = rngState
+  const arrivals: Arrival[] = []
+  for (let customer = 0; customer < count; customer += 1) {
+    const [when, afterWhen] = next(state)
+    const [who, afterWho] = next(afterWhen)
+    state = afterWho
+    const [slot, within] = pickSlot(when)
+    const minute = Math.min(
+      arrivalSlotMinutes - 1,
+      Math.floor(within * arrivalSlotMinutes),
+    )
+    const segment = SEGMENTS[pickSegment(who)[0]] as SegmentId
+    const wanted: ProductId[] = []
+    let tooExpensive = false
+    for (const { product, wants, wouldAtReference } of odds[segment]) {
+      const [draw, after] = next(state)
+      state = after
+      if (draw < wants) wanted.push(product)
+      else if (draw < wouldAtReference) tooExpensive = true
+    }
+    arrivals.push({
+      arrivalMinute: opensAtMinute + slot * arrivalSlotMinutes + minute,
+      segment,
+      wanted,
+      tooExpensive,
+    })
+  }
+  return { arrivals, rngState: state }
 }
 
 /** A customer as they arrive, before the line. */

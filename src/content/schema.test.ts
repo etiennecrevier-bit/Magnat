@@ -320,6 +320,55 @@ describe('loadFoodTruckContent', () => {
     )
   })
 
+  it('loads the marketing with a share for every segment', () => {
+    const { marketing } = loadFoodTruckContent()
+    expect(Object.keys(marketing.segmentShares).sort()).toEqual(
+      [...segmentIdSchema.options].sort(),
+    )
+  })
+
+  it.each([
+    ['marketing.awarenessDays', 0],
+    ['marketing.awarenessDays', 1.5],
+    ['marketing.extraCustomersPerSqrtCent', -0.1],
+    ['marketing.segmentShares.chic', 1.5],
+  ])('rejects %s = %d', (path, value) => {
+    expectRejected(withValue(path, value), path)
+  })
+
+  it('accepts marketing that brings no one', () => {
+    const raw = withValue('marketing.extraCustomersPerSqrtCent', 0)
+    expect(loadFoodTruckContent(raw).marketing.extraCustomersPerSqrtCent).toBe(
+      0,
+    )
+  })
+
+  it('rejects marketing segment shares that do not sum to 1', () => {
+    expectRejected(
+      withValue('marketing.segmentShares', {
+        aubaine: 0.1,
+        habitue: 0.3,
+        chic: 0.5,
+      }),
+      'marketing.segmentShares',
+    )
+  })
+
+  it.each(['marketing', 'marketing.segmentShares.habitue'])(
+    'rejects a missing %s',
+    (path) => {
+      expectRejected(without(path), path)
+    },
+  )
+
+  it('rejects an unknown key in the marketing', () => {
+    const raw = withValue('marketing.delayDays', 3)
+    expectRejected(raw, 'marketing')
+    expect(() => loadFoodTruckContent(raw)).toThrow(
+      'Unrecognized key: "delayDays"',
+    )
+  })
+
   it('rejects segment shares that do not sum to 1', () => {
     expectRejected(
       withValue(`${WEEKDAY}.segmentShares`, {

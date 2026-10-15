@@ -19,12 +19,23 @@ import {
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance, trialBalance, type JournalEntry } from '../finance/journal.ts'
+import {
+  cashFlowStatement,
+  incomeStatement,
+  type StatementLine,
+} from '../finance/statements.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
 import { SEGMENTS, dayTypeOf, perSegment, serveWalkIns } from './customers.ts'
-import { CUSTOMERS, DIFFICULTIES, FOOD_TRUCK, currentPrice } from './day.ts'
+import {
+  CUSTOMERS,
+  DIFFICULTIES,
+  FOOD_TRUCK,
+  currentPrice,
+  playDay,
+} from './day.ts'
 import { applyDecision } from './decisions.ts'
 import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
-import { cents, mulRatio } from './money.ts'
+import { cents, mulRatio, type Cents } from './money.ts'
 import { defaultProfile } from './profile.ts'
 import { servers } from './service.ts'
 import type { Day, DaySummary, GameState, PerProduct } from './types.ts'
@@ -42,6 +53,7 @@ const MEMO = {
   packaging: 'Emballages',
   cardFees: 'Frais de cartes',
   fuel: 'Carburant et entretien',
+  marketing: 'Marketing',
   spoilage: 'Marchandises périmées',
 }
 
@@ -811,6 +823,188 @@ describe('the line', () => {
       averageWaitSeconds: 0,
       longestWaitSeconds: 0,
     })
+  })
+})
+
+describe('marketing', () => {
+  const MARKETING: AccountCode = '6300'
+  const { awarenessDays, extraCustomersPerSqrtCent: k } = FOOD_TRUCK.marketing
+
+  /** A budget of `budget` a day from the start of the game. */
+  function budget(amount: number): Change {
+    return deciding({ marketingDailyCents: cents(amount) })
+  }
+
+  /** `days` days of `amount` spent, as the marketing history. */
+  function spent(amount: number, days = awarenessDays): Cents[] {
+    return Array.from({ length: days }, () => cents(amount))
+  }
+
+  /** Visits on the day `state` plays, after `history` of marketing. */
+  function visitsAfter(
+    state: GameState,
+    history: readonly Cents[],
+    content: Content = SHIPPED,
+  ): number {
+    const played = playDay(
+      { ...state, marketingHistory: history },
+      content.truck,
+      content.customers,
+      content.difficulties,
+    )
+    return summary(played).visits.length
+  }
+
+  function row(lines: readonly StatementLine[], label: string): number {
+    const found = lines.filter((line) => line.label === label)
+    expect(found).toHaveLength(1)
+    return found[0]?.amount ?? 0
+  }
+
+  it('spends the budget each open day, after the fuel', () => {
+    const content = variant(crowd(10), budget(2_500))
+    const state = after(3, content)
+    for (const day of [0, 1, 2]) {
+      expect(entry(state, day, MEMO.marketing)).toEqual(
+        transfer(day, MEMO.marketing, MARKETING, CASH, 2_500),
+      )
+      const memos = entriesOn(state, day).map(({ memo }) => memo)
+      expect(memos.indexOf(MEMO.marketing)).toBe(memos.indexOf(MEMO.fuel) + 1)
+    }
+    expect(balance(state.journal, MARKETING, { toDay: 2 })).toBe(7_500)
+  })
+
+  it('spends nothing on a closed day, and nothing with a budget of 0', () => {
+    // Day 0 is a Monday, when the shipped truck is closed.
+    const content = shipped(budget(2_500))
+    const state = after(2, content)
+    expect(entriesOn(state, 0).map(({ memo }) => memo)).not.toContain(
+      MEMO.marketing,
+    )
+    expect(entry(state, 1, MEMO.marketing)).toEqual(
+      transfer(1, MEMO.marketing, MARKETING, CASH, 2_500),
+    )
+    const none = after(30)
+    expect(balance(none.journal, MARKETING, { toDay: 29 })).toBe(0)
+    expect(none.journal.entries.map(({ memo }) => memo)).not.toContain(
+      MEMO.marketing,
+    )
+  })
+
+  it("remembers each day's spend, 0 when closed, for the last awarenessDays", () => {
+    const content = shipped(budget(2_500))
+    const histories = play(10, content).map(
+      ({ marketingHistory }) => marketingHistory,
+    )
+    // Days 0 and 7 are Mondays.
+    expect(histories[0]).toEqual([0])
+    expect(histories[1]).toEqual([0, 2_500])
+    expect(histories[6]).toEqual([0, ...spent(2_500, 6)])
+    expect(histories[7]).toEqual([...spent(2_500, 6), 0])
+    expect(histories[9]).toEqual([...spent(2_500, 4), 0, 2_500, 2_500])
+    expect(playDay(start(content)).marketingHistory).toEqual([0])
+  })
+
+  it('brings fewer than double the extra walk-ins for double the budget', () => {
+    // The same mornings, after a week at no budget, at B and at 2B. The base
+    // customers draw first and the same, so the visits beyond them are
+    // marketing's.
+    const B = 3_000
+    let once = 0
+    let twice = 0
+    for (let seed = 1; seed <= 40; seed += 1) {
+      // Day 1 is a Tuesday, when the shipped truck opens.
+      const morning = after(1, SHIPPED, start(SHIPPED, seed))
+      const base = visitsAfter(morning, spent(0))
+      const extraOnce = visitsAfter(morning, spent(B)) - base
+      const extraTwice = visitsAfter(morning, spent(2 * B)) - base
+      expect(extraOnce).toBeGreaterThan(0)
+      expect(extraTwice).toBeGreaterThan(extraOnce)
+      expect(extraTwice).toBeLessThan(2 * extraOnce)
+      once += extraOnce
+      twice += extraTwice
+    }
+    expect(twice / once).toBeCloseTo(Math.SQRT2, 1)
+  })
+
+  it('raises traffic over a week once started, and lowers it over a week once stopped', () => {
+    // No noise and open every day: each day's walk-ins are 100 plus
+    // marketing's, k × √awareness, rounded.
+    const B = 7_000
+    const content = variant(crowd(100), budget(B))
+    const expected = (daysSpent: number) =>
+      Math.round(k * Math.sqrt((B * daysSpent) / awarenessDays))
+    const extra = (state: GameState) => summary(state).visits.length - 100
+
+    const started = play(10, content)
+    // Today's spend counts from tomorrow: day 0 brings no one more.
+    expect(started.map(extra)).toEqual(
+      [0, 1, 2, 3, 4, 5, 6, 7, 7, 7].map(expected),
+    )
+    const rising = started.slice(0, awarenessDays + 1).map(extra)
+    rising.forEach((count, i) => {
+      if (i > 0) expect(count).toBeGreaterThan(rising[i - 1] ?? 0)
+    })
+
+    // Stopped on day 10, so from day 11, the next morning.
+    const stopping = applyDecision(started.at(-1) as GameState, {
+      kind: 'marketingDaily',
+      budget: cents(0),
+    })
+    const stopped = play(10, content, stopping)
+    expect(stopped.map(extra)).toEqual(
+      [7, 7, 6, 5, 4, 3, 2, 1, 0, 0].map(expected),
+    )
+    expect(expected(1)).toBeGreaterThan(0)
+  })
+
+  it('brings mostly chic walk-ins, by the marketing segment shares', () => {
+    // No crowd of its own: every visit is marketing's.
+    const { max } = FOOD_TRUCK.decisionLimits.marketingDailyCents
+    const days = play(70, variant(crowd(0), budget(max))).map(summary)
+    const visits = days.flatMap((day) => day.visits)
+    expect(visits.length).toBeGreaterThan(2_000)
+    const { segmentShares } = FOOD_TRUCK.marketing
+    for (const id of SEGMENTS) {
+      const share =
+        visits.filter(({ segment }) => segment === id).length / visits.length
+      expect(share).toBeCloseTo(segmentShares[id], 1)
+    }
+  })
+
+  it("shows the spend as Marketing on the état des résultats and in Activités d'exploitation", () => {
+    // On day 0, the first day spent, the spend brings no one yet, so the
+    // books differ from a game without marketing by the spend alone.
+    const B = 2_500
+    const marketed = after(1, variant(budget(B)))
+    const plain = after(1, FLAT)
+    const income = (state: GameState) => incomeStatement(state.journal, 0, 0)
+    const cash = (state: GameState) => cashFlowStatement(state.journal, 0, 0)
+
+    expect(row(income(marketed).expenses.lines, 'Marketing')).toBe(B)
+    expect(row(income(plain).expenses.lines, 'Marketing')).toBe(0)
+    expect(income(marketed).netIncome.amount).toBe(
+      income(plain).netIncome.amount - B,
+    )
+    expect(row(cash(marketed).operating.lines, 'Autres charges')).toBe(
+      row(cash(plain).operating.lines, 'Autres charges') - B,
+    )
+    expect(cash(marketed).operating.total.amount).toBe(
+      cash(plain).operating.total.amount - B,
+    )
+
+    // Four weeks of the shipped truck: six open days a week.
+    const month = after(28, shipped(budget(B)))
+    expect(
+      row(incomeStatement(month.journal, 0, 27).expenses.lines, 'Marketing'),
+    ).toBe(24 * B)
+  })
+
+  it('plays the same game from the same seed and the same budget', () => {
+    const content = shipped(budget(5_000))
+    const first = play(30, content)
+    expect(play(30, content)).toEqual(first)
+    expect(first.at(-1)?.journal.entries).not.toEqual(after(30).journal.entries)
   })
 })
 

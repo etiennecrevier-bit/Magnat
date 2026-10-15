@@ -15,7 +15,7 @@ const CUSTOM: Profile = {
 }
 
 describe('createInitialState', () => {
-  it("starts on day 0, seeded, with no stock, the default difficulty's opening books, the starting decisions and the default profile", () => {
+  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books, the starting decisions and the default profile", () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
@@ -23,6 +23,7 @@ describe('createInitialState', () => {
       journal: openingJournal(defaultProfile().difficulty),
       inventory: [],
       lastDay: null,
+      marketingHistory: [],
       decisions: startingDecisions(),
       pendingDecisions: null,
       profile: defaultProfile(),
