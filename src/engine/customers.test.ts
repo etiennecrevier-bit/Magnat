@@ -18,6 +18,7 @@ import {
   purchaseProbability,
   serveWalkIns,
   type Counter,
+  type ExtraCrowd,
   type Served,
 } from './customers.ts'
 import { CUSTOMERS, FOOD_TRUCK } from './day.ts'
@@ -143,6 +144,7 @@ function serve(
     price?: (product: ProductId) => Cents
     available?: PerProduct
     counter?: Counter
+    extra?: ExtraCrowd | null
   } = {},
 ): Served {
   return serveWalkIns(
@@ -153,6 +155,7 @@ function serve(
     options.price ?? prices(),
     options.available ?? PLENTY,
     options.counter ?? INSTANT,
+    options.extra ?? null,
   )
 }
 
@@ -731,6 +734,144 @@ describe('the line', () => {
       averageWaitSeconds: 0,
       longestWaitSeconds: 0,
     })
+  })
+})
+
+describe('an extra crowd', () => {
+  // The base crowd is all aubaine and the extra crowd all chic, so each
+  // visit tells which crowd it came from. Every product appeals fully.
+  const AUBAINE = { aubaine: 1, habitue: 0, chic: 0 }
+  const CHIC = { aubaine: 0, habitue: 0, chic: 1 }
+  const base = (customers: number) =>
+    weekday(customers, {
+      segmentShares: AUBAINE,
+      productAppeal: { cafe: 1, chocolat: 1, croissant: 1 },
+    })
+  const chic = (customers: number): ExtraCrowd => ({
+    customers,
+    segmentShares: CHIC,
+  })
+  const from = (served: Served, segment: SegmentId) =>
+    served.visits.filter((visit) => visit.segment === segment)
+
+  it('of no one changes nothing', () => {
+    const walkIns = weekday(120)
+    const alone = serve(walkIns, { counter: SHIPPED_COUNTER })
+    const none = serve(walkIns, { counter: SHIPPED_COUNTER, extra: chic(0) })
+    expect(none).toEqual(alone)
+    expect(
+      serve(walkIns, { counter: SHIPPED_COUNTER, extra: chic(0.4) }),
+    ).toEqual(alone)
+  })
+
+  it('comes on top, drawn after the base customers, who draw as without it', () => {
+    const alone = serve(base(120))
+    const marketed = serve(base(120), { extra: chic(30) })
+    // Ample stock and instant service: the base customers fare the same.
+    expect(from(marketed, 'aubaine')).toEqual(alone.visits)
+    expect(from(marketed, 'chic')).toHaveLength(30)
+    expect(from(marketed, 'habitue')).toEqual([])
+    expect(marketed.rngState).toBe(
+      advance(alone.rngState, 30 * (2 + PRODUCTS.length)),
+    )
+    // One line, in arrival order.
+    const minutes = marketed.visits.map(({ arrivalMinute }) => arrivalMinute)
+    expect(minutes).toEqual([...minutes].sort((a, b) => a - b))
+  })
+
+  it('draws its segments by its own shares', () => {
+    const shares = { aubaine: 0.1, habitue: 0.3, chic: 0.6 }
+    const served = serve(weekday(0), {
+      extra: { customers: 5000, segmentShares: shares },
+    })
+    expect(served.visits).toHaveLength(5000)
+    for (const id of SEGMENTS) {
+      expect(served.segments[id].visits / 5000).toBeCloseTo(shares[id], 1)
+    }
+  })
+
+  it('rounds its walk-ins after the same noise as the base crowd', () => {
+    expect(serve(weekday(0), { extra: chic(12.4) }).visits).toHaveLength(12)
+    expect(serve(weekday(0), { extra: chic(12.6) }).visits).toHaveLength(13)
+    const noisy = loadFoodTruckContent({
+      ...FOOD_TRUCK,
+      walkIns: {
+        ...weekday(100),
+        noiseStdDevRatio: 0.3,
+        dayTypes: {
+          ...FOOD_TRUCK.walkIns.dayTypes,
+          semaine: {
+            ...FOOD_TRUCK.walkIns.dayTypes.semaine,
+            customers: 100,
+            segmentShares: AUBAINE,
+          },
+        },
+      },
+    }).walkIns
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const served = serve(noisy, { seed, extra: chic(100) })
+      expect(from(served, 'chic')).toHaveLength(from(served, 'aubaine').length)
+      expect(served.visits.length).not.toBe(200)
+    }
+  })
+
+  it('brings the same extra customers first when it grows', () => {
+    const small = from(serve(base(120), { extra: chic(30) }), 'chic')
+    const big = serve(base(120), { extra: chic(60) })
+    expect(from(big, 'aubaine')).toEqual(serve(base(120)).visits)
+    let found = 0
+    for (const visit of from(big, 'chic')) {
+      if (found < small.length && sameVisit(visit, small[found])) found += 1
+    }
+    expect(found).toBe(small.length)
+  })
+
+  it('shares the stock with the base customers', () => {
+    const customers = keen(5)
+    const price = prices({ cafe: 300, chocolat: 300, croissant: 300 })
+    const available = stock(60)
+    const alone = serve(base(50), { customers, price, available })
+    const marketed = serve(base(50), {
+      customers,
+      price,
+      available,
+      extra: chic(50),
+    })
+    expect(alone.sold).toEqual(stock(50))
+    expect(alone.segments.aubaine.soldOut).toBe(0)
+    // 100 customers each want one of each product, and there are 60.
+    expect(marketed.sold).toEqual(available)
+    expect(marketed.lost).toEqual(stock(40))
+    // The base customers who came after the stock ran out found none.
+    expect(marketed.segments.aubaine.soldOut).toBeGreaterThan(0)
+    expect(marketed.segments.chic.soldOut).toBeGreaterThan(0)
+    expect(
+      arrivals({ ...marketed, visits: from(marketed, 'aubaine') }),
+    ).toEqual(arrivals(alone))
+  })
+
+  it('shares the line with the base customers', () => {
+    const customers = keen(5)
+    const price = prices({ cafe: 300, chocolat: 300, croissant: 300 })
+    const slow = counter({ baseSeconds: 120 })
+    const alone = serve(base(120), { customers, price, counter: slow })
+    const marketed = serve(base(120), {
+      customers,
+      price,
+      counter: slow,
+      extra: chic(120),
+    })
+    expect(marketed.segments.aubaine.visits).toBe(alone.segments.aubaine.visits)
+    const leftAubaine = (served: Served) =>
+      from(served, 'aubaine').filter(({ outcome }) => outcome === 'leftLine')
+        .length
+    expect(leftAubaine(marketed)).toBeGreaterThan(leftAubaine(alone))
+    expect(marketed.longestWaitSeconds).toBeGreaterThanOrEqual(
+      alone.longestWaitSeconds,
+    )
+    expect(marketed.leftLine).toBe(
+      marketed.visits.filter(({ outcome }) => outcome === 'leftLine').length,
+    )
   })
 })
 

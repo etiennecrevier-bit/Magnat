@@ -31,13 +31,15 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 4 adds the line
- * at the counter: a version 3 `lastDay` has no visits served or left and no
- * waits. Version 3 opened the books by difficulty and charged the real
- * costs. A version 2 game's books hold no truck and no loan, so it would
- * repay a loan it never took and depreciate a truck it never bought.
+ * change can no longer load (rule 8 in CLAUDE.md). Version 5 spends the
+ * marketing budget: a version 4 game has no marketing history. Version 4
+ * adds the line at the counter: a version 3 `lastDay` has no visits served
+ * or left and no waits. Version 3 opened the books by difficulty and
+ * charged the real costs. A version 2 game's books hold no truck and no
+ * loan, so it would repay a loan it never took and depreciate a truck it
+ * never bought.
  */
-export const SAVE_VERSION = 4
+export const SAVE_VERSION = 5
 
 const STOCKS: AccountCode = '1200'
 
@@ -163,6 +165,7 @@ const saveSchema = z.strictObject({
   journal: z.array(entrySchema),
   inventory: z.array(lotSchema),
   lastDay: daySummarySchema.nullable(),
+  marketingHistory: z.array(money),
   decisions: decisionsSchema,
   pendingDecisions: decisionsSchema.nullable(),
   profile: profileSchema,
@@ -183,6 +186,7 @@ export function serialize(state: GameState): string {
     journal: entriesOf(state.journal),
     inventory: state.inventory,
     lastDay: state.lastDay,
+    marketingHistory: state.marketingHistory,
     decisions: state.decisions,
     pendingDecisions: state.pendingDecisions,
     profile: state.profile,
@@ -200,12 +204,15 @@ export function serialize(state: GameState): string {
  * within the safe integer range; the lots are oldest first, none bought
  * after the save's day, and they cost what the Stocks account carries;
  * `lastDay` is the save's day or the day before, and null only on day 0;
- * the decisions, and those pending if any, keep within the content's
- * limits and each product's kind of restock rule; and the profile passes
+ * the marketing history holds one day for each day played up to the
+ * content's `awarenessDays`, none above the most the budget may be; the
+ * decisions, and those pending if any, keep within the content's limits
+ * and each product's kind of restock rule; and the profile passes
  * `validateProfile()`.
  *
- * The products, limits and restock kinds are those of `content` as it is
- * now, so tuning that narrows them can stop older saves from loading.
+ * The products, limits, restock kinds and `awarenessDays` are those of
+ * `content` as it is now, so tuning that changes the days or narrows the
+ * others can stop older saves from loading.
  */
 export function deserialize(
   text: string,
@@ -216,6 +223,7 @@ export function deserialize(
   checkBooks(save, journal)
   checkInventory(save, journal)
   checkLastDay(save)
+  checkMarketingHistory(save, content)
   checkDecisions('decisions', save.decisions, content)
   if (save.pendingDecisions !== null) {
     checkDecisions('pendingDecisions', save.pendingDecisions, content)
@@ -229,6 +237,7 @@ export function deserialize(
     journal,
     inventory: save.inventory,
     lastDay: save.lastDay,
+    marketingHistory: save.marketingHistory,
     decisions: save.decisions,
     pendingDecisions: save.pendingDecisions,
     profile: save.profile,
@@ -308,6 +317,32 @@ function checkLastDay({ day, lastDay }: Save): void {
   } else if (lastDay.day !== day && lastDay.day !== day - 1) {
     invalid(`lastDay is day ${lastDay.day} on day ${day}`)
   }
+}
+
+/**
+ * One day of spend for each day played, so the close of `lastDay`'s day
+ * counts, up to `awarenessDays`; each no more than the budget's limit, so
+ * a save cannot bring a crowd the game could never have.
+ */
+function checkMarketingHistory(
+  { lastDay, marketingHistory }: Save,
+  { marketing, decisionLimits }: FoodTruckContent,
+): void {
+  const played = lastDay === null ? 0 : lastDay.day + 1
+  const days = Math.min(played, marketing.awarenessDays)
+  if (marketingHistory.length !== days) {
+    invalid(
+      `marketingHistory holds ${marketingHistory.length} days, not ${days}`,
+    )
+  }
+  const { max } = decisionLimits.marketingDailyCents
+  marketingHistory.forEach((spent, index) => {
+    if (spent > max) {
+      invalid(
+        `marketingHistory day ${index + 1} spent ${spent}, more than the ${max} the budget may be`,
+      )
+    }
+  })
 }
 
 function checkDecisions(

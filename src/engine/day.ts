@@ -32,6 +32,7 @@ import {
   removeExpired,
   takeFifo,
 } from './inventory.ts'
+import { marketingCrowd, rememberSpend } from './marketing.ts'
 import { add, cents, mulInt, mulRatio, sub, type Cents } from './money.ts'
 import { servers } from './service.ts'
 import type { Day, Decisions, GameState, Lot, PerProduct } from './types.ts'
@@ -60,6 +61,7 @@ const RENT_AND_PERMIT: AccountCode = '6100'
 const TRUCK_LEASE: AccountCode = '6120'
 const INSURANCE: AccountCode = '6150'
 const FUEL_AND_MAINTENANCE: AccountCode = '6200'
+const MARKETING: AccountCode = '6300'
 const DEPRECIATION: AccountCode = '6400'
 const CARD_FEES: AccountCode = '6500'
 const INTEREST: AccountCode = '7000'
@@ -82,6 +84,7 @@ const MEMO = {
   packaging: 'Emballages',
   cardFees: 'Frais de cartes',
   fuel: 'Carburant et entretien',
+  marketing: 'Marketing',
   ownerPay: 'Paie du propriétaire',
   spoilage: 'Marchandises périmées',
 } as const
@@ -145,14 +148,17 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
 /**
  * Plays business day `state.day` with `state.decisions`. On the 1st of the
  * month, open or closed: the month's charges (see `monthlyCharges`). On a
- * day the truck opens: the morning restock, then the walk-in customers
- * lining up at the counter, where `servers(state)` serve them from the stock
- * on hand, what the sales cost in packaging and card fees, and the fuel. On a day it is closed, nobody comes
- * and nothing is bought, so the generator does not move. On payday, open or
- * closed, the owner's weekly pay. Every day: the spoilage at the close.
- * Every entry is dated `state.day`. Returns a new state on the same day with
- * the books, the stock, the generator and `lastDay` brought up to the close;
- * never mutates `state`. Cash may go negative.
+ * day the truck opens: the morning restock, then the walk-in customers,
+ * with those the marketing of the days before brings on top (see
+ * `marketingCrowd`), lining up at the counter, where `servers(state)` serve
+ * them from the stock on hand, what the sales cost in packaging and card
+ * fees, the fuel and the day's marketing budget. On a day it is closed,
+ * nobody comes, nothing is bought and nothing is spent on marketing, so the
+ * generator does not move. On payday, open or closed, the owner's weekly
+ * pay. Every day: the spoilage at the close. Every entry is dated
+ * `state.day`. Returns a new state on the same day with the books, the
+ * stock, the generator, the marketing history and `lastDay` brought up to
+ * the close; never mutates `state`. Cash may go negative.
  */
 export function playDay(
   state: GameState,
@@ -166,6 +172,7 @@ export function playDay(
   let lots = state.inventory
   let served = closed(state.rngState)
   let revenue = ZERO
+  let marketingSpent = ZERO
 
   if (dayOfMonth === 1) {
     const { truck } = difficulties.difficulties[state.profile.difficulty]
@@ -188,6 +195,7 @@ export function playDay(
       price,
       perProduct((product) => onHand(restocked.lots, product)),
       { service: content.service, servers: servers(state) },
+      marketingCrowd(state.marketingHistory, content.marketing),
     )
 
     // The sale, its cost and what it costs to make are separate entries, so
@@ -216,6 +224,8 @@ export function playDay(
       FUEL_AND_MAINTENANCE,
       content.fuelAndMaintenancePerOpenDayCents,
     )
+    marketingSpent = decisions.marketingDaily
+    journal = pay(journal, day, MEMO.marketing, MARKETING, marketingSpent)
   }
 
   if (weekday === content.ownerPayWeekday) {
@@ -237,6 +247,11 @@ export function playDay(
     rngState: served.rngState,
     journal,
     inventory: expired.lots,
+    marketingHistory: rememberSpend(
+      state.marketingHistory,
+      marketingSpent,
+      content.marketing,
+    ),
     lastDay: {
       day,
       sold: served.sold,

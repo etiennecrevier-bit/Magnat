@@ -34,11 +34,11 @@ const ITALIC = /(?<!\*)\*([^*\n]+)\*(?!\*)/g
 const REPO_PATH = /`((?:src|tests|tools|docs)\/[^`\s]*)`/g
 
 // Content under which every step of an open day posts its entry every day:
-// the truck opens every day, and each product is bought daily, far more than
-// a day's customers want, and spoils at its first close. The 1st of the
-// month, payday and the loan's first payment, a month in, come within the
-// days played. The seed, the customers and the days are fixed, so the run is
-// too.
+// the truck opens every day and spends on marketing, and each product is
+// bought daily, far more than a day's customers want, and spoils at its
+// first close. The 1st of the month, payday and the loan's first payment, a
+// month in, come within the days played. The seed, the customers and the
+// days are fixed, so the run is too.
 const CROWD = {
   name: 'Test',
   segmentShares: Object.fromEntries(
@@ -77,6 +77,7 @@ const EVERY_ENTRY = loadFoodTruckContent({
     },
   },
   service: FOOD_TRUCK.service,
+  marketing: FOOD_TRUCK.marketing,
   startingDecisions: {
     pricesCents: Object.fromEntries(PRODUCTS.map((product) => [product, 300])),
     restock: Object.fromEntries(
@@ -84,7 +85,7 @@ const EVERY_ENTRY = loadFoodTruckContent({
     ),
     daysOpen: [1, 2, 3, 4, 5, 6, 7],
     ownerWeeklyPayCents: 70_000,
-    marketingDailyCents: 0,
+    marketingDailyCents: 1_000,
   },
   decisionLimits: FOOD_TRUCK.decisionLimits,
 })

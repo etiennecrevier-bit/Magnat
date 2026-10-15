@@ -21,11 +21,12 @@ export { toCalendar, type CalendarDate } from './calendar.ts'
 
 /**
  * Starts a game on day 0 with its generator seeded from `seed`, no stock,
- * the opening books of the profile's difficulty (see `openingJournal`), the
- * content's starting decisions and the player's `profile`. Throws a
- * RangeError unless `seed` is an integer in [0, 2^32), if the starting
- * decisions break the content's limits, if `profile` breaks
- * `validateProfile()`, or if the difficulty leaves a negative Mise de fonds.
+ * no marketing spent yet, the opening books of the profile's difficulty
+ * (see `openingJournal`), the content's starting decisions and the
+ * player's `profile`. Throws a RangeError unless `seed` is an integer in
+ * [0, 2^32), if the starting decisions break the content's limits, if
+ * `profile` breaks `validateProfile()`, or if the difficulty leaves a
+ * negative Mise de fonds.
  */
 export function createInitialState(
   seed: number,
@@ -41,6 +42,7 @@ export function createInitialState(
     journal: openingJournal(profile.difficulty, content, difficulties),
     inventory: [],
     lastDay: null,
+    marketingHistory: [],
     decisions: startingDecisions(content),
     pendingDecisions: null,
     profile: {

@@ -53,6 +53,11 @@
     }
   },
   "service": { "baseSeconds": 40, "perItemSeconds": 15, "maxAheadInLine": 8 },
+  "marketing": {
+    "awarenessDays": 7,
+    "extraCustomersPerSqrtCent": 0.3,
+    "segmentShares": { "aubaine": 0.1, "habitue": 0.3, "chic": 0.6 }
+  },
   "startingDecisions": {
     "pricesCents": { "cafe": 325, "chocolat": 350, "croissant": 375 },
     "restock": {
