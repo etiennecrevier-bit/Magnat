@@ -61,6 +61,9 @@ function visit(
       chocolat: 0,
       croissant: 0,
     },
+    servedMinute:
+      outcome === 'bought' || outcome === 'soldOut' ? arrivalMinute : null,
+    leftMinute: outcome === 'leftLine' ? arrivalMinute : null,
   }
 }
 
@@ -89,13 +92,13 @@ describe('replayOf', () => {
     expect(replayOf(sunday)?.dayType).toBe('finDeSemaine')
   })
 
-  it('counts buyers as served, prices and stockouts as lost, and browsers as neither', () => {
+  it('counts buyers as served, prices, stockouts and the line as lost, and browsers as neither', () => {
     const visits = wednesday.lastDay?.visits ?? []
     const count = (...outcomes: VisitOutcome[]) =>
       visits.filter((v) => outcomes.includes(v.outcome)).length
     const replay = replayOf(wednesday)
     expect(replay?.served).toBe(count('bought'))
-    expect(replay?.lost).toBe(count('tooExpensive', 'soldOut'))
+    expect(replay?.lost).toBe(count('tooExpensive', 'soldOut', 'leftLine'))
     expect(replay!.served + replay!.lost).toBeLessThanOrEqual(visits.length)
   })
 
@@ -110,10 +113,11 @@ describe('replayOf', () => {
           visit(432, 'soldOut'),
           visit(433, 'browsed'),
           visit(434, 'bought'),
+          visit(435, 'leftLine'),
         ],
       },
     }
-    expect(replayOf(game)).toMatchObject({ served: 2, lost: 2 })
+    expect(replayOf(game)).toMatchObject({ served: 2, lost: 3 })
   })
 })
 
@@ -122,6 +126,7 @@ describe('moodOf', () => {
     ['bought', 'happy'],
     ['tooExpensive', 'annoyed'],
     ['soldOut', 'sad'],
+    ['leftLine', 'annoyed'],
     ['browsed', 'neutral'],
   ] as const)('shows a %s visit as %s', (outcome, mood) => {
     expect(moodOf(outcome)).toBe(mood)

@@ -31,12 +31,13 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 3 opens the books
- * by difficulty and charges the real costs. A version 2 game's books hold no
- * truck and no loan, so it would repay a loan it never took and depreciate a
- * truck it never bought.
+ * change can no longer load (rule 8 in CLAUDE.md). Version 4 adds the line
+ * at the counter: a version 3 `lastDay` has no visits served or left and no
+ * waits. Version 3 opened the books by difficulty and charged the real
+ * costs. A version 2 game's books hold no truck and no loan, so it would
+ * repay a loan it never took and depreciate a truck it never bought.
  */
-export const SAVE_VERSION = 3
+export const SAVE_VERSION = 4
 
 const STOCKS: AccountCode = '1200'
 
@@ -91,8 +92,11 @@ const visitOutcome = z.enum({
   bought: 'bought',
   tooExpensive: 'tooExpensive',
   soldOut: 'soldOut',
+  leftLine: 'leftLine',
   browsed: 'browsed',
 } satisfies Record<VisitOutcome, VisitOutcome>)
+
+const minuteOfDay = z.int().min(0).max(MINUTES_PER_DAY)
 
 const daySummarySchema = z.strictObject({
   day: gameDay,
@@ -111,12 +115,18 @@ const daySummarySchema = z.strictObject({
   ),
   visits: z.array(
     z.strictObject({
-      arrivalMinute: z.int().min(0).max(MINUTES_PER_DAY),
+      arrivalMinute: minuteOfDay,
       segment: segmentIdSchema,
       bought: unitsPerProduct,
       outcome: visitOutcome,
+      // Service may run past closing time, even past midnight.
+      servedMinute: count.nullable(),
+      leftMinute: minuteOfDay.nullable(),
     }),
   ),
+  leftLine: count,
+  averageWaitSeconds: count,
+  longestWaitSeconds: count,
 })
 
 // `validateDecisions()` checks the limits and the days open.

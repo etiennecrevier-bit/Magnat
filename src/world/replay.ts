@@ -16,7 +16,10 @@ export interface Replay {
   readonly dayType: DayTypeId
   /** Visits that bought something. */
   readonly served: number
-  /** Visits that bought nothing because of a price or a sold-out product. */
+  /**
+   * Visits that bought nothing because of a price, a sold-out product or the
+   * line.
+   */
   readonly lost: number
 }
 
@@ -34,7 +37,7 @@ export function replayOf(game: GameState): Replay | null {
   let lost = 0
   for (const { outcome } of lastDay.visits) {
     if (outcome === 'bought') served += 1
-    else if (outcome === 'tooExpensive' || outcome === 'soldOut') lost += 1
+    else if (outcome !== 'browsed') lost += 1
   }
   return {
     visits: lastDay.visits,
@@ -56,6 +59,8 @@ export function moodOf(outcome: VisitOutcome): Mood {
       return 'annoyed'
     case 'soldOut':
       return 'sad'
+    case 'leftLine':
+      return 'annoyed'
     case 'browsed':
       return 'neutral'
   }

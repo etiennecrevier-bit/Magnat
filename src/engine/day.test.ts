@@ -15,16 +15,18 @@ import {
   type RestockRule,
   type Segment,
   type SegmentId,
+  type Service,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance, trialBalance, type JournalEntry } from '../finance/journal.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
-import { SEGMENTS, dayTypeOf, perSegment } from './customers.ts'
+import { SEGMENTS, dayTypeOf, perSegment, serveWalkIns } from './customers.ts'
 import { CUSTOMERS, DIFFICULTIES, FOOD_TRUCK, currentPrice } from './day.ts'
 import { applyDecision } from './decisions.ts'
 import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
 import { cents, mulRatio } from './money.ts'
 import { defaultProfile } from './profile.ts'
+import { servers } from './service.ts'
 import type { Day, DaySummary, GameState, PerProduct } from './types.ts'
 
 const CASH: AccountCode = '1000'
@@ -84,12 +86,20 @@ const STARTING_PRICES = FOOD_TRUCK.startingDecisions.pricesCents
 /** Every ISO weekday, Monday to Sunday. */
 const EVERY_DAY = [1, 2, 3, 4, 5, 6, 7]
 
+/** Service at the counter that takes no time, so no one leaves the line. */
+const INSTANT_SERVICE: FoodTruckContent['service'] = {
+  ...FOOD_TRUCK.service,
+  baseSeconds: 0,
+  perItemSeconds: 0,
+}
+
 /**
  * The baseline the day tests change: the truck opens every day, 120 customers
  * come on weekdays and 80 on weekends, with the same tastes, and every
  * segment's reference price is the starting price. So each customer wants a
  * product with exactly its purchase probability, whatever the segment (see
- * `buying`).
+ * `buying`). Service takes no time, so everyone who wants something reaches
+ * the counter; the line's tests bring the shipped service back.
  */
 const FLAT: Content = {
   truck: loadFoodTruckContent({
@@ -98,11 +108,13 @@ const FLAT: Content = {
       ...FOOD_TRUCK.walkIns,
       dayTypes: { semaine: evenCrowd(120), finDeSemaine: evenCrowd(80) },
     },
+    service: INSTANT_SERVICE,
     startingDecisions: { ...FOOD_TRUCK.startingDecisions, daysOpen: EVERY_DAY },
   }),
   customers: loadCustomerContent({
     segments: perSegment((id) => ({
       name: CUSTOMERS.segments[id].name,
+      patienceMinutes: CUSTOMERS.segments[id].patienceMinutes,
       products: byProduct((product) => ({
         referencePriceCents: STARTING_PRICES[product],
         purchaseProbability: { cafe: 0.8, chocolat: 0.3, croissant: 0.5 }[
@@ -257,6 +269,16 @@ function fuel(perOpenDay: number): Change {
   }))
 }
 
+/** Changes how long serving a customer takes at the counter. */
+function serving(change: Partial<Service>): Change {
+  return truck((t) => ({ ...t, service: { ...t.service, ...change } }))
+}
+
+/** Every product at `prices`, from the start of the game. */
+function priced(prices: Record<ProductId, number>): Change {
+  return deciding({ pricesCents: byProduct((id) => cents(prices[id])) })
+}
+
 function cards(share: number, feeRate: number): Change {
   return truck((t) => ({ ...t, cardPayments: { share, feeRate } }))
 }
@@ -390,7 +412,9 @@ function units(count: PerProduct): number {
  * The visits come in arrival order within opening hours, each buying at most
  * one unit of each product, and add up to the units sold and to the segments'
  * counts; the revenue is the units sold at `currentPrice`, so the run must
- * not change the prices.
+ * not change the prices. Those who left the line bought nothing and add up
+ * to `leftLine`; the others reached the counter, in arrival order and no
+ * sooner than they came, unless they wanted nothing.
  */
 function expectConsistent(state: GameState, content: Content): void {
   const lastDay = summary(state)
@@ -450,6 +474,27 @@ function expectConsistent(state: GameState, content: Content): void {
       soldOut: count(id, 'soldOut'),
     })),
   )
+
+  let lastServed = 0
+  for (const visit of lastDay.visits) {
+    const { arrivalMinute, outcome, servedMinute, leftMinute } = visit
+    expect(leftMinute).toBe(outcome === 'leftLine' ? arrivalMinute : null)
+    if (outcome === 'bought' || outcome === 'soldOut') {
+      expect(servedMinute).toBeGreaterThanOrEqual(
+        Math.max(arrivalMinute, lastServed),
+      )
+      lastServed = servedMinute ?? 0
+    } else {
+      expect(servedMinute).toBeNull()
+    }
+  }
+  expect(lastDay.leftLine).toBe(
+    lastDay.visits.filter(({ outcome }) => outcome === 'leftLine').length,
+  )
+  expect(lastDay.longestWaitSeconds).toBeGreaterThanOrEqual(
+    lastDay.averageWaitSeconds,
+  )
+  expect(lastDay.averageWaitSeconds).toBeGreaterThanOrEqual(0)
 
   expect(balance(state.journal, INVENTORY, { toDay: lastDay.day })).toBe(
     inventoryValue(state.inventory),
@@ -523,6 +568,9 @@ describe('tick', () => {
       revenue,
       lostSales: { cafe: 0, chocolat: 0, croissant: 0 },
       spoiled: { cafe: 0, chocolat: 0, croissant: 7 },
+      leftLine: 0,
+      averageWaitSeconds: 0,
+      longestWaitSeconds: 0,
     })
     expect(visits).toHaveLength(10)
     for (const visit of visits) {
@@ -710,6 +758,59 @@ describe('walk-in demand', () => {
         soldOut: 0,
       })
     }
+  })
+})
+
+describe('the line', () => {
+  const LOW_PRICES = { cafe: 200, chocolat: 250, croissant: 250 }
+
+  it('serves the day with servers(state) at the shipped service times', () => {
+    // Day 1 is a Tuesday: the truck opens with nothing on hand and buys its
+    // starting stock in the morning.
+    const content = shipped(priced(LOW_PRICES))
+    const from = after(1, content)
+    expect(from.inventory).toEqual([])
+    const lastDay = summary(step(from, content))
+    const expected = serveWalkIns(
+      from.rngState,
+      FOOD_TRUCK.walkIns,
+      'semaine',
+      CUSTOMERS,
+      (id) => currentPrice(from, id),
+      { cafe: 300, chocolat: 150, croissant: 70 },
+      { service: FOOD_TRUCK.service, servers: servers(from) },
+    )
+    expect(lastDay.visits).toEqual(expected.visits)
+    expect(lastDay).toMatchObject({
+      leftLine: expected.leftLine,
+      averageWaitSeconds: expected.averageWaitSeconds,
+      longestWaitSeconds: expected.longestWaitSeconds,
+    })
+    expect(lastDay.longestWaitSeconds).toBeGreaterThan(0)
+  })
+
+  it('records who left the line and the waits, with the books in step', () => {
+    // Twice as slow as shipped: the morning rush leaves the line.
+    const content = shipped(
+      priced(LOW_PRICES),
+      serving({ baseSeconds: 80, perItemSeconds: 30 }),
+    )
+    let leftLine = 0
+    for (const state of play(14, content)) {
+      expectConsistent(state, content)
+      leftLine += summary(state).leftLine
+    }
+    expect(leftLine).toBeGreaterThan(0)
+  })
+
+  it('records no line on a closed day', () => {
+    // Day 0 is a Monday, when the shipped truck is closed.
+    expect(summary(after(1))).toMatchObject({
+      visits: [],
+      leftLine: 0,
+      averageWaitSeconds: 0,
+      longestWaitSeconds: 0,
+    })
   })
 })
 
@@ -1012,6 +1113,9 @@ describe('cash', () => {
       revenue: 0,
       lostSales: { cafe: 10, chocolat: 10, croissant: 10 },
       spoiled: { cafe: 0, chocolat: 0, croissant: 0 },
+      leftLine: 0,
+      averageWaitSeconds: 0,
+      longestWaitSeconds: 0,
     })
     expect(visits.map(({ outcome }) => outcome)).toEqual(
       Array.from({ length: 10 }, () => 'soldOut'),

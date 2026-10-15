@@ -26,6 +26,8 @@ function visit(segment: SegmentId, outcome: VisitOutcome): Visit {
     segment,
     outcome,
     bought: { cafe: outcome === 'bought' ? 1 : 0, chocolat: 0, croissant: 0 },
+    servedMinute: outcome === 'bought' || outcome === 'soldOut' ? 450 : null,
+    leftMinute: outcome === 'leftLine' ? 450 : null,
   }
 }
 
@@ -34,6 +36,7 @@ describe('cardOf', () => {
     ['aubaine', 'bought', "Chasseur d'aubaines", 'happy'],
     ['habitue', 'tooExpensive', 'Habitué', 'annoyed'],
     ['chic', 'soldOut', 'Clientèle chic', 'sad'],
+    ['chic', 'leftLine', 'Clientèle chic', 'annoyed'],
     ['habitue', 'browsed', 'Habitué', 'neutral'],
   ] as const)(
     'gives a %s customer who ended %s their name, mood and a line',

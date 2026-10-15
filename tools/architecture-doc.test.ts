@@ -76,6 +76,7 @@ const EVERY_ENTRY = loadFoodTruckContent({
       finDeSemaine: { ...CROWD, customers: 40 },
     },
   },
+  service: FOOD_TRUCK.service,
   startingDecisions: {
     pricesCents: Object.fromEntries(PRODUCTS.map((product) => [product, 300])),
     restock: Object.fromEntries(
@@ -95,6 +96,7 @@ const EVERY_CUSTOMER = loadCustomerContent({
       segment,
       {
         name: segment,
+        patienceMinutes: 5,
         products: Object.fromEntries(
           PRODUCTS.map((product) => [
             product,

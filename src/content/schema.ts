@@ -178,6 +178,21 @@ const walkInsSchema = z
 export type WalkIns = z.output<typeof walkInsSchema>
 
 /**
+ * How long serving a customer takes at the counter, and how long a line
+ * customers will still join. A server at speed 1 takes exactly these times.
+ */
+const serviceSchema = z.strictObject({
+  /** Seconds every customer takes, whatever they order. */
+  baseSeconds: count,
+  /** Seconds each unit ordered adds, sold out or not. */
+  perItemSeconds: count,
+  /** The most customers a newcomer finds still waiting and joins anyway. */
+  maxAheadInLine: count,
+})
+
+export type Service = z.output<typeof serviceSchema>
+
+/**
  * How the truck runs when a game starts, until the player changes it. Each
  * product keeps the kind of restock rule it starts with.
  */
@@ -228,6 +243,7 @@ export const foodTruckSchema = z.strictObject({
   /** The weekday the owner is paid, whether the truck opens or not. */
   ownerPayWeekday: weekday,
   walkIns: walkInsSchema,
+  service: serviceSchema,
   startingDecisions: startingDecisionsSchema,
   decisionLimits: decisionLimitsSchema,
 })
@@ -257,6 +273,11 @@ const tooCheapSchema = z.strictObject({
 
 const segmentSchema = z.strictObject({
   name: z.string().min(1),
+  /**
+   * The longest wait in line they accept, in minutes, before the day type's
+   * `patienceMultiplier`.
+   */
+  patienceMinutes: z.number().positive(),
   products: z.record(productIdSchema, segmentProductSchema),
   tooCheap: tooCheapSchema.optional(),
 })
