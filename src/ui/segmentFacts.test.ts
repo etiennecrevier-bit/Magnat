@@ -48,6 +48,7 @@ const DAY: DaySummary = {
   longestWaitSeconds: 0,
   energy: 100,
   botched: 0,
+  modifiers: [],
 }
 
 describe('segmentFacts', () => {

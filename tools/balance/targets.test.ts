@@ -38,6 +38,13 @@ function game(seed: number, fields: Partial<GameResult> = {}): GameResult {
     lostToStockouts: 0,
     lostToPrices: 0,
     journalHash: `books of seed ${seed}`,
+    modifierDays: {
+      walkIns: 0,
+      appeal: 0,
+      willingness: 0,
+      unavailable: 0,
+      closed: 0,
+    },
     ...fields,
   }
 }

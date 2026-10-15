@@ -155,12 +155,20 @@ describe('formatReport', () => {
       owner: { morningEnergy: [], personalCash: cents(0), unpaidRents: [] },
       events: 'first',
       eventHistory: [],
+      modifierDays: {
+        walkIns: 15,
+        appeal: 5,
+        willingness: 1,
+        unavailable: 0,
+        closed: 1,
+      },
     }
     expect(formatReport(result)).toEqual([
       'Seed 7, 400 days, difficulty facile, events first',
       'Year     Days      Revenue  Net income  Cash at year end  Units spoiled  Lost sales',
       '   1    0-364  $143,357.50      -$0.05     $1,000,000.00           5940         299',
       '   2  365-399        $0.00  -$1,234.56             $0.99              0          12',
+      'Street changes: walkIns 15 days, appeal 5 days, willingness 1 days, unavailable 0 days, closed 1 days',
       `Journal sha256: ${'ab'.repeat(32)}`,
     ])
   })

@@ -1,6 +1,7 @@
 import {
   difficultyIdSchema,
   type DifficultyId,
+  type StreetModifierKind,
 } from '../../src/content/schema.ts'
 import { SEGMENTS } from '../../src/engine/customers.ts'
 import { ENERGY } from '../../src/engine/day.ts'
@@ -64,6 +65,8 @@ export interface GameResult {
   readonly lostToPrices: number
   /** The sha256 of the books, as `simulate` gives it. */
   readonly journalHash: string
+  /** The days each kind of change to the street was in effect. */
+  readonly modifierDays: Readonly<Record<StreetModifierKind, number>>
 }
 
 /** Every game of one strategy at one difficulty, in seed order. */
@@ -149,6 +152,7 @@ export function playStrategy(
     lostToStockouts: totalVisits(daySummaries, 'soldOut'),
     lostToPrices: totalVisits(daySummaries, 'tooExpensive'),
     journalHash: result.journalHash,
+    modifierDays: result.modifierDays,
   }
 }
 

@@ -121,6 +121,17 @@ const effect = fc.oneof(
     amountCents: fc.integer({ min: 1, max: 100_000 }),
     description: fc.constant('Vente'),
   }),
+  fc.record({
+    kind: fc.constant('walkIns'),
+    factor: fc.constantFrom(0.65, 1.8),
+    days: fc.integer({ min: 1, max: 20 }),
+  }),
+  fc.record({
+    kind: fc.constant('unavailable'),
+    product: fc.constantFrom(...PRODUCTS),
+    days: fc.integer({ min: 1, max: 5 }),
+  }),
+  fc.record({ kind: fc.constant('closed'), days: fc.constant(1) }),
 )
 
 const timedEffect = fc
@@ -357,6 +368,19 @@ function walk(
   expect(state.events.history.map(({ event, day }) => [event, day])).toEqual(
     cameUp,
   )
+  // No day is played, so no change to the street ever ends: each one made
+  // is there, in the order made, from an event that came up by its day.
+  const firstSeen = new Map<string, Day>()
+  for (const [event, day] of cameUp) {
+    if (!firstSeen.has(event)) firstSeen.set(event, day)
+  }
+  let before = 0
+  for (const { event, fromDay, lastDay } of state.events.modifiers) {
+    expect(fromDay).toBeGreaterThanOrEqual(before)
+    expect(lastDay).toBeGreaterThanOrEqual(fromDay)
+    expect(firstSeen.get(event) ?? DAYS).toBeLessThanOrEqual(fromDay)
+    before = fromDay
+  }
 }
 
 function emptyTally(): Tally {

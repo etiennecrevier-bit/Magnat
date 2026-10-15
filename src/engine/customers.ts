@@ -1,6 +1,7 @@
 import {
   segmentIdSchema,
   type CustomerContent,
+  type DayType,
   type DayTypeId,
   type ProductId,
   type Segment,
@@ -9,7 +10,7 @@ import {
   type WalkIns,
 } from '../content/schema.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
-import type { Cents } from './money.ts'
+import { cents, mulRatio, type Cents } from './money.ts'
 import { next, normal } from './rng.ts'
 import {
   SECONDS_PER_MINUTE,
@@ -32,6 +33,10 @@ export const SEGMENTS: readonly SegmentId[] = segmentIdSchema.options
 
 // ISO 8601 weekdays run from 1 = Monday to 7 = Sunday; a calendar fact.
 const FIRST_WEEKEND_DAY = 6
+
+// Not a tunable: a reference price stays a price, so the ratio of a price
+// to it stays finite.
+const LOWEST_REFERENCE_CENTS = 1
 
 /** Builds a record holding `value` of each segment. */
 export function perSegment<T>(
@@ -161,32 +166,65 @@ export interface ExtraCrowd {
 }
 
 /**
+ * How the street changes a day's walk-ins: what multiplies each segment's
+ * walk-ins, each product's appeal and each segment's reference prices.
+ */
+export interface CrowdChanges {
+  readonly walkIns: Readonly<Record<SegmentId, number>>
+  readonly appeal: Readonly<Record<ProductId, number>>
+  readonly willingness: Readonly<Record<SegmentId, number>>
+}
+
+/** No change to the street: every factor 1. */
+export const NO_CHANGES: CrowdChanges = {
+  walkIns: perSegment(() => 1),
+  appeal: perProduct(() => 1),
+  willingness: perSegment(() => 1),
+}
+
+/**
  * Serves one day's walk-ins, with the `dayType`'s crowd and the `extra`
- * crowd on top, if any, `available` units of each product on hand and
- * `counter` serving them. The draws always come in this order and number,
- * whatever the prices, the stock and the counter, so the same generator
- * state brings the same customers at every price, and a bigger crowd, base
- * or extra, brings the same customers first, then more:
+ * crowd on top, if any, as the street's `changes` leave them, `available`
+ * units of each product on hand and `counter` serving them. The draws
+ * always come in this order and number, whatever the prices, the stock, the
+ * counter and the street's appeal and willingness, so the same generator
+ * state brings the same customers at every price, and a bigger crowd, base,
+ * extra or the street's, brings the same customers first, then more:
  *
  * 1. `normal()` draws twice for the day's noise, with a mean of 1 and a
  *    standard deviation of `noiseStdDevRatio`. The day's base customers are
- *    the day type's `customers` × noise, and its extra customers the extra
- *    crowd's `customers` × the same noise, each rounded and never below
- *    zero.
+ *    the day type's `customers` × noise, its extra customers the extra
+ *    crowd's `customers` × the same noise, and the street's the street
+ *    crowd's × the same noise, each rounded and never below zero.
  * 2. Each base customer, one after the other, draws once for their arrival
  *    minute (a slot by its `arrivalWeights`, then the minute within it from
  *    where the draw fell), once for their segment (by the day type's
  *    share), then once per product, in `PRODUCTS` order. They want one unit
- *    when the draw is below `purchaseProbability()`. One who does not want
- *    it, at a price above their reference, but whose draw is below what
- *    they would buy at the reference, found it too expensive.
+ *    when the draw is below `purchaseProbability()`, with the day type's
+ *    appeal for the product × the street's, and their segment's reference
+ *    price × the street's willingness for it, rounded to the cent. One who
+ *    does not want it, at a price above their reference, but whose draw is
+ *    below what they would buy at the reference, found it too expensive.
  * 3. Then each extra customer draws the same way, but for their segment by
  *    the extra crowd's share. So the extra crowd leaves the base customers'
  *    draws as they would be without it.
+ * 4. Then, when the street multiplies a segment's walk-ins by more than 1,
+ *    the street crowd draws the same way: for each such segment, its
+ *    factor − 1 times the customers of that segment the day type's crowd
+ *    and the extra crowd bring, before the noise, with each segment's share
+ *    of it. With none, it draws nothing.
+ *
+ * The base and extra customers of a segment whose walk-ins the street
+ * multiplies by less than 1 are drawn all the same, but the k-th of them,
+ * counted from 1 in draw order, comes only when round(k × factor) goes up
+ * at it: a fixed quota rather than a draw, so round(n × factor) of n come.
+ * The others never come, and the draws of the days after are those they
+ * would be without the cut. A factor of exactly 1 changes nothing.
  *
  * Then customers line up by arrival minute; those arriving the same minute
- * keep the order they were drawn in, base customers first, and arrive at
- * the start of the minute. Both crowds share one line and one stock.
+ * keep the order they were drawn in, base customers first, then extra,
+ * then the street's, and arrive at the start of the minute. Every crowd
+ * shares one line and one stock.
  * One who wants nothing walks on. One who wants something looks at the line
  * (`openLine()` in service.ts) and leaves it, buying nothing, if more than
  * `maxAheadInLine` customers are still waiting or the wait is longer than
@@ -214,12 +252,13 @@ export function serveWalkIns(
   available: PerProduct,
   counter: Counter,
   extra: ExtraCrowd | null = null,
+  changes: CrowdChanges = NO_CHANGES,
 ): Served {
   const crowd = walkIns.dayTypes[dayType]
   const draws: Draws = {
     walkIns,
     pickSlot: picker(crowd.arrivalWeights),
-    odds: dayOdds(customers, crowd.productAppeal, price),
+    odds: dayOdds(customers, crowd.productAppeal, price, changes),
   }
 
   const [noise, afterNoise] = normal(rngState, 1, walkIns.noiseStdDevRatio)
@@ -241,10 +280,21 @@ export function serveWalkIns(
           extra.segmentShares,
           draws,
         )
+  const street = streetCrowd(crowd, extra, changes.walkIns)
+  const surge =
+    street === null
+      ? { arrivals: [], rngState: more.rngState }
+      : drawArrivals(
+          more.rngState,
+          headcount(street.customers),
+          street.segmentShares,
+          draws,
+        )
   // Array.prototype.sort is stable, so ties keep the order they were drawn.
-  const arrivals = [...base.arrivals, ...more.arrivals].sort(
-    (a, b) => a.arrivalMinute - b.arrivalMinute,
-  )
+  const arrivals = [
+    ...thinned([...base.arrivals, ...more.arrivals], changes.walkIns),
+    ...surge.arrivals,
+  ].sort((a, b) => a.arrivalMinute - b.arrivalMinute)
 
   const { service } = counter
   const line = openLine(counter.servers, service)
@@ -355,8 +405,53 @@ export function serveWalkIns(
     averageWaitSeconds:
       reachedCounter === 0 ? 0 : Math.round(totalWait / reachedCounter),
     longestWaitSeconds: Math.round(longestWait),
-    rngState: more.rngState,
+    rngState: surge.rngState,
   }
+}
+
+/**
+ * The walk-ins the street brings on top of `crowd` and `extra`: for each
+ * segment whose walk-ins `factors` multiply by more than 1, its factor − 1
+ * times the customers of that segment both crowds bring, before the noise,
+ * and each segment's share of them. Null when none is above 1.
+ */
+function streetCrowd(
+  crowd: DayType,
+  extra: ExtraCrowd | null,
+  factors: Readonly<Record<SegmentId, number>>,
+): ExtraCrowd | null {
+  const more = perSegment((id) => {
+    const expected =
+      crowd.customers * crowd.segmentShares[id] +
+      (extra === null ? 0 : extra.customers * extra.segmentShares[id])
+    return Math.max(0, factors[id] - 1) * expected
+  })
+  const customers = SEGMENTS.reduce((total, id) => total + more[id], 0)
+  if (customers === 0) return null
+  return {
+    customers,
+    segmentShares: perSegment((id) => more[id] / customers),
+  }
+}
+
+/**
+ * `arrivals` without those the street keeps away: of each segment whose
+ * walk-ins `factors` multiply by less than 1, the k-th arrival, counted
+ * from 1 in the order of `arrivals`, stays only when round(k × factor) goes
+ * up at it.
+ */
+function thinned(
+  arrivals: readonly Arrival[],
+  factors: Readonly<Record<SegmentId, number>>,
+): Arrival[] {
+  const seen = perSegment(() => 0)
+  return arrivals.filter(({ segment }) => {
+    const factor = factors[segment]
+    if (factor >= 1) return true
+    seen[segment] += 1
+    const k = seen[segment]
+    return Math.round(k * factor) > Math.round((k - 1) * factor)
+  })
 }
 
 /** What every customer of the day draws with. */
@@ -430,27 +525,56 @@ interface Odds {
   wouldAtReference: number
 }
 
-/** Each segment's odds for every product, in `PRODUCTS` order. */
+/**
+ * Each segment's odds for every product, in `PRODUCTS` order, with the
+ * street's `changes` to the appeal and to what each segment will pay.
+ */
 function dayOdds(
   customers: CustomerContent,
   appeal: Readonly<Record<ProductId, number>>,
   price: (product: ProductId) => Cents,
+  changes: CrowdChanges,
 ): Record<SegmentId, readonly Odds[]> {
   return perSegment((id) => {
-    const segment = customers.segments[id]
+    const segment = willing(customers.segments[id], changes.willingness[id])
     return PRODUCTS.map((product) => {
       const today = price(product)
       const reference = segment.products[product].referencePriceCents
+      const wanted = appeal[product] * changes.appeal[product]
       return {
         product,
-        wants: purchaseProbability(segment, product, appeal[product], today),
+        wants: purchaseProbability(segment, product, wanted, today),
         wouldAtReference:
           today > reference
-            ? purchaseProbability(segment, product, appeal[product], reference)
+            ? purchaseProbability(segment, product, wanted, reference)
             : 0,
       }
     })
   })
+}
+
+/**
+ * `segment` with its reference prices × `factor`, each rounded to the cent
+ * half away from zero and never below 1 cent; `segment` itself at 1.
+ */
+function willing(segment: Segment, factor: number): Segment {
+  if (factor === 1) return segment
+  const products = Object.fromEntries(
+    PRODUCTS.map((product) => {
+      const odds = segment.products[product]
+      const reference = mulRatio(odds.referencePriceCents, factor)
+      return [
+        product,
+        {
+          ...odds,
+          referencePriceCents: cents(
+            Math.max(LOWEST_REFERENCE_CENTS, reference),
+          ),
+        },
+      ]
+    }),
+  ) as Segment['products']
+  return { ...segment, products }
 }
 
 /**

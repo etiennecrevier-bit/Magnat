@@ -1,5 +1,6 @@
 import { DIFFICULTIES, ENERGY, FOOD_TRUCK } from '../../src/engine/day.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
+import { MODIFIER_KINDS } from '../../src/engine/street.ts'
 import { formatDollars } from '../sim/cli.ts'
 import { DAYS_PER_YEAR, type BalanceRun, type DifficultyRun } from './play.ts'
 import {
@@ -11,7 +12,7 @@ import {
   PRICE_CHANGES,
   type Axis,
 } from './strategies.ts'
-import { ranked, type RankedStrategy } from './summary.ts'
+import { median, ranked, type RankedStrategy } from './summary.ts'
 import { designTargets, type RankedRun, type TargetCheck } from './targets.ts'
 
 // Writes the report from the games summed up and ranked (summary.ts) and
@@ -97,7 +98,8 @@ export function unchangedDecisions(run: DifficultyRun): Axis[] {
 
 /**
  * The whole report, in Markdown. A one-year run also checks the design
- * targets of #58.
+ * targets of #58, and a run with the event cards counts the days the street
+ * was changed.
  */
 export function formatReport(run: BalanceRun): string {
   const tables = run.difficulties.map((difficultyRun) => ({
@@ -110,6 +112,7 @@ export function formatReport(run: BalanceRun): string {
   return [
     ...header(run),
     ...(run.years === 1 ? targets(tables) : []),
+    ...((run.events ?? 'none') === 'none' ? [] : streetChanges(tables)),
     '## Best and worst',
     '',
     ...tables.flatMap(({ name, ranked, unchanged }) => [
@@ -229,6 +232,38 @@ function targets(
     row(['---', ...tables.map(() => '---')]),
     ...designTargets(tables).map(({ target, checks }) =>
       row([target, ...checks.map(verdict)]),
+    ),
+    '',
+  ]
+}
+
+/**
+ * The days each kind of change to the street was in effect in a game,
+ * median over every game of each difficulty, one row each.
+ */
+function streetChanges(
+  tables: readonly { readonly run: DifficultyRun; readonly name: string }[],
+): string[] {
+  return [
+    '## Street changes',
+    '',
+    'The days of a game each kind of change to the street was in effect, median over every game of the difficulty, whatever its strategy. A day counts once for a kind, however many changes of that kind it had.',
+    '',
+    row(['Change', ...tables.map(({ name }) => name)]),
+    row(['---', ...tables.map(() => '---:')]),
+    ...MODIFIER_KINDS.map((kind) =>
+      row([
+        kind,
+        ...tables.map(({ run }) =>
+          formatCount(
+            median(
+              run.strategies.flatMap(({ games }) =>
+                games.map(({ modifierDays }) => modifierDays[kind]),
+              ),
+            ),
+          ),
+        ),
+      ]),
     ),
     '',
   ]

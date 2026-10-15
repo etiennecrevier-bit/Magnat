@@ -21,7 +21,7 @@ import { takeFifo } from './inventory.ts'
 import { cents, mulInt, type Cents } from './money.ts'
 import { addMovement } from './personal.ts'
 import { next } from './rng.ts'
-import type { Day, GameState, Receivable } from './types.ts'
+import type { Day, GameState, Receivable, StreetModifier } from './types.ts'
 
 // What the choices of the event cards do to the game, now or at the start
 // of a later day. Every money effect goes through the books, never straight
@@ -71,9 +71,9 @@ export function untimed(effect: TimedEventEffect): EventEffect {
 }
 
 /**
- * Applies `effect` on day `state.day`, with `content`'s unit costs, and
- * returns the new state; never mutates `state`. Every entry is dated
- * `state.day`, and one of 0 is not posted.
+ * Applies `effect`, from a choice of the event `event`, on day `state.day`,
+ * with `content`'s unit costs, and returns the new state; never mutates
+ * `state`. Every entry is dated `state.day`, and one of 0 is not posted.
  * - `charge`: Dr its account, 6900 Autres charges by default / Cr 1000
  *   Encaisse, with its description as the memo.
  * - `cashSale`: Dr 1000 / Cr 4000 Ventes, with its description as the memo.
@@ -95,11 +95,16 @@ export function untimed(effect: TimedEventEffect): EventEffect {
  * - `followUp`: the event comes back `days` later, if one draw comes in
  *   below its `chance`; a chance of 1 draws nothing.
  * - `headline`: the headline is queued.
+ * - `walkIns`, `appeal`, `willingness`, `unavailable` and `closed`: a change
+ *   to the street, kept in `events.modifiers` after the others, with
+ *   `event`, in effect from `state.day` for `days` days, that day included.
+ *   No draw.
  */
 export function applyEffect(
   state: GameState,
   effect: EventEffect,
   content: FoodTruckContent,
+  event: string,
 ): GameState {
   const { day } = state
   switch (effect.kind) {
@@ -218,6 +223,26 @@ export function applyEffect(
           headlines: [...state.events.headlines, { day, id: effect.id }],
         },
       }
+    case 'walkIns':
+    case 'appeal':
+    case 'willingness':
+    case 'unavailable':
+    case 'closed': {
+      const { days, ...change } = effect
+      const modifier: StreetModifier = {
+        event,
+        change,
+        fromDay: day,
+        lastDay: day + days - 1,
+      }
+      return {
+        ...state,
+        events: {
+          ...state.events,
+          modifiers: [...state.events.modifiers, modifier],
+        },
+      }
+    }
   }
 }
 
@@ -241,8 +266,8 @@ export function startOfDay(
       ...state,
       events: { ...state.events, delayed: delayed.slice(due) },
     }
-    for (const { effect } of delayed.slice(0, due)) {
-      started = applyEffect(started, effect, content)
+    for (const { event, effect } of delayed.slice(0, due)) {
+      started = applyEffect(started, effect, content, event)
     }
   }
 

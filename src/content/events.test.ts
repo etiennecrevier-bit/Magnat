@@ -114,6 +114,27 @@ describe('events.json', () => {
     ).toBe(true)
   })
 
+  it('loads every change to the street, now or later, for everyone or one segment', () => {
+    const effects = [
+      { kind: 'walkIns', factor: 0.65, days: 15 },
+      { kind: 'walkIns', factor: 1.8, segment: 'chic', days: 2, inDays: 3 },
+      { kind: 'appeal', product: 'chocolat', factor: 0.3, days: 5 },
+      { kind: 'willingness', factor: 1.1, days: 1, onNextWeekday: 6 },
+      { kind: 'willingness', factor: 1.1, segment: 'aubaine', days: 1 },
+      { kind: 'unavailable', product: 'cafe', days: 4 },
+      { kind: 'closed', days: 1 },
+    ]
+    const loaded = loadEventContent(withEffects(...effects))
+    expect(loaded.events[0]?.choices[0]?.outcomes[0]?.effects).toEqual(effects)
+  })
+
+  it('refuses a key a change to the street does not have', () => {
+    rejects(
+      withEffects({ kind: 'closed', days: 1, product: 'cafe' }),
+      'Unrecognized key: "product"',
+    )
+  })
+
   it('gives a follow-up a chance of 1 unless it says otherwise', () => {
     const loaded = loadEventContent(
       withEffects({ kind: 'followUp', event: 'grosseCommande', days: 60 }),
@@ -300,6 +321,23 @@ describe('loadEventContent rejects', () => {
     ],
     [{ kind: 'headline', id: 'Mauvais titre' }, 'id'],
     [{ kind: 'lottery' }, 'kind'],
+    [{ kind: 'walkIns', factor: 0, days: 15 }, 'factor'],
+    [{ kind: 'walkIns', factor: -0.65, days: 15 }, 'factor'],
+    [{ kind: 'walkIns', factor: 0.65, days: 0 }, 'days'],
+    [{ kind: 'walkIns', factor: 0.65, days: 1.5 }, 'days'],
+    [{ kind: 'walkIns', factor: 0.65 }, 'days'],
+    [{ kind: 'walkIns', factor: 1.8, segment: 'touriste', days: 2 }, 'segment'],
+    [{ kind: 'appeal', product: 'poutine', factor: 0.3, days: 5 }, 'product'],
+    [{ kind: 'appeal', product: 'chocolat', factor: 0, days: 5 }, 'factor'],
+    [{ kind: 'appeal', factor: 0.3, days: 5 }, 'product'],
+    [{ kind: 'willingness', factor: '1.1', days: 1 }, 'factor'],
+    [
+      { kind: 'willingness', factor: 1.1, segment: 'riche', days: 1 },
+      'segment',
+    ],
+    [{ kind: 'unavailable', product: 'the', days: 4 }, 'product'],
+    [{ kind: 'unavailable', product: 'cafe', days: -1 }, 'days'],
+    [{ kind: 'closed', days: 0 }, 'days'],
   ])('the effect %j', (effect, field) => {
     rejects(
       withEffects(effect),
