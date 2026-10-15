@@ -1,5 +1,7 @@
 {
   "msPerDayAtNormalSpeed": 4000,
   "speeds": [0, 1, 3, 10],
-  "maxTicksPerFrame": 10
+  "maxTicksPerFrame": 10,
+  "fullReportWeeks": 4,
+  "reportSlideInMs": 8000
 }

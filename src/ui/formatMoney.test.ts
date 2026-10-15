@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { cents } from '../engine/money.ts'
 import {
   formatAmount,
+  formatBriefMoney,
   formatMoney,
   formatSignedMoney,
   formatStatementAmount,
@@ -79,5 +80,19 @@ describe('formatSignedMoney', () => {
     { amount: 123_456_700, text: `+1${S}234${S}567${S}$` },
   ])('writes $amount cents as $text', ({ amount, text }) => {
     expect(formatSignedMoney(cents(amount))).toBe(text)
+  })
+})
+
+describe('formatBriefMoney', () => {
+  it.each([
+    { amount: 75_000, text: `750${S}$` },
+    { amount: 250, text: `2,50${S}$` },
+    { amount: 0, text: `0${S}$` },
+    { amount: -0, text: `0${S}$` },
+    { amount: -120_000, text: `-1${S}200${S}$` },
+    { amount: -5, text: `-0,05${S}$` },
+    { amount: 123_456_700, text: `1${S}234${S}567${S}$` },
+  ])('writes $amount cents as $text', ({ amount, text }) => {
+    expect(formatBriefMoney(cents(amount))).toBe(text)
   })
 })

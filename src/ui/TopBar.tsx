@@ -14,6 +14,7 @@ import { formatGameDate } from './formatGameDate.ts'
 import ManagePanel from './ManagePanel.tsx'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
 import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
+import WeeklyReportPanel from './WeeklyReport.tsx'
 import './TopBar.css'
 
 function speedLabel(speed: number): string {
@@ -109,7 +110,7 @@ export function TopBarView({
 
 /**
  * The top bar wired to the app store, with the Space shortcut, and the
- * panel open: one it opened, or the event card.
+ * panel open: one it opened, the event card or the weekly report.
  */
 export default function TopBar() {
   const businessName = useGame((state) => state.game.profile.businessName)
@@ -162,6 +163,7 @@ export default function TopBar() {
       {panel === 'manage' && <ManagePanel />}
       {panel === 'finances' && <FinancesPanel />}
       {panel === 'event' && <EventCard />}
+      {panel === 'report' && <WeeklyReportPanel />}
     </>
   )
 }

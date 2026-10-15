@@ -17,9 +17,17 @@ export const VISUAL_EFFECTS: readonly VisualEffects[] = ['full', 'simple']
 /** What the player sets. */
 export interface Settings {
   readonly visualEffects: VisualEffects
+  /**
+   * Whether the « Bilan de la semaine » opens in full every week, not only
+   * for the first weeks of a game.
+   */
+  readonly openReportEveryWeek: boolean
 }
 
-export const DEFAULT_SETTINGS: Settings = { visualEffects: 'full' }
+export const DEFAULT_SETTINGS: Settings = {
+  visualEffects: 'full',
+  openReportEveryWeek: false,
+}
 
 /** The localStorage key the settings are kept under. */
 export const SETTINGS_KEY = 'magnat.reglages'
@@ -30,13 +38,15 @@ export type SettingsStorage = Pick<Storage, 'getItem' | 'setItem'>
 /** The settings and the way to change them. */
 export interface SettingsState extends Settings {
   setVisualEffects: (visualEffects: VisualEffects) => void
+  setOpenReportEveryWeek: (openReportEveryWeek: boolean) => void
 }
 
 export type SettingsStore = StoreApi<SettingsState>
 
 /**
- * The settings `storage` holds, or the defaults for any it does not hold
- * or holds in a form this version does not know; never throws.
+ * The settings `storage` holds, each on its own: the default for one it
+ * does not hold or holds in a form this version does not know, as in the
+ * settings an older version kept. Never throws.
  */
 export function readSettings(storage: SettingsStorage | null): Settings {
   if (storage === null) return DEFAULT_SETTINGS
@@ -48,17 +58,25 @@ export function readSettings(storage: SettingsStorage | null): Settings {
     return DEFAULT_SETTINGS
   }
   if (text === null) return DEFAULT_SETTINGS
+  let stored: unknown
   try {
-    const stored: unknown = JSON.parse(text)
-    const visualEffects =
-      typeof stored === 'object' && stored !== null && 'visualEffects' in stored
-        ? stored.visualEffects
-        : undefined
-    return VISUAL_EFFECTS.includes(visualEffects as VisualEffects)
-      ? { visualEffects: visualEffects as VisualEffects }
-      : DEFAULT_SETTINGS
+    stored = JSON.parse(text)
   } catch {
     return DEFAULT_SETTINGS
+  }
+  if (typeof stored !== 'object' || stored === null) return DEFAULT_SETTINGS
+  const { visualEffects, openReportEveryWeek } = stored as Record<
+    string,
+    unknown
+  >
+  return {
+    visualEffects: VISUAL_EFFECTS.includes(visualEffects as VisualEffects)
+      ? (visualEffects as VisualEffects)
+      : DEFAULT_SETTINGS.visualEffects,
+    openReportEveryWeek:
+      typeof openReportEveryWeek === 'boolean'
+        ? openReportEveryWeek
+        : DEFAULT_SETTINGS.openReportEveryWeek,
   }
 }
 
@@ -77,17 +95,26 @@ export function writeSettings(
   }
 }
 
-/** A settings store that starts from `storage` and writes each change to it. */
+/**
+ * A settings store that starts from `storage` and writes each change to it,
+ * with every setting, so changing one keeps the others.
+ */
 export function createSettingsStore(
   storage: SettingsStorage | null,
 ): SettingsStore {
-  return createStore<SettingsState>()((set) => ({
-    ...readSettings(storage),
-    setVisualEffects: (visualEffects) => {
-      set({ visualEffects })
-      writeSettings(storage, { visualEffects })
-    },
-  }))
+  return createStore<SettingsState>()((set, get) => {
+    const change = (settings: Partial<Settings>) => {
+      set(settings)
+      const { visualEffects, openReportEveryWeek } = get()
+      writeSettings(storage, { visualEffects, openReportEveryWeek })
+    }
+    return {
+      ...readSettings(storage),
+      setVisualEffects: (visualEffects) => change({ visualEffects }),
+      setOpenReportEveryWeek: (openReportEveryWeek) =>
+        change({ openReportEveryWeek }),
+    }
+  })
 }
 
 /**

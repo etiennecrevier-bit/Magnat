@@ -39,6 +39,7 @@ describe('GameScreensView', () => {
       { label: 'Aujourd&#x27;hui', pressed: 'true' },
       { label: 'États financiers', pressed: 'false' },
       { label: 'Journal des événements', pressed: 'false' },
+      { label: 'Bilans', pressed: 'false' },
     ])
     expect(html).toContain('<h1>Aujourd&#x27;hui</h1>')
     expect(html).not.toContain('<h1>États financiers</h1>')
@@ -51,6 +52,7 @@ describe('GameScreensView', () => {
       { label: 'Aujourd&#x27;hui', pressed: 'false' },
       { label: 'États financiers', pressed: 'true' },
       { label: 'Journal des événements', pressed: 'false' },
+      { label: 'Bilans', pressed: 'false' },
     ])
     expect(html).toContain('<h1>États financiers</h1>')
     expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
@@ -62,9 +64,24 @@ describe('GameScreensView', () => {
       { label: 'Aujourd&#x27;hui', pressed: 'false' },
       { label: 'États financiers', pressed: 'false' },
       { label: 'Journal des événements', pressed: 'true' },
+      { label: 'Bilans', pressed: 'false' },
     ])
     expect(html).toContain(
       '<section class="event-log"><h1>Journal des événements</h1><p>Aucun événement depuis un an.</p></section>',
+    )
+    expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
+  })
+
+  it('shows the Bilans screen, empty before the first week closes', () => {
+    const html = render('reports')
+    expect(screenButtons(html)).toEqual([
+      { label: 'Aujourd&#x27;hui', pressed: 'false' },
+      { label: 'États financiers', pressed: 'false' },
+      { label: 'Journal des événements', pressed: 'false' },
+      { label: 'Bilans', pressed: 'true' },
+    ])
+    expect(html).toContain(
+      '<section class="week-reports"><h1>Bilans</h1><p>Aucun bilan pour l&#x27;instant.</p></section>',
     )
     expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
   })
@@ -84,12 +101,13 @@ describe('GameScreensView', () => {
 })
 
 describe('GameScreens', () => {
-  it("opens on Aujourd'hui, the ticker after the screens", () => {
+  it("opens on Aujourd'hui, then the week's card and the ticker", () => {
     const html = renderToStaticMarkup(<GameScreens />)
     expect(html.startsWith(render('today'))).toBe(true)
-    // The ticker shows only once there are headlines (see headlines.ts).
+    // The card's region is empty until a week slides in, and the ticker
+    // shows only once there are headlines (see headlines.ts).
     expect(html.slice(render('today').length)).toMatch(
-      /^(<aside class="ticker" aria-label="La Presse-Citron">.*<\/aside>)?$/,
+      /^<div class="week-slide-in" role="status"><\/div>(<aside class="ticker" aria-label="La Presse-Citron">.*<\/aside>)?$/,
     )
   })
 

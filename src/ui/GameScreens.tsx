@@ -6,13 +6,16 @@ import { downloadSave } from './saves.ts'
 import { gameStore } from './store.ts'
 import Ticker from './Ticker.tsx'
 import TodayPanel from './TodayPanel.tsx'
+import WeekReports from './WeekReports.tsx'
+import WeekSlideIn from './WeekSlideIn.tsx'
 
-export type Screen = 'today' | 'statements' | 'events'
+export type Screen = 'today' | 'statements' | 'events' | 'reports'
 
 const SCREENS: Record<Screen, string> = {
   today: "Aujourd'hui",
   statements: 'États financiers',
   events: 'Journal des événements',
+  reports: 'Bilans',
 }
 
 interface GameScreensViewProps {
@@ -63,13 +66,15 @@ export function GameScreensView({
       {screen === 'today' && <TodayPanel />}
       {screen === 'statements' && <FinancialStatements />}
       {screen === 'events' && <EventLog />}
+      {screen === 'reports' && <WeekReports />}
     </main>
   )
 }
 
 /**
  * The screens, opening on Aujourd'hui, exporting the app store's game, with
- * the La Presse-Citron ticker along the bottom.
+ * the La Presse-Citron ticker along the bottom and the week's card sliding
+ * in above it.
  */
 export default function GameScreens({
   autosaveFailed = false,
@@ -85,6 +90,7 @@ export default function GameScreens({
         onExport={() => downloadSave(gameStore.getState().game)}
         autosaveFailed={autosaveFailed}
       />
+      <WeekSlideIn />
       <Ticker />
     </>
   )
