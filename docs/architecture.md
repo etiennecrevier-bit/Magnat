@@ -153,7 +153,7 @@ An event that came up, and what the player chose. `resolveEvent()` adds one each
 
 ### `Headline`
 
-A La Presse-Citron headline a choice queued with a `headline` effect. The ticker along the bottom of the game (`src/ui/Ticker.tsx`) shows it, with its text from `headlines.fr.json` in `src/content/`, which P3-05 (#93) adds; until that file exists, the ticker stays hidden.
+A La Presse-Citron headline a choice queued with a `headline` effect. The ticker along the bottom of the game (`src/ui/Ticker.tsx`) shows it, with its text from `headlines.fr.json` in `src/content/`; without that file, the ticker stays hidden.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -308,7 +308,7 @@ Outside unit tests, three callers advance the game:
 
 ## Event cards
 
-An event card is a dilemma from `src/content/events.json`: a character, a situation and two or three choices, each with outcomes left to chance and the effects of each outcome (`src/content/README.md` describes the file). The shipped file holds only `essai`, a card that tries every effect for the tests, with a weight of 0, so even with `EVENTS` no event comes up yet.
+An event card is a dilemma from `src/content/events.json`: a character, a situation and two or three choices, each with outcomes left to chance and the effects of each outcome (`src/content/README.md` describes the file). The shipped file holds `essai`, a card that tries every effect for the tests, with a weight of 0 that keeps it out of a real game, then the twelve cards of P3-05 (#93), which come up in a game played with `EVENTS`, as the app's store and the sim's `--events first` and `--events random` play it.
 
 `drawEvent(state, content)` in `src/engine/events.ts`, at the end of `tick()`, brings up the morning's event, if any. One morning brings one event at most: nothing changes while one waits, or once one was chosen that morning. Otherwise, in this order:
 1. The first queued follow-up due that morning or before, whose event is in the content, comes up with no draw. It ignores the conditions, the first day and the gap, and leaves `lastDrawnDay` as it is. Another follow-up due waits for a later morning.
@@ -389,7 +389,7 @@ Some numbers stay in code on purpose, because they are facts rather than tunable
 
 ## Invariants enforced by `tests/invariants.test.ts`
 
-The test plays 3650 days, ten years, for three games, one per difficulty: seed 1 at Facile, seed 42 at Moyen and seed 2026 at Difficile. It calls `tick()` with the shipped content and its starting decisions, and with the event cards on: the shipped `EVENTS`, its pacing included, with the `essai` card's weight raised to 1, so the effects every card may use, follow-ups included, come up a few hundred times a game. Each morning an event waits, it answers it with `resolveEvent()`, picking the choice with `eventChooser('random', seed)` in `tools/sim/simulate.ts`, as `npm run sim -- --events random` does.
+The test plays 3650 days, ten years, for three games, one per difficulty: seed 1 at Facile, seed 42 at Moyen and seed 2026 at Difficile. It calls `tick()` with the shipped content and its starting decisions, and with the event cards on: the shipped `EVENTS`, its pacing included, with the `essai` card's weight raised to 1, so the effects every card may use, follow-ups included, come up a few hundred times a game, besides the shipped cards. Each morning an event waits, it answers it with `resolveEvent()`, picking the choice with `eventChooser('random', seed)` in `tools/sim/simulate.ts`, as `npm run sim -- --events random` does.
 
 After every day's close, it checks:
 - the trial balance up to that day: total debits equal total credits. It keeps each account's balance as a running tally, adding each day's new entries once, rather than summing the whole journal again every day;

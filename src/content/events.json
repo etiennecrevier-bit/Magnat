@@ -1,5 +1,5 @@
 {
-  "_note": "Pacing from issue #91. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
+  "_note": "Pacing from issue #91. The twelve cards of issue #93 start at weight 1; P3-13 (#101) tunes their weights and amounts with the balance bot. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
   "pacing": { "firstDay": 7, "minDaysBetween": 5, "dailyChance": 0.15 },
   "events": [
     {
@@ -149,6 +149,897 @@
               "chance": 1,
               "result": "Rien ne se passe. Thérèse est rassurée.",
               "effects": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "grosseCommande",
+      "weight": 1,
+      "character": {
+        "id": "gillesLacasse",
+        "name": "Gilles Lacasse",
+        "role": "Traiteur du Congrès québécois des optimistes"
+      },
+      "title": "La grosse commande",
+      "situation": "Un homme en nœud papillon arrive au comptoir au pas de course, un bon de commande à la main et le sourire de quelqu'un à qui tout réussit.",
+      "quote": "Il me faut 200 croissants jeudi matin pour le congrès. 750 $, payables à 60 jours. Pensez à la visibilité : 400 optimistes, c'est 400 bouches.",
+      "conditions": { "fromDay": 14, "weekdays": [1, 2], "oncePerGame": true },
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Accepter",
+          "tags": [
+            "Ventes +750 $",
+            "Payé dans 60 jours",
+            "Une longue nuit au four",
+            "Risqué"
+          ],
+          "outcomes": [
+            {
+              "chance": 0.85,
+              "result": "Marché conclu. Jeudi, 200 croissants partent au congrès. Gilles paiera dans 60 jours, il en est certain. Il est certain de tout.",
+              "effects": [
+                {
+                  "kind": "buyStock",
+                  "product": "croissant",
+                  "units": 200,
+                  "onNextWeekday": 4
+                },
+                {
+                  "kind": "useStock",
+                  "product": "croissant",
+                  "units": 200,
+                  "to": "order",
+                  "onNextWeekday": 4
+                },
+                {
+                  "kind": "creditSale",
+                  "amountCents": 75000,
+                  "client": "Gilles Lacasse",
+                  "dueInDays": 60,
+                  "onNextWeekday": 4
+                },
+                { "kind": "energy", "amount": -15, "onNextWeekday": 4 }
+              ]
+            },
+            {
+              "chance": 0.15,
+              "result": "Marché conclu. Gilles signe le bon de commande avec un stylo qui n'écrit plus. « Ça va bien aller », dit-il.",
+              "effects": [
+                {
+                  "kind": "buyStock",
+                  "product": "croissant",
+                  "units": 200,
+                  "onNextWeekday": 4
+                },
+                {
+                  "kind": "useStock",
+                  "product": "croissant",
+                  "units": 200,
+                  "to": "order",
+                  "onNextWeekday": 4
+                },
+                {
+                  "kind": "creditSale",
+                  "amountCents": 75000,
+                  "client": "Gilles Lacasse",
+                  "dueInDays": 60,
+                  "onNextWeekday": 4
+                },
+                {
+                  "kind": "followUp",
+                  "event": "chequeDansLaMalle",
+                  "days": 60,
+                  "onNextWeekday": 4
+                },
+                { "kind": "energy", "amount": -15, "onNextWeekday": 4 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "payeLivraison",
+          "label": "Accepter, mais payé à la livraison",
+          "tags": ["Ventes +675 $", "Payé jeudi", "Une longue nuit au four"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "« On est des optimistes, pas des naïfs », soupire Gilles. Il accepte.",
+              "effects": [
+                {
+                  "kind": "buyStock",
+                  "product": "croissant",
+                  "units": 200,
+                  "onNextWeekday": 4
+                },
+                {
+                  "kind": "useStock",
+                  "product": "croissant",
+                  "units": 200,
+                  "to": "order",
+                  "onNextWeekday": 4
+                },
+                {
+                  "kind": "cashSale",
+                  "amountCents": 67500,
+                  "description": "Commande du Congrès québécois des optimistes",
+                  "onNextWeekday": 4
+                },
+                { "kind": "energy", "amount": -15, "onNextWeekday": 4 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Refuser poliment",
+          "tags": ["Rien ne change"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Gilles s'en va, toujours optimiste, vers le camion à poutine.",
+              "effects": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chequeDansLaMalle",
+      "weight": 1,
+      "character": {
+        "id": "gillesLacasse",
+        "name": "Gilles Lacasse",
+        "role": "Traiteur du Congrès québécois des optimistes"
+      },
+      "title": "Le chèque est dans la malle",
+      "situation": "Les 750 $ de la grosse commande sont dus ce matin. Pas de chèque. Le téléphone sonne : c'est Gilles.",
+      "quote": "Le chèque est parti, promis. La poste est très optimiste, elle aussi.",
+      "conditions": { "followUpOnly": true },
+      "choices": [
+        {
+          "id": "patienter",
+          "label": "Patienter",
+          "tags": ["Payé plus tard"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Gilles vous remercie de votre confiance. Le chèque arrivera dans un mois, promis. La poste aussi est d'accord.",
+              "effects": [
+                {
+                  "kind": "delayReceivable",
+                  "client": "Gilles Lacasse",
+                  "days": 30
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "allerLeVoir",
+          "label": "Aller le voir au bureau",
+          "tags": ["Énergie −5", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.7,
+              "result": "Gilles fouille son bureau et retrouve le chèque « parti par la poste » sous une pile d'affiches. Il vous le tend, radieux.",
+              "effects": [
+                { "kind": "energy", "amount": -5 },
+                { "kind": "collectReceivable", "client": "Gilles Lacasse" }
+              ]
+            },
+            {
+              "chance": 0.3,
+              "result": "Le Congrès québécois des optimistes a déclaré faillite. Ils restent confiants.",
+              "effects": [
+                { "kind": "energy", "amount": -5 },
+                { "kind": "writeOff", "client": "Gilles Lacasse" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conesOrange",
+      "weight": 1,
+      "character": {
+        "id": "rejeanLalonde",
+        "name": "Réjean Lalonde",
+        "role": "Contremaître pour la Ville"
+      },
+      "title": "Les cônes orange",
+      "situation": "Ce matin, des cônes orange encerclent votre camion. Un homme en casque de chantier s'approche, son café à la main.",
+      "quote": "On refait l'égout devant votre camion. On en a pour deux semaines. Peut-être trois. Peut-être jusqu'à l'automne, on verra.",
+      "conditions": { "fromDay": 21, "cooldownDays": 180 },
+      "choices": [
+        {
+          "id": "patienter",
+          "label": "Prendre son mal en patience",
+          "tags": ["Clients −35 % pendant 3 semaines"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Le marteau-piqueur commence à 7 h pile. Réjean, lui, commence à 9 h.",
+              "effects": [{ "kind": "walkIns", "factor": 0.65, "days": 21 }]
+            }
+          ]
+        },
+        {
+          "id": "changerDeCoin",
+          "label": "Changer de coin de rue",
+          "tags": ["Permis −250 $", "Fermé demain", "Clients −10 %"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Le Bureau des permis et des formulaires approuve votre formulaire 22-C en une seule journée. Un record. Le nouveau coin est moins passant, mais plus calme.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 25000,
+                  "description": "Formulaire 22-C, changement de coin de rue",
+                  "account": "6100"
+                },
+                { "kind": "closed", "days": 1, "inDays": 1 },
+                { "kind": "walkIns", "factor": 0.9, "days": 21 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "vacances",
+          "label": "Prendre une semaine de vacances",
+          "tags": ["Fermé 7 jours", "Énergie au maximum"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Une semaine sans réveille-matin. À votre retour, les cônes sont toujours là. Réjean aussi. Le trou, lui, a grandi.",
+              "effects": [
+                { "kind": "closed", "days": 7 },
+                { "kind": "walkIns", "factor": 0.65, "days": 21 }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "machineTousse",
+      "weight": 1,
+      "character": {
+        "id": "bertrand",
+        "name": "Bertrand",
+        "role": "Bertrand Répare Tout"
+      },
+      "title": "La machine tousse",
+      "situation": "Bertrand, de Bertrand Répare Tout, passe pour l'entretien. Il colle l'oreille contre votre machine à espresso et grimace.",
+      "quote": "Votre machine à espresso fait un bruit d'orignal enrhumé. Je la répare aujourd'hui, ou la semaine prochaine quand j'aurai la pièce moins chère.",
+      "conditions": {
+        "fromDay": 30,
+        "cooldownDays": 120,
+        "productOnMenu": "cafe"
+      },
+      "choices": [
+        {
+          "id": "reparer",
+          "label": "Réparer aujourd'hui",
+          "tags": ["Entretien −650 $"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Bertrand répare la machine en une heure et vous facture la journée. Elle ronronne comme un chat. Un chat cher.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 65000,
+                  "description": "Réparation de la machine à espresso",
+                  "account": "6200"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "attendrePiece",
+          "label": "Attendre la pièce",
+          "tags": ["Entretien −380 $", "Pas de café pendant 5 jours"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Bertrand débranche la machine « par prudence » et reviendra avec la pièce dans cinq jours. Vos habitués boivent leur peine.",
+              "effects": [
+                { "kind": "unavailable", "product": "cafe", "days": 5 },
+                {
+                  "kind": "charge",
+                  "amountCents": 38000,
+                  "description": "Pièce et réparation de la machine à espresso",
+                  "account": "6200",
+                  "inDays": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ruban",
+          "label": "Un peu de ruban adhésif",
+          "tags": ["Gratuit", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.5,
+              "result": "Le ruban tient. Bertrand est impressionné, et un peu inquiet.",
+              "effects": []
+            },
+            {
+              "chance": 0.5,
+              "result": "Le ruban tient trois jours, puis lâche pendant le rush. Bertrand ne dit rien. Il facture.",
+              "effects": [
+                {
+                  "kind": "unavailable",
+                  "product": "cafe",
+                  "days": 4,
+                  "inDays": 3
+                },
+                {
+                  "kind": "charge",
+                  "amountCents": 90000,
+                  "description": "Réparation d'urgence de la machine à espresso",
+                  "account": "6200",
+                  "inDays": 3
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "critique",
+      "weight": 1,
+      "character": {
+        "id": "solangeBeaulieuFortin",
+        "name": "Solange Beaulieu-Fortin",
+        "role": "Critique à La Presse-Citron"
+      },
+      "title": "La critique",
+      "situation": "Une cliente prend des notes devant votre menu depuis dix minutes. Elle n'a toujours rien commandé.",
+      "quote": "Je prépare un papier sur les camions de rue. Une petite boîte de dégustation, pour l'objectivité?",
+      "conditions": {
+        "fromDay": 20,
+        "oncePerGame": true,
+        "productOnMenu": "croissant"
+      },
+      "choices": [
+        {
+          "id": "offrirBoite",
+          "label": "Offrir une boîte",
+          "tags": ["Quelques croissants offerts", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.6,
+              "result": "Solange mange tout, même les miettes. Son papier est en ligne avant midi, et il est dithyrambique. La clientèle chic accourt.",
+              "effects": [
+                { "kind": "buyStock", "product": "croissant", "units": 6 },
+                {
+                  "kind": "useStock",
+                  "product": "croissant",
+                  "units": 6,
+                  "to": "giveaway"
+                },
+                {
+                  "kind": "walkIns",
+                  "factor": 1.25,
+                  "segment": "chic",
+                  "days": 21
+                },
+                { "kind": "headline", "id": "critiqueEmballee" }
+              ]
+            },
+            {
+              "chance": 0.4,
+              "result": "Solange trouve vos croissants « honnêtes ». Dans sa bouche, ce n'est ni un compliment ni une insulte.",
+              "effects": [
+                { "kind": "buyStock", "product": "croissant", "units": 6 },
+                {
+                  "kind": "useStock",
+                  "product": "croissant",
+                  "units": 6,
+                  "to": "giveaway"
+                },
+                { "kind": "headline", "id": "critiqueTiede" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "toutLeMondePaie",
+          "label": "Ici, tout le monde paie",
+          "tags": ["Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.5,
+              "result": "Solange paie, sans pourboire. Son papier vous consacre une ligne, neutre comme un verre d'eau.",
+              "effects": [{ "kind": "headline", "id": "critiqueNeutre" }]
+            },
+            {
+              "chance": 0.5,
+              "result": "Solange paie au sou près. Son papier salue votre « intégrité un peu sèche, comme vos croissants ». La clientèle chic boude.",
+              "effects": [
+                {
+                  "kind": "walkIns",
+                  "factor": 0.9,
+                  "segment": "chic",
+                  "days": 7
+                },
+                { "kind": "headline", "id": "critiqueAcide" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "influenceuse",
+      "weight": 1,
+      "character": {
+        "id": "coralieLumiere",
+        "name": "Coralie Lumière",
+        "role": "Influenceuse, 48 000 abonnés"
+      },
+      "title": "L'influenceuse",
+      "situation": "Une jeune femme filme votre camion sous tous les angles, puis se filme devant. Elle range sa perche à égoportrait et s'approche.",
+      "quote": "Une story chez vous, c'est 400 $. Mes abonnés adorent les camions. Enfin, ils adorent les photos de camions.",
+      "conditions": {
+        "fromDay": 14,
+        "cooldownDays": 90,
+        "productOnMenu": "croissant"
+      },
+      "choices": [
+        {
+          "id": "payer",
+          "label": "Payer 400 $",
+          "tags": ["Marketing −400 $", "Plus de clients pendant 10 jours"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "La story est en ligne. Des inconnus viennent photographier votre camion, et certains achètent même un croissant.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 40000,
+                  "description": "Story de Coralie Lumière",
+                  "account": "6300"
+                },
+                { "kind": "walkIns", "factor": 1.3, "days": 10 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "offrirCroissants",
+          "label": "Offrir des croissants à la place",
+          "tags": ["Quelques croissants offerts", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.4,
+              "result": "Coralie publie vos croissants avec trois filtres et un cœur. Quelques abonnés viennent voir s'ils existent vraiment.",
+              "effects": [
+                { "kind": "buyStock", "product": "croissant", "units": 10 },
+                {
+                  "kind": "useStock",
+                  "product": "croissant",
+                  "units": 10,
+                  "to": "giveaway"
+                },
+                { "kind": "walkIns", "factor": 1.15, "days": 10 }
+              ]
+            },
+            {
+              "chance": 0.6,
+              "result": "Coralie a publié la photo. De son café. Sans votre camion.",
+              "effects": [
+                { "kind": "buyStock", "product": "croissant", "units": 10 },
+                {
+                  "kind": "useStock",
+                  "product": "croissant",
+                  "units": 10,
+                  "to": "giveaway"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "nonMerci",
+          "label": "Non merci",
+          "tags": ["Rien ne change"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Coralie hausse les épaules et se filme en train de partir. Ses abonnés adorent.",
+              "effects": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concurrence",
+      "weight": 1,
+      "character": {
+        "id": "sylvain",
+        "name": "Sylvain",
+        "role": "Camion à poutine La Patate Pressée"
+      },
+      "title": "La Patate Pressée",
+      "situation": "Un camion à poutine se gare de l'autre côté de la rue. Son propriétaire traverse pour se présenter, une barquette fumante à la main.",
+      "quote": "Je me stationne en face pour deux semaines. Rien de personnel : la poutine pis le croissant, c'est pas la même clientèle.",
+      "conditions": { "fromDay": 28, "cooldownDays": 150 },
+      "choices": [
+        {
+          "id": "allerLuiParler",
+          "label": "Aller lui parler",
+          "tags": ["Énergie −10", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.5,
+              "result": "Vous parlez une heure de loyers, de permis et de la Ville. Sylvain se trouve un meilleur coin et part au bout de cinq jours.",
+              "effects": [
+                { "kind": "energy", "amount": -10 },
+                {
+                  "kind": "walkIns",
+                  "factor": 0.75,
+                  "segment": "aubaine",
+                  "days": 5
+                }
+              ]
+            },
+            {
+              "chance": 0.5,
+              "result": "Sylvain vous écoute poliment, vous offre une poutine et reste ses deux semaines. Elle était bonne, en plus.",
+              "effects": [
+                { "kind": "energy", "amount": -10 },
+                {
+                  "kind": "walkIns",
+                  "factor": 0.75,
+                  "segment": "aubaine",
+                  "days": 14
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ignorer",
+          "label": "L'ignorer",
+          "tags": ["Chasseurs d'aubaines en moins pendant 2 semaines"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Sylvain vous salue chaque matin. Vos chasseurs d'aubaines, eux, traversent la rue.",
+              "effects": [
+                {
+                  "kind": "walkIns",
+                  "factor": 0.75,
+                  "segment": "aubaine",
+                  "days": 14
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "formulaire14B",
+      "weight": 1,
+      "character": {
+        "id": "liseTremblayCote",
+        "name": "Lise Tremblay-Côté",
+        "role": "Inspectrice au Bureau des permis et des formulaires"
+      },
+      "title": "Le formulaire 14-B",
+      "situation": "Une inspectrice examine votre permis à la loupe. Puis le tampon. Puis le permis encore. Elle sort son carnet de contraventions.",
+      "quote": "Votre formulaire 14-B n'a pas le bon tampon. C'est 150 $, ou vous contestez demain matin au comptoir 3. Ou 4.",
+      "conditions": { "fromDay": 10, "cooldownDays": 120 },
+      "choices": [
+        {
+          "id": "payer",
+          "label": "Payer l'amende",
+          "tags": ["Amende −150 $"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Lise encaisse et tamponne votre reçu. Avec le bon tampon, cette fois.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 15000,
+                  "description": "Amende, formulaire 14-B"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "contester",
+          "label": "Contester",
+          "tags": ["Fermé demain", "Énergie −10", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.7,
+              "result": "Le tampon était bon. On s'excuse avec un formulaire.",
+              "effects": [
+                { "kind": "closed", "days": 1, "inDays": 1 },
+                { "kind": "energy", "amount": -10 }
+              ]
+            },
+            {
+              "chance": 0.3,
+              "result": "Vous avez rempli le 14-B. Il fallait le 14-B bis. Amende doublée.",
+              "effects": [
+                { "kind": "closed", "days": 1, "inDays": 1 },
+                { "kind": "energy", "amount": -10 },
+                {
+                  "kind": "charge",
+                  "amountCents": 30000,
+                  "description": "Amende doublée, formulaire 14-B bis",
+                  "inDays": 1
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chalet",
+      "weight": 1,
+      "character": {
+        "id": "martine",
+        "name": "Martine",
+        "role": "Votre amie d'enfance"
+      },
+      "title": "Le chalet",
+      "situation": "Votre téléphone vibre. C'est Martine, votre amie d'enfance, qui vous écrit en majuscules depuis son quai.",
+      "quote": "Viens au chalet en fin de semaine! Le lac est chaud, les maringouins sont gentils cette année.",
+      "conditions": {
+        "energyBelow": 60,
+        "months": [6, 7, 8, 9],
+        "weekdays": [1, 2, 3],
+        "cooldownDays": 60
+      },
+      "choices": [
+        {
+          "id": "yAller",
+          "label": "Y aller",
+          "tags": ["Fermé samedi et dimanche", "Énergie +20"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Deux jours de lac, de chaise longue et de blé d'Inde. Les maringouins étaient gentils. Pas tous.",
+              "effects": [
+                { "kind": "closed", "days": 2, "onNextWeekday": 6 },
+                { "kind": "energy", "amount": 20, "onNextWeekday": 7 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "resterOuvert",
+          "label": "Rester ouvert",
+          "tags": ["Énergie −5"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Martine vous envoie des photos du lac. Beaucoup de photos.",
+              "effects": [{ "kind": "energy", "amount": -5 }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "canicule",
+      "weight": 1,
+      "character": {
+        "id": "meteorologue",
+        "name": "Le météorologue",
+        "role": "Météo de La Presse-Citron"
+      },
+      "title": "La canicule",
+      "situation": "À la radio, le météorologue de La Presse-Citron annonce une vague de chaleur. On l'entend s'éventer.",
+      "quote": "34 °C pour les cinq prochains jours. Ressenti : 41. Ressenti du chocolat chaud : catastrophique.",
+      "conditions": {
+        "months": [6, 7, 8],
+        "cooldownDays": 30,
+        "productOnMenu": "cafe"
+      },
+      "choices": [
+        {
+          "id": "glace",
+          "label": "Acheter glace et gobelets froids",
+          "tags": ["Emballages −120 $", "Café glacé"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Votre café glacé devient la boisson officielle de la canicule. Le chocolat chaud, lui, prend congé.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 12000,
+                  "description": "Glace et gobelets froids",
+                  "account": "5200"
+                },
+                {
+                  "kind": "appeal",
+                  "product": "chocolat",
+                  "factor": 0.3,
+                  "days": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "habitude",
+          "label": "Faire comme d'habitude",
+          "tags": ["Moins de café vendu"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Les clients regardent votre café fumant, puis le soleil, puis votre café. Ils vont au dépanneur s'acheter de l'eau.",
+              "effects": [
+                {
+                  "kind": "appeal",
+                  "product": "cafe",
+                  "factor": 0.6,
+                  "days": 5
+                },
+                {
+                  "kind": "appeal",
+                  "product": "chocolat",
+                  "factor": 0.2,
+                  "days": 5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "festival",
+      "weight": 1,
+      "character": {
+        "id": "jeanPhilippe",
+        "name": "Jean-Philippe",
+        "role": "Bénévole en chef, Festival du Pas Pire"
+      },
+      "title": "Le Festival du Pas Pire",
+      "situation": "Un bénévole en dossard jaune colle une affiche sur votre camion, puis vous en tend une autre, au cas où.",
+      "quote": "Trois jours de festival dans votre rue, de vendredi à dimanche! L'emplacement sur le site coûte 250 $. Pensez à vos stocks.",
+      "conditions": {
+        "months": [6, 7, 8, 9],
+        "weekdays": [1, 2],
+        "cooldownDays": 120
+      },
+      "choices": [
+        {
+          "id": "payer",
+          "label": "Payer l'emplacement",
+          "tags": ["Emplacement −250 $", "Grosse foule vendredi à dimanche"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Jean-Philippe vous remet un dossard et un plan du site. Votre camion sera entre la scène et les toilettes chimiques. Idéal.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 25000,
+                  "description": "Emplacement au Festival du Pas Pire",
+                  "account": "6100"
+                },
+                {
+                  "kind": "walkIns",
+                  "factor": 1.8,
+                  "days": 3,
+                  "onNextWeekday": 5
+                },
+                { "kind": "headline", "id": "festivalPasPire" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "dehors",
+          "label": "Rester en dehors du site",
+          "tags": ["Un peu plus de monde vendredi à dimanche"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Vous gardez votre coin. Les festivaliers passent devant vous pour aller au site, et quelques-uns s'arrêtent.",
+              "effects": [
+                {
+                  "kind": "walkIns",
+                  "factor": 1.2,
+                  "days": 3,
+                  "onNextWeekday": 5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "premierJuillet",
+      "weight": 1,
+      "character": {
+        "id": "normand",
+        "name": "Normand",
+        "role": "Votre voisin"
+      },
+      "title": "Le 1er juillet",
+      "situation": "Normand, votre voisin, vous attend devant le camion avec un rouleau de papier bulle et un sourire inquiétant.",
+      "quote": "Demain, c'est le 1er juillet. La moitié du Plateau déménage. Tu m'aides avec mon divan? Il passe pas dans l'escalier, mais on va essayer.",
+      "conditions": { "date": { "month": 6, "dayOfMonth": 30 } },
+      "choices": [
+        {
+          "id": "ouvrirTot",
+          "label": "Ouvrir tôt pour les déménageurs",
+          "tags": ["Plus de clients demain", "Énergie −10"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Dès l'aube, les déménageurs font la file. Ils paient sans regarder le prix : il leur reste un divan à monter au troisième.",
+              "effects": [
+                { "kind": "walkIns", "factor": 1.5, "days": 1, "inDays": 1 },
+                {
+                  "kind": "willingness",
+                  "factor": 1.1,
+                  "days": 1,
+                  "inDays": 1
+                },
+                { "kind": "energy", "amount": -10, "inDays": 1 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "aiderNormand",
+          "label": "Aider Normand",
+          "tags": ["Fermé demain", "Énergie −20", "+60 $ dans vos poches"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Le divan n'a pas passé dans l'escalier. Il a passé par la fenêtre. Normand vous glisse 60 $ et une bière tiède.",
+              "effects": [
+                { "kind": "closed", "days": 1, "inDays": 1 },
+                { "kind": "energy", "amount": -20, "inDays": 1 },
+                {
+                  "kind": "personal",
+                  "amountCents": 6000,
+                  "label": "Normand vous remercie",
+                  "inDays": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "habitude",
+          "label": "Ouvrir comme d'habitude",
+          "tags": ["Un peu plus de clients demain"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Demain, la rue sera pleine de boîtes, de divans et de gens qui ont faim. Vous en profiterez un peu.",
+              "effects": [
+                { "kind": "walkIns", "factor": 1.2, "days": 1, "inDays": 1 }
+              ]
             }
           ]
         }

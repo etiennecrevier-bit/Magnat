@@ -161,10 +161,12 @@ function without(path: string): string {
   })
 }
 
-/** The shipped essai card, drawn every morning from day 1. */
+/** The shipped essai card alone, drawn every morning from day 1. */
 const ESSAI: EventContent = {
   pacing: { firstDay: 1, minDaysBetween: 0, dailyChance: 1 },
-  events: EVENTS.events.map((event) => ({ ...event, weight: 1 })),
+  events: EVENTS.events
+    .filter(({ id }) => id === 'essai')
+    .map((event) => ({ ...event, weight: 1 })),
 }
 
 function withEvents(state: GameState, events = ESSAI): GameState {

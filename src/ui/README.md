@@ -11,7 +11,7 @@ The store's `advance()` plays the days with the event cards on (`EVENTS`). On th
 
 « Journal des événements », the third screen (`EventLog.tsx`), lists the events of this calendar month and the 11 before, newest first, each with its date, the choice made and what came of it (`eventLog.ts`).
 
-The La Presse-Citron ticker (`Ticker.tsx`) runs along the bottom of the window, over the street. It shows a new headline every 20 s of real time (`MS_PER_HEADLINE` in `ticker.ts`), paused or not, and at once when a choice queues one; those come first, oldest first, then the general ones in turn. It reads `src/content/headlines.fr.json` (`headlines.ts`): `events`, the text of each headline an event queues, by its id, and `general`, at least one, with an optional `_note`. P3-05 (#93) adds the file; until it does, the ticker stays hidden. A long headline wraps, and the page keeps room under the screens for the whole bar (`tickerRoom.ts`).
+The La Presse-Citron ticker (`Ticker.tsx`) runs along the bottom of the window, over the street. It shows a new headline every 20 s of real time (`MS_PER_HEADLINE` in `ticker.ts`), paused or not, and at once when a choice queues one; those come first, oldest first, then the general ones in turn. It reads `src/content/headlines.fr.json` (`headlines.ts`): `events`, the text of each headline an event queues, by its id, and `general`, at least one, with an optional `_note`. Without the file, the ticker stays hidden. A long headline wraps, and the page keeps room under the screens for the whole bar (`tickerRoom.ts`).
 
 ## The owner
 

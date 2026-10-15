@@ -530,7 +530,9 @@ describe('resolveEvent', () => {
   it('plays the same game from the same seed and the same choices, journal included', () => {
     const essai = {
       pacing: { firstDay: 3, minDaysBetween: 2, dailyChance: 0.5 },
-      events: EVENTS.events.map((event) => ({ ...event, weight: 1 })),
+      events: EVENTS.events
+        .filter(({ id }) => id === 'essai')
+        .map((event) => ({ ...event, weight: 1 })),
     }
     const game = (choices: readonly string[]) => {
       let state = createInitialState(2026)

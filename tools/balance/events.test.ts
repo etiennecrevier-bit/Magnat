@@ -4,9 +4,8 @@ import { simulate } from '../sim/simulate.ts'
 import { playStrategy, runBalance } from './play.ts'
 import { strategyChanges, type Strategy } from './strategies.ts'
 
-// The balance bot hands its events policy on to every game it plays. The
-// shipped event cards never come up yet, so the policy changes no result:
-// a spy on simulate() checks what each game was asked to play.
+// The balance bot hands its events policy on to every game it plays: a spy
+// on simulate() checks what each game was asked to play.
 
 vi.mock('../sim/simulate.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../sim/simulate.ts')>()

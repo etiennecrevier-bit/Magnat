@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import pacing from '../content/pacing.json'
+import { createInitialState } from '../engine/clock.ts'
+import { NO_EVENTS } from '../engine/events.ts'
 import {
   MAX_TICKS_PER_FRAME,
   startGameLoop,
   stepClock,
   type LoopHost,
 } from './gameLoop.ts'
-import { PAUSED, createGameStore } from './store.ts'
+import { PAUSED, createGameStore, type GameStore } from './store.ts'
 
 const msPerDay = pacing.msPerDayAtNormalSpeed
 const runningSpeeds = pacing.speeds.filter((speed) => speed > PAUSED)
 const FRAME_MS = 16
+
+/** A new game's store, with no event card to stop the days. */
+function newStore(): GameStore {
+  return createGameStore(createInitialState(42), NO_EVENTS)
+}
 
 /** Real ms at `speed` until the first day passes, frames landing on whole ms. */
 function realMsToFirstDay(speed: number): number {
@@ -76,7 +83,7 @@ function createFakeHost({ hidden = false } = {}) {
 
 /** A store and a started loop, with the baseline frame already run. */
 function startRunning(speed: number) {
-  const store = createGameStore()
+  const store = newStore()
   store.getState().setSpeed(speed)
   const fake = createFakeHost()
   const stop = startGameLoop(store, fake.host)
@@ -121,7 +128,7 @@ describe('stepClock', () => {
 
 describe('startGameLoop', () => {
   it('only sets a baseline on its first frame', () => {
-    const store = createGameStore()
+    const store = newStore()
     const fake = createFakeHost()
     startGameLoop(store, fake.host)
     fake.stall(60_000)
@@ -219,7 +226,7 @@ describe('startGameLoop', () => {
   })
 
   it('waits for the tab to be visible when started hidden', () => {
-    const store = createGameStore()
+    const store = newStore()
     const fake = createFakeHost({ hidden: true })
     startGameLoop(store, fake.host)
     expect(fake.pendingFrames()).toBe(0)
@@ -232,7 +239,7 @@ describe('startGameLoop', () => {
   })
 
   it('can stop and start again on the same store, as StrictMode does', () => {
-    const store = createGameStore()
+    const store = newStore()
     const fake = createFakeHost()
     const day = () => store.getState().game.day
 
