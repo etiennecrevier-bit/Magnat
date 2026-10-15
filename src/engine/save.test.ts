@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { loadFoodTruckContent, type EventContent } from '../content/schema.ts'
+import {
+  loadEventContent,
+  loadFoodTruckContent,
+  type EventContent,
+} from '../content/schema.ts'
 import {
   balance,
   entriesOf,
@@ -18,7 +22,7 @@ import {
 } from './day.ts'
 import { applyDecision } from './decisions.ts'
 import { FULL_ENERGY } from './energy.ts'
-import { noEvents, resolveEvent } from './events.ts'
+import { drawEvent, noEvents, resolveEvent } from './events.ts'
 import { inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
 import { LABELS } from './personal.ts'
@@ -163,7 +167,7 @@ const ESSAI: EventContent = {
   events: EVENTS.events.map((event) => ({ ...event, weight: 1 })),
 }
 
-function withEvents(state: GameState): GameState {
+function withEvents(state: GameState, events = ESSAI): GameState {
   return tick(
     state,
     FOOD_TRUCK,
@@ -171,8 +175,51 @@ function withEvents(state: GameState): GameState {
     DIFFICULTIES,
     PERSONAL,
     ENERGY,
-    ESSAI,
+    events,
   )
+}
+
+/**
+ * A card every morning from `firstDay` whose « Oui » moves `amount` under
+ * `label` in the owner's pocket and takes 5 energy, and whose « Non » does
+ * nothing.
+ */
+function pocketCard(label: string, amount: number, firstDay = 1): EventContent {
+  return loadEventContent({
+    pacing: { firstDay, minDaysBetween: 0, dailyChance: 1 },
+    events: [
+      {
+        id: 'poche',
+        weight: 1,
+        character: { id: 'gilles', name: 'Gilles Lacasse', role: 'Proprio' },
+        title: 'Une carte',
+        situation: 'Il se passe quelque chose.',
+        choices: [
+          {
+            id: 'oui',
+            label: 'Oui',
+            tags: ['Poche'],
+            outcomes: [
+              {
+                chance: 1,
+                result: 'Fait.',
+                effects: [
+                  { kind: 'personal', amountCents: amount, label },
+                  { kind: 'energy', amount: -5 },
+                ],
+              },
+            ],
+          },
+          {
+            id: 'non',
+            label: 'Non',
+            tags: ['Rien ne change'],
+            outcomes: [{ chance: 1, result: 'Rien.', effects: [] }],
+          },
+        ],
+      },
+    ],
+  })
 }
 
 // The morning of day 1, a Tuesday, with the essai card waiting, then once
@@ -184,16 +231,24 @@ const CHOSEN = resolveEvent(WAITING, 'toutEssayer', ESSAI)
 const CHOSEN_SAVE = serialize(CHOSEN)
 // The close of day 2, the credit sale still owed.
 const CLOSE_2 = playDay(resolveEvent(withEvents(CHOSEN), 'rienFaire', ESSAI))
+// The morning of day 0, before it is played, with a card from day 0
+// waiting, then once « Oui » is chosen: the owner down to 95 energy and
+// « Cadeau » in their pocket.
+const DAY_0_CARD = pocketCard('Cadeau', 6_000, 0)
+const DAY_0_WAITING = drawEvent(createInitialState(SEED), DAY_0_CARD)
+const DAY_0_CHOSEN = resolveEvent(DAY_0_WAITING, 'oui', DAY_0_CARD)
+const DAY_0_SAVE = serialize(DAY_0_CHOSEN)
 
 /** Expects the load to fail, its message naming each of `reasons`. */
 function expectInvalid(
   text: string,
   reasons: readonly string[],
   content = FOOD_TRUCK,
+  events = EVENTS,
 ): void {
   let message: string | undefined
   try {
-    deserialize(text, content)
+    deserialize(text, content, events)
   } catch (error) {
     if (!(error instanceof Error)) throw error
     message = error.message
@@ -406,6 +461,60 @@ describe('serialize and deserialize', () => {
     expect(back).toEqual(FORTNIGHT)
     expect(back.events).toEqual(noEvents())
     expect(back.receivables).toEqual([])
+  })
+
+  it.each([
+    [LABELS.rent, -100],
+    [LABELS.rent, 100],
+    [LABELS.salary, 100],
+    [LABELS.salary, -100],
+    [LABELS.weeklyExpenses, 100],
+  ])(
+    "give back an event's « %s » of %i, the owner's own label, each morning it is chosen and each close after",
+    (label, amount) => {
+      const events = pocketCard(label, amount)
+      const load = (state: GameState) =>
+        deserialize(serialize(state), FOOD_TRUCK, events)
+      let state = createInitialState(SEED)
+      // Five weeks: their paydays, and the rent of June 1st, day 31.
+      for (let day = 1; day <= 35; day += 1) {
+        state = resolveEvent(withEvents(state, events), 'oui', events)
+        expect(state.personal.movements.at(-1)).toEqual({ day, label, amount })
+        expect(load(state)).toEqual(state)
+        const closed = playDay(state)
+        expect(load(closed)).toEqual(closed)
+      }
+      // The owner's own movements under the label, besides the card's 35.
+      const same = state.personal.movements.filter(
+        (movement) => movement.label === label,
+      )
+      expect(same.length).toBeGreaterThan(35)
+    },
+  )
+
+  it('give back a choice made on the morning of day 0, and the game goes on as if it had never stopped', () => {
+    expect(DAY_0_WAITING.events.pending).toEqual({
+      event: 'poche',
+      followUp: false,
+    })
+    expect(
+      deserialize(serialize(DAY_0_WAITING), FOOD_TRUCK, DAY_0_CARD),
+    ).toEqual(DAY_0_WAITING)
+    expect(DAY_0_CHOSEN.lastDay).toBeNull()
+    expect(DAY_0_CHOSEN.energy).toBe(FULL_ENERGY - 5)
+    expect(DAY_0_CHOSEN.personal.movements).toEqual([
+      { day: 0, label: 'Cadeau', amount: 6_000 },
+    ])
+    const back = deserialize(DAY_0_SAVE, FOOD_TRUCK, DAY_0_CARD)
+    expect(back).toEqual(DAY_0_CHOSEN)
+    const go = (from: GameState) => {
+      let state = from
+      for (let day = 0; day < 10; day += 1) {
+        state = resolveEvent(withEvents(state, DAY_0_CARD), 'oui', DAY_0_CARD)
+      }
+      return state
+    }
+    expect(serialize(go(back))).toBe(serialize(go(DAY_0_CHOSEN)))
   })
 
   it('load books the finance functions accept, frozen', () => {
@@ -1465,6 +1574,68 @@ describe('deserialize rejects', () => {
           withValue(`${gift}.amount`, -100, CHOSEN_SAVE),
         ),
         ['personal movement 2 is on day 1, after day 0'],
+      )
+    })
+
+    it("under a label of the owner's no event gives, held to its own rule", () => {
+      const events = pocketCard(LABELS.rent, 100)
+      // FORTNIGHT's movement 1 is a « Loyer », 2 a « Salaire », 3 a
+      // « Dépenses de la semaine ».
+      expectInvalid(
+        withValue('personal.movements.1.amount', -70_000),
+        ['personal movement 2, « Salaire », must be above 0: -70000'],
+        FOOD_TRUCK,
+        events,
+      )
+      expectInvalid(
+        withValue('personal.movements.2.amount', 25_000),
+        [
+          'personal movement 3, « Dépenses de la semaine », must be below 0: 25000',
+        ],
+        FOOD_TRUCK,
+        events,
+      )
+      // The « Loyer » the card gives is held to the card's rule instead.
+      const refund = withValue('personal.movements.0.amount', 130_000)
+      expect(
+        deserialize(refund, FOOD_TRUCK, events).personal.movements[0]?.amount,
+      ).toBe(130_000)
+      expectInvalid(refund, [
+        'personal movement 1, « Loyer », must be below 0: 130000',
+      ])
+      expectInvalid(
+        withValue('personal.movements.0.amount', 0),
+        ['personal movement 1, « Loyer », must not be 0'],
+        FOOD_TRUCK,
+        events,
+      )
+    })
+
+    it('before day 0 is played, but for a choice made that morning', () => {
+      const unchosen = withValue('events.history', [], DAY_0_SAVE)
+      expectInvalid(
+        unchosen,
+        [`energy is ${FULL_ENERGY - 5} before day 0 is played, not 100`],
+        FOOD_TRUCK,
+        DAY_0_CARD,
+      )
+      for (const save of [
+        withValue('energy', FULL_ENERGY, unchosen),
+        withValue('personal.movements.0.label', LABELS.salary, DAY_0_SAVE),
+        withValue('personal.unpaidRents', [0], DAY_0_SAVE),
+      ]) {
+        expectInvalid(
+          save,
+          ['personal holds movements before day 0 is played'],
+          FOOD_TRUCK,
+          DAY_0_CARD,
+        )
+      }
+      expectInvalid(
+        withValue('personal.movements.0.amount', 0, DAY_0_SAVE),
+        ['personal movement 1, « Cadeau », must not be 0'],
+        FOOD_TRUCK,
+        DAY_0_CARD,
       )
     })
   })

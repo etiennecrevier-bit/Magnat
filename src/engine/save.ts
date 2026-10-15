@@ -292,16 +292,18 @@ export function serialize(state: GameState): string {
  * with its `botched` the sum of its visits'; the owner's energy is full
  * before day 0 is played, `lastDay`'s energy on its own day, and no lower
  * than it the morning after, since a night only gives energy back, unless
- * an event's choice was made that morning; the marketing history holds one day for each day played up to the
- * content's `awarenessDays`, none above the most the budget may be; the
- * decisions, and those pending if any, keep within the content's limits
- * and each product's kind of restock rule; the profile passes
- * `validateProfile()`; the personal account holds nothing before day 0
- * is played, and otherwise only movements and unpaid rents up to
- * `lastDay`'s day, in its months kept and in order, each « Salaire » above
- * zero and every other movement of `LABELS` below, and a « Loyer » on each
- * day the rent went unpaid, besides the movements of the events' `personal`
- * effects, of any amount but 0, up to the save's day; the receivables are
+ * an event's choice was made that morning, day 0 included; the marketing
+ * history holds one day for each day played up to the content's
+ * `awarenessDays`, none above the most the budget may be; the decisions,
+ * and those pending if any, keep within the content's limits and each
+ * product's kind of restock rule; the profile passes `validateProfile()`;
+ * the personal account holds nothing before day 0 is played but what a
+ * choice made that morning moved, and otherwise only movements and unpaid
+ * rents up to `lastDay`'s day, in its months kept and in order, each
+ * « Salaire » above zero and every other movement of `LABELS` below, and a
+ * « Loyer » on each day the rent went unpaid, besides the movements of the
+ * events' `personal` effects, of any amount but 0, up to the save's day,
+ * whose labels may be those of `LABELS` too; the receivables are
  * by due day, each sold no later than the save's day and due after the
  * sale and after `lastDay`'s day, and they add up to Comptes clients; and
  * the events pass `checkEvents()`.
@@ -489,13 +491,24 @@ function checkLastDay({ day, lastDay }: Save): void {
 }
 
 /**
+ * Whether an event's choice was made on the save's day, before it was
+ * played. `checkEvents()` already held the history to days in order, none
+ * after the save's.
+ */
+function chosenThatMorning({ day, events }: Save): boolean {
+  return events.history.at(-1)?.day === day
+}
+
+/**
  * The owner's energy as the game could leave it: full until day 0 is
  * played, `lastDay`'s at its close, and the morning after no lower, since
- * a night only gives energy back.
+ * a night only gives energy back, unless a choice made that morning took
+ * some, day 0 included.
  */
-function checkEnergy({ day, lastDay, energy, events }: Save): void {
+function checkEnergy(save: Save): void {
+  const { day, lastDay, energy } = save
   if (lastDay === null) {
-    if (energy !== FULL_ENERGY) {
+    if (energy !== FULL_ENERGY && !chosenThatMorning(save)) {
       invalid(`energy is ${energy} before day 0 is played, not ${FULL_ENERGY}`)
     }
   } else if (lastDay.day === day) {
@@ -504,7 +517,7 @@ function checkEnergy({ day, lastDay, energy, events }: Save): void {
         `energy is ${energy} at the close of day ${day}, not lastDay's ${lastDay.energy}`,
       )
     }
-  } else if (energy < lastDay.energy && events.history.at(-1)?.day !== day) {
+  } else if (energy < lastDay.energy && !chosenThatMorning(save)) {
     invalid(
       `energy is ${energy} on the morning of day ${day}, below the ${lastDay.energy} of the close before`,
     )
@@ -653,20 +666,36 @@ function checkDecisions(
  * `isKept()` keeps, in order, each amount of `LABELS` with the sign of its
  * label, each unpaid rent a day the rent was charged, and the movements of
  * `content`'s `personal` effects, of any amount but 0, which a choice made
- * that morning may have dated the save's day.
+ * that morning may have dated the save's day. Before day 0 is played, it
+ * holds only the movements of a choice made that morning.
+ *
+ * A movement does not say what made it, so one whose label an effect gives
+ * is held to the effects' rule, even when `LABELS` holds it too: a choice
+ * may refund the « Loyer » or dock the « Salaire ».
  */
-function checkPersonal(
-  { day, lastDay, personal }: Save,
-  content: EventContent,
-): void {
+function checkPersonal(save: Save, content: EventContent): void {
+  const { day, lastDay, personal } = save
   const { movements, unpaidRents } = personal
+  const eventLabels = new Set(
+    content.events.flatMap(({ choices }) =>
+      choices.flatMap(({ outcomes }) =>
+        outcomes.flatMap(({ effects }) =>
+          effects.flatMap((effect) =>
+            effect.kind === 'personal' ? [effect.label] : [],
+          ),
+        ),
+      ),
+    ),
+  )
   if (lastDay === null) {
-    if (movements.length > 0 || unpaidRents.length > 0) {
+    const byChoice =
+      chosenThatMorning(save) &&
+      movements.every(({ label }) => eventLabels.has(label))
+    if (unpaidRents.length > 0 || (movements.length > 0 && !byChoice)) {
       invalid('personal holds movements before day 0 is played')
     }
-    return
   }
-  const today = lastDay.day
+  const today = lastDay?.day ?? day
   const checkDay = (
     what: string,
     at: number,
@@ -687,21 +716,13 @@ function checkPersonal(
   }
 
   const ownLabels: readonly string[] = Object.values(LABELS)
-  const eventLabels = new Set(
-    content.events.flatMap(({ choices }) =>
-      choices.flatMap(({ outcomes }) =>
-        outcomes.flatMap(({ effects }) =>
-          effects.flatMap((effect) =>
-            effect.kind === 'personal' ? [effect.label] : [],
-          ),
-        ),
-      ),
-    ),
-  )
   movements.forEach(({ day: at, label, amount }, index) => {
     const what = `personal movement ${index + 1}`
     const before = movements[index - 1]?.day
-    if (ownLabels.includes(label)) {
+    if (eventLabels.has(label)) {
+      checkDay(what, at, before, day)
+      if (amount === 0) invalid(`${what}, « ${label} », must not be 0`)
+    } else if (ownLabels.includes(label)) {
       checkDay(what, at, before, today)
       const comesIn = label === LABELS.salary
       if (comesIn ? amount <= 0 : amount >= 0) {
@@ -709,9 +730,6 @@ function checkPersonal(
           `${what}, « ${label} », must be ${comesIn ? 'above' : 'below'} 0: ${amount}`,
         )
       }
-    } else if (eventLabels.has(label)) {
-      checkDay(what, at, before, day)
-      if (amount === 0) invalid(`${what}, « ${label} », must not be 0`)
     } else {
       invalid(`${what} has an unknown label: « ${label} »`)
     }
