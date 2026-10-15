@@ -430,6 +430,8 @@ describe('trialBalance', () => {
         row('6300'),
         row('6400', 1_000),
         row('6500'),
+        row('6900'),
+        row('6950'),
         row('7000'),
       ],
       totalDebit: 611_000,

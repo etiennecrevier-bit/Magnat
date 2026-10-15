@@ -127,6 +127,8 @@ describe('incomeStatement', () => {
           accountRow('6300', 'Marketing', 0),
           accountRow('6400', 'Amortissement', 1_000),
           accountRow('6500', 'Frais bancaires et de cartes', 0),
+          accountRow('6900', 'Autres charges', 0),
+          accountRow('6950', 'Créances irrécouvrables', 0),
           accountRow('7000', 'Intérêts', 5_000),
         ],
         total: row('Total des charges', 41_000),
@@ -155,7 +157,7 @@ describe('incomeStatement', () => {
   it('shows every row at zero, with a Bénéfice net of zero, when nothing happened', () => {
     const empty = incomeStatement(emptyJournal(), 0, 10)
     expect(rowsOf(empty).every(({ amount }) => amount === 0)).toBe(true)
-    expect(empty.expenses.lines).toHaveLength(11)
+    expect(empty.expenses.lines).toHaveLength(13)
     expect(empty.netIncome).toEqual(row('Bénéfice net', 0))
     expect(incomeStatement(journal, -5, -1)).toEqual({
       ...empty,
@@ -580,6 +582,12 @@ describe('cashFlowStatement', () => {
     { account: '6300', activity: 'operating', label: 'Autres charges' },
     { account: '6400', activity: 'investing', label: 'Équipement' },
     { account: '6500', activity: 'operating', label: 'Autres charges' },
+    { account: '6900', activity: 'operating', label: 'Autres charges' },
+    {
+      account: '6950',
+      activity: 'operating',
+      label: 'Encaissements des clients',
+    },
     { account: '7000', activity: 'operating', label: 'Intérêts payés' },
   ]
 

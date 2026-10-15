@@ -97,6 +97,18 @@ const CHART = [
     type: 'charge',
     normalBalance: 'debit',
   },
+  {
+    code: '6900',
+    name: 'Autres charges',
+    type: 'charge',
+    normalBalance: 'debit',
+  },
+  {
+    code: '6950',
+    name: 'Créances irrécouvrables',
+    type: 'charge',
+    normalBalance: 'debit',
+  },
   { code: '7000', name: 'Intérêts', type: 'charge', normalBalance: 'debit' },
 ] as const satisfies readonly {
   code: string

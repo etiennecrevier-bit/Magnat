@@ -30,6 +30,8 @@ const CHART: { code: string; name: string; type: AccountType }[] = [
   { code: '6300', name: 'Marketing', type: 'charge' },
   { code: '6400', name: 'Amortissement', type: 'charge' },
   { code: '6500', name: 'Frais bancaires et de cartes', type: 'charge' },
+  { code: '6900', name: 'Autres charges', type: 'charge' },
+  { code: '6950', name: 'Créances irrécouvrables', type: 'charge' },
   { code: '7000', name: 'Intérêts', type: 'charge' },
 ]
 
