@@ -50,6 +50,13 @@ function game(seed: number, fields: Partial<GameResult> = {}): GameResult {
     lostToStockouts: 0,
     lostToPrices: 0,
     journalHash: `books of seed ${seed}`,
+    modifierDays: {
+      walkIns: 0,
+      appeal: 0,
+      willingness: 0,
+      unavailable: 0,
+      closed: 0,
+    },
     ...fields,
   }
 }
@@ -568,6 +575,67 @@ describe('formatReport', () => {
     expect(generated('first')[1]).toBe(
       'The event cards come up, and the player answers each with its first choice.',
     )
+  })
+
+  it('counts the days the street was changed, only when the event cards came up', () => {
+    const changed = (seed: number, walkIns: number, closed: number) =>
+      game(seed, {
+        modifierDays: {
+          walkIns,
+          appeal: 5,
+          willingness: 0,
+          unavailable: 2,
+          closed,
+        },
+      })
+    const difficulty = (
+      id: 'facile' | 'difficile',
+      games: GameResult[][],
+    ): DifficultyRun => ({
+      difficulty: id,
+      strategies: games.map((played, index) => ({
+        strategy: { ...BASE, croissantsPerDay: 40 + index },
+        games: played,
+      })),
+    })
+    const withStreet: BalanceRun = {
+      years: 2,
+      games: 2,
+      events: 'random',
+      difficulties: [
+        // The median over every game, whatever its strategy: 15, 20, 30
+        // and 45 walk-in days.
+        difficulty('facile', [
+          [changed(1, 15, 0), changed(2, 45, 1)],
+          [changed(1, 20, 3), changed(2, 30, 1)],
+        ]),
+        difficulty('difficile', [[changed(1, 0, 2), changed(2, 7, 2)]]),
+      ],
+    }
+    const street = (text: string) => {
+      const all = text.split('\n')
+      const at = all.indexOf('## Street changes')
+      return at === -1 ? [] : all.slice(at, all.indexOf('## Best and worst'))
+    }
+    expect(street(formatReport(withStreet))).toEqual([
+      '## Street changes',
+      '',
+      'The days of a game each kind of change to the street was in effect, median over every game of the difficulty, whatever its strategy. A day counts once for a kind, however many changes of that kind it had.',
+      '',
+      '| Change | Facile | Difficile |',
+      '| --- | ---: | ---: |',
+      '| walkIns | 25 | 3.5 |',
+      '| appeal | 5 | 5 |',
+      '| willingness | 0 | 0 |',
+      '| unavailable | 2 | 2 |',
+      '| closed | 1 | 2 |',
+      '',
+    ])
+    expect(street(formatReport({ ...withStreet, events: 'none' }))).toEqual([])
+    expect(street(formatReport({ ...withStreet, events: undefined }))).toEqual(
+      [],
+    )
+    expect(street(report)).toEqual([])
   })
 
   it('names a single seed as such', () => {

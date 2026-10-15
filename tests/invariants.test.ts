@@ -1,5 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import type { DifficultyId, EventContent } from '../src/content/schema.ts'
+import type {
+  DifficultyId,
+  EventContent,
+  StreetModifierKind,
+} from '../src/content/schema.ts'
 import { createInitialState, tick, toCalendar } from '../src/engine/clock.ts'
 import {
   CUSTOMERS,
@@ -13,6 +17,7 @@ import { resolveEvent } from '../src/engine/events.ts'
 import { inventoryValue } from '../src/engine/inventory.ts'
 import { add, cents, sub, type Cents } from '../src/engine/money.ts'
 import { defaultProfile } from '../src/engine/profile.ts'
+import { MODIFIER_KINDS } from '../src/engine/street.ts'
 import type { Day, GameState } from '../src/engine/types.ts'
 import type { AccountCode } from '../src/finance/accounts.ts'
 import {
@@ -64,6 +69,11 @@ const EVENTS_IN_PLAY: EventContent = {
 }
 /** Fewer events than this over ten years would leave them untested. */
 const MIN_EVENTS = 100
+/**
+ * Fewer days than this of any kind of change to the street over ten years
+ * would leave it untested.
+ */
+const MIN_MODIFIER_DAYS = 20
 
 const started = performance.now()
 
@@ -79,10 +89,13 @@ interface Checked {
     stocks: string[]
     receivables: string[]
     pacing: string[]
+    street: string[]
   }
   /** Events that came up, follow-ups included, and those drawn. */
   events: number
   drawn: number
+  /** The days each kind of change to the street was in effect. */
+  modifierDays: Record<StreetModifierKind, number>
   checkedHash: string
   replayHash: string
   replayYears: readonly YearSummary[]
@@ -141,9 +154,13 @@ function check(seed: number, difficulty: DifficultyId): Checked {
       stocks: [],
       receivables: [],
       pacing: [],
+      street: [],
     },
     events: 0,
     drawn: 0,
+    modifierDays: Object.fromEntries(
+      MODIFIER_KINDS.map((kind) => [kind, 0]),
+    ) as Record<StreetModifierKind, number>,
     checkedHash: '',
     replayHash: '',
     replayYears: [],
@@ -236,6 +253,26 @@ function check(seed: number, difficulty: DifficultyId): Checked {
       )
     }
 
+    // The street as the changes in effect left it: a closed truck sells
+    // nothing, and a product that cannot be sold is not.
+    const played = state.lastDay
+    const kinds = new Set(played?.modifiers.map(({ change }) => change.kind))
+    for (const kind of kinds) checked.modifierDays[kind] += 1
+    for (const { change } of played?.modifiers ?? []) {
+      if (change.kind === 'closed' && (played?.visits.length ?? 0) > 0) {
+        fail(
+          'street',
+          `day ${day}: closed, with ${played?.visits.length} visits`,
+        )
+      }
+      if (
+        change.kind === 'unavailable' &&
+        (played?.sold[change.product] ?? 0) > 0
+      ) {
+        fail('street', `day ${day}: ${change.product} sold while unavailable`)
+      }
+    }
+
     const isMonthEnd =
       day === DAYS - 1 || toCalendar(day + 1).month !== toCalendar(day).month
     if (isMonthEnd) {
@@ -324,6 +361,15 @@ describe.each(GAMES)(
       expect(checked.events).toBeGreaterThanOrEqual(MIN_EVENTS)
       expect(checked.events).toBeGreaterThan(checked.drawn)
       expect(checked.failures.pacing).toEqual([])
+    })
+
+    it('changes the street with every kind of change, closing and taking products off sale', () => {
+      for (const kind of MODIFIER_KINDS) {
+        expect(checked.modifierDays[kind], kind).toBeGreaterThanOrEqual(
+          MIN_MODIFIER_DAYS,
+        )
+      }
+      expect(checked.failures.street).toEqual([])
     })
 
     it('posts the same journal when the game is played again', () => {

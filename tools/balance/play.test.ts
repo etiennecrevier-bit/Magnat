@@ -109,6 +109,7 @@ describe('playStrategy', () => {
 
     expect(game.seed).toBe(5)
     expect(game.journalHash).toBe(run.journalHash)
+    expect(game.modifierDays).toEqual(run.modifierDays)
     expect(game.cashAtEnd).toBe(balance(books, '1000', { toDay: lastDay }))
     expect(game.netIncome).toBe(
       incomeStatement(books, 0, lastDay).netIncome.amount,

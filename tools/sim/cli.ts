@@ -8,6 +8,7 @@ import {
 } from '../../src/content/schema.ts'
 import type { Cents } from '../../src/engine/money.ts'
 import { defaultProfile } from '../../src/engine/profile.ts'
+import { MODIFIER_KINDS } from '../../src/engine/street.ts'
 import {
   EVENT_POLICIES,
   simulate,
@@ -68,7 +69,10 @@ export function parseSimArgs(argv: readonly string[]): SimArgs {
   }
 }
 
-/** A header, one row per year and the journal hash. */
+/**
+ * A header, one row per year, the days each kind of change to the street
+ * was in effect and the journal hash.
+ */
 export function formatReport(result: SimulationResult): string[] {
   const header = [
     'Year',
@@ -99,6 +103,7 @@ export function formatReport(result: SimulationResult): string[] {
     ...rows.map((row) =>
       row.map((cell, column) => cell.padStart(widths[column] ?? 0)).join('  '),
     ),
+    `Street changes: ${MODIFIER_KINDS.map((kind) => `${kind} ${result.modifierDays[kind]} days`).join(', ')}`,
     `Journal sha256: ${result.journalHash}`,
   ]
 }

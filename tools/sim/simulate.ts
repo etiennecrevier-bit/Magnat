@@ -3,6 +3,7 @@ import type {
   DifficultyId,
   EventCard,
   EventContent,
+  StreetModifierKind,
 } from '../../src/content/schema.ts'
 import { createInitialState, tick, toCalendar } from '../../src/engine/clock.ts'
 import {
@@ -23,6 +24,7 @@ import { PRODUCTS } from '../../src/engine/inventory.ts'
 import type { Cents } from '../../src/engine/money.ts'
 import { defaultProfile } from '../../src/engine/profile.ts'
 import { int, seedRng } from '../../src/engine/rng.ts'
+import { MODIFIER_KINDS } from '../../src/engine/street.ts'
 import type {
   Day,
   DaySummary,
@@ -147,6 +149,8 @@ export interface SimulationResult {
   readonly events: EventPolicy
   /** Every event that came up and the choice made, oldest first. */
   readonly eventHistory: readonly EventRecord[]
+  /** See `modifierDays`. */
+  readonly modifierDays: Readonly<Record<StreetModifierKind, number>>
 }
 
 /**
@@ -221,7 +225,27 @@ export function simulate(
     owner: { morningEnergy, personalCash: state.personal.cash, unpaidRents },
     events,
     eventHistory: state.events.history,
+    modifierDays: modifierDays(daySummaries),
   }
+}
+
+/**
+ * For each kind of change to the street, the days of `daySummaries` it was
+ * in effect: a day counts once for a kind, however many of that kind it
+ * had.
+ */
+export function modifierDays(
+  daySummaries: readonly DaySummary[],
+): Record<StreetModifierKind, number> {
+  const days = Object.fromEntries(
+    MODIFIER_KINDS.map((kind) => [kind, 0]),
+  ) as Record<StreetModifierKind, number>
+  for (const { modifiers } of daySummaries) {
+    for (const kind of new Set(modifiers.map(({ change }) => change.kind))) {
+      days[kind] += 1
+    }
+  }
+  return days
 }
 
 /**

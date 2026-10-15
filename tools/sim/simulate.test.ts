@@ -5,7 +5,7 @@ import {
   type EventContent,
 } from '../../src/content/schema.ts'
 import { createInitialState, tick } from '../../src/engine/clock.ts'
-import { ENERGY, FOOD_TRUCK } from '../../src/engine/day.ts'
+import { ENERGY, EVENTS, FOOD_TRUCK } from '../../src/engine/day.ts'
 import {
   applyDecision,
   type DecisionChange,
@@ -22,6 +22,7 @@ import { emptyJournal, postEntry } from '../../src/finance/journal.ts'
 import {
   eventChooser,
   journalHash,
+  modifierDays,
   simulate,
   type SimulationResult,
 } from './simulate.ts'
@@ -411,6 +412,66 @@ describe('simulate with event cards', () => {
   it('leaves the books as they would be without a card that changes none', () => {
     const first = simulate(3, DAYS, 'moyen', [], 'first', EVERY_MORNING)
     expect(first.journalHash).toBe(simulate(3, DAYS).journalHash)
+  })
+})
+
+describe("simulate's changes to the street", () => {
+  const summary = (day: number, kinds: readonly string[]): DaySummary => {
+    const played = simulate(7, 1).daySummaries[0]
+    if (played === undefined) throw new Error('No day played')
+    return {
+      ...played,
+      day,
+      modifiers: kinds.map((kind) => ({
+        event: 'essai',
+        change:
+          kind === 'closed'
+            ? { kind: 'closed' }
+            : { kind: 'walkIns', factor: 0.5 },
+        fromDay: 0,
+        lastDay: 9,
+      })),
+    }
+  }
+
+  it('counts a day once for each kind in effect, however many of that kind', () => {
+    expect(
+      modifierDays([
+        summary(0, ['walkIns', 'walkIns']),
+        summary(1, ['walkIns', 'closed']),
+        summary(2, []),
+      ]),
+    ).toEqual({
+      walkIns: 2,
+      appeal: 0,
+      willingness: 0,
+      unavailable: 0,
+      closed: 1,
+    })
+    expect(modifierDays([])).toEqual(modifierDays([summary(0, [])]))
+  })
+
+  it('counts none in a game with no event', () => {
+    expect(Object.values(run.modifierDays)).toEqual([0, 0, 0, 0, 0])
+  })
+
+  it('counts the days of the essai card, from the days played', () => {
+    const essai: EventContent = {
+      pacing: { firstDay: 1, minDaysBetween: 30, dailyChance: 1 },
+      events: EVENTS.events.map((event) => ({ ...event, weight: 1 })),
+    }
+    const result = simulate(3, 60, 'moyen', [], 'first', essai)
+    expect(result.modifierDays).toEqual(modifierDays(result.daySummaries))
+    expect(result.eventHistory.map(({ day }) => day)).toEqual([1, 31])
+    // « Tout essayer » on days 1 and 31: walk-ins for 15 days each time,
+    // chocolat for 5, café for 2, willingness and closed for 1.
+    expect(result.modifierDays).toEqual({
+      walkIns: 30,
+      appeal: 10,
+      willingness: 2,
+      unavailable: 4,
+      closed: 2,
+    })
   })
 })
 
