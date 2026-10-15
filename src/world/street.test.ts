@@ -480,6 +480,27 @@ describe('startStreet: the customers', () => {
     expect(piece(app, 'tally').visible).toBe(false)
   })
 
+  it('hides the tally when a closed day begins at x10 and the game pauses', async () => {
+    const app = createFakeApp()
+    const store = wednesdayStore()
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    // Day 6, a Sunday, at x10: the tally counts Saturday's visits.
+    store.getState().setSpeed(10)
+    store.getState().advance(6 - store.getState().game.day)
+    app.frame(16)
+    const tally = piece(app, 'tally')
+    expect(tally.visible).toBe(true)
+
+    // Day 7, a Monday, when the truck is closed, begins; the game pauses
+    // before the street draws another frame.
+    store.getState().advance(1)
+    store.getState().setSpeed(0)
+    play(app, store, 1000)
+
+    expect(piece(app, 'closed-sign').visible).toBe(true)
+    expect(tally.visible).toBe(false)
+  })
+
   it('shows no one on a closed day', async () => {
     const app = createFakeApp()
     const store = mondayStore()
