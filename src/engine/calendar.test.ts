@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { monthsSinceStart, toCalendar, type CalendarDate } from './calendar.ts'
+import {
+  mondayOf,
+  monthsSinceStart,
+  sundayOf,
+  toCalendar,
+  type CalendarDate,
+} from './calendar.ts'
 import type { Day } from './types.ts'
 
 // Month lengths of a non-leap year, kept apart from calendar.ts so the
@@ -124,5 +130,45 @@ describe('monthsSinceStart', () => {
 
   it.each([-1, 1.5, Number.NaN])('rejects day %s', (day) => {
     expect(() => monthsSinceStart(day)).toThrow(RangeError)
+  })
+})
+
+describe('mondayOf and sundayOf', () => {
+  it.each([
+    { when: 'the first Monday is day 0', day: 0, monday: 0, sunday: 6 },
+    {
+      when: 'the first Sunday ends the first week',
+      day: 6,
+      monday: 0,
+      sunday: 6,
+    },
+    { when: 'the second week starts on day 7', day: 7, monday: 7, sunday: 13 },
+    { when: 'June 1st is a Thursday', day: 31, monday: 28, sunday: 34 },
+    {
+      when: 'May 1st, year 2, is a Tuesday',
+      day: 365,
+      monday: 364,
+      sunday: 370,
+    },
+  ])('$when', ({ day, monday, sunday }) => {
+    expect(mondayOf(day)).toBe(monday)
+    expect(sundayOf(day)).toBe(sunday)
+  })
+
+  it('give the Monday and the Sunday around each day for ten years', () => {
+    for (let day = 0; day <= 3650; day += 1) {
+      const monday = mondayOf(day)
+      const sunday = sundayOf(day)
+      expect(toCalendar(monday).weekday).toBe(1)
+      expect(toCalendar(sunday).weekday).toBe(7)
+      expect(monday).toBeLessThanOrEqual(day)
+      expect(sunday - monday).toBe(6)
+      expect(sunday).toBeGreaterThanOrEqual(day)
+    }
+  })
+
+  it.each([-1, 1.5, Number.NaN])('reject day %s', (day) => {
+    expect(() => mondayOf(day)).toThrow(RangeError)
+    expect(() => sundayOf(day)).toThrow(RangeError)
   })
 })

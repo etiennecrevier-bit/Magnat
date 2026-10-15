@@ -22,6 +22,7 @@ import { openingAccount } from './personal.ts'
 import { defaultProfile, validateProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
 import type { GameState, Profile } from './types.ts'
+import { openingWeek } from './week.ts'
 
 // The calendar lives in calendar.ts, which day.ts reads too; it is exported
 // from here as well, where the UI and the tools have always found it.
@@ -32,9 +33,10 @@ export { toCalendar, type CalendarDate } from './calendar.ts'
  * no marketing spent yet, the opening books of the profile's difficulty
  * (see `openingJournal`), the content's starting decisions, the player's
  * `profile`, the owner's personal account holding the difficulty's
- * starting savings, the owner at full energy, no event yet and nobody
- * owing the business anything. Throws a RangeError unless `seed` is an integer in
- * [0, 2^32), if the starting decisions break the content's limits, if
+ * starting savings, the owner at full energy, no event yet, nobody owing
+ * the business anything, and a first week to come, partial, from the cash
+ * the books open with (see `openingWeek`). Throws a RangeError unless `seed`
+ * is an integer in [0, 2^32), if the starting decisions break the content's limits, if
  * `profile` breaks `validateProfile()`, or if the difficulty leaves a
  * negative Mise de fonds.
  */
@@ -47,11 +49,12 @@ export function createInitialState(
   validateProfile(profile)
   const { startingPersonalCashCents } =
     difficulties.difficulties[profile.difficulty]
+  const journal = openingJournal(profile.difficulty, content, difficulties)
   return {
     day: 0,
     seed,
     rngState: seedRng(seed),
-    journal: openingJournal(profile.difficulty, content, difficulties),
+    journal,
     inventory: [],
     lastDay: null,
     marketingHistory: [],
@@ -66,6 +69,9 @@ export function createInitialState(
     energy: FULL_ENERGY,
     events: noEvents(),
     receivables: [],
+    weekSoFar: openingWeek(journal),
+    lastWeek: null,
+    weekHistory: [],
   }
 }
 

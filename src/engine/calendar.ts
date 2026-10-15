@@ -59,6 +59,23 @@ export function toCalendar(day: Day): CalendarDate {
 }
 
 /**
+ * The Monday that starts the week of `day`; day 0 is a Monday, so it is
+ * never negative. Throws a RangeError unless `day` is a non-negative safe
+ * integer.
+ */
+export function mondayOf(day: Day): Day {
+  return day - (toCalendar(day).weekday - 1)
+}
+
+/**
+ * The Sunday that ends the week of `day`. Throws a RangeError unless `day`
+ * is a non-negative safe integer.
+ */
+export function sundayOf(day: Day): Day {
+  return mondayOf(day) + DAYS_PER_WEEK - 1
+}
+
+/**
  * Calendar months from the month of day 0 to the month of `day`: 0 all
  * through the first May, 1 in June, 12 from May 1st of year 2. Throws a
  * RangeError unless `day` is a non-negative safe integer.
