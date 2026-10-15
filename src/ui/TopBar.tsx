@@ -7,6 +7,7 @@ import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
 import { CashGaugeView } from './CashGauge.tsx'
 import { EnergyGaugeView } from './EnergyGauge.tsx'
+import EventCard from './EventCard.tsx'
 import FinancesPanel from './FinancesPanel.tsx'
 import { formatGameDate } from './formatGameDate.ts'
 import ManagePanel from './ManagePanel.tsx'
@@ -104,7 +105,7 @@ export function TopBarView({
 
 /**
  * The top bar wired to the app store, with the Space shortcut, and the
- * panel it opened while that is open.
+ * panel open: one it opened, or the event card.
  */
 export default function TopBar() {
   const businessName = useGame((state) => state.game.profile.businessName)
@@ -150,6 +151,7 @@ export default function TopBar() {
       />
       {panel === 'manage' && <ManagePanel />}
       {panel === 'finances' && <FinancesPanel />}
+      {panel === 'event' && <EventCard />}
     </>
   )
 }

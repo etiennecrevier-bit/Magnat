@@ -61,6 +61,11 @@ export function formatDayAndMonth(day: Day): string {
   return dayAndMonth(toCalendar(day))
 }
 
+/** The weekday of a game day, in lower case as in a sentence: `jeudi`. */
+export function formatWeekdayName(day: Day): string {
+  return nameAt(WEEKDAYS, toCalendar(day).weekday).toLowerCase()
+}
+
 /** French (Quebec) month and year of a game day, e.g. `Mai, an 1`. */
 export function formatGameMonth(day: Day): string {
   const { month, year } = toCalendar(day)
