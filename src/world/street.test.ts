@@ -17,14 +17,18 @@ import {
 } from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState } from '../engine/clock.ts'
-import { ENERGY, FOOD_TRUCK } from '../engine/day.ts'
+import { ENERGY, EVENTS, FOOD_TRUCK } from '../engine/day.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { next, seedRng } from '../engine/rng.ts'
 import type { StreetModifier, Visit } from '../engine/types.ts'
 import { createSettingsStore } from '../ui/settings.ts'
 import { createGameStore, type GameStore } from '../ui/store.ts'
-import type { SegmentId, StreetChange } from '../content/schema.ts'
+import type {
+  EventContent,
+  SegmentId,
+  StreetChange,
+} from '../content/schema.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
 import { placeCard, saying, type Box, type Point } from './customerCard.ts'
 import { ASSETS, LINES } from './manifest.ts'
@@ -1629,5 +1633,48 @@ describe('startStreet: a day the street closes the truck', () => {
     store.getState().advance(1)
     expect(piece(app, 'awning').visible).toBe(true)
     expect(piece(app, 'avatar:femme').visible).toBe(true)
+  })
+
+  it('takes the tally down at once when a choice closes the truck on the day shown', async () => {
+    const app = createFakeApp()
+    // Only the construction card, which comes up on the next morning.
+    const cones = EVENTS.events.find(({ id }) => id === 'conesOrange')!
+    const deck: EventContent = {
+      ...EVENTS,
+      pacing: { firstDay: 0, minDaysBetween: 1, dailyChance: 1 },
+      events: [{ ...cones, conditions: {} }],
+    }
+    const store = createGameStore(wednesdayStore(true).getState().game, deck)
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    store.getState().setSpeed(10)
+    app.frame(16)
+    const tally = piece(app, 'tally')
+    expect(tally.visible).toBe(true)
+
+    // The card pauses the game on the next morning, the tally still up.
+    store.getState().advance(1)
+    const { game, speed } = store.getState()
+    expect(game.events.pending?.event).toBe('conesOrange')
+    expect(speed).toBe(0)
+    expect(piece(app, 'closed-sign').visible).toBe(false)
+    expect(tally.visible).toBe(true)
+
+    // A week off closes the truck from today, the day shown.
+    store.getState().chooseEvent('vacances')
+    expect(store.getState().game.day).toBe(game.day)
+    expect(store.getState().game.lastDay).toBe(game.lastDay)
+    expect(piece(app, 'closed-sign').visible).toBe(true)
+    expect(piece(app, 'avatar:femme').visible).toBe(false)
+    expect(tally.visible).toBe(false)
+
+    // It stays down once the game goes on at x10, and no one comes at x1.
+    store.getState().closePanel()
+    expect(store.getState().speed).toBe(10)
+    play(app, store, 1000, Number.POSITIVE_INFINITY, () => {
+      expect(tally.visible).toBe(false)
+    })
+    store.getState().setSpeed(1)
+    expect(play(app, store, 10_000)).toBe(0)
+    expect(tally.visible).toBe(false)
   })
 })

@@ -111,7 +111,8 @@ export interface CustomersSetup {
  * the day's tally instead, « 87 clients servis » and « 21 clients perdus ».
  * Pausing freezes everyone, the bubbles and the avatar's arm. On a day the
  * truck is closed, the avatar is gone and everyone still waiting walks off
- * without buying.
+ * without buying. A choice that closes it on the day shown takes the tally
+ * down too.
  *
  * While the crowd's `fans` show, as in a heat wave, some of those who come
  * fan themselves: the fan swings in real time and freezes on pause. Once
@@ -254,6 +255,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
     root,
     labels,
     onGame: (game) => {
+      const wasOpen = open
       open = opensToday(game)
       hot = showsOn(fans.shows, { open, modifiers: modifiersToday(game) })
       // Now rather than at the next frame, which a paused street doesn't
@@ -265,7 +267,9 @@ export function startCustomers(setup: CustomersSetup): Customers {
         crowd.dismiss()
         dropSpill()
       }
-      if (!clock.follow(game)) return
+      // A choice can close the truck on the day shown, which keeps the day
+      // and its summary: the replay goes with the truck all the same.
+      if (!clock.follow(game) && open === wasOpen) return
       replay = replayOf(game)
       sampler.start(replay?.visits ?? [])
       if (replay === null) {
