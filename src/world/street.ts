@@ -11,12 +11,14 @@ import { gameStore, type GameStore } from '../ui/store.ts'
 import { loadArt, type LoadTexture } from './art.ts'
 import type { Span } from './crowd.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
+import { placeCard } from './customerCard.ts'
 import { startCustomers } from './customers.ts'
 import { TITLE_FONT_ASSET } from './fonts.ts'
 import { fitScene } from './layout.ts'
 import type { GameState } from '../engine/types.ts'
-import { ASSETS } from './manifest.ts'
+import { ASSETS, LINES } from './manifest.ts'
 import type { WorldApp } from './mountWorld.ts'
+import { PICKER, type Picker } from './picker.ts'
 import { buildScene, type MeasureWidth } from './scene.ts'
 import { truckView } from './truckView.ts'
 
@@ -48,6 +50,9 @@ const STREET_CROWD: StreetCrowd = { settings: CROWD, random: Math.random }
  * the store. Returns the function that takes the street down, which does
  * nothing the second time.
  *
+ * It holds `picker` while it runs: the player picks a customer there, and
+ * their card follows them on the page each frame, paused or not.
+ *
  * A font or an image that fails to load warns and falls back to the system
  * font or the piece's placeholder, so the street still shows.
  */
@@ -57,6 +62,7 @@ export async function startStreet(
   loaders: StreetLoaders = PIXI_LOADERS,
   manifest: AssetManifest = ASSETS,
   people: StreetCrowd = STREET_CROWD,
+  picker: Picker = PICKER,
 ): Promise<() => void> {
   const [, textures] = await Promise.all([
     loadTitleFont(loaders.loadFont),
@@ -69,6 +75,7 @@ export async function startStreet(
     crowd: people.settings,
     walkIns: FOOD_TRUCK.walkIns,
     msPerDay: pacing.msPerDayAtNormalSpeed,
+    lines: LINES,
     random: people.random,
   })
   scene.root.addChild(customers.root)
@@ -87,10 +94,42 @@ export async function startStreet(
     scene.root.position.set(x, y)
     span = { left: -x / scale, right: (width - x) / scale }
   }
+
+  // The canvas fills the page from its top-left corner, so the stage's
+  // pixels are the page's.
+  const showCard = () => {
+    const picked = customers.picked()
+    connection.show(
+      picked === null
+        ? null
+        : {
+            card: picked.card,
+            place: placeCard(picked.box, app.screen, people.settings.card),
+          },
+    )
+  }
+  const connection = picker.connect({
+    pickAt: (point) => {
+      customers.pickAt(point)
+      showCard()
+    },
+    isOver: (point) => customers.isOver(point),
+    pickNext: () => {
+      const found = customers.pickNext(span)
+      showCard()
+      return found
+    },
+    unpick: () => {
+      customers.unpick()
+      showCard()
+    },
+  })
+
   const onFrame = (ticker: Ticker) => {
     fit()
     scene.animate(ticker.deltaMS)
     customers.frame(ticker.deltaMS, store.getState().speed, span)
+    showCard()
   }
 
   const show = (game: GameState) => {
@@ -111,6 +150,7 @@ export async function startStreet(
     stopped = true
     unsubscribe()
     app.ticker.remove(onFrame)
+    connection.disconnect()
     scene.root.removeFromParent()
     customers.destroy()
     // Leaves the textures to Pixi's Assets cache, which the next start reuses.

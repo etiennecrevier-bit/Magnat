@@ -36,3 +36,110 @@
     border-radius: 0;
   }
 }
+
+/* The pointer shows over a customer the player can pick. */
+html:has(.world--pointing) {
+  cursor: pointer;
+}
+
+/* The card of the customer the player picked. It sits on the page, not in
+   the world's layer, and over everything else, the top bar and the panels'
+   card included, so neither ever hides it. The street sets its place and
+   width; its height follows its text. */
+.customer-card {
+  position: fixed;
+  z-index: 2;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #2b2622;
+  border-radius: 12px;
+  background: #fff7e8;
+  color: #2b2622;
+  font-size: 0.9375rem;
+  line-height: 1.35;
+}
+
+.customer-card__name {
+  margin: 0;
+  font-family: Fredoka, sans-serif;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.customer-card__mood {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+/* A dot in the mood's colour, as on the bubble's face. */
+.customer-card__mood::before {
+  content: '';
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  margin-right: 0.375em;
+  border: 2px solid #2b2622;
+  border-radius: 50%;
+  background: var(--mood-color);
+  vertical-align: -0.1em;
+}
+
+.customer-card__line {
+  margin: 0.25rem 0 0;
+}
+
+/* The button that picks a customer from the keyboard. Like a skip link, it
+   stays out of sight until it has focus, and screen readers still find it. */
+.world-picker:not(:focus-within) {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* With focus, it shows at the bottom right, over the panels, in their cream
+   and ink. */
+.world-picker:focus-within {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 2;
+  max-width: calc(100% - 2rem);
+  padding: 0.75rem;
+  border: 2px solid #2b2622;
+  border-radius: 12px;
+  background: #fff7e8;
+  color: #2b2622;
+}
+
+.world-picker__button {
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 2px solid #2b2622;
+  border-radius: 6px;
+  background: #2b2622;
+  color: #fff7e8;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.world-picker__button:focus-visible {
+  outline: 3px solid #2f6fb0;
+  outline-offset: 2px;
+}
+
+/* The status line reads out every card, but only shows when no card does. */
+.world-picker__status {
+  margin: 0.5rem 0 0;
+}
+
+.world-picker__status:not(.world-picker__status--shown) {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

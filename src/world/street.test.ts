@@ -5,8 +5,12 @@ import { FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { next, seedRng } from '../engine/rng.ts'
 import { createGameStore, type GameStore } from '../ui/store.ts'
+import type { SegmentId } from '../content/schema.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
-import { ASSETS } from './manifest.ts'
+import { placeCard, saying, type Box, type Point } from './customerCard.ts'
+import { ASSETS, LINES } from './manifest.ts'
+import { SEGMENT_ACCESSORY } from './people.ts'
+import { createPicker, NOBODY_THERE, type Picker } from './picker.ts'
 import { replayOf } from './replay.ts'
 import { startStreet, type StreetCrowd, type StreetLoaders } from './street.ts'
 
@@ -463,5 +467,299 @@ describe('startStreet: the customers', () => {
     expect(layer.destroyed).toBe(true)
     expect(avatar.destroyed).toBe(true)
     expect(app.frames.size).toBe(0)
+  })
+})
+
+/** Where `node` is drawn on the stage, whose pixels are the page's. */
+function boxOf(node: Container): Box {
+  const { minX, minY, maxX, maxY } = node.getBounds()
+  return { left: minX, top: minY, right: maxX, bottom: maxY }
+}
+
+function centreOf(box: Box): Point {
+  return { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 }
+}
+
+function figureOf(walker: Container): Container {
+  const figure = walker.getChildByLabel('figure')
+  if (figure === null) throw new Error('No figure')
+  return figure
+}
+
+/** The segment a customer's accessory shows. */
+function segmentOf(walker: Container): SegmentId {
+  const figure = figureOf(walker)
+  const segments = Object.keys(SEGMENT_ACCESSORY) as SegmentId[]
+  const found = segments.find(
+    (segment) => figure.getChildByLabel(SEGMENT_ACCESSORY[segment]) !== null,
+  )
+  if (found === undefined) throw new Error('No accessory')
+  return found
+}
+
+function isPicked(walker: Container): boolean {
+  return walker.getChildByLabel('pickMark')?.visible === true
+}
+
+/**
+ * A customer, and the centre of `partOf` them, where no one else is drawn
+ * within the pick's margin: a press there can only mean them.
+ */
+function alone(
+  app: ReturnType<typeof createFakeApp>,
+  partOf: (walker: Container) => Container | null = figureOf,
+): { walker: Container; point: Point } | null {
+  const all = walkers(app)
+  const m = CROWD.pickMargin
+  for (const walker of all) {
+    const part = partOf(walker)
+    if (part === null) continue
+    const point = centreOf(boxOf(part))
+    const crowded = all.some((other) => {
+      if (other === walker) return false
+      const box = boxOf(figureOf(other))
+      return (
+        point.x >= box.left - m &&
+        point.x <= box.right + m &&
+        point.y >= box.top - m &&
+        point.y <= box.bottom + m
+      )
+    })
+    if (!crowded) return { walker, point }
+  }
+  return null
+}
+
+/** Plays frames, a day every 4 s, until `found` finds something. */
+function playUntil<T>(
+  app: ReturnType<typeof createFakeApp>,
+  store: GameStore,
+  found: () => T | null,
+): T {
+  for (let t = 16; t <= 120_000; t += 16) {
+    app.frame(16)
+    if (t % 4000 < 16) store.getState().advance(1)
+    const result = found()
+    if (result !== null) return result
+  }
+  throw new Error('Never found')
+}
+
+/** Every line of `segment`, whatever their visit's ending. */
+function linesOf(segment: SegmentId): string[] {
+  return Object.values(LINES.segments[segment].lines).flat()
+}
+
+async function pickingStreet(width = 1440, height = 900) {
+  const app = createFakeApp(width, height)
+  const store = wednesdayStore(true)
+  const picker = createPicker()
+  const stop = await startStreet(
+    app,
+    store,
+    createLoaders(),
+    ASSETS,
+    busyCrowd(),
+    picker,
+  )
+  return { app, store, picker, stop }
+}
+
+function openCard(picker: Picker) {
+  const { open } = picker.view()
+  if (open === null) throw new Error('No card open')
+  return open
+}
+
+describe('startStreet: picking a customer', () => {
+  it("opens the card of the customer pressed, with a line of their segment's", async () => {
+    const { app, store, picker } = await pickingStreet()
+    const { walker, point } = playUntil(app, store, () => alone(app))
+
+    picker.at(point)
+
+    const { card, place } = openCard(picker)
+    const segment = segmentOf(walker)
+    expect(card.segment).toBe(segment)
+    expect(card.name).toBe(LINES.segments[segment].name)
+    expect(linesOf(segment)).toContain(card.line)
+    expect(picker.view().said).toBe(saying(card))
+    expect(isPicked(walker)).toBe(true)
+    expect(walkers(app).filter(isPicked)).toHaveLength(1)
+    expect(place).toEqual(
+      placeCard(boxOf(figureOf(walker)), app.screen, CROWD.card),
+    )
+  })
+
+  it('closes the card on a press on the street beside everyone', async () => {
+    const { app, store, picker } = await pickingStreet()
+    const { walker, point } = playUntil(app, store, () => alone(app))
+    picker.at(point)
+
+    picker.at({ x: 5, y: 5 })
+
+    expect(picker.view()).toEqual({ live: true, open: null, said: '' })
+    expect(isPicked(walker)).toBe(false)
+  })
+
+  it('shows the same line each time the same customer is picked', async () => {
+    const { app, store, picker } = await pickingStreet()
+    const { point } = playUntil(app, store, () => alone(app))
+    store.getState().setSpeed(0)
+
+    picker.at(point)
+    const first = openCard(picker).card
+    picker.close()
+    expect(picker.view().open).toBeNull()
+    picker.at(point)
+
+    expect(openCard(picker).card).toBe(first)
+  })
+
+  it("picks by a left-facing customer's bag or child after the window resizes", async () => {
+    const { app, store, picker } = await pickingStreet()
+    app.screen.width = 1000
+    app.screen.height = 700
+    app.frame()
+    const { walker, point } = playUntil(app, store, () =>
+      alone(app, (w) =>
+        figureOf(w).scale.x === -1
+          ? (figureOf(w).getChildByLabel('child') ??
+            figureOf(w).getChildByLabel('bag'))
+          : null,
+      ),
+    )
+    // Facing left, the bag and the child are drawn left of their feet:
+    // a box taken facing right would miss them.
+    const feet = walker.getGlobalPosition()
+    expect(point.x).toBeLessThan(feet.x)
+    expect(app.stage.children[0]!.scale.x).toBeCloseTo(1000 / 1440)
+
+    picker.at(point)
+
+    expect(isPicked(walker)).toBe(true)
+    expect(openCard(picker).card.segment).toBe(segmentOf(walker))
+  })
+
+  it('flips the card left of a customer at the right edge of a phone, inside the page', async () => {
+    // On a phone the panels' card spans the page, and the customer card
+    // shows over it (see WorldCanvas.test.tsx); here it must stay on the page
+    // and clear of its customer.
+    const { app, store, picker } = await pickingStreet(360, 640)
+    const { margin } = CROWD.card
+    const atRightEdge = (w: Container) => {
+      const box = boxOf(figureOf(w))
+      return box.left > 300 && box.right < 360 ? figureOf(w) : null
+    }
+    const { walker, point } = playUntil(app, store, () =>
+      alone(app, atRightEdge),
+    )
+
+    picker.at(point)
+
+    const { place } = openCard(picker)
+    const box = boxOf(figureOf(walker))
+    expect(place.side).toBe('left')
+    expect(place.left + place.width).toBeLessThanOrEqual(box.left)
+    expect(place.left).toBeGreaterThanOrEqual(margin)
+    expect(place.left + place.width).toBeLessThanOrEqual(360 - margin)
+  })
+
+  it('follows the customer, then closes once they walk off the screen', async () => {
+    const { app, store, picker } = await pickingStreet()
+    const { walker, point } = playUntil(app, store, () => alone(app))
+    picker.at(point)
+    const places = new Set<number>()
+
+    let frames = 0
+    while (picker.view().open !== null && frames < 4000) {
+      play(app, store, 16)
+      frames += 1
+      const { open } = picker.view()
+      if (open === null) break
+      places.add(open.place.left)
+      expect(open.place).toEqual(
+        placeCard(boxOf(figureOf(walker)), app.screen, CROWD.card),
+      )
+    }
+
+    expect(places.size).toBeGreaterThan(1)
+    expect(picker.view()).toEqual({ live: true, open: null, said: '' })
+    if (!walker.destroyed) {
+      expect(isPicked(walker)).toBe(false)
+      expect(walker.x < 0 || walker.x > ASSETS.designSize.width).toBe(true)
+    }
+  })
+
+  it('closes the card when the street clears at x10', async () => {
+    const { app, store, picker } = await pickingStreet()
+    const { point } = playUntil(app, store, () => alone(app))
+    picker.at(point)
+
+    store.getState().setSpeed(10)
+    app.frame(16)
+
+    expect(picker.view().open).toBeNull()
+  })
+
+  it('keeps the card open while paused, and opens one at once', async () => {
+    const { app, store, picker } = await pickingStreet()
+    const { point } = playUntil(app, store, () => alone(app))
+    store.getState().setSpeed(0)
+
+    picker.at(point)
+    const open = openCard(picker)
+    play(app, store, 5000)
+
+    expect(picker.view().open).toEqual(open)
+  })
+
+  it('cycles through the customers on screen from the keyboard, then back to the first', async () => {
+    const { app, store, picker } = await pickingStreet()
+    play(app, store, 12_000, 4000)
+    store.getState().setSpeed(0)
+    const shown = walkers(app).filter((w) => w.x >= 0 && w.x <= 1440)
+    expect(shown.length).toBeGreaterThan(2)
+
+    const order: Container[] = []
+    for (let i = 0; i <= shown.length; i += 1) {
+      picker.next()
+      const picked = walkers(app).filter(isPicked)
+      expect(picked).toHaveLength(1)
+      order.push(picked[0]!)
+      expect(picker.view().said).toBe(saying(openCard(picker).card))
+    }
+
+    expect(new Set(order.slice(0, -1)).size).toBe(shown.length)
+    expect(order.at(-1)).toBe(order[0])
+  })
+
+  it('says no one is there when the street is empty', async () => {
+    const app = createFakeApp()
+    const store = mondayStore()
+    const picker = createPicker()
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd(), picker)
+    play(app, store, 1000)
+
+    picker.next()
+
+    expect(picker.view()).toEqual({
+      live: true,
+      open: null,
+      said: NOBODY_THERE,
+    })
+  })
+
+  it('lets go of the picker when the street stops', async () => {
+    const { app, store, picker, stop } = await pickingStreet()
+    const { point } = playUntil(app, store, () => alone(app))
+    picker.at(point)
+
+    stop()
+
+    expect(picker.view()).toEqual({ live: false, open: null, said: '' })
+    expect(() => picker.at(point)).not.toThrow()
+    expect(picker.over(point)).toBe(false)
+    expect(picker.view().open).toBeNull()
   })
 })

@@ -1,0 +1,170 @@
+{
+  "_note": "What a customer says when the player clicks them, by segment and by how their visit ended. Standard French, no prices: a line never knows the real one.",
+  "segments": {
+    "aubaine": {
+      "name": "Chasseur d'aubaines",
+      "lines": {
+        "bought": [
+          "Payé avec la monnaie exacte. Je vous épargne de compter le change, c'est mon cadeau.",
+          "Un café au prix d'un café. Je l'inscris dans mon carnet des bonnes adresses.",
+          "J'ai calculé le prix par bouchée. Ça passe, de justesse.",
+          "Vous n'avez pas de carte de fidélité? Je reviendrai quand même, mais je compte mes visites.",
+          "À ce prix-là, je prends un sachet de sucre de plus. C'est inclus, non?",
+          "Le meilleur rapport qualité-prix de la rue. J'ai fait toute la rue, je sais de quoi je parle.",
+          "Je le mange ici. Comme ça, je profite aussi du chauffage de votre camion.",
+          "Bon prix. Je ne le dirai à personne, sinon vous allez l'augmenter."
+        ],
+        "tooExpensive": [
+          "À ce prix-là, je veux le croissant beurré des deux bords.",
+          "Le dépanneur du coin le vend moins cher, et lui, il me fait crédit.",
+          "Votre prix monte plus vite que mon loyer. C'est tout un exploit.",
+          "Je vais attendre les soldes de fin de journée. Il n'y en a pas? Tant pis pour vous.",
+          "Je reviendrai quand le prix sera redescendu sur terre.",
+          "Taxes en sus, en plus? Je vais faire mon café à la maison, comme mon père.",
+          "Pour ce prix-là, je m'attendais à ce que le gobelet soit à moi pour toujours.",
+          "J'ai fait le calcul sur un an. Je préfère m'acheter une cafetière."
+        ],
+        "soldOut": [
+          "Plus de croissants? J'avais même imprimé un coupon. Bon, je l'avais inventé.",
+          "J'ai marché jusqu'ici pour économiser l'essence, et il n'en reste plus.",
+          "Rupture de stock. Au moins, celle-là ne m'a rien coûté.",
+          "Il n'en reste plus? J'avais pourtant prévu cette dépense depuis mardi.",
+          "Pas de croissant, pas de chocolat. Ma liste d'épicerie est plus garnie que votre comptoir.",
+          "Vide? Vous auriez dû m'appeler, je connais un grossiste.",
+          "C'était la seule fois de l'année où j'acceptais de payer le plein prix.",
+          "Tout est vendu? Tant pis, je garde mes sous pour une meilleure occasion. Elle viendra."
+        ],
+        "leftLine": [
+          "Le temps, c'est de l'argent, et je n'ai ni l'un ni l'autre à perdre.",
+          "J'ai calculé mon salaire horaire pendant que j'attendais. Je repars, ça me coûte trop cher.",
+          "Cette file avance moins vite que mes placements, et ce n'est pas peu dire.",
+          "Vingt minutes pour un café? Je l'aurais infusé moi-même dans ma voiture.",
+          "Je vous laisse ma place. Gratuitement, en plus. Notez ce geste.",
+          "La file est longue comme un mois de février.",
+          "J'attends les rabais, pas les clients devant moi.",
+          "Je reviendrai à l'heure creuse. Elle, au moins, elle est gratuite."
+        ],
+        "browsed": [
+          "Je regarde seulement. Regarder, c'est encore gratuit, non?",
+          "Je compare. Vous êtes le troisième camion de ma tournée.",
+          "Je prends une photo du menu pour mon tableur de prix.",
+          "Je vais réfléchir. D'habitude, je réfléchis jusqu'à la fermeture.",
+          "Pas aujourd'hui. Mais je garde votre camion à l'œil.",
+          "Vous donnez des échantillons? Non? Je repasserai quand vous en donnerez.",
+          "Ça sent bon. L'odeur, je la prends, elle est gratuite.",
+          "Je reviendrai après la saison des impôts. Pour l'instant, je surveille mes dépenses."
+        ]
+      }
+    },
+    "habitue": {
+      "name": "Habitué",
+      "lines": {
+        "bought": [
+          "Comme d'habitude. Vous n'avez même pas eu besoin de demander, c'est beau à voir.",
+          "Mon café, ma place, ma journée peut commencer.",
+          "Trois semaines que je viens tous les matins. Je suis presque actionnaire.",
+          "Le même que d'habitude, au même prix que d'habitude, s'il vous plaît.",
+          "Je ne lis même plus le menu. Je le connais mieux que vous.",
+          "Si vous changez la recette, je le saurai. Pour l'instant, c'est parfait.",
+          "Vous êtes ouverts, c'est rassurant. Le reste du monde peut bien changer.",
+          "Je reviens demain. Et après-demain. Et le jour d'après."
+        ],
+        "tooExpensive": [
+          "Mon café a pris de l'âge et du prix. Moi, juste de l'âge.",
+          "Vous augmentez le prix et vous gardez le même gobelet? J'ai remarqué.",
+          "Je suis fidèle, pas millionnaire.",
+          "Pour ce prix-là, il me faut au moins mon nom écrit sur le gobelet.",
+          "Avant, c'était moins cher. Avant, c'était hier.",
+          "Je vais devoir réfléchir à notre relation.",
+          "Je vous ai recommandé à toute ma rue. Ils vont être surpris du prix.",
+          "C'est le prix habituel, ça? Non. Moi, je veux l'habituel."
+        ],
+        "soldOut": [
+          "Plus de croissants? Vous auriez pu m'en garder un, je viens tous les jours.",
+          "Il n'en reste plus? Ma routine est brisée. Toute ma journée est à refaire.",
+          "Vide? Je vais devoir parler à quelqu'un aujourd'hui sans avoir mangé.",
+          "Mon croissant, c'est la seule constante de ma vie. Bon. Il me reste la météo.",
+          "Gardez-m'en un demain, je passe à la même heure. Comme d'habitude.",
+          "Je ne vous en veux pas. C'est ma journée qui vous en veut.",
+          "Sans mon croissant, le matin n'est qu'une rumeur.",
+          "Vendu à quelqu'un d'autre? Je ne veux pas savoir qui."
+        ],
+        "leftLine": [
+          "Qui sont tous ces gens? C'était mon camion avant que ça devienne populaire.",
+          "Je n'attends pas en file, moi. Je fais partie des meubles.",
+          "Quelqu'un a pris ma place dans la file. Je reviendrai quand ce sera réglé.",
+          "Trop de monde. Je repasse quand vous serez redevenus mon secret.",
+          "Félicitations pour le succès. Je vais bouder un peu, quand même.",
+          "D'habitude, à cette heure-ci, j'ai déjà fini mon café.",
+          "Ma pause dure quinze minutes. Votre file, vingt.",
+          "Je reviendrai demain, plus tôt. Avant les autres. Comme dans le bon vieux temps."
+        ],
+        "browsed": [
+          "Je passais juste dire bonjour. Le café, ce sera demain.",
+          "Je vérifie que tout est à sa place. C'est bon, vous pouvez continuer.",
+          "Pas faim aujourd'hui, mais je voulais voir si vous étiez là.",
+          "Je fais ma ronde. Le camion, le parc, la boîte aux lettres.",
+          "Vous avez changé quelque chose. Je ne sais pas quoi, mais je l'ai senti.",
+          "Je lis le menu par principe. Je sais déjà ce qu'il dit.",
+          "Juste une question\u00a0: vous ouvrez toujours à la même heure demain?",
+          "Je reviens tantôt. Tantôt, c'est quand je veux."
+        ]
+      }
+    },
+    "chic": {
+      "name": "Clientèle chic",
+      "lines": {
+        "bought": [
+          "Fait à la main? Ça se goûte. C'est presque spirituel.",
+          "Un croissant feuilleté avec intention. J'en parlerai à mon club de lecture.",
+          "J'aime soutenir les petites entreprises. Surtout quand elles sont photogéniques.",
+          "Votre café a des notes de noisette et d'humilité.",
+          "Enfin un camion qui comprend le terroir urbain.",
+          "Je paie le prix juste. C'est-à-dire le vôtre, sans discuter.",
+          "J'ai pris une photo avant d'y goûter. C'est la tradition.",
+          "Ce chocolat chaud me rappelle un village d'Europe où je n'ai jamais mis les pieds."
+        ],
+        "tooExpensive": [
+          "J'adore payer pour l'authenticité. Mais là, c'est de l'authenticité de luxe.",
+          "Même moi, je trouve ça cher. Et je paie mon eau pétillante à la bouteille.",
+          "À ce prix-là, je m'attendais à rencontrer la vache qui a donné le lait.",
+          "Le prix est audacieux. J'aime l'audace, mais pas à ce point-là.",
+          "Pour ce prix, le croissant devrait avoir une histoire et un prénom.",
+          "Je soutiens l'économie locale, pas votre retraite anticipée.",
+          "C'est plus cher que mon atelier de céramique, et j'y fais mes propres tasses.",
+          "Je vais plutôt faire mon propre levain. J'ai le temps, je suis en année sabbatique."
+        ],
+        "soldOut": [
+          "Plus de croissants? C'est donc vraiment artisanal. Ça me console un peu.",
+          "Rupture de stock. C'est très exclusif. J'adore et je déteste ça.",
+          "Il n'en reste plus? J'avais déjà choisi le filtre de ma photo.",
+          "Vide? Vous auriez pu prendre ma réservation. Vous prenez les réservations?",
+          "Plus de chocolat chaud? Et moi qui avais apporté ma tasse en céramique.",
+          "Tout est vendu? Bravo. Je reviendrai plus tôt avec mon panier en osier.",
+          "Plus rien? C'est le genre de manque qui forge le caractère, paraît-il.",
+          "Sans croissant, ma routine bien-être s'effondre. Je vais méditer là-dessus."
+        ],
+        "leftLine": [
+          "Je ne fais pas la file. Je fais du yoga, et c'est déjà assez d'attente.",
+          "Une file d'attente? C'est devenu populaire, donc plus vraiment pour moi.",
+          "J'ai un cours de pleine conscience dans dix minutes. Je ne peux pas rater le moment présent.",
+          "J'aurais attendu pour un café d'exception. Ici, j'aurais attendu pour un café.",
+          "L'attente est longue. Je reviendrai quand ce sera moins grand public.",
+          "Je laisse ma place à quelqu'un qui en a besoin. C'est ma bonne action de la semaine.",
+          "Trop de monde. L'énergie n'est pas alignée aujourd'hui.",
+          "Je repasse plus tard, quand la file sera plus intime."
+        ],
+        "browsed": [
+          "Je regarde. Vos croissants sont faits avec du beurre qui a eu une belle vie?",
+          "C'est biologique? Local? Ça ne me suffit pas, mais c'est un début.",
+          "Je fais du repérage pour mon infolettre de bonnes adresses.",
+          "Vous avez du lait d'avoine? Non? Je reviendrai quand vous aurez évolué.",
+          "Joli camion. Très brut. Très vrai. Je ne mange pas, mais j'approuve.",
+          "Je passe juste sentir l'ambiance. Elle est correcte, sans plus.",
+          "Je reviendrai avec des amis qui ont des opinions sur le café.",
+          "Le menu est court. C'est voulu ou c'est un manque de vision?"
+        ]
+      }
+    }
+  }
+}
