@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createInitialState, toCalendar } from '../engine/clock.ts'
+import { NO_EVENTS } from '../engine/events.ts'
 import type { GameState } from '../engine/types.ts'
 import { startAutosave, type AutosaveHost } from './autosave.ts'
 import { createGameStore } from './store.ts'
@@ -31,8 +32,9 @@ function createFakeHost() {
   }
 }
 
+/** A store with no event card to stop the days, and autosave started. */
 function start() {
-  const store = createGameStore(createInitialState(42))
+  const store = createGameStore(createInitialState(42), NO_EVENTS)
   const write = vi.fn<(game: GameState) => void>()
   const page = createFakeHost()
   const stop = startAutosave(store, write, page.host)

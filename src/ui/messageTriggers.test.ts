@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createInitialState, toCalendar } from '../engine/clock.ts'
 import { ENERGY } from '../engine/day.ts'
+import { NO_EVENTS } from '../engine/events.ts'
 import { cents } from '../engine/money.ts'
 import type { Day, GameState } from '../engine/types.ts'
 import {
@@ -142,9 +143,12 @@ describe('received', () => {
   })
 })
 
-/** A game store whose truck opens every day, from day 1 on. */
+/**
+ * A game store whose truck opens every day, from day 1 on, with no event
+ * card to stop the days.
+ */
 function everyDayStore(): GameStore {
-  const store = createGameStore(START)
+  const store = createGameStore(START, NO_EVENTS)
   store.getState().decide({ kind: 'daysOpen', weekdays: [1, 2, 3, 4, 5, 6, 7] })
   store.getState().advance(1)
   return store

@@ -458,7 +458,9 @@ describe("simulate's changes to the street", () => {
   it('counts the days of the essai card, from the days played', () => {
     const essai: EventContent = {
       pacing: { firstDay: 1, minDaysBetween: 30, dailyChance: 1 },
-      events: EVENTS.events.map((event) => ({ ...event, weight: 1 })),
+      events: EVENTS.events
+        .filter(({ id }) => id === 'essai')
+        .map((event) => ({ ...event, weight: 1 })),
     }
     const result = simulate(3, 60, 'moyen', [], 'first', essai)
     expect(result.modifierDays).toEqual(modifierDays(result.daySummaries))

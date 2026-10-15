@@ -12,6 +12,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState } from '../engine/clock.ts'
 import { ENERGY, FOOD_TRUCK } from '../engine/day.ts'
+import { NO_EVENTS } from '../engine/events.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { next, seedRng } from '../engine/rng.ts'
 import type { Visit } from '../engine/types.ts'
@@ -66,9 +67,12 @@ function createLoaders(): StreetLoaders & {
   }
 }
 
-/** A new game on day 0, a Monday, when the truck is closed. */
+/**
+ * A new game on day 0, a Monday, when the truck is closed, with no event
+ * card to stop the days.
+ */
 function mondayStore(): GameStore {
-  return createGameStore(createInitialState(42))
+  return createGameStore(createInitialState(42), NO_EVENTS)
 }
 
 function piece(app: ReturnType<typeof createFakeApp>, id: string): Container {
