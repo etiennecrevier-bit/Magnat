@@ -510,13 +510,26 @@ export function drawAvatar(
       .circle(eyeX, 0, head * 0.11)
       .fill(palette.ink),
   )
-  const under: StrokeStyle = { width: head * 0.1, color: circles, cap: 'round' }
-  const ring = head * 0.2
+  // Each circle hugs the bottom of its eye, so it reads as a bag rather
+  // than a smile.
+  const under: StrokeStyle = {
+    width: head * 0.12,
+    color: circles,
+    cap: 'round',
+  }
+  const bag = (x: number) =>
+    [
+      x,
+      eyeY - head * 0.04,
+      head * 0.19,
+      Math.PI * 0.18,
+      Math.PI * 0.82,
+    ] as const
   const darkCircles = face.addChild(
     new Graphics({ label: 'circles', visible: false })
-      .arc(-eyeX, eyeY + head * 0.08, ring, Math.PI * 0.15, Math.PI * 0.85)
+      .arc(...bag(-eyeX))
       .stroke(under)
-      .arc(eyeX, eyeY + head * 0.08, ring, Math.PI * 0.15, Math.PI * 0.85)
+      .arc(...bag(eyeX))
       .stroke(under),
   )
   const yawn = face.addChild(

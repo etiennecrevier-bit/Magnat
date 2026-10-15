@@ -104,11 +104,14 @@
   outline-offset: 2px;
 }
 
-/* The longest dates (about 250 px), the two gauges with a large amount
-   (about 560 px), the two panel buttons (about 280 px) and four 44 px buttons
-   need about 1400 px on one row. Below that the gauges get a row of their
-   own under the date and the buttons. */
-@media (max-width: 1399px) {
+/* Measured with the longest texts: the date (about 275 px), the cash gauge
+   with a large negative amount (about 335 px), the energy gauge (about
+   260 px), the two panel buttons (about 320 px) and the four speed buttons
+   (about 200 px). All on one row need about 1510 px; below that the energy
+   gauge wraps under the encaisse in its cell. The row itself holds down to
+   about 1220 px, where the cell still fits the cash gauge. Below that the
+   gauges get a row of their own under the date and the buttons. */
+@media (max-width: 1219px) {
   .top-bar {
     grid-template-columns: 1fr auto auto;
     grid-template-areas:
@@ -117,9 +120,9 @@
   }
 }
 
-/* The date and both kinds of buttons no longer fit on one row, so the panel
-   buttons move down under the gauges. */
-@media (max-width: 799px) {
+/* The date and both kinds of buttons (about 870 px) no longer fit on one
+   row, so the panel buttons move down under the gauges. */
+@media (max-width: 869px) {
   .top-bar {
     grid-template-columns: 1fr auto;
     grid-template-areas:
@@ -129,8 +132,8 @@
   }
 }
 
-/* The date and the buttons no longer fit side by side either, so each part
-   sits on its own row, with the buttons sharing the full width. */
+/* On a phone each part sits on its own row, with the buttons sharing the
+   full width; the panel buttons stack when both no longer fit. */
 @media (max-width: 559px) {
   .top-bar {
     grid-template-columns: 1fr;
@@ -139,6 +142,10 @@
       'gauges'
       'panels'
       'speeds';
+  }
+
+  .top-bar__panels {
+    flex-wrap: wrap;
   }
 
   .top-bar__panel,
