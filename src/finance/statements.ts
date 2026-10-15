@@ -154,6 +154,8 @@ const PLACE: Record<AccountCode, Place> = {
   '6300': 'expenses',
   '6400': 'expenses',
   '6500': 'expenses',
+  '6900': 'expenses',
+  '6950': 'expenses',
   '7000': 'expenses',
 }
 
@@ -216,7 +218,10 @@ type CashFlowRow = (typeof CASH_FLOW_ROWS)[number]['key']
 // the suppliers, so the cost of a sale and the stock it uses cancel out
 // within one row when the engine posts them with the sale. Amortissement
 // goes with the equipment for the same reason: depreciation never moves cash,
-// and it cancels out against Amortissement cumulé.
+// and it cancels out against Amortissement cumulé. Créances irrécouvrables
+// goes with the customers likewise: a write-off never moves cash, and it
+// cancels out against Comptes clients, so an entry that collects part of a
+// debt and writes off the rest shows only the cash collected.
 const CASH_FLOW_ROW: Record<Exclude<AccountCode, typeof CASH>, CashFlowRow> = {
   '1100': 'customers',
   '1200': 'suppliers',
@@ -238,6 +243,8 @@ const CASH_FLOW_ROW: Record<Exclude<AccountCode, typeof CASH>, CashFlowRow> = {
   '6300': 'otherExpenses',
   '6400': 'equipment',
   '6500': 'otherExpenses',
+  '6900': 'otherExpenses',
+  '6950': 'customers',
   '7000': 'interest',
 }
 
