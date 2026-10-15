@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   loadEventContent,
   loadFoodTruckContent,
+  type DifficultyId,
   type EventContent,
 } from '../content/schema.ts'
 import {
@@ -39,6 +40,14 @@ function played(days: number, from = createInitialState(SEED)): GameState {
   let state = from
   for (let i = 0; i < days; i += 1) state = tick(state)
   return state
+}
+
+/** A new game of `difficulty`, with the default name and avatar. */
+function startedAs(difficulty: DifficultyId): GameState {
+  return createInitialState(SEED, FOOD_TRUCK, {
+    ...PROFILE_CONTENT.defaultProfile,
+    difficulty,
+  })
 }
 
 function reloaded(state: GameState): GameState {
@@ -1365,6 +1374,33 @@ describe('deserialize rejects', () => {
         `profile: Invalid profile: businessName ${reason}`,
       ])
     })
+
+    // A game of each difficulty, played 8 days, before the 1st of the month
+    // charges the truck: only the opening books tell them apart.
+    const BY_DIFFICULTY = {
+      facile: serialize(played(8, startedAs('facile'))),
+      moyen: serialize(played(8, startedAs('moyen'))),
+      difficile: serialize(played(8, startedAs('difficile'))),
+    }
+
+    it.each([
+      ['moyen', 'facile'],
+      ['difficile', 'facile'],
+      ['facile', 'moyen'],
+      ['difficile', 'moyen'],
+      ['facile', 'difficile'],
+      ['moyen', 'difficile'],
+    ] as const)(
+      'with the difficulty %s on the books of a %s game',
+      (difficulty, books) => {
+        const text = withValue(
+          'profile.difficulty',
+          difficulty,
+          BY_DIFFICULTY[books],
+        )
+        expectInvalid(text, ['difficulty', difficulty])
+      },
+    )
   })
 
   describe('a version 7 game', () => {
