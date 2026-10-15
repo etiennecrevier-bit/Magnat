@@ -1,7 +1,13 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createInitialState } from '../engine/clock.ts'
+import type { DifficultyId } from '../content/schema.ts'
+import { createInitialState, tick } from '../engine/clock.ts'
+import { FOOD_TRUCK } from '../engine/day.ts'
+import { applyDecision } from '../engine/decisions.ts'
 import { cents } from '../engine/money.ts'
+import { defaultProfile } from '../engine/profile.ts'
+import type { GameState } from '../engine/types.ts'
+import { balance } from '../finance/journal.ts'
 import { gameStore, type GameStoreState } from './store.ts'
 import TopBar, { TopBarView } from './TopBar.tsx'
 
@@ -43,6 +49,28 @@ function render(
       onFinances={() => {}}
     />,
   )
+}
+
+/**
+ * A game of `difficulty` on `seed`, the owner paid `weeklyPay` cents a week
+ * from the first morning, played with no events to the morning of `day`.
+ */
+function playedTo(
+  difficulty: DifficultyId,
+  seed: number,
+  weeklyPay: number,
+  day: number,
+): GameState {
+  const start = createInitialState(seed, FOOD_TRUCK, {
+    ...defaultProfile(),
+    difficulty,
+  })
+  let game = applyDecision(start, {
+    kind: 'ownerWeeklyPay',
+    pay: cents(weeklyPay),
+  })
+  while (game.day < day) game = tick(game)
+  return game
 }
 
 /** Each button's accessible label and pressed state, in order. */
@@ -162,6 +190,40 @@ describe('TopBar', () => {
     expect(closed).not.toContain('<dialog')
     expect(closed).toContain('aria-label="Vitesse ×10" aria-pressed="true"')
   })
+
+  // The 1st of the month takes the permit and the insurance, and also the
+  // truck's own charge: the lease at Difficile, the loan payment at Moyen.
+  // These mornings have less cash than that 1st takes, so the day ends in
+  // the red (#116).
+  it.each([
+    {
+      difficulty: 'difficile',
+      weeklyPay: 100_000,
+      day: 61,
+      date: 'Samedi 1er juillet, an 1',
+      cash: `2${S}875,99${S}$`,
+    },
+    {
+      difficulty: 'moyen',
+      weeklyPay: 150_000,
+      day: 123,
+      date: 'Vendredi 1er septembre, an 1',
+      cash: `1${S}937,69${S}$`,
+    },
+  ] as const)(
+    'warns that cash is low at $difficulty on the morning of $date, which ends below zero',
+    ({ difficulty, weeklyPay, day, date, cash }) => {
+      const game = playedTo(difficulty, 1, weeklyPay, day)
+      const evening = balance(tick(game).journal, '1000', { toDay: day })
+      expect(evening).toBeLessThan(0)
+      gameStore.getState().startGame(game)
+      const html = renderToStaticMarkup(<TopBar />)
+      expect(html).toContain(date)
+      expect(html).toContain(`<span class="cash-gauge__amount">${cash}</span>`)
+      expect(html).toContain('cash-gauge--low')
+      expect(html).toContain('Faible')
+    },
+  )
 
   it('shows the event card while an event waits, paused', () => {
     const game = createInitialState(1)
