@@ -83,6 +83,25 @@ describe('replayOf', () => {
     expect(replayOf(nextMonday)).toBeNull()
   })
 
+  it('replays nothing on a day the street closes the truck', () => {
+    expect(replayOf(wednesday)).not.toBeNull()
+    const closed: GameState = {
+      ...wednesday,
+      events: {
+        ...wednesday.events,
+        modifiers: [
+          {
+            event: 'chalet',
+            change: { kind: 'closed' },
+            fromDay: wednesday.day,
+            lastDay: wednesday.day,
+          },
+        ],
+      },
+    }
+    expect(replayOf(closed)).toBeNull()
+  })
+
   it('replays the last day played, its visits as they are', () => {
     const replay = replayOf(wednesday)
     expect(replay?.visits).toBe(wednesday.lastDay?.visits)

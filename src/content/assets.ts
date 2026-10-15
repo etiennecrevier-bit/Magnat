@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import assetsJson from './assets.json'
+import { productIdSchema } from './schema.ts'
 
 // The world's asset manifest: every piece of the street and the truck, where
 // it sits and what it looks like. Every object is strict, so a mistyped key
@@ -28,6 +29,8 @@ export const colorNameSchema = z.enum([
   'wood',
   'glass',
   'steel',
+  'coneOrange',
+  'heatSky',
 ])
 
 export type ColorName = z.infer<typeof colorNameSchema>
@@ -53,6 +56,13 @@ export const pieceKindSchema = z.enum([
   'rolledAwning',
   'closedSign',
   'truckSign',
+  'heatSky',
+  'cones',
+  'roadSign',
+  'rivalTruck',
+  'bunting',
+  'banner',
+  'outOfOrderCard',
 ])
 
 export type PieceKind = z.infer<typeof pieceKindSchema>
@@ -121,6 +131,8 @@ const lightSchema = z.strictObject({
       wheel: share,
       tree: share,
       lampPost: share,
+      /** A cone's foot, a sign's leg. */
+      prop: share,
     }),
   }),
   /** The short shadow a ledge throws on the wall under it. */
@@ -193,6 +205,30 @@ const lightSchema = z.strictObject({
 
 export type Light = z.output<typeof lightSchema>
 
+/**
+ * When a piece shows: only on days the truck is open, or only on closed
+ * ones; while a change to the street that an event card made is in effect;
+ * or while a product cannot be sold.
+ */
+const showsSchema = z.union([
+  z.enum(['open', 'closed']),
+  z.strictObject({
+    /** The id of the event card, in events.json. */
+    event: z.string().min(1),
+  }),
+  z.strictObject({ unavailable: productIdSchema }),
+])
+
+export type Shows = z.output<typeof showsSchema>
+
+/** The pieces that write their `text`, which they must have. */
+const WRITTEN: readonly PieceKind[] = [
+  'roadSign',
+  'rivalTruck',
+  'banner',
+  'outOfOrderCard',
+]
+
 const pieceSchema = z.strictObject({
   id: z.string().min(1),
   kind: pieceKindSchema,
@@ -210,8 +246,13 @@ const pieceSchema = z.strictObject({
     .string()
     .regex(IMAGE_PATH, 'expected a file path under src/world/art/')
     .optional(),
-  /** Shows the piece only on days the truck is open, or only on closed ones. */
-  shows: z.enum(['open', 'closed']).optional(),
+  /** Shows the piece only on some days; on every day without it. */
+  shows: showsSchema.optional(),
+  /** What a sign or a board says, in French, without spaces at its ends. */
+  text: z
+    .string()
+    .regex(/^\S(.*\S)?$/, 'expected text without spaces at its ends')
+    .optional(),
   /** Reveals the piece from the bottom as the stock it shows grows. */
   fill: z
     .strictObject({
@@ -251,6 +292,18 @@ export const assetManifestSchema = z
     }),
     /** How the placeholders are lit, and the textures over the world. */
     light: lightSchema,
+    /** The customers who fan themselves, as in a heat wave. */
+    fans: z.strictObject({
+      /** While the fans show; customers who come then may carry one. */
+      shows: showsSchema,
+      /** The chance each customer who comes then fans themselves. */
+      chance: share,
+      /** One swing back and forth, in real milliseconds. */
+      periodMs: size,
+      /** How far the fan turns each way from upright, in radians. */
+      swing: z.number().nonnegative(),
+      color: colorNameSchema,
+    }),
     /** Layer ids, back to front. */
     layers: z.array(z.string().min(1)).min(1),
     pieces: z.array(pieceSchema),
@@ -321,6 +374,21 @@ export const assetManifestSchema = z
           code: 'custom',
           message: 'the croissants need a fill',
           path: ['pieces', index, 'fill'],
+        })
+      }
+      const written = WRITTEN.includes(piece.kind)
+      if (written && piece.text === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `${piece.kind} pieces need a text`,
+          path: ['pieces', index, 'text'],
+        })
+      }
+      if (!written && piece.text !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `${piece.kind} pieces write no text`,
+          path: ['pieces', index, 'text'],
         })
       }
     })

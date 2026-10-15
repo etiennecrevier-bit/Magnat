@@ -1,7 +1,14 @@
-import { Container, Graphics, Sprite, Text, TilingSprite } from 'pixi.js'
+import {
+  Container,
+  Graphics,
+  Sprite,
+  Text,
+  TilingSprite,
+  type TextStyleOptions,
+} from 'pixi.js'
 import type { Light, Palette, Piece, PieceKind } from '../content/assets.ts'
 import { TITLE_FONT, TITLE_FONT_FAMILY } from './fonts.ts'
-import { tonesOf, type Tones } from './light.ts'
+import { mix, tonesOf, type Tones } from './light.ts'
 import type { Materials } from './materials.ts'
 import type { Shadows } from './shadows.ts'
 
@@ -636,36 +643,369 @@ export const PLACEHOLDERS: Record<PieceKind, DrawPlaceholder> = {
     })
     return g
   },
+
+  heatSky: (piece, style) => {
+    const { width: w, height: h } = piece
+    const g = new Graphics()
+    g.rect(0, 0, w, h).fill(color(piece, style))
+    // The haze grows warmer and paler down to the rooftops: each band
+    // adds a little more sun.
+    for (let band = 1; band <= HAZE_BANDS; band += 1) {
+      const top = h * (1 - band * 0.05)
+      g.rect(0, top, w, h - top).fill({ color: style.light.sun, alpha: 0.16 })
+    }
+    return g
+  },
+
+  cones: (piece, style) => {
+    const g = new Graphics()
+    for (const cx of coneCentres(piece)) {
+      cone(g, cx, piece.height, color(piece, style), style)
+    }
+    return g
+  },
+
+  roadSign: (piece, style) => {
+    const { width: w, height: h } = piece
+    const { palette } = style
+    const plate = h * 0.42
+    const g = new Graphics()
+    for (const x of signLegs(piece)) {
+      box(
+        g,
+        x - w * 0.025,
+        plate,
+        w * 0.05,
+        h - plate,
+        palette.wood,
+        style,
+        0,
+        w * 0.018,
+      )
+    }
+    // The rail across the legs, in orange and cream blocks.
+    const rail = { y: h * 0.56, height: h * 0.14 }
+    const blocks = 6
+    for (let i = 0; i < blocks; i += 1) {
+      box(
+        g,
+        (i * w) / blocks,
+        rail.y,
+        w / blocks,
+        rail.height,
+        i % 2 === 0 ? color(piece, style) : palette.cream,
+        style,
+        rail.height * 0.25,
+      )
+    }
+    const sign = tones(color(piece, style), style)
+    g.roundRect(0, 0, w, plate, 6).fill(sign.shade)
+    g.roundRect(0, 0, w - 5, plate - 4, 6).fill(sign.lit)
+    g.rect(6, 1, w - 17, 2).fill(sign.top)
+    const text = writing(piece.text, {
+      fontSize: plate * 0.5,
+      fill: palette.ink,
+    })
+    text.position.set((w - 5) / 2, (plate - 4) / 2)
+    return new Container({ children: [g, text] })
+  },
+
+  rivalTruck: (piece, style) => {
+    const { width: w, height: h } = piece
+    const { palette } = style
+    const board = rivalBoard(piece)
+    // The truck itself, as ours is drawn, in its own colour, but with its
+    // side closed: a hatch at the back and a cream stripe along it.
+    const bodyHeight = h - board.body
+    const body = PLACEHOLDERS.truck({ ...piece, height: bodyHeight }, style)
+    body.y = board.body
+    const side = new Graphics({ label: 'side', y: board.body })
+    side
+      .rect(w * 0.045, bodyHeight * 0.12, w * 0.66, bodyHeight * 0.68)
+      .fill(tones(color(piece, style), style).lit)
+    opening(
+      side,
+      w * 0.08,
+      bodyHeight * 0.18,
+      w * 0.24,
+      bodyHeight * 0.34,
+      palette.cream,
+      style,
+    )
+    side
+      .rect(0, bodyHeight * 0.6, w * 0.76, bodyHeight * 0.07)
+      .fill(tones(palette.cream, style).lit)
+    const g = new Graphics()
+    const post = tones(palette.ink, style)
+    for (const x of [board.width * 0.2, board.width * 0.8]) {
+      g.rect(board.x + x - 2, board.height, 4, board.body - board.height).fill(
+        post.shade,
+      )
+    }
+    const sign = tones(palette.dangerRed, style)
+    g.roundRect(board.x, 0, board.width, board.height, 8).fill(sign.shade)
+    g.roundRect(board.x, 0, board.width - 6, board.height - 4, 8).fill(sign.lit)
+    g.rect(board.x + 8, 1, board.width - 22, 2).fill(sign.top)
+    const text = writing(piece.text, {
+      fontSize: board.height * 0.44,
+      fill: palette.cream,
+    })
+    text.position.set(board.x + (board.width - 6) / 2, (board.height - 4) / 2)
+    return new Container({ children: [body, side, g, text] })
+  },
+
+  bunting: (piece, style) => {
+    const { width: w, height: h } = piece
+    const { palette } = style
+    const span = h * 5
+    const sag = h * 0.3
+    const flags = 7
+    const colours = [
+      color(piece, style),
+      palette.mustard,
+      palette.cream,
+      palette.foliage,
+      palette.glass,
+    ]
+    const string = new Graphics({ label: 'string' })
+    const g = new Graphics()
+    let flag = 0
+    for (let x0 = 0; x0 < w; x0 += span) {
+      // A quadratic curve whose control point is twice the sag down hangs
+      // the sag deep in its middle.
+      const control = { x: x0 + span / 2, y: sag * 2 }
+      string.moveTo(x0, 0).quadraticCurveTo(control.x, control.y, x0 + span, 0)
+      for (let k = 0; k < flags; k += 1) {
+        const t = (k + 0.5) / flags
+        const px =
+          (1 - t) ** 2 * x0 + 2 * (1 - t) * t * control.x + t ** 2 * (x0 + span)
+        const py = 2 * (1 - t) * t * control.y
+        const half = (span / flags) * 0.38
+        const cloth = tones(colours[flag % colours.length]!, style)
+        g.poly([px - half, py, px + half, py, px, py + h * 0.55]).fill(
+          cloth.lit,
+        )
+        g.poly([px, py, px + half, py, px, py + h * 0.55]).fill(cloth.shade)
+        flag += 1
+      }
+    }
+    string.stroke({ width: 2, color: tones(palette.wood, style).shade })
+    return new Container({ children: [string, g] })
+  },
+
+  banner: (piece, style) => {
+    const { width: w, height: h } = piece
+    const { palette } = style
+    const cords = new Graphics({ label: 'cords' })
+    for (const x of [w * 0.06, w * 0.94]) cords.moveTo(x, 0).lineTo(x, -h * 0.7)
+    cords.stroke({ width: 2, color: tones(palette.wood, style).shade })
+    const cloth = tones(color(piece, style), style)
+    const g = new Graphics()
+    g.rect(0, 0, w, h).fill(cloth.shade)
+    g.rect(0, 0, w - 6, h - 4).fill(cloth.lit)
+    g.rect(0, 0, w - 6, 3).fill(cloth.rim)
+    for (const y of [h * 0.1, h * 0.8]) {
+      g.rect(0, y, w - 6, h * 0.06).fill(tones(palette.mustard, style).lit)
+    }
+    const text = writing(piece.text, {
+      fontSize: h * 0.46,
+      fill: palette.dangerRed,
+    })
+    text.position.set((w - 6) / 2, (h - 4) / 2)
+    return new Container({ children: [cords, g, text] })
+  },
+
+  outOfOrderCard: (piece, style) => {
+    const { width: w, height: h } = piece
+    const { palette } = style
+    const paper = tones(color(piece, style), style)
+    const g = new Graphics()
+    g.rect(0, 0, w, h).fill(paper.shade)
+    g.rect(0, 0, w - 3, h - 3).fill(paper.lit)
+    // Two strips of tape across its top corners.
+    const tape = {
+      color: mix(palette.sidewalk, palette.cream, 0.4),
+      alpha: 0.9,
+    }
+    g.poly([-4, 6, 8, -4, 18, 6, 6, 16]).fill(tape)
+    g.poly([w - 18, 6, w - 8, -4, w + 4, 6, w - 6, 16]).fill(tape)
+    const text = writing(piece.text, {
+      fontSize: h * 0.3,
+      fill: palette.dangerRed,
+      align: 'center',
+      wordWrap: true,
+      wordWrapWidth: w * 0.86,
+      lineHeight: h * 0.34,
+    })
+    text.position.set((w - 3) / 2, (h - 3) / 2)
+    // Taped on a little crooked.
+    return new Container({
+      children: [g, text],
+      pivot: { x: w / 2, y: h / 2 },
+      position: { x: w / 2, y: h / 2 },
+      rotation: -0.06,
+    })
+  },
 }
 
 /**
  * Adds the shadows a piece's placeholder throws on the ground, where the
  * piece stands on the street: those standing on it cast one to the lower
- * right, with a contact shadow under each foot, wheel and post.
+ * right, with a contact shadow under each foot, wheel and post. Returns
+ * them, so they show and hide with the piece.
  */
 export const PLACEHOLDER_SHADOWS: Partial<
-  Record<PieceKind, (piece: Piece, shadows: Shadows) => void>
+  Record<PieceKind, (piece: Piece, shadows: Shadows) => readonly Container[]>
 > = {
   tree: ({ id, x, y, width: w, height: h }, shadows) => {
     const foot = { x: x + w * 0.5, y: y + h }
-    shadows.castBody(id, foot.x, foot.y, w * 0.12, h * 0.55)
-    shadows.castMass(id, foot.x, foot.y, w * 0.42, h * 0.62)
-    shadows.contactShadow(id, foot.x, foot.y, w * 0.3, 'tree')
+    return [
+      shadows.castBody(id, foot.x, foot.y, w * 0.12, h * 0.55),
+      shadows.castMass(id, foot.x, foot.y, w * 0.42, h * 0.62),
+      shadows.contactShadow(id, foot.x, foot.y, w * 0.3, 'tree'),
+    ]
   },
   lampPost: ({ id, x, y, width: w, height: h }, shadows) => {
     const foot = { x: x + w * 0.5, y: y + h }
-    shadows.castBody(id, foot.x, foot.y, w * 0.2, h * 0.95)
-    shadows.castMass(id, foot.x, foot.y, w * 0.4, h * 0.92)
-    shadows.contactShadow(id, foot.x, foot.y, w * 0.8, 'lampPost')
+    return [
+      shadows.castBody(id, foot.x, foot.y, w * 0.2, h * 0.95),
+      shadows.castMass(id, foot.x, foot.y, w * 0.4, h * 0.92),
+      shadows.contactShadow(id, foot.x, foot.y, w * 0.8, 'lampPost'),
+    ]
   },
-  truck: ({ id, x, y, width: w, height: h }, shadows) => {
-    const axle = y + h * 0.87
-    const ground = y + h
-    shadows.castBox(id, x + w * 0.02, x + w * 0.98, axle, ground, h * 0.87)
-    for (const wheel of [x + w * 0.2, x + w * 0.82]) {
-      shadows.contactShadow(id, wheel, ground, h * 0.13 * 2.3, 'wheel')
-    }
+  truck: (piece, shadows) => truckShadows(piece, shadows),
+  rivalTruck: (piece, shadows) => {
+    const { body } = rivalBoard(piece)
+    return truckShadows(
+      { ...piece, y: piece.y + body, height: piece.height - body },
+      shadows,
+    )
   },
+  cones: (piece, shadows) => {
+    const { id, x, y, height: h } = piece
+    return coneCentres(piece).flatMap((cx) => [
+      shadows.castBody(id, x + cx, y + h, h * 0.5, h),
+      shadows.contactShadow(id, x + cx, y + h, h * 0.95, 'prop'),
+    ])
+  },
+  roadSign: (piece, shadows) => {
+    const { id, x, y, width: w, height: h } = piece
+    return signLegs(piece).flatMap((leg) => [
+      shadows.castBody(id, x + leg, y + h, w * 0.05, h),
+      shadows.contactShadow(id, x + leg, y + h, w * 0.14, 'prop'),
+    ])
+  },
+}
+
+/** A truck's shadows: a box from its axle to the ground, and its wheels'. */
+function truckShadows(
+  { id, x, y, width: w, height: h }: Piece,
+  shadows: Shadows,
+): Container[] {
+  const axle = y + h * 0.87
+  const ground = y + h
+  return [
+    shadows.castBox(id, x + w * 0.02, x + w * 0.98, axle, ground, h * 0.87),
+    ...[x + w * 0.2, x + w * 0.82].map((wheel) =>
+      shadows.contactShadow(id, wheel, ground, h * 0.13 * 2.3, 'wheel'),
+    ),
+  ]
+}
+
+/** How many bands of haze a heat wave's sky has over the rooftops. */
+const HAZE_BANDS = 4
+
+/**
+ * Where each cone of a row stands, from the row's left: one for every 1.4
+ * times their height, spread evenly.
+ */
+function coneCentres({ width: w, height: h }: Piece): number[] {
+  const count = Math.max(1, Math.floor(w / (h * 1.4)))
+  return Array.from({ length: count }, (_, i) => ((i + 0.5) * w) / count)
+}
+
+/**
+ * A traffic cone standing at `cx`, its foot at `h`, `h` tall: a dark base,
+ * an orange body in shade on its right, and two reflective cream bands.
+ */
+function cone(
+  g: Graphics,
+  cx: number,
+  h: number,
+  base: string,
+  style: DrawStyle,
+): void {
+  const foot = h * 0.9
+  const half = (y: number) => (y / foot) * h * 0.3
+  // The line between the lit and the shaded side, from the tip down.
+  const turn = (y: number) => cx + (y / foot) * h * 0.08
+  box(
+    g,
+    cx - h * 0.42,
+    foot,
+    h * 0.84,
+    h - foot,
+    style.palette.ink,
+    style,
+    h * 0.04,
+  )
+  const body = tones(base, style)
+  g.poly([cx, 0, cx - half(foot), foot, cx + half(foot), foot]).fill(body.lit)
+  g.poly([cx, 0, turn(foot), foot, cx + half(foot), foot]).fill(body.shade)
+  const band = tones(style.palette.cream, style)
+  for (const [top, bottom] of [
+    [h * 0.36, h * 0.48],
+    [h * 0.6, h * 0.72],
+  ] as const) {
+    g.poly([
+      cx - half(top),
+      top,
+      cx + half(top),
+      top,
+      cx + half(bottom),
+      bottom,
+      cx - half(bottom),
+      bottom,
+    ]).fill(band.lit)
+    g.poly([
+      turn(top),
+      top,
+      cx + half(top),
+      top,
+      cx + half(bottom),
+      bottom,
+      turn(bottom),
+      bottom,
+    ]).fill(band.shade)
+  }
+}
+
+/** Where the road sign's two legs stand, from its left. */
+function signLegs({ width: w }: Piece): readonly number[] {
+  return [w * 0.18, w * 0.82]
+}
+
+/**
+ * The rival truck's roof board, over the left of its roof: its left and
+ * width, its height, and how far down the truck's body starts.
+ */
+function rivalBoard({ width: w, height: h }: Piece) {
+  const height = h * 0.13
+  return { x: w * 0.02, width: w * 0.5, height, body: height * 1.35 }
+}
+
+/** What a sign or a board says, in Fredoka, centred on where it is put. */
+function writing(text: string | undefined, style: TextStyleOptions): Text {
+  return new Text({
+    label: 'text',
+    text: text ?? '',
+    style: {
+      fontFamily: TITLE_FONT_FAMILY,
+      fontWeight: TITLE_FONT.weight,
+      ...style,
+    },
+    anchor: 0.5,
+  })
 }
 
 /** The piece's own colour, from the palette. */

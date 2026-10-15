@@ -1,5 +1,5 @@
 import { Container, Graphics, Sprite, Text, type Texture } from 'pixi.js'
-import type { AssetManifest, Piece } from '../content/assets.ts'
+import type { AssetManifest, Piece, Shows } from '../content/assets.ts'
 import type { VisualEffects } from '../ui/settings.ts'
 import { TITLE_FONT, TITLE_FONT_FAMILY } from './fonts.ts'
 import { createMaterials } from './materials.ts'
@@ -14,7 +14,7 @@ import {
   type MakeFilters,
   type Shadows,
 } from './shadows.ts'
-import { rackFill, type TruckView } from './truckView.ts'
+import { rackFill, showsOn, type TruckView } from './truckView.ts'
 
 /** The street, built once from the manifest and redrawn from the game. */
 export interface Scene {
@@ -27,7 +27,10 @@ export interface Scene {
   readonly style: PlaceholderStyle
   /** The shadows on the ground, where the people add theirs. */
   readonly shadows: Shadows
-  /** Shows `view`: open or closed, the croissants and the business name. */
+  /**
+   * Shows `view`: open or closed, the croissants, the business name and
+   * the changes to the street in effect.
+   */
   update: (view: TruckView) => void
   /** Moves the steam on by `deltaMs` milliseconds. */
   animate: (deltaMs: number) => void
@@ -47,7 +50,8 @@ export type MeasureWidth = (text: Text) => number
  * manifest's `light` with the textures it makes once here. Only a
  * placeholder throws its shadows on the ground, in the manifest's shadow
  * layer, whose cast shadows `makeFilters` blurs and fades as one (see
- * `createShadows`). Nothing shows the game until the first `update`.
+ * `createShadows`); they show and hide with their piece. Nothing shows the
+ * game until the first `update`.
  */
 export function buildScene(
   manifest: AssetManifest,
@@ -74,7 +78,7 @@ export function buildScene(
   }
   const shadows = createShadows(ground, light, materials.spot, makeFilters)
 
-  const switched: { shows: 'open' | 'closed'; node: Container }[] = []
+  const switched: { shows: Shows; nodes: readonly Container[] }[] = []
   const steam: Container[] = []
   let rack: { piece: Piece; art: Container; mask: Graphics } | undefined
   let sign: { piece: Piece; text: Text } | undefined
@@ -83,11 +87,14 @@ export function buildScene(
     const node = new Container({ label: piece.id, x: piece.x, y: piece.y })
     const art = node.addChild(drawPiece(piece, textures, style))
     layers.get(piece.layer)?.addChild(node)
-    if (art.label === 'placeholder') {
-      PLACEHOLDER_SHADOWS[piece.kind]?.(piece, shadows)
-    }
+    const thrown =
+      art.label === 'placeholder'
+        ? (PLACEHOLDER_SHADOWS[piece.kind]?.(piece, shadows) ?? [])
+        : []
 
-    if (piece.shows !== undefined) switched.push({ shows: piece.shows, node })
+    if (piece.shows !== undefined) {
+      switched.push({ shows: piece.shows, nodes: [node, ...thrown] })
+    }
     if (piece.kind === 'steam') steam.push(art)
     if (piece.fill !== undefined) {
       // Reveals the art from the bottom up, placeholder or image alike.
@@ -121,8 +128,9 @@ export function buildScene(
     style,
     shadows,
     update: (view) => {
-      for (const { shows, node } of switched) {
-        node.visible = (shows === 'open') === view.open
+      for (const { shows, nodes } of switched) {
+        const visible = showsOn(shows, view)
+        for (const node of nodes) node.visible = visible
       }
       if (rack?.piece.fill !== undefined) {
         const { capacity, steps } = rack.piece.fill

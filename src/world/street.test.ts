@@ -17,14 +17,18 @@ import {
 } from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState } from '../engine/clock.ts'
-import { ENERGY, FOOD_TRUCK } from '../engine/day.ts'
+import { ENERGY, EVENTS, FOOD_TRUCK } from '../engine/day.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { next, seedRng } from '../engine/rng.ts'
-import type { Visit } from '../engine/types.ts'
+import type { StreetModifier, Visit } from '../engine/types.ts'
 import { createSettingsStore } from '../ui/settings.ts'
 import { createGameStore, type GameStore } from '../ui/store.ts'
-import type { SegmentId } from '../content/schema.ts'
+import type {
+  EventContent,
+  SegmentId,
+  StreetChange,
+} from '../content/schema.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
 import { placeCard, saying, type Box, type Point } from './customerCard.ts'
 import { ASSETS, LINES } from './manifest.ts'
@@ -1465,5 +1469,212 @@ describe('startStreet: the customers in the sun', () => {
     expect(before.every((s) => s.destroyed)).toBe(true)
     const layer = piece(app, 'layer:shadows')
     expect(layer.getChildByLabel('contact')!.children.length).toBeGreaterThan(0)
+  })
+})
+
+/** `store`'s game with a change to the street from today to `lastDay`. */
+function changeStreet(
+  store: GameStore,
+  event: string,
+  change: StreetChange,
+  lastDay: number,
+): void {
+  const { game } = store.getState()
+  const modifier: StreetModifier = {
+    event,
+    change,
+    fromDay: game.day,
+    lastDay,
+  }
+  store.setState({
+    game: { ...game, events: { ...game.events, modifiers: [modifier] } },
+  })
+}
+
+/** A heat wave from today to `lastDay`, as the canicule card makes one. */
+function heatWave(store: GameStore, lastDay: number): void {
+  changeStreet(
+    store,
+    'canicule',
+    { kind: 'appeal', product: 'chocolat', factor: 0.3 },
+    lastDay,
+  )
+}
+
+/** The busy crowd, where everyone who comes in a heat wave fans themselves. */
+function fanningCrowd(seed = 7): StreetCrowd {
+  const { settings, random } = busyCrowd(seed)
+  return {
+    settings: { ...settings, fans: { ...settings.fans, chance: 1 } },
+    random,
+  }
+}
+
+/** A customer's fan, as drawn to face each way; none without one. */
+function fansOf(walker: Container): Container[] {
+  return ['facesRight', 'facesLeft'].flatMap(
+    (label) =>
+      walker.getChildByLabel(label, true)?.getChildByLabel('fan') ?? [],
+  )
+}
+
+/** The customers on the street who hold a fan, shown or not. */
+function fanners(app: ReturnType<typeof createFakeApp>): Container[] {
+  return walkers(app).filter((walker) => fansOf(walker).length > 0)
+}
+
+describe('startStreet: a heat wave', () => {
+  it('has those who come fan themselves, the fan swinging as time goes', async () => {
+    const app = createFakeApp()
+    const store = wednesdayStore(true)
+    heatWave(store, store.getState().game.day + 30)
+    await startStreet(app, store, createLoaders(), ASSETS, fanningCrowd())
+    play(app, store, 10_000, 4000)
+
+    expect(walkers(app).length).toBeGreaterThan(0)
+    expect(fanners(app)).toEqual(walkers(app))
+    const fans = fanners(app).flatMap(fansOf)
+    for (const fan of fans) expect(fan.visible).toBe(true)
+    const { swing, periodMs } = CROWD.fans
+    const before = fans.map((fan) => fan.rotation)
+    for (const angle of before) {
+      expect(Math.abs(angle)).toBeLessThanOrEqual(swing + 1e-9)
+    }
+    app.frame(periodMs / 4)
+    expect(fans.map((fan) => fan.rotation)).not.toEqual(before)
+  })
+
+  it('freezes the fans while paused', async () => {
+    const app = createFakeApp()
+    const store = wednesdayStore(true)
+    heatWave(store, store.getState().game.day + 30)
+    await startStreet(app, store, createLoaders(), ASSETS, fanningCrowd())
+    play(app, store, 10_000, 4000)
+    const fans = fanners(app).flatMap(fansOf)
+    expect(fans.length).toBeGreaterThan(0)
+
+    store.getState().setSpeed(0)
+    const paused = fans.map((fan) => fan.rotation)
+    play(app, store, 3000)
+    expect(fans.map((fan) => fan.rotation)).toEqual(paused)
+  })
+
+  it('has only some fan themselves with the shipped settings', async () => {
+    const app = createFakeApp()
+    const store = wednesdayStore(true)
+    heatWave(store, store.getState().game.day + 30)
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd(3))
+    const seen = new Set<Container>()
+    const fanning = new Set<Container>()
+    play(app, store, 40_000, 4000, () => {
+      for (const walker of walkers(app)) seen.add(walker)
+      for (const walker of fanners(app)) fanning.add(walker)
+    })
+    expect(fanning.size).toBeGreaterThan(0)
+    expect(fanning.size).toBeLessThan(seen.size)
+  })
+
+  it('has no one fan themselves without one', async () => {
+    const app = createFakeApp()
+    const store = wednesdayStore(true)
+    await startStreet(app, store, createLoaders(), ASSETS, fanningCrowd())
+    play(app, store, 20_000, 4000, () => {
+      expect(fanners(app)).toEqual([])
+    })
+    expect(walkers(app).length).toBeGreaterThan(0)
+  })
+
+  it('takes every fan away at once when it ends, paused or not, and gives none after', async () => {
+    const app = createFakeApp()
+    const store = wednesdayStore(true)
+    // Its last day is the day shown.
+    heatWave(store, store.getState().game.day)
+    await startStreet(app, store, createLoaders(), ASSETS, fanningCrowd())
+    play(app, store, 10_000)
+    const stayed = fanners(app)
+    expect(stayed.length).toBeGreaterThan(0)
+    expect(piece(app, 'heat-sky').visible).toBe(true)
+
+    // The next day begins while the game is paused: no frame is drawn.
+    store.getState().setSpeed(0)
+    store.getState().advance(1)
+
+    expect(piece(app, 'heat-sky').visible).toBe(false)
+    expect(stayed.every((walker) => !walker.destroyed)).toBe(true)
+    for (const fan of stayed.flatMap(fansOf)) expect(fan.visible).toBe(false)
+
+    // Nor do they come back, on those still there or on anyone new.
+    store.getState().setSpeed(1)
+    let newcomers = 0
+    play(app, store, 10_000, Number.POSITIVE_INFINITY, () => {
+      for (const walker of walkers(app)) {
+        if (!stayed.includes(walker)) newcomers += 1
+        for (const fan of fansOf(walker)) expect(fan.visible).toBe(false)
+      }
+      expect(fanners(app).every((walker) => stayed.includes(walker))).toBe(true)
+    })
+    expect(newcomers).toBeGreaterThan(0)
+  })
+})
+
+describe('startStreet: a day the street closes the truck', () => {
+  it('closes the truck as on a day off, with no avatar and no one replayed', async () => {
+    const app = createFakeApp()
+    const store = wednesdayStore(true)
+    const { day } = store.getState().game
+    changeStreet(store, 'chalet', { kind: 'closed' }, day)
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+
+    expect(piece(app, 'closed-sign').visible).toBe(true)
+    expect(piece(app, 'awning').visible).toBe(false)
+    expect(piece(app, 'avatar:femme').visible).toBe(false)
+    expect(play(app, store, 10_000)).toBe(0)
+
+    store.getState().advance(1)
+    expect(piece(app, 'awning').visible).toBe(true)
+    expect(piece(app, 'avatar:femme').visible).toBe(true)
+  })
+
+  it('takes the tally down at once when a choice closes the truck on the day shown', async () => {
+    const app = createFakeApp()
+    // Only the construction card, which comes up on the next morning.
+    const cones = EVENTS.events.find(({ id }) => id === 'conesOrange')!
+    const deck: EventContent = {
+      ...EVENTS,
+      pacing: { firstDay: 0, minDaysBetween: 1, dailyChance: 1 },
+      events: [{ ...cones, conditions: {} }],
+    }
+    const store = createGameStore(wednesdayStore(true).getState().game, deck)
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    store.getState().setSpeed(10)
+    app.frame(16)
+    const tally = piece(app, 'tally')
+    expect(tally.visible).toBe(true)
+
+    // The card pauses the game on the next morning, the tally still up.
+    store.getState().advance(1)
+    const { game, speed } = store.getState()
+    expect(game.events.pending?.event).toBe('conesOrange')
+    expect(speed).toBe(0)
+    expect(piece(app, 'closed-sign').visible).toBe(false)
+    expect(tally.visible).toBe(true)
+
+    // A week off closes the truck from today, the day shown.
+    store.getState().chooseEvent('vacances')
+    expect(store.getState().game.day).toBe(game.day)
+    expect(store.getState().game.lastDay).toBe(game.lastDay)
+    expect(piece(app, 'closed-sign').visible).toBe(true)
+    expect(piece(app, 'avatar:femme').visible).toBe(false)
+    expect(tally.visible).toBe(false)
+
+    // It stays down once the game goes on at x10, and no one comes at x1.
+    store.getState().closePanel()
+    expect(store.getState().speed).toBe(10)
+    play(app, store, 1000, Number.POSITIVE_INFINITY, () => {
+      expect(tally.visible).toBe(false)
+    })
+    store.getState().setSpeed(1)
+    expect(play(app, store, 10_000)).toBe(0)
+    expect(tally.visible).toBe(false)
   })
 })

@@ -39,7 +39,7 @@ import {
   type Replay,
 } from './replay.ts'
 import type { Shadows } from './shadows.ts'
-import { opensToday } from './truckView.ts'
+import { modifiersToday, opensToday, showsOn } from './truckView.ts'
 
 /** The customers on the street, the avatar who serves them and the tally. */
 export interface Customers {
@@ -111,7 +111,12 @@ export interface CustomersSetup {
  * the day's tally instead, « 87 clients servis » and « 21 clients perdus ».
  * Pausing freezes everyone, the bubbles and the avatar's arm. On a day the
  * truck is closed, the avatar is gone and everyone still waiting walks off
- * without buying.
+ * without buying. A choice that closes it on the day shown takes the tally
+ * down too.
+ *
+ * While the crowd's `fans` show, as in a heat wave, some of those who come
+ * fan themselves: the fan swings in real time and freezes on pause. Once
+ * they no longer show, every fan on the street goes at once.
  *
  * The avatar shows the owner's fatigue on the morning of `game.day` (see
  * `avatarPose`): a tired one reaches slower and yawns, an exhausted one
@@ -170,6 +175,21 @@ export function startCustomers(setup: CustomersSetup): Customers {
   let replay: Replay | null = null
   let open = false
   const views = new Map<number, CustomerView>()
+  const fans = settings.fans
+  let hot = false
+  // Real time, for the fans' swing.
+  let fanMs = 0
+  const swingFans = () => {
+    for (const [id, view] of views) {
+      // Each customer fans out of step with the others.
+      const t = fanMs / fans.periodMs + id * FAN_STEP
+      const rotation = fans.swing * Math.sin(2 * Math.PI * t)
+      for (const fan of view.fans) {
+        fan.visible = hot
+        fan.rotation = rotation
+      }
+    }
+  }
 
   // The customer whose card is open.
   let pickedId: number | null = null
@@ -235,14 +255,21 @@ export function startCustomers(setup: CustomersSetup): Customers {
     root,
     labels,
     onGame: (game) => {
+      const wasOpen = open
       open = opensToday(game)
+      hot = showsOn(fans.shows, { open, modifiers: modifiersToday(game) })
+      // Now rather than at the next frame, which a paused street doesn't
+      // draw: a heat wave that ended would keep its fans.
+      swingFans()
       fatigue = fatigueOf(game.energy, setup.energy)
       showAvatar(game.profile.avatar, open)
       if (!open) {
         crowd.dismiss()
         dropSpill()
       }
-      if (!clock.follow(game)) return
+      // A choice can close the truck on the day shown, which keeps the day
+      // and its summary: the replay goes with the truck all the same.
+      if (!clock.follow(game) && open === wasOpen) return
       replay = replayOf(game)
       sampler.start(replay?.visits ?? [])
       if (replay === null) {
@@ -264,6 +291,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
     },
     frame: (deltaMs, speed, span) => {
       if (speed <= 0) return
+      fanMs += deltaMs
       const progress = clock.elapse(deltaMs, speed)
       const walking = settings.speeds[speed]
       if (walking === undefined) {
@@ -290,6 +318,9 @@ export function startCustomers(setup: CustomersSetup): Customers {
           replay.dayType,
           settings.looks,
           random,
+          hot
+            ? { chance: fans.chance, color: style.palette[fans.color] }
+            : null,
         )
         const view = createCustomerView(
           look,
@@ -316,6 +347,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
       avatar?.update(deltaMs * walking.pace)
       avatar?.idle(deltaMs)
       sync(span)
+      swingFans()
     },
     pickAt: (point) => {
       pick(customerAt(point, targets(), settings.pickMargin))
@@ -360,6 +392,8 @@ interface CustomerView {
   readonly bubble: Container
   /** The ring at their feet while their card is open. */
   readonly mark: Container
+  /** The fan they hold, as drawn to face each way; none without one. */
+  readonly fans: readonly Container[]
   /**
    * The shadows on the ground of the customer and of the child they come
    * with, `at` that far right of their feet as they face right.
@@ -372,6 +406,9 @@ interface CustomerView {
   /** Their card, from the first time the player picks them. */
   card: CustomerCard | null
 }
+
+/** How far out of step each customer's fan swings from the last one's. */
+const FAN_STEP = 0.37
 
 /** How wide a person's shadows are, as shares of their height. */
 const BODY_WIDTH = 0.26
@@ -423,6 +460,9 @@ function createCustomerView(
     facesLeft,
     bubble,
     mark,
+    fans: [facesRight, facesLeft].flatMap(
+      (drawn) => drawn.getChildByLabel('fan') ?? [],
+    ),
     shadows: grounded,
     card: null,
   }

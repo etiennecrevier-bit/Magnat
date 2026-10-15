@@ -49,6 +49,7 @@ const LOOK: Look = {
   height: 150,
   office: null,
   child: null,
+  fan: null,
 }
 
 /** The labels of every node under `root`, depth first. */
@@ -270,6 +271,47 @@ describe('pickLook', () => {
     expect(LOOKS.clothes).not.toContain('#8C6B9E')
   })
 
+  it('gives no fan without fans, and draws the same as before', () => {
+    const without = seeded(21)
+    const atZero = seeded(21)
+    const fans = { chance: 0, color: STYLE.palette.cream }
+    for (let i = 0; i < 50; i += 1) {
+      const segment = SEGMENTS[i % 3]!
+      const look = pickLook(segment, 'finDeSemaine', LOOKS, without)
+      expect(look.fan).toBeNull()
+      expect(pickLook(segment, 'finDeSemaine', LOOKS, atZero, fans)).toEqual(
+        look,
+      )
+    }
+    expect(atZero()).toBe(without())
+  })
+
+  it('gives everyone a fan at a chance of 1, with one more draw, last', () => {
+    const plain = seeded(22)
+    const fanning = seeded(22)
+    const fans = { chance: 1, color: STYLE.palette.cream }
+    for (let i = 0; i < 50; i += 1) {
+      const segment = SEGMENTS[i % 3]!
+      const look = pickLook(segment, 'semaine', LOOKS, plain)
+      plain()
+      expect(pickLook(segment, 'semaine', LOOKS, fanning, fans)).toEqual({
+        ...look,
+        fan: STYLE.palette.cream,
+      })
+    }
+  })
+
+  it('gives a fan to some at a chance in between', () => {
+    const random = seeded(23)
+    const fans = { chance: 0.35, color: STYLE.palette.cream }
+    const looks = Array.from({ length: 400 }, () =>
+      pickLook('chic', 'semaine', LOOKS, random, fans),
+    )
+    const share = looks.filter((l) => l.fan !== null).length / looks.length
+    expect(share).toBeGreaterThan(0.25)
+    expect(share).toBeLessThan(0.45)
+  })
+
   it('gives neither when their chance is 0', () => {
     const never = { ...LOOKS, officeChance: 0, familyChance: 0 }
     const random = seeded(12)
@@ -429,12 +471,17 @@ describe('drawCustomer', () => {
     clothes: LOOKS.clothes[2]!,
     height: 90,
   }
+  const FAN = LOOKS.clothes[4]!
   const PEOPLE = SEGMENTS.flatMap((segment) =>
     ([null, 'lanyard', 'laptopBag'] as const).flatMap((office) =>
-      [null, CHILD].map((child) => ({
-        name: [segment, office, child && 'child'].filter(Boolean).join(', '),
-        look: { ...LOOK, segment, office, child },
-      })),
+      [null, CHILD].flatMap((child) =>
+        [null, FAN].map((fan) => ({
+          name: [segment, office, child && 'child', fan && 'fan']
+            .filter(Boolean)
+            .join(', '),
+          look: { ...LOOK, segment, office, child, fan },
+        })),
+      ),
     ),
   )
 
@@ -465,14 +512,44 @@ describe('drawCustomer', () => {
     },
   )
 
-  it('holds the mug in one of their own hands', () => {
-    const drawn = drawCustomer(LOOK, STYLE, LOOKS)
-    const { minX, maxX, minY, maxY } = find(drawn, 'mug').getBounds()
-    const holding = hands(drawn, LOOK.skin).filter(
+  /** The hands of `look` that hold what is labelled `item`. */
+  function holdingHands(drawn: Container, look: Look, item: string): Hand[] {
+    const { minX, maxX, minY, maxY } = find(drawn, item).getBounds()
+    return hands(drawn, look.skin).filter(
       ({ x, y, r }) =>
         x >= minX - r && x <= maxX + r && y >= minY - r && y <= maxY + r,
     )
-    expect(holding).toHaveLength(1)
+  }
+
+  it('holds the mug in one of their own hands', () => {
+    const drawn = drawCustomer(LOOK, STYLE, LOOKS)
+    expect(holdingHands(drawn, LOOK, 'mug')).toHaveLength(1)
+  })
+
+  it('holds a fan in the hand on the right, and a mug still in the left', () => {
+    const look = { ...LOOK, fan: FAN }
+    const drawn = drawCustomer(look, STYLE, LOOKS)
+    const fan = holdingHands(drawn, look, 'fan')
+    const mug = holdingHands(drawn, look, 'mug')
+    expect(fan).toHaveLength(1)
+    expect(mug).toHaveLength(1)
+    expect(fan[0]!.x).toBeGreaterThan(0)
+    expect(mug[0]!.x).toBeLessThan(0)
+    // Its leaves open above the hand, in its colour, outlined like the mug.
+    expect(find(drawn, 'fan').getBounds().maxY).toBeLessThanOrEqual(
+      fan[0]!.y + fan[0]!.r,
+    )
+    expect(colours(find(drawn, 'fan'), 'fill')).toContain(hex(FAN))
+    expect(colours(find(drawn, 'fan'), 'stroke')).toContain(
+      hex(STYLE.palette.ink),
+    )
+  })
+
+  it('draws no fan for one who has none', () => {
+    for (const segment of SEGMENTS) {
+      const drawn = drawCustomer({ ...LOOK, segment }, STYLE, LOOKS)
+      expect(labels(drawn)).not.toContain('fan')
+    }
   })
 })
 
