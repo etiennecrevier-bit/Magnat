@@ -36,8 +36,11 @@ export function createSaveImports(
 }
 
 export interface StartMenuWiring {
-  /** What the browser holds, as the menu shows it. */
-  stored: StoredSave
+  /**
+   * Reads what the browser holds now: another tab may have saved since the
+   * menu showed it.
+   */
+  readStored: () => StoredSave
   imports: SaveImports
   /** Plays `game`. */
   onStart: (game: GameState) => void
@@ -50,7 +53,10 @@ export interface StartMenuWiring {
 export interface StartMenuActions {
   /** Plays `game`, such as a new one, dropping the file being read. */
   start: (game: GameState) => void
-  /** Plays the browser's saved game, if it holds one. */
+  /**
+   * Plays the game the browser holds, if any, as another tab may have saved
+   * it since the menu showed it.
+   */
   continueGame: () => void
   /** Opens the new game form, dropping the file being read. */
   newGame: () => void
@@ -63,7 +69,7 @@ export interface StartMenuActions {
 
 /** What the start menu's buttons do. */
 export function startMenuActions({
-  stored,
+  readStored,
   imports,
   onStart,
   onImportError,
@@ -76,6 +82,7 @@ export function startMenuActions({
   return {
     start,
     continueGame: () => {
+      const stored = readStored()
       if (stored.status === 'found') start(stored.game)
     },
     newGame: () => {

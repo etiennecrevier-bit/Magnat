@@ -118,12 +118,30 @@ function sharedStorage(): SaveStorage {
   }
 }
 
-/** A tab playing `game`, autosaving into `storage` as App does. */
+/**
+ * A tab playing `game`, autosaving into `storage` as App does: `failed()` is
+ * whether its last save failed, which shows App's banner.
+ */
 function openTab(storage: SaveStorage, game: GameState) {
   const store = createGameStore(game, NO_EVENTS)
   const page = createFakeHost()
-  const stop = startAutosave(store, createSaveWriter(storage), page.host)
-  return { store, page, stop }
+  const save = createSaveWriter(storage)
+  let failed = false
+  const stop = startAutosave(
+    store,
+    (saved) => {
+      failed = !save(saved)
+    },
+    page.host,
+  )
+  return { store, page, stop, failed: () => failed }
+}
+
+/** The game a tab gets from « Continuer ». */
+function continued(storage: SaveStorage): GameState {
+  const stored = readStoredSave(storage)
+  if (stored.status !== 'found') throw new Error('nothing to continue')
+  return stored.game
 }
 
 function storedDay(storage: SaveStorage): Day | null {
@@ -146,9 +164,7 @@ describe('startAutosave in two tabs on the same game', () => {
     tabA.store.getState().advance(8)
 
     // Tab B continues the stored game and plays further than tab A.
-    const continued = readStoredSave(storage)
-    if (continued.status !== 'found') throw new Error('nothing to continue')
-    const tabB = openTab(storage, continued.game)
+    const tabB = openTab(storage, continued(storage))
     tabB.store.getState().advance(LAST_OF_MAY)
     tabB.page.setHidden(true)
     tabB.stop()
@@ -158,5 +174,24 @@ describe('startAutosave in two tabs on the same game', () => {
     tabA.page.setHidden(true)
     tabA.stop()
     expect(storedDay(storage)).toBe(LAST_OF_MAY)
+    expect(tabA.failed()).toBe(true)
+  })
+
+  it('keeps the newer days when the tab ahead is hidden last', () => {
+    const storage = sharedStorage()
+    const tabA = openTab(storage, createInitialState(5))
+    const tabB = openTab(storage, continued(storage))
+    tabA.store.getState().advance(12)
+    tabB.store.getState().advance(LAST_OF_MAY)
+
+    // Tab A, behind, is closed first.
+    tabA.page.setHidden(true)
+    tabA.stop()
+    expect(storedDay(storage)).toBe(12)
+
+    tabB.page.setHidden(true)
+    tabB.stop()
+    expect(storedDay(storage)).toBe(LAST_OF_MAY)
+    expect(tabB.failed()).toBe(false)
   })
 })

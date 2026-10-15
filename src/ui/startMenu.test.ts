@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Avatar } from '../content/schema.ts'
 import { createInitialState } from '../engine/clock.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
+import { NO_EVENTS } from '../engine/events.ts'
 import { deserialize, serialize } from '../engine/save.ts'
 import type { GameState } from '../engine/types.ts'
 import { startAutosave, type AutosaveHost } from './autosave.ts'
@@ -113,13 +114,65 @@ function menu(stored: StoredSave = { status: 'none' }) {
   const onImportError = vi.fn<(error: string | null) => void>()
   const onNewGame = vi.fn<() => void>()
   const actions = startMenuActions({
-    stored,
+    readStored: () => stored,
     imports: createSaveImports(),
     onStart,
     onImportError,
     onNewGame,
   })
   return { actions, onStart, onImportError, onNewGame }
+}
+
+/** A `localStorage` that every tab of the browser shares. */
+function sharedStorage(items: Record<string, string>): SaveStorage {
+  return {
+    getItem: (key) => items[key] ?? null,
+    setItem: (key, value) => {
+      items[key] = value
+    },
+  }
+}
+
+/**
+ * A tab on the start menu, as App runs it: the store plays what the menu
+ * starts, and the autosave writes it to `storage` from then on. `failed()`
+ * is whether the last save failed, which shows App's banner.
+ */
+function tab(storage: SaveStorage) {
+  let hidden = false
+  const listeners: (() => void)[] = []
+  const host: AutosaveHost = {
+    isHidden: () => hidden,
+    onVisibilityChange: (listener) => {
+      listeners.push(listener)
+      return () => {}
+    },
+  }
+  const store = createGameStore(OTHER, NO_EVENTS)
+  let failed = false
+  const onStart = vi.fn((game: GameState) => {
+    store.getState().startGame(game)
+    const save = createSaveWriter(storage)
+    startAutosave(
+      store,
+      (saved) => {
+        failed = !save(saved)
+      },
+      host,
+    )
+  })
+  const actions = startMenuActions({
+    readStored: () => readStoredSave(storage),
+    imports: createSaveImports(),
+    onStart,
+    onImportError: () => {},
+    onNewGame: () => {},
+  })
+  const hide = () => {
+    hidden = true
+    for (const listener of listeners) listener()
+  }
+  return { store, actions, onStart, hide, failed: () => failed }
 }
 
 describe('startMenuActions', () => {
@@ -162,36 +215,8 @@ describe('startMenuActions', () => {
   })
 
   it('does not let a file read during Continuer replace the continued game', async () => {
-    // As App runs it: the store plays what the menu starts, and the
-    // autosave writes it to the browser from then on.
     const items: Record<string, string> = { [SAVE_KEY]: serialize(CONTINUED) }
-    const storage: SaveStorage = {
-      getItem: (key) => items[key] ?? null,
-      setItem: (key, value) => {
-        items[key] = value
-      },
-    }
-    let hidden = false
-    const listeners: (() => void)[] = []
-    const host: AutosaveHost = {
-      isHidden: () => hidden,
-      onVisibilityChange: (listener) => {
-        listeners.push(listener)
-        return () => {}
-      },
-    }
-    const store = createGameStore(OTHER)
-    const onStart = vi.fn((game: GameState) => {
-      store.getState().startGame(game)
-      startAutosave(store, createSaveWriter(storage), host)
-    })
-    const actions = startMenuActions({
-      stored: readStoredSave(storage),
-      imports: createSaveImports(),
-      onStart,
-      onImportError: () => {},
-      onNewGame: () => {},
-    })
+    const { store, actions, onStart, hide } = tab(sharedStorage(items))
 
     const imported = slowFile(serialize(IMPORTED))
     const importing = actions.importFile(imported.file)
@@ -199,8 +224,7 @@ describe('startMenuActions', () => {
     store.getState().togglePause()
     imported.finish()
     await importing
-    hidden = true
-    for (const listener of listeners) listener()
+    hide()
 
     expect(onStart).toHaveBeenCalledExactlyOnceWith(CONTINUED)
     expect(store.getState().game).toEqual(CONTINUED)
@@ -208,6 +232,27 @@ describe('startMenuActions', () => {
     store.getState().togglePause()
     expect(store.getState().speed).toBe(NORMAL_SPEED)
     expect(deserialize(items[SAVE_KEY]!)).toEqual(CONTINUED)
+  })
+
+  it('continues the game as another tab saved it since the menu showed it', () => {
+    const items: Record<string, string> = { [SAVE_KEY]: serialize(CONTINUED) }
+    const storage = sharedStorage(items)
+    // Tab B's menu shows the game on its first day, then tab A plays it
+    // further and is closed.
+    const tabB = tab(storage)
+    const tabA = tab(storage)
+    tabA.actions.continueGame()
+    tabA.store.getState().advance(30)
+    tabA.hide()
+    const ahead = tabA.store.getState().game
+    expect(deserialize(items[SAVE_KEY]!)).toEqual(ahead)
+
+    tabB.actions.continueGame()
+    tabB.hide()
+
+    expect(tabB.onStart).toHaveBeenCalledExactlyOnceWith(ahead)
+    expect(deserialize(items[SAVE_KEY]!)).toEqual(ahead)
+    expect(tabB.failed()).toBe(false)
   })
 
   it.each([

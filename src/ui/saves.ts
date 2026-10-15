@@ -73,10 +73,12 @@ export function writeStoredSave(
 
 /**
  * What one tab saves its game with. The first call saves as
- * `writeStoredSave` does, and each later one only while `storage` still
- * holds what this tab last saved. Once another tab saves, such as one
- * playing the same game further, this one stops rather than write its older
- * game over the newer one. Each call returns whether it saved; never throws.
+ * `writeStoredSave` does: starting, continuing or importing a game replaces
+ * the browser's save. Each later one saves over what another tab saved
+ * since only when that is the same game, played no further. So of two tabs
+ * on one game, the one that played it furthest keeps the save, whichever
+ * closes last, and a tab never writes over a game another tab started. Each
+ * call returns whether it saved; never throws.
  */
 export function createSaveWriter(
   storage: SaveStorage | null,
@@ -87,8 +89,8 @@ export function createSaveWriter(
     try {
       // Storage cleared since holds no game to keep.
       const stored = saved === null ? null : storage.getItem(SAVE_KEY)
-      if (stored !== null && stored !== saved) {
-        console.warn('Another tab saved the game since this one did')
+      if (stored !== null && stored !== saved && !isBehind(stored, game)) {
+        console.warn('Another tab saved a game this one would set back')
         return false
       }
       const text = serialize(game)
@@ -100,6 +102,28 @@ export function createSaveWriter(
       return false
     }
   }
+}
+
+/**
+ * Whether the save `text` holds `game` as of a day no later than its own:
+ * the same seed and player, no further on. A save that does not load, such
+ * as one a newer version of the game wrote, is not.
+ */
+function isBehind(text: string, game: GameState): boolean {
+  let stored: GameState
+  try {
+    stored = deserialize(text)
+  } catch {
+    return false
+  }
+  const { profile } = stored
+  return (
+    stored.seed === game.seed &&
+    profile.businessName === game.profile.businessName &&
+    profile.avatar === game.profile.avatar &&
+    profile.difficulty === game.profile.difficulty &&
+    stored.day <= game.day
+  )
 }
 
 /**

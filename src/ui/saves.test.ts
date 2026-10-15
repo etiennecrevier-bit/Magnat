@@ -140,18 +140,73 @@ describe('createSaveWriter', () => {
     expect(storage.items).toEqual({ [SAVE_KEY]: serialize(LATER) })
   })
 
-  it('stops, and warns, once another tab saved', () => {
+  it('stops, and warns, while another tab saved the same game further on', () => {
     const storage = memoryStorage()
     const behind = createSaveWriter(storage)
     const ahead = createSaveWriter(storage)
     expect(behind(GAME)).toBe(true)
     expect(ahead(LATER)).toBe(true)
-    expect(behind(GAME)).toBe(false)
-    expect(behind(played(10, GAME))).toBe(false)
+    expect(behind(played(3, GAME))).toBe(false)
     expect(storage.items).toEqual({ [SAVE_KEY]: serialize(LATER) })
     expect(warn).toHaveBeenCalledWith(
-      'Another tab saved the game since this one did',
+      'Another tab saved a game this one would set back',
     )
+  })
+
+  it.each([5, 10])(
+    'saves over the same game another tab saved, once it played %i days of it',
+    (days) => {
+      const storage = memoryStorage()
+      const behind = createSaveWriter(storage)
+      const ahead = createSaveWriter(storage)
+      behind(GAME)
+      ahead(LATER)
+      const further = played(days, GAME)
+      expect(behind(further)).toBe(true)
+      expect(storage.items).toEqual({ [SAVE_KEY]: serialize(further) })
+    },
+  )
+
+  it.each([
+    ['seed', createInitialState(8, FOOD_TRUCK, GAME.profile)],
+    [
+      'business name',
+      createInitialState(7, FOOD_TRUCK, {
+        ...GAME.profile,
+        businessName: 'Chez Toto',
+      }),
+    ],
+    [
+      'avatar',
+      createInitialState(7, FOOD_TRUCK, { ...GAME.profile, avatar: 'femme' }),
+    ],
+    [
+      'difficulty',
+      createInitialState(7, FOOD_TRUCK, {
+        ...GAME.profile,
+        difficulty: 'facile',
+      }),
+    ],
+  ])(
+    'does not save over a game of another %s another tab started',
+    (_, other) => {
+      const storage = memoryStorage()
+      const save = createSaveWriter(storage)
+      save(GAME)
+      createSaveWriter(storage)(other)
+      expect(save(LATER)).toBe(false)
+      expect(storage.items).toEqual({ [SAVE_KEY]: serialize(other) })
+    },
+  )
+
+  it("does not save over a save it cannot load, such as a newer version's", () => {
+    const storage = memoryStorage()
+    const save = createSaveWriter(storage)
+    save(GAME)
+    const newer = JSON.stringify({ saveVersion: SAVE_VERSION + 1 })
+    storage.items[SAVE_KEY] = newer
+    expect(save(LATER)).toBe(false)
+    expect(storage.items).toEqual({ [SAVE_KEY]: newer })
   })
 
   it('saves again over storage cleared since', () => {
