@@ -6,6 +6,8 @@ import {
   productIdSchema,
   segmentIdSchema,
   streetChangeSchema,
+  type DifficultyContent,
+  type DifficultyId,
   type EventContent,
   type FoodTruckContent,
 } from '../content/schema.ts'
@@ -19,7 +21,7 @@ import {
   type Journal,
   type JournalEntry,
 } from '../finance/journal.ts'
-import { EVENTS, FOOD_TRUCK } from './day.ts'
+import { DIFFICULTIES, EVENTS, FOOD_TRUCK, openingJournal } from './day.ts'
 import { validateDecisions } from './decisions.ts'
 import { FULL_ENERGY } from './energy.ts'
 import { noEvents } from './events.ts'
@@ -327,18 +329,22 @@ export function serialize(state: GameState): string {
  * events' `personal` effects, of any amount but 0, up to the save's day,
  * whose labels may be those of `LABELS` too; the receivables are
  * by due day, each sold no later than the save's day and due after the
- * sale and after `lastDay`'s day, and they add up to Comptes clients; and
- * the events pass `checkEvents()`.
+ * sale and after `lastDay`'s day, and they add up to Comptes clients; the
+ * events pass `checkEvents()`; and the journal opens with the books of the
+ * profile's difficulty (see `checkDifficulty`).
  *
- * The products, limits, restock kinds and `awarenessDays` are those of
- * `content` as it is now, and the events, choices, outcomes and personal
- * labels those of `events`, so tuning that changes the days, narrows the
- * others or drops an event can stop older saves from loading.
+ * The products, limits, restock kinds, `awarenessDays` and the truck's
+ * price are those of `content` as it is now, the events, choices, outcomes
+ * and personal labels those of `events`, and the starting cash and the
+ * trucks' terms those of `difficulties`, so tuning that changes the days,
+ * narrows the others, drops an event or changes how a game opens can stop
+ * older saves from loading.
  */
 export function deserialize(
   text: string,
   content: FoodTruckContent = FOOD_TRUCK,
   events: EventContent = EVENTS,
+  difficulties: DifficultyContent = DIFFICULTIES,
 ): GameState {
   const save = parsed(text)
   const journal = rebuilt(save.journal)
@@ -354,6 +360,7 @@ export function deserialize(
     checkDecisions('pendingDecisions', save.pendingDecisions, content)
   }
   attempt('profile', () => validateProfile(save.profile))
+  checkDifficulty(save, journal, content, difficulties)
   checkPersonal(save, events)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
@@ -726,6 +733,57 @@ function checkDecisions(
       invalid(`${field}.restock.${product} must be a ${kind} rule: ${saved}`)
     }
   }
+}
+
+/**
+ * The journal opens with the books of the profile's difficulty (see
+ * `openingJournal`), since the 1st of each month charges the truck of that
+ * difficulty: books that hold no loan must not repay one, nor lease a truck
+ * they own. One difficulty's opening books may start another's, as a lone
+ * Mise de fonds would with the same starting cash, so when the journal
+ * opens with the books of several, the game's are those with the most
+ * entries.
+ */
+function checkDifficulty(
+  save: Save,
+  journal: Journal,
+  content: FoodTruckContent,
+  difficulties: DifficultyContent,
+): void {
+  const entries = entriesOf(journal)
+  let opened: { id: DifficultyId; length: number } | undefined
+  for (const id of difficultyIdSchema.options) {
+    const opening = entriesOf(openingJournal(id, content, difficulties))
+    const opens = opening.every((entry, index) =>
+      sameEntry(entry, entries[index]),
+    )
+    if (opens && opening.length > (opened?.length ?? 0)) {
+      opened = { id, length: opening.length }
+    }
+  }
+  const { difficulty } = save.profile
+  if (opened?.id !== difficulty) {
+    invalid(
+      `the journal does not open with the books of the profile's difficulty ${difficulty}`,
+    )
+  }
+}
+
+/** Whether `b` is an entry of `a`'s day, memo and lines. */
+function sameEntry(a: JournalEntry, b: JournalEntry | undefined): boolean {
+  return (
+    b?.day === a.day &&
+    b.memo === a.memo &&
+    b.lines.length === a.lines.length &&
+    a.lines.every(({ account, debit, credit }, index) => {
+      const line = b.lines[index]
+      return (
+        line?.account === account &&
+        line.debit === debit &&
+        line.credit === credit
+      )
+    })
+  )
 }
 
 /**

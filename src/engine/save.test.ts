@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  loadDifficultyContent,
   loadEventContent,
   loadFoodTruckContent,
+  type DifficultyContent,
   type DifficultyId,
   type EventContent,
 } from '../content/schema.ts'
@@ -43,11 +45,16 @@ function played(days: number, from = createInitialState(SEED)): GameState {
 }
 
 /** A new game of `difficulty`, with the default name and avatar. */
-function startedAs(difficulty: DifficultyId): GameState {
-  return createInitialState(SEED, FOOD_TRUCK, {
-    ...PROFILE_CONTENT.defaultProfile,
-    difficulty,
-  })
+function startedAs(
+  difficulty: DifficultyId,
+  difficulties: DifficultyContent = DIFFICULTIES,
+): GameState {
+  return createInitialState(
+    SEED,
+    FOOD_TRUCK,
+    { ...PROFILE_CONTENT.defaultProfile, difficulty },
+    difficulties,
+  )
 }
 
 function reloaded(state: GameState): GameState {
@@ -260,10 +267,11 @@ function expectInvalid(
   reasons: readonly string[],
   content = FOOD_TRUCK,
   events = EVENTS,
+  difficulties = DIFFICULTIES,
 ): void {
   let message: string | undefined
   try {
-    deserialize(text, content, events)
+    deserialize(text, content, events, difficulties)
   } catch (error) {
     if (!(error instanceof Error)) throw error
     message = error.message
@@ -1401,6 +1409,42 @@ describe('deserialize rejects', () => {
         expectInvalid(text, ['difficulty', difficulty])
       },
     )
+
+    // With Facile's starting cash, Difficile's lone Mise de fonds also
+    // starts a Facile game's books: the truck the owner brings after it
+    // makes the game Facile.
+    it('with the difficulty difficile on the books of a facile game of the same cash', () => {
+      const { facile, difficile } = DIFFICULTIES.difficulties
+      const sameCash = loadDifficultyContent({
+        difficulties: {
+          ...DIFFICULTIES.difficulties,
+          difficile: {
+            ...difficile,
+            startingCashCents: facile.startingCashCents,
+          },
+        },
+      })
+      for (const difficulty of ['facile', 'difficile'] as const) {
+        const game = startedAs(difficulty, sameCash)
+        expect(
+          deserialize(serialize(game), FOOD_TRUCK, EVENTS, sameCash),
+        ).toStrictEqual(game)
+      }
+      const text = withValue(
+        'profile.difficulty',
+        'difficile',
+        serialize(startedAs('facile', sameCash)),
+      )
+      expectInvalid(
+        text,
+        [
+          "the journal does not open with the books of the profile's difficulty difficile",
+        ],
+        FOOD_TRUCK,
+        EVENTS,
+        sameCash,
+      )
+    })
   })
 
   describe('a version 7 game', () => {
