@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
+import { cents } from '../engine/money.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { Profile } from '../engine/types.ts'
 import {
@@ -31,6 +32,7 @@ describe('createGameStore', () => {
     expect(game).toEqual(createInitialState(game.seed))
     expect(speed).toBe(NORMAL_SPEED)
     expect(lastSpeed).toBe(NORMAL_SPEED)
+    expect(createGameStore().getState().resumeSpeed).toBeNull()
   })
 
   it('can start from a given state', () => {
@@ -166,6 +168,20 @@ describe('startGame', () => {
     store.getState().togglePause()
     expect(store.getState().speed).toBe(NORMAL_SPEED)
   })
+
+  it('closes a panel left open, so the new game is not stuck paused', () => {
+    const store = createGameStore(createInitialState(1))
+    store.getState().openPanel()
+
+    store.getState().startGame(createInitialState(7))
+
+    expect(store.getState()).toMatchObject({
+      speed: NORMAL_SPEED,
+      resumeSpeed: null,
+    })
+    store.getState().setSpeed(10)
+    expect(store.getState().speed).toBe(10)
+  })
 })
 
 describe('advance', () => {
@@ -195,5 +211,97 @@ describe('advance', () => {
 
     expect(store.getState().game).toBe(before)
     expect(listener).not.toHaveBeenCalled()
+  })
+})
+
+describe('openPanel and closePanel', () => {
+  it('pause the game while a panel is open, then resume at its speed', () => {
+    const store = createGameStore()
+    store.getState().setSpeed(3)
+    store.getState().openPanel()
+    expect(store.getState()).toMatchObject({ speed: PAUSED, resumeSpeed: 3 })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      speed: 3,
+      lastSpeed: 3,
+      resumeSpeed: null,
+    })
+  })
+
+  it('leave a paused game paused', () => {
+    const store = createGameStore()
+    store.getState().setSpeed(10)
+    store.getState().togglePause()
+    store.getState().openPanel()
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ speed: PAUSED, lastSpeed: 10 })
+    store.getState().togglePause()
+    expect(store.getState().speed).toBe(10)
+  })
+
+  it('keep the speed from before the panel when it is opened twice', () => {
+    const store = createGameStore()
+    store.getState().setSpeed(10)
+    store.getState().openPanel()
+    store.getState().openPanel()
+    store.getState().closePanel()
+    expect(store.getState().speed).toBe(10)
+  })
+
+  it('do nothing when no panel is open', () => {
+    const store = createGameStore()
+    store.getState().setSpeed(3)
+    const listener = vi.fn()
+    store.subscribe(listener)
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ speed: 3, resumeSpeed: null })
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('keep the game paused against the speed buttons and Space', () => {
+    const store = createGameStore()
+    store.getState().openPanel()
+    store.getState().setSpeed(10)
+    expect(store.getState().speed).toBe(PAUSED)
+    store.getState().togglePause()
+    expect(store.getState().speed).toBe(PAUSED)
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      speed: NORMAL_SPEED,
+      lastSpeed: NORMAL_SPEED,
+    })
+  })
+})
+
+describe('decide', () => {
+  it('leaves the change waiting for the next morning', () => {
+    const start = createInitialState(1)
+    const store = createGameStore(start)
+    store.getState().setSpeed(3)
+    store.getState().openPanel()
+
+    store
+      .getState()
+      .decide({ kind: 'price', product: 'cafe', price: cents(300) })
+    store.getState().decide({ kind: 'marketingDaily', budget: cents(1500) })
+
+    const { game, speed, resumeSpeed } = store.getState()
+    expect(game.decisions).toEqual(start.decisions)
+    expect(game.pendingDecisions).toEqual({
+      ...start.decisions,
+      prices: { ...start.decisions.prices, cafe: 300 },
+      marketingDaily: 1500,
+    })
+    expect({ speed, resumeSpeed }).toEqual({ speed: PAUSED, resumeSpeed: 3 })
+  })
+
+  it("throws the engine's error for a change outside the limits", () => {
+    const store = createGameStore(createInitialState(1))
+    expect(() =>
+      store
+        .getState()
+        .decide({ kind: 'price', product: 'cafe', price: cents(1) }),
+    ).toThrow(RangeError)
+    expect(store.getState().game.pendingDecisions).toBeNull()
   })
 })

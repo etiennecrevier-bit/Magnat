@@ -1,7 +1,23 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cents } from '../engine/money.ts'
+import { gameStore, type GameStoreState } from './store.ts'
 import TopBar, { TopBarView } from './TopBar.tsx'
+
+// A static render reads a Zustand store's initial state, so the connected
+// top bar reads the app store's current state through this stand-in.
+vi.mock('./store.ts', async (importOriginal) => {
+  const store = await importOriginal<typeof import('./store.ts')>()
+  return {
+    ...store,
+    useGame: <T,>(selector: (state: GameStoreState) => T): T =>
+      selector(store.gameStore.getState()),
+  }
+})
+
+afterEach(() => {
+  gameStore.setState(gameStore.getInitialState(), true)
+})
 
 // Every space in an amount is a no-break space (U+00A0).
 const S = '\u00a0'
@@ -19,6 +35,7 @@ function render(
       cash={cash}
       speed={speed}
       onSpeedChange={() => {}}
+      onManage={() => {}}
     />,
   )
 }
@@ -47,20 +64,25 @@ describe('TopBarView', () => {
   it('shows the cash gauge between the date and the buttons', () => {
     const html = render(0, 1, cents(-12_345))
     expect(html).toMatch(
-      /^<header class="top-bar"><div class="top-bar__title">.*<\/div><p class="cash-gauge cash-gauge--negative">.*<\/p><div class="top-bar__speeds"/,
+      /^<header class="top-bar"><div class="top-bar__title">.*<\/div><p class="cash-gauge cash-gauge--negative">.*<\/p><button type="button" class="top-bar__manage"/,
     )
     expect(html).toContain(`-123,45${S}$`)
+  })
+
+  it('has a button that opens the Gérer le camion dialog, before the speeds', () => {
+    expect(render(0, 1)).toContain(
+      '<button type="button" class="top-bar__manage" aria-haspopup="dialog">Gérer le camion</button><div class="top-bar__speeds"',
+    )
   })
 
   it('has a labelled group of pause and speed buttons', () => {
     const html = render(0, 1)
     expect(html).toContain('role="group" aria-label="Vitesse du jeu"')
-    expect(buttons(html).map(({ label }) => label)).toEqual([
-      'Pause',
-      'Vitesse normale',
-      'Vitesse ×3',
-      'Vitesse ×10',
-    ])
+    expect(
+      buttons(html)
+        .filter(({ pressed }) => pressed !== undefined)
+        .map(({ label }) => label),
+    ).toEqual(['Pause', 'Vitesse normale', 'Vitesse ×3', 'Vitesse ×10'])
     expect(html).not.toMatch(/<button(?![^>]*type="button")/)
   })
 
@@ -69,7 +91,11 @@ describe('TopBarView', () => {
     { speed: 1, active: 'Vitesse normale' },
     { speed: 10, active: 'Vitesse ×10' },
   ])('marks only $active as pressed', ({ speed, active }) => {
-    for (const { label, pressed } of buttons(render(0, speed))) {
+    const speeds = buttons(render(0, speed)).filter(
+      ({ pressed }) => pressed !== undefined,
+    )
+    expect(speeds).toHaveLength(4)
+    for (const { label, pressed } of speeds) {
       expect(pressed).toBe(label === active ? 'true' : 'false')
     }
   })
@@ -87,5 +113,25 @@ describe('TopBar', () => {
       label: 'Vitesse normale',
       pressed: 'true',
     })
+  })
+
+  it('shows the Gérer le camion panel only while it is open, paused', () => {
+    gameStore.getState().setSpeed(3)
+    expect(renderToStaticMarkup(<TopBar />)).not.toContain('<dialog')
+
+    gameStore.getState().openPanel()
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toMatch(
+      /^<header class="top-bar">.*<\/header><dialog class="manage" aria-labelledby="manage-title">.*<\/dialog>$/,
+    )
+    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+      label: 'Pause',
+      pressed: 'true',
+    })
+
+    gameStore.getState().closePanel()
+    const closed = renderToStaticMarkup(<TopBar />)
+    expect(closed).not.toContain('<dialog')
+    expect(closed).toContain('aria-label="Vitesse ×3" aria-pressed="true"')
   })
 })

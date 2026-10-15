@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { cents } from '../engine/money.ts'
-import { formatMoney, formatStatementAmount } from './formatMoney.ts'
+import {
+  formatAmount,
+  formatMoney,
+  formatStatementAmount,
+} from './formatMoney.ts'
 
 // Every space in an amount is a no-break space (U+00A0).
 const S = '\u00a0'
@@ -50,5 +54,17 @@ describe('formatStatementAmount', () => {
     expect(formatStatementAmount(cents(123_456_789))).toBe(
       `1${S}234${S}567,89${S}$`,
     )
+  })
+})
+
+describe('formatAmount', () => {
+  it.each([
+    { amount: 0, text: '0,00' },
+    { amount: 5, text: '0,05' },
+    { amount: 325, text: '3,25' },
+    { amount: 300_000, text: `3${S}000,00` },
+    { amount: -123_456, text: `1${S}234,56` },
+  ])('writes $amount cents as $text, without a sign', ({ amount, text }) => {
+    expect(formatAmount(cents(amount))).toBe(text)
   })
 })
