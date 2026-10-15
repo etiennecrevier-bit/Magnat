@@ -12,6 +12,7 @@ import {
   drawPickMark,
   pickLook,
   SEGMENT_ACCESSORY,
+  type ChildLook,
   type Look,
 } from './people.ts'
 import type { PlaceholderStyle } from './placeholders.ts'
@@ -69,6 +70,39 @@ function fills(root: Container): number[] {
 }
 
 const hex = (colour: string) => Number.parseInt(colour.slice(1), 16)
+
+/** A hand: its centre under the root and half its size. */
+interface Hand {
+  readonly x: number
+  readonly y: number
+  readonly r: number
+}
+
+/**
+ * The hands of the person whose skin is `skin`, anywhere under `root`: every
+ * shape filled with their skin outside their head.
+ */
+function hands(root: Container, skin: string): Hand[] {
+  const found: Hand[] = []
+  const visit = (node: Container) => {
+    if (node instanceof Graphics && node.label !== 'head') {
+      for (const { action, data } of node.context.instructions) {
+        if (action !== 'fill' || data.style.color !== hex(skin)) continue
+        for (const { shape, transform } of data.path.shapePath
+          .shapePrimitives) {
+          const box = shape.getBounds()
+          const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+          const local = transform ? transform.apply(centre) : centre
+          const { x, y } = node.toGlobal(local)
+          found.push({ x, y, r: Math.max(box.width, box.height) / 2 })
+        }
+      }
+    }
+    for (const child of node.children) visit(child)
+  }
+  visit(root)
+  return found
+}
 
 describe('pickLook', () => {
   it('draws skin, clothes and height from the settings for every segment', () => {
@@ -198,6 +232,38 @@ describe('drawCustomer', () => {
     expect(colours(find(child, 'head'), 'fill')).toEqual([hex(childSkin)])
     expect(labels(child)).not.toContain('mug')
     expect(labels(drawCustomer(LOOK, STYLE, LOOKS))).not.toContain('child')
+  })
+
+  const CHILD: ChildLook = {
+    skin: LOOKS.skinTones[3]!,
+    clothes: LOOKS.clothes[2]!,
+    height: 90,
+  }
+  const PEOPLE = SEGMENTS.flatMap((segment) =>
+    ([null, 'lanyard', 'laptopBag'] as const).flatMap((office) =>
+      [null, CHILD].map((child) => ({
+        name: [segment, office, child && 'child'].filter(Boolean).join(', '),
+        look: { ...LOOK, segment, office, child },
+      })),
+    ),
+  )
+
+  it.each(PEOPLE)('draws exactly two hands per person: $name', ({ look }) => {
+    const drawn = drawCustomer(look, STYLE, LOOKS)
+    expect(hands(drawn, look.skin)).toHaveLength(2)
+    if (look.child !== null) {
+      expect(hands(drawn, look.child.skin)).toHaveLength(2)
+    }
+  })
+
+  it('holds the mug in one of their own hands', () => {
+    const drawn = drawCustomer(LOOK, STYLE, LOOKS)
+    const { minX, maxX, minY, maxY } = find(drawn, 'mug').getBounds()
+    const holding = hands(drawn, LOOK.skin).filter(
+      ({ x, y, r }) =>
+        x >= minX - r && x <= maxX + r && y >= minY - r && y <= maxY + r,
+    )
+    expect(holding).toHaveLength(1)
   })
 })
 

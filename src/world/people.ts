@@ -39,6 +39,9 @@ export const SEGMENT_ACCESSORY: Readonly<Record<SegmentId, string>> = {
   chic: 'coat',
 }
 
+/** A side of a body, as the viewer sees it. */
+type Side = 'left' | 'right'
+
 /**
  * Picks how a customer of `segment` looks, from `looks`. On a weekday some
  * carry an office cue; on a weekend some come with a child.
@@ -80,11 +83,13 @@ export function drawCustomer(
   const h = look.height
   const root = new Container({ label: 'customer' })
   const sleeves = look.segment === 'chic' ? looks.coat : look.clothes
+  // A regular holds their mug in the hand on the left.
+  const holding: Side | null = look.segment === 'habitue' ? 'left' : null
 
   if (look.child !== null) {
     const { skin, clothes, height } = look.child
     const child = root.addChild(new Container({ label: 'child', x: -h * 0.32 }))
-    drawBody(child, height, skin, clothes, clothes, looks.trousers, style)
+    drawBody(child, height, skin, clothes, clothes, looks.trousers, style, null)
   }
   if (look.office === 'laptopBag') {
     root.addChild(
@@ -94,7 +99,16 @@ export function drawCustomer(
         .stroke(line(style)),
     )
   }
-  drawBody(root, h, look.skin, look.clothes, sleeves, looks.trousers, style)
+  drawBody(
+    root,
+    h,
+    look.skin,
+    look.clothes,
+    sleeves,
+    looks.trousers,
+    style,
+    holding,
+  )
 
   const neck = -h * 0.77
   switch (look.segment) {
@@ -118,21 +132,6 @@ export function drawCustomer(
           ])
           .fill(looks.tote)
           .stroke(line(style)),
-      )
-      break
-    case 'habitue':
-      root.addChild(
-        new Graphics({ label: 'mug' })
-          .roundRect(-h * 0.11, -h * 0.63, h * 0.09, h * 0.14, 3)
-          .fill(style.palette.cream)
-          .stroke(line(style))
-          .rect(-h * 0.11, -h * 0.58, h * 0.09, h * 0.04)
-          .fill(style.palette.wood)
-          .roundRect(-h * 0.12, -h * 0.66, h * 0.11, h * 0.04, 2)
-          .fill(style.palette.ink)
-          .circle(-h * 0.065, -h * 0.48, h * 0.035)
-          .fill(look.skin)
-          .stroke(line(style, style.outline * 0.7)),
       )
       break
     case 'chic':
@@ -174,12 +173,31 @@ export function drawCustomer(
         .stroke(line(style, style.outline * 0.6)),
     )
   }
+  if (holding !== null) {
+    drawHeld(
+      root,
+      h,
+      holding,
+      new Graphics({ label: 'mug' })
+        .roundRect(-h * 0.025, -h * 0.13, h * 0.09, h * 0.14, 3)
+        .fill(style.palette.cream)
+        .stroke(line(style))
+        .rect(-h * 0.025, -h * 0.08, h * 0.09, h * 0.04)
+        .fill(style.palette.wood)
+        .roundRect(-h * 0.035, -h * 0.16, h * 0.11, h * 0.04, 2)
+        .fill(style.palette.ink),
+      sleeves,
+      look.skin,
+      style,
+    )
+  }
   return root
 }
 
 /**
  * Draws a body in `parent`, feet at 0, 0: legs, arms, torso and head, each
- * labelled. `sleeves` colours the arms, so a coat covers them.
+ * labelled. `sleeves` colours the arms, so a coat covers them. The arm on
+ * the `holding` side stops at the elbow, for drawHeld to finish.
  */
 function drawBody(
   parent: Container,
@@ -189,6 +207,7 @@ function drawBody(
   sleeves: string,
   trousers: string,
   style: PlaceholderStyle,
+  holding: Side | null,
 ): void {
   const head = h * 0.115
   const neck = -h * 0.77
@@ -200,15 +219,22 @@ function drawBody(
       .fill(trousers)
       .stroke(line(style)),
   )
-  const arm = h * 0.065
   const arms = new Graphics({ label: 'arms' })
-  for (const x of [-torso / 2 - arm * 0.8, torso / 2 - arm * 0.2]) {
+  for (const side of ['left', 'right'] as const) {
+    const { x, y, width } = shoulder(h, side)
+    if (side === holding) {
+      arms
+        .roundRect(x, y, width, h * UPPER_ARM, width / 2)
+        .fill(sleeves)
+        .stroke(line(style))
+      continue
+    }
     arms
-      .roundRect(x, neck + h * 0.04, arm, h * 0.3, arm / 2)
+      .roundRect(x, y, width, h * 0.3, width / 2)
       .fill(sleeves)
       .stroke(line(style))
     arms
-      .circle(x + arm / 2, neck + h * 0.35, arm * 0.55)
+      .circle(x + width / 2, y + h * 0.31, width * 0.55)
       .fill(skin)
       .stroke(line(style, style.outline * 0.7))
   }
@@ -224,6 +250,56 @@ function drawBody(
       .circle(0, -h + head, head)
       .fill(skin)
       .stroke(line(style)),
+  )
+}
+
+/** How long an upper arm is, from the shoulder, as a share of the height. */
+const UPPER_ARM = 0.22
+
+/** The top left corner and the width of `side`'s arm on a body `h` tall. */
+function shoulder(
+  h: number,
+  side: Side,
+): { x: number; y: number; width: number } {
+  const torso = h * 0.3
+  const width = h * 0.065
+  const x = side === 'left' ? -torso / 2 - width * 0.8 : torso / 2 - width * 0.2
+  return { x, y: -h * 0.73, width }
+}
+
+/**
+ * Finishes the arm on `side` that drawBody stopped at the elbow: the
+ * forearm bends toward the middle and its hand holds `item`, drawn around
+ * the hand's centre at 0, 0. Both go in front of all the body wears.
+ */
+function drawHeld(
+  parent: Container,
+  h: number,
+  side: Side,
+  item: Container,
+  sleeves: string,
+  skin: string,
+  style: PlaceholderStyle,
+): void {
+  const { x, y, width } = shoulder(h, side)
+  const elbow = { x: x + width / 2, y: y + h * UPPER_ARM - width / 2 }
+  const hand = { x: (side === 'left' ? -h : h) * 0.08, y: -h * 0.51 }
+  const reach = Math.hypot(hand.x - elbow.x, hand.y - elbow.y)
+  item.position.set(hand.x, hand.y)
+  parent.addChild(item)
+  parent.addChild(
+    new Graphics({
+      label: 'forearm',
+      x: elbow.x,
+      y: elbow.y,
+      rotation: Math.atan2(hand.y - elbow.y, hand.x - elbow.x),
+    })
+      .roundRect(-width / 2, -width / 2, reach + width / 2, width, width / 2)
+      .fill(sleeves)
+      .stroke(line(style))
+      .circle(reach, 0, width * 0.55)
+      .fill(skin)
+      .stroke(line(style, style.outline * 0.7)),
   )
 }
 
