@@ -19,6 +19,7 @@ import { formatAmount } from './formatMoney.ts'
 import { NumberField } from './NumberField.tsx'
 import { segmentFacts, type SegmentFacts } from './segmentFacts.ts'
 import { useGame } from './store.ts'
+import './panel.css'
 import './ManagePanel.css'
 
 const TITLE_ID = 'manage-title'
@@ -55,9 +56,9 @@ export function ManagePanelView({
   onClose,
 }: ManagePanelViewProps) {
   return (
-    <div className="manage__content">
+    <div className="panel__content">
       {/* Fermer comes first so it has the focus when the panel opens. */}
-      <div className="manage__header">
+      <div className="panel__header">
         <button type="button" className="toggle" onClick={onClose}>
           Fermer
         </button>
@@ -370,7 +371,7 @@ export default function ManagePanel() {
   return (
     <dialog
       ref={dialogRef}
-      className="manage"
+      className="panel manage"
       aria-labelledby={TITLE_ID}
       onCancel={() => {
         cancelled.current = true

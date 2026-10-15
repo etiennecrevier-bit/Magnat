@@ -4,7 +4,7 @@
   z-index: 1;
   display: grid;
   grid-template-columns: auto 1fr auto auto;
-  grid-template-areas: 'date gauge manage speeds';
+  grid-template-areas: 'date gauges panels speeds';
   align-items: center;
   gap: 0.5rem 1.5rem;
   padding: 0.5rem 1rem;
@@ -33,12 +33,22 @@
   white-space: nowrap;
 }
 
-.top-bar > .cash-gauge {
-  grid-area: gauge;
+/* The encaisse and the owner's energy, side by side as long as they fit. */
+.top-bar__gauges {
+  grid-area: gauges;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1.5rem;
 }
 
-.top-bar__manage {
-  grid-area: manage;
+.top-bar__panels {
+  grid-area: panels;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.top-bar__panel {
   min-height: 44px;
   padding: 0 0.75rem;
   border: 1px solid #cbd2d9;
@@ -51,11 +61,11 @@
   cursor: pointer;
 }
 
-.top-bar__manage:hover {
+.top-bar__panel:hover {
   background: #3e4c59;
 }
 
-.top-bar__manage:focus-visible {
+.top-bar__panel:focus-visible {
   outline: 3px solid #7cc4fa;
   outline-offset: 2px;
 }
@@ -94,42 +104,51 @@
   outline-offset: 2px;
 }
 
-/* The longest dates (about 250 px), the gauge with a large amount (about
-   300 px), the Gérer le camion button (about 150 px) and four 44 px buttons
-   need about 1040 px on one row. Below that the gauge gets a row of its own
-   under the date and the buttons. */
-@media (max-width: 1039px) {
+/* Measured with the longest texts: the date (about 275 px), the cash gauge
+   with a large negative amount (about 335 px), the energy gauge (about
+   260 px), the two panel buttons (about 320 px) and the four speed buttons
+   (about 200 px). All on one row need about 1510 px; below that the energy
+   gauge wraps under the encaisse in its cell. The row itself holds down to
+   about 1220 px, where the cell still fits the cash gauge. Below that the
+   gauges get a row of their own under the date and the buttons. */
+@media (max-width: 1219px) {
   .top-bar {
     grid-template-columns: 1fr auto auto;
     grid-template-areas:
-      'date manage speeds'
-      'gauge gauge gauge';
+      'date panels speeds'
+      'gauges gauges gauges';
   }
 }
 
-/* The date and both kinds of buttons no longer fit on one row, so the
-   Gérer le camion button moves down beside the gauge. */
-@media (max-width: 679px) {
+/* The date and both kinds of buttons (about 870 px) no longer fit on one
+   row, so the panel buttons move down under the gauges. */
+@media (max-width: 869px) {
   .top-bar {
     grid-template-columns: 1fr auto;
     grid-template-areas:
       'date speeds'
-      'gauge manage';
+      'gauges gauges'
+      'panels panels';
   }
 }
 
-/* The date and the buttons no longer fit side by side either, so each part
-   sits on its own row, with the buttons sharing the full width. */
+/* On a phone each part sits on its own row, with the buttons sharing the
+   full width; the panel buttons stack when both no longer fit. */
 @media (max-width: 559px) {
   .top-bar {
     grid-template-columns: 1fr;
     grid-template-areas:
       'date'
-      'gauge'
-      'manage'
+      'gauges'
+      'panels'
       'speeds';
   }
 
+  .top-bar__panels {
+    flex-wrap: wrap;
+  }
+
+  .top-bar__panel,
   .top-bar__speed {
     flex: 1;
   }

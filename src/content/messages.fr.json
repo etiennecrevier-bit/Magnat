@@ -1,0 +1,25 @@
+{
+  "_note": "Short messages the player receives during a game (#84): the landlord's when the owner's rent goes unpaid, and the owner's own thoughts the first time each week they wake up exhausted. Standard French, no amounts. The owner's lines are gender-neutral, since the avatar may be a woman or a man.",
+  "landlord": {
+    "from": "Votre propriétaire",
+    "lines": [
+      "Votre loyer n'est pas arrivé. Mon hypothèque, elle, est arrivée à l'heure.",
+      "Petit rappel amical au sujet du loyer. Le prochain rappel sera moins petit.",
+      "Je ne veux pas vous presser. Je veux juste être payé, ce qui ressemble beaucoup à vous presser.",
+      "Le loyer n'est pas un abonnement qu'on met sur pause. J'ai vérifié.",
+      "J'ai remarqué que le loyer manquait. J'ai aussi remarqué que votre camion avait l'air en pleine forme.",
+      "Votre paiement s'est perdu en chemin? Je vous envoie une carte pour qu'il retrouve mon adresse."
+    ]
+  },
+  "exhausted": {
+    "from": "Vous",
+    "lines": [
+      "Si je m'assois une minute, je me réveille mardi.",
+      "Mon café a besoin d'un café.",
+      "J'ai mis le lait dans la machine à espresso et le café dans le frigo. Ou l'inverse.",
+      "Mes paupières ont voté pour une fermeture hâtive. Le reste de moi n'a pas eu son mot à dire.",
+      "Je compte les croissants et je trouve un nombre différent à chaque fois.",
+      "Dormir est sur ma liste de choses à faire. Juste après tout le reste."
+    ]
+  }
+}

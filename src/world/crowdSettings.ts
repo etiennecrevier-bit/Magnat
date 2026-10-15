@@ -1,10 +1,15 @@
+import type { AvatarFatigue } from '../content/avatarFatigue.ts'
+import { AVATAR_FATIGUE } from './manifest.ts'
+
 // How the street's customers look and move. These numbers only change what
 // the world draws, never the game, so they live here with the world rather
 // than in src/content/: the card that added them was held to src/world/, an
 // exception to CLAUDE.md rule 5 that a content card may undo by moving them
 // into assets.json. Positions and lengths are logical pixels of the
 // 1440 × 900 design, except the card's and the pick's, which are CSS pixels
-// of the page; times are milliseconds.
+// of the page; times are milliseconds. How fatigue shows on the avatar came
+// with a card that could edit src/content/, so it lives there instead, in
+// avatarFatigue.json.
 
 /** How the crowd replays yesterday's visits at one game speed. */
 export interface SpeedCrowd {
@@ -67,6 +72,11 @@ export interface CrowdSettings {
     readonly skin: string
     readonly hair: string
   }
+  /**
+   * How the owner's fatigue shows: the avatar's slower reach, yawns, slump
+   * and dark circles, and the spill a botched unit leaves on the counter.
+   */
+  readonly fatigue: AvatarFatigue
   /** The badge that counts the day's customers at speeds with no walking. */
   readonly tally: {
     readonly x: number
@@ -143,6 +153,7 @@ export const CROWD: CrowdSettings = {
   edgeMargin: 60,
   bob: { height: 3, stride: 28 },
   avatar: { x: 982, feetY: 694, height: 150, skin: '#C98E62', hair: '#3B2A20' },
+  fatigue: AVATAR_FATIGUE,
   tally: { x: 420, y: 724, width: 330, height: 96, fontSize: 30 },
   card: { width: 260, gap: 10, margin: 8 },
   pickMargin: 8,

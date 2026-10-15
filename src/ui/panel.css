@@ -1,0 +1,53 @@
+/* The panels' cream card, in the art brief's colours: cream #fff7e8 and ink
+   #2b2622. Text colours keep at least 4.5:1 against the cream. Each panel
+   sets how wide it gets with --panel-width. */
+.panel {
+  width: min(var(--panel-width, 64rem), calc(100% - 2rem));
+  max-width: none;
+  max-height: calc(100% - 2rem);
+  padding: 0;
+  overflow: auto;
+  border: 2px solid #2b2622;
+  border-radius: 12px;
+  background: #fff7e8;
+  color: #2b2622;
+}
+
+.panel::backdrop {
+  background: rgb(31 41 51 / 60%);
+}
+
+.panel__content {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+/* Fermer is first in the page so it gets the focus, but shows on the right. */
+.panel__header {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.panel h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+/* On a phone a panel takes the whole screen. */
+@media (max-width: 559px) {
+  .panel {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .panel__content {
+    padding: 0.75rem 1rem 1rem;
+  }
+}

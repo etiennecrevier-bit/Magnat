@@ -27,15 +27,19 @@ function render(
   speed: number,
   cash = cents(1_000_000),
   businessName = "Le P'tit Camion",
+  energy = 100,
 ) {
   return renderToStaticMarkup(
     <TopBarView
       businessName={businessName}
       day={day}
       cash={cash}
+      energy={energy}
+      avatar="homme"
       speed={speed}
       onSpeedChange={() => {}}
       onManage={() => {}}
+      onFinances={() => {}}
     />,
   )
 }
@@ -61,17 +65,18 @@ describe('TopBarView', () => {
     )
   })
 
-  it('shows the cash gauge between the date and the buttons', () => {
-    const html = render(0, 1, cents(-12_345))
+  it('shows the cash gauge, then the energy gauge, between the date and the buttons', () => {
+    const html = render(0, 1, cents(-12_345), "Le P'tit Camion", 30)
     expect(html).toMatch(
-      /^<header class="top-bar"><div class="top-bar__title">.*<\/div><p class="cash-gauge cash-gauge--negative">.*<\/p><button type="button" class="top-bar__manage"/,
+      /^<header class="top-bar"><div class="top-bar__title">.*<\/div><div class="top-bar__gauges"><p class="cash-gauge cash-gauge--negative">.*<\/p><p class="energy-gauge energy-gauge--tired">.*<\/p><\/div><div class="top-bar__panels"><button/,
     )
     expect(html).toContain(`-123,45${S}$`)
+    expect(html).toContain('Fatigué')
   })
 
-  it('has a button that opens the Gérer le camion dialog, before the speeds', () => {
+  it('has buttons that open the Gérer le camion and Vos finances dialogs, before the speeds', () => {
     expect(render(0, 1)).toContain(
-      '<button type="button" class="top-bar__manage" aria-haspopup="dialog">Gérer le camion</button><div class="top-bar__speeds"',
+      '<div class="top-bar__panels"><button type="button" class="top-bar__panel" aria-haspopup="dialog">Gérer le camion</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Vos finances</button></div><div class="top-bar__speeds"',
     )
   })
 
@@ -102,13 +107,16 @@ describe('TopBarView', () => {
 })
 
 describe('TopBar', () => {
-  it("shows the app store: the profile's name, day 0 at normal speed, with the starting cash", () => {
+  it("shows the app store: the profile's name, day 0 at normal speed, with the starting cash and a rested owner", () => {
     const html = renderToStaticMarkup(<TopBar />)
     expect(html).toContain('<p class="top-bar__name">Le P&#x27;tit Camion</p>')
     expect(html).toContain('Lundi 1er mai, an 1')
     expect(html).toContain('cash-gauge--healthy')
     expect(html).toContain(`10${S}000,00${S}$`)
     expect(html).toContain('Saine')
+    // The default avatar is a woman's, so the word agrees with her.
+    expect(html).toContain('energy-gauge--rested')
+    expect(html).toContain('aria-valuenow="100" aria-valuetext="Reposée"')
     expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
       label: 'Vitesse normale',
       pressed: 'true',
@@ -119,10 +127,10 @@ describe('TopBar', () => {
     gameStore.getState().setSpeed(3)
     expect(renderToStaticMarkup(<TopBar />)).not.toContain('<dialog')
 
-    gameStore.getState().openPanel()
+    gameStore.getState().openPanel('manage')
     const html = renderToStaticMarkup(<TopBar />)
     expect(html).toMatch(
-      /^<header class="top-bar">.*<\/header><dialog class="manage" aria-labelledby="manage-title">.*<\/dialog>$/,
+      /^<header class="top-bar">.*<\/header><dialog class="panel manage" aria-labelledby="manage-title">.*<\/dialog>$/,
     )
     expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
       label: 'Pause',
@@ -133,5 +141,24 @@ describe('TopBar', () => {
     const closed = renderToStaticMarkup(<TopBar />)
     expect(closed).not.toContain('<dialog')
     expect(closed).toContain('aria-label="Vitesse ×3" aria-pressed="true"')
+  })
+
+  it('shows the Vos finances panel only while it is open, paused', () => {
+    gameStore.getState().setSpeed(10)
+    gameStore.getState().openPanel('finances')
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toMatch(
+      /^<header class="top-bar">.*<\/header><dialog class="panel finances" aria-labelledby="finances-title">.*<\/dialog>$/,
+    )
+    expect(html).not.toContain('manage-title')
+    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+      label: 'Pause',
+      pressed: 'true',
+    })
+
+    gameStore.getState().closePanel()
+    const closed = renderToStaticMarkup(<TopBar />)
+    expect(closed).not.toContain('<dialog')
+    expect(closed).toContain('aria-label="Vitesse ×10" aria-pressed="true"')
   })
 })

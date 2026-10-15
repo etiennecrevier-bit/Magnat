@@ -1,0 +1,44 @@
+/* The card itself is the shared .panel (panel.css). Text colours keep at
+   least 4.5:1 against its cream #fff7e8. */
+.finances {
+  --panel-width: 36rem;
+}
+
+.finances__balance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5rem;
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+}
+
+.finances__cash {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.finances__cash--negative {
+  color: #a61b1b;
+}
+
+.finances .data-table th,
+.finances .data-table td {
+  border-bottom-color: #e3d3b4;
+}
+
+.finances .data-table td:first-child {
+  white-space: nowrap;
+}
+
+/* A word, not only a colour, says the rent went unpaid. */
+.finances__unpaid {
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: #a61b1b;
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}

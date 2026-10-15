@@ -1,0 +1,15 @@
+{
+  "_note": "How the owner's fatigue shows on the street (#84). The world only draws it; nothing here changes the game. A tired owner reaches across the counter reachMultiplier.tired times slower than the crowd's reachMs and yawns now and then: each yawn lasts yawn.lengthMs and starts yawn.everyMs, give or take yawn.jitterMs, after the last one ended. An exhausted owner reaches reachMultiplier.exhausted times slower, yawns, slumps (the upper body sinks by slump.bodyDrop, the head sinks by slump.headDrop more and tilts by slump.tiltRadians) and has dark circles under the eyes in circlesColor. A botched unit leaves a spill on the counter, its puddle centred on spill.x, spill.y and spill.width wide, in spill.color: it shows for spill.showMs, then fades out over spill.fadeMs. Positions and lengths are logical pixels of the 1440 × 900 design; times are milliseconds.",
+  "reachMultiplier": { "tired": 1.5, "exhausted": 2 },
+  "yawn": { "everyMs": 5000, "jitterMs": 1500, "lengthMs": 1200 },
+  "slump": { "bodyDrop": 6, "headDrop": 3, "tiltRadians": 0.14 },
+  "circlesColor": "#6E4B63",
+  "spill": {
+    "x": 905,
+    "y": 636,
+    "width": 34,
+    "color": "#6F4A2F",
+    "showMs": 1200,
+    "fadeMs": 600
+  }
+}

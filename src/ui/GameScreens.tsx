@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import FinancialStatements from './FinancialStatements.tsx'
+import Messages from './Messages.tsx'
 import { downloadSave } from './saves.ts'
 import { gameStore } from './store.ts'
 import TodayPanel from './TodayPanel.tsx'
@@ -20,8 +21,8 @@ interface GameScreensViewProps {
 }
 
 /**
- * The page under the top bar: a button per screen and the export button,
- * then that screen.
+ * The page under the top bar: the messages the game sends, a button per
+ * screen and the export button, then that screen.
  */
 export function GameScreensView({
   screen,
@@ -37,6 +38,7 @@ export function GameScreensView({
           perdre votre partie.
         </p>
       )}
+      <Messages />
       <nav className="screen-nav" aria-label="Écrans">
         <div className="toggle-group">
           {(Object.keys(SCREENS) as Screen[]).map((option) => (

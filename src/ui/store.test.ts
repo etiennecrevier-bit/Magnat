@@ -33,6 +33,7 @@ describe('createGameStore', () => {
     expect(speed).toBe(NORMAL_SPEED)
     expect(lastSpeed).toBe(NORMAL_SPEED)
     expect(createGameStore().getState().resumeSpeed).toBeNull()
+    expect(createGameStore().getState().panel).toBeNull()
   })
 
   it('can start from a given state', () => {
@@ -171,13 +172,14 @@ describe('startGame', () => {
 
   it('closes a panel left open, so the new game is not stuck paused', () => {
     const store = createGameStore(createInitialState(1))
-    store.getState().openPanel()
+    store.getState().openPanel('manage')
 
     store.getState().startGame(createInitialState(7))
 
     expect(store.getState()).toMatchObject({
       speed: NORMAL_SPEED,
       resumeSpeed: null,
+      panel: null,
     })
     store.getState().setSpeed(10)
     expect(store.getState().speed).toBe(10)
@@ -215,16 +217,35 @@ describe('advance', () => {
 })
 
 describe('openPanel and closePanel', () => {
-  it('pause the game while a panel is open, then resume at its speed', () => {
+  it.each(['manage', 'finances'] as const)(
+    'pause the game while the %s panel is open, then resume at its speed',
+    (panel) => {
+      const store = createGameStore()
+      store.getState().setSpeed(3)
+      store.getState().openPanel(panel)
+      expect(store.getState()).toMatchObject({
+        speed: PAUSED,
+        resumeSpeed: 3,
+        panel,
+      })
+      store.getState().closePanel()
+      expect(store.getState()).toMatchObject({
+        speed: 3,
+        lastSpeed: 3,
+        resumeSpeed: null,
+        panel: null,
+      })
+    },
+  )
+
+  it('keep the first panel open when another is asked for', () => {
     const store = createGameStore()
-    store.getState().setSpeed(3)
-    store.getState().openPanel()
-    expect(store.getState()).toMatchObject({ speed: PAUSED, resumeSpeed: 3 })
-    store.getState().closePanel()
+    store.getState().setSpeed(10)
+    store.getState().openPanel('finances')
+    store.getState().openPanel('manage')
     expect(store.getState()).toMatchObject({
-      speed: 3,
-      lastSpeed: 3,
-      resumeSpeed: null,
+      panel: 'finances',
+      resumeSpeed: 10,
     })
   })
 
@@ -232,7 +253,7 @@ describe('openPanel and closePanel', () => {
     const store = createGameStore()
     store.getState().setSpeed(10)
     store.getState().togglePause()
-    store.getState().openPanel()
+    store.getState().openPanel('manage')
     store.getState().closePanel()
     expect(store.getState()).toMatchObject({ speed: PAUSED, lastSpeed: 10 })
     store.getState().togglePause()
@@ -242,8 +263,8 @@ describe('openPanel and closePanel', () => {
   it('keep the speed from before the panel when it is opened twice', () => {
     const store = createGameStore()
     store.getState().setSpeed(10)
-    store.getState().openPanel()
-    store.getState().openPanel()
+    store.getState().openPanel('manage')
+    store.getState().openPanel('manage')
     store.getState().closePanel()
     expect(store.getState().speed).toBe(10)
   })
@@ -260,7 +281,7 @@ describe('openPanel and closePanel', () => {
 
   it('keep the game paused against the speed buttons and Space', () => {
     const store = createGameStore()
-    store.getState().openPanel()
+    store.getState().openPanel('manage')
     store.getState().setSpeed(10)
     expect(store.getState().speed).toBe(PAUSED)
     store.getState().togglePause()
@@ -278,7 +299,7 @@ describe('decide', () => {
     const start = createInitialState(1)
     const store = createGameStore(start)
     store.getState().setSpeed(3)
-    store.getState().openPanel()
+    store.getState().openPanel('manage')
 
     store
       .getState()

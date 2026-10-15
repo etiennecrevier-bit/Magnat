@@ -1,0 +1,63 @@
+.energy-gauge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 0.5rem;
+  margin: 0;
+}
+
+.energy-gauge__label {
+  color: #cbd2d9;
+}
+
+.energy-gauge__bar {
+  display: inline-block;
+  width: 5rem;
+  height: 0.75rem;
+  overflow: hidden;
+  border: 1px solid #cbd2d9;
+  border-radius: 999px;
+  background: #323f4b;
+}
+
+.energy-gauge__fill {
+  display: block;
+  height: 100%;
+}
+
+.energy-gauge__state {
+  padding: 0 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The same colours as the cash gauge: text keeps at least 4.5:1 against the
+   top bar's #1f2933. */
+.energy-gauge--rested .energy-gauge__fill {
+  background: #7bd389;
+}
+
+.energy-gauge--rested .energy-gauge__state {
+  color: #7bd389;
+}
+
+.energy-gauge--tired .energy-gauge__fill {
+  background: #f7c948;
+}
+
+.energy-gauge--tired .energy-gauge__state {
+  color: #f7c948;
+}
+
+.energy-gauge--exhausted .energy-gauge__fill {
+  background: #ff9b9b;
+}
+
+.energy-gauge--exhausted .energy-gauge__state {
+  border-color: #cf1124;
+  background: #cf1124;
+  color: #ffffff;
+}

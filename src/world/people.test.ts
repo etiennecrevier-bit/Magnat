@@ -10,6 +10,7 @@ import {
   drawBubble,
   drawCustomer,
   drawPickMark,
+  drawSpill,
   pickLook,
   SEGMENT_ACCESSORY,
   type ChildLook,
@@ -22,6 +23,11 @@ const STYLE: PlaceholderStyle = {
   outline: ASSETS.outlineWidth,
 }
 const LOOKS = CROWD.looks
+const CIRCLES = CROWD.fatigue.circlesColor
+
+function avatar(kind: 'femme' | 'homme' = 'femme') {
+  return drawAvatar(kind, STYLE, CROWD.avatar, LOOKS.trousers, CIRCLES)
+}
 const SEGMENTS: readonly SegmentId[] = ['aubaine', 'habitue', 'chic']
 
 function seeded(seed: number): () => number {
@@ -323,7 +329,7 @@ describe('drawPickMark', () => {
 
 describe('drawAvatar', () => {
   it('wears a blue shirt and a cream apron', () => {
-    const { root } = drawAvatar('femme', STYLE, CROWD.avatar, LOOKS.trousers)
+    const { root } = avatar()
     expect(colours(find(root, 'shirt'), 'fill')).toEqual([
       hex(STYLE.palette.playerBlue),
     ])
@@ -336,25 +342,80 @@ describe('drawAvatar', () => {
   })
 
   it('has an arm that turns at the shoulder, hanging down at rest', () => {
-    const { root, arm } = drawAvatar(
-      'homme',
-      STYLE,
-      CROWD.avatar,
-      LOOKS.trousers,
-    )
-    expect(arm.parent).toBe(root)
+    const { upper, arm } = avatar('homme')
+    expect(arm.parent).toBe(upper)
     expect(arm.rotation).toBe(0)
     expect(arm.x).toBeLessThan(0)
   })
 
   it('wears the hair of the avatar the player picked', () => {
-    const femme = drawAvatar('femme', STYLE, CROWD.avatar, LOOKS.trousers).root
-    const homme = drawAvatar('homme', STYLE, CROWD.avatar, LOOKS.trousers).root
+    const femme = avatar('femme').root
+    const homme = avatar('homme').root
     expect(femme.label).toBe('avatar:femme')
     expect(homme.label).toBe('avatar:homme')
     expect(colours(find(femme, 'hair'), 'fill')).toEqual([
       hex(CROWD.avatar.hair),
     ])
     expect(colours(find(homme, 'hair'), 'fill')).toEqual([])
+  })
+
+  it('keeps the legs out of the upper body, which holds the rest', () => {
+    const { root, upper, face } = avatar()
+    expect(root.children.map((c) => c.label)).toEqual(['legs', 'upper'])
+    expect(labels(upper)).toEqual(
+      expect.arrayContaining(['otherArm', 'shirt', 'apron', 'face', 'arm']),
+    )
+    expect(face.parent).toBe(upper)
+    expect(labels(face)).toEqual(
+      expect.arrayContaining(['hair', 'head', 'eyes', 'hairTop']),
+    )
+  })
+
+  it('turns the head at the chin, under the head', () => {
+    const { face } = avatar()
+    const head = find(face, 'head').getLocalBounds()
+    expect(face.pivot.y).toBeCloseTo(head.maxY - STYLE.outline / 2, 0)
+    expect(face.position.y).toBe(face.pivot.y)
+    expect(face.rotation).toBe(0)
+  })
+
+  it('draws two ink eyes on the face, below the hair', () => {
+    const { face, eyes } = avatar('homme')
+    expect(colours(eyes, 'fill')).toEqual([hex(STYLE.palette.ink)])
+    expect(eyes.visible).toBe(true)
+    const head = find(face, 'head').getBounds()
+    const cap = find(face, 'hairTop').getBounds()
+    const { minX, maxX, minY, maxY } = eyes.getBounds()
+    expect(minY).toBeGreaterThan(cap.maxY)
+    expect(maxY).toBeLessThan(head.maxY)
+    expect(minX).toBeGreaterThan(head.minX)
+    expect(maxX).toBeLessThan(head.maxX)
+  })
+
+  it('draws dark circles and a yawn, both hidden at first', () => {
+    const { face, circles, yawn } = avatar()
+    expect(circles.parent).toBe(face)
+    expect(yawn.parent).toBe(face)
+    expect(circles.visible).toBe(false)
+    expect(yawn.visible).toBe(false)
+    expect(colours(circles, 'stroke')).toEqual([hex(CIRCLES), hex(CIRCLES)])
+    expect(colours(yawn, 'fill')).toEqual([hex(STYLE.palette.ink)])
+  })
+})
+
+describe('drawSpill', () => {
+  const SPILL = CROWD.fatigue.spill
+
+  it('draws a puddle and a drop in its colour where the settings put it', () => {
+    const spill = drawSpill(SPILL, STYLE)
+    expect(spill.label).toBe('spill')
+    expect(spill.position).toMatchObject({ x: SPILL.x, y: SPILL.y })
+    expect(new Set(colours(spill, 'fill'))).toEqual(new Set([hex(SPILL.color)]))
+  })
+
+  it('is as wide as the settings say, with the drop running down', () => {
+    const { minX, maxX, minY, maxY } = drawSpill(SPILL, STYLE).getLocalBounds()
+    expect(maxX - minX).toBeCloseTo(SPILL.width + STYLE.outline * 0.6, 0)
+    expect(maxY).toBeGreaterThan(-minY * 2)
   })
 })

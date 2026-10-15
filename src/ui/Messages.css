@@ -1,0 +1,50 @@
+/* No room taken while empty: a grid with no rows has no height. */
+.messages {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.messages:empty {
+  margin: 0;
+}
+
+/* The sender and the text, with Fermer on the right. Text colours keep at
+   least 4.5:1 against the background. */
+.message {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'from close'
+    'text close';
+  align-items: start;
+  gap: 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid #2b2622;
+  background: #fbe7c2;
+  color: #2b2622;
+}
+
+.message--landlord {
+  border-left-color: #a61b1b;
+}
+
+.message__from {
+  grid-area: from;
+  margin: 0;
+  font-weight: 700;
+}
+
+.message__day {
+  color: #52606d;
+  font-weight: 400;
+}
+
+.message__text {
+  grid-area: text;
+  margin: 0;
+}
+
+.message__close {
+  grid-area: close;
+}

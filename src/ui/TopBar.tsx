@@ -1,10 +1,13 @@
 import { useEffect, useMemo } from 'react'
 import pacing from '../content/pacing.json'
+import type { Avatar } from '../content/schema.ts'
 import type { Cents } from '../engine/money.ts'
 import type { Day } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
 import { CashGaugeView } from './CashGauge.tsx'
+import { EnergyGaugeView } from './EnergyGauge.tsx'
+import FinancesPanel from './FinancesPanel.tsx'
 import { formatGameDate } from './formatGameDate.ts'
 import ManagePanel from './ManagePanel.tsx'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
@@ -30,19 +33,28 @@ interface TopBarViewProps {
   day: Day
   /** The encaisse after every entry posted so far. */
   cash: Cents
+  /** The owner's energy this morning. */
+  energy: number
+  /** The owner's avatar, which the energy's word agrees with. */
+  avatar: Avatar
   speed: number
   onSpeedChange: (speed: number) => void
   /** Opens the « Gérer le camion » panel. */
   onManage: () => void
+  /** Opens the « Vos finances » panel. */
+  onFinances: () => void
 }
 
 export function TopBarView({
   businessName,
   day,
   cash,
+  energy,
+  avatar,
   speed,
   onSpeedChange,
   onManage,
+  onFinances,
 }: TopBarViewProps) {
   return (
     <header className="top-bar">
@@ -50,15 +62,28 @@ export function TopBarView({
         <p className="top-bar__name">{businessName}</p>
         <p className="top-bar__date">{formatGameDate(day)}</p>
       </div>
-      <CashGaugeView cash={cash} />
-      <button
-        type="button"
-        className="top-bar__manage"
-        aria-haspopup="dialog"
-        onClick={onManage}
-      >
-        Gérer le camion
-      </button>
+      <div className="top-bar__gauges">
+        <CashGaugeView cash={cash} />
+        <EnergyGaugeView energy={energy} avatar={avatar} />
+      </div>
+      <div className="top-bar__panels">
+        <button
+          type="button"
+          className="top-bar__panel"
+          aria-haspopup="dialog"
+          onClick={onManage}
+        >
+          Gérer le camion
+        </button>
+        <button
+          type="button"
+          className="top-bar__panel"
+          aria-haspopup="dialog"
+          onClick={onFinances}
+        >
+          Vos finances
+        </button>
+      </div>
       <div className="top-bar__speeds" role="group" aria-label="Vitesse du jeu">
         {pacing.speeds.map((option) => (
           <button
@@ -79,16 +104,18 @@ export function TopBarView({
 
 /**
  * The top bar wired to the app store, with the Space shortcut, and the
- * « Gérer le camion » panel while it is open.
+ * panel it opened while that is open.
  */
 export default function TopBar() {
   const businessName = useGame((state) => state.game.profile.businessName)
+  const avatar = useGame((state) => state.game.profile.avatar)
   const day = useGame((state) => state.game.day)
   const journal = useGame((state) => state.game.journal)
+  const energy = useGame((state) => state.game.energy)
   const speed = useGame((state) => state.speed)
   const setSpeed = useGame((state) => state.setSpeed)
   const togglePause = useGame((state) => state.togglePause)
-  const panelOpen = useGame((state) => state.resumeSpeed !== null)
+  const panel = useGame((state) => state.panel)
   const openPanel = useGame((state) => state.openPanel)
 
   useEffect(() => {
@@ -114,11 +141,15 @@ export default function TopBar() {
         businessName={businessName}
         day={day}
         cash={cash}
+        energy={energy}
+        avatar={avatar}
         speed={speed}
         onSpeedChange={setSpeed}
-        onManage={openPanel}
+        onManage={() => openPanel('manage')}
+        onFinances={() => openPanel('finances')}
       />
-      {panelOpen && <ManagePanel />}
+      {panel === 'manage' && <ManagePanel />}
+      {panel === 'finances' && <FinancesPanel />}
     </>
   )
 }

@@ -84,7 +84,7 @@ describe('ManagePanelView', () => {
   it('opens on its title and Fermer, then the note, then the five sections and the facts', () => {
     const html = render()
     expect(html).toMatch(
-      /^<div class="manage__content"><div class="manage__header"><button type="button" class="toggle">Fermer<\/button><h2 id="manage-title">Gérer le camion<\/h2><\/div><p class="manage__note">Les changements s&#x27;appliquent demain matin<\/p>/,
+      /^<div class="panel__content"><div class="panel__header"><button type="button" class="toggle">Fermer<\/button><h2 id="manage-title">Gérer le camion<\/h2><\/div><p class="manage__note">Les changements s&#x27;appliquent demain matin<\/p>/,
     )
     expect(texts(html, 'h3')).toEqual([
       'Prix',
@@ -305,7 +305,7 @@ describe('NumberFieldView', () => {
 describe('ManagePanel', () => {
   it('is a modal dialog labelled by its title', () => {
     expect(renderToStaticMarkup(<ManagePanel />)).toMatch(
-      /^<dialog class="manage" aria-labelledby="manage-title"><div class="manage__content">.*<\/dialog>$/,
+      /^<dialog class="panel manage" aria-labelledby="manage-title"><div class="panel__content">.*<\/dialog>$/,
     )
   })
 
