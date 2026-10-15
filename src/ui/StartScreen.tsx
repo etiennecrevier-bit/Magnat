@@ -306,7 +306,7 @@ export default function StartScreen({
   const visualEffects = useStore(settings, (state) => state.visualEffects)
   const setVisualEffects = useStore(settings, (state) => state.setVisualEffects)
   const actions = startMenuActions({
-    stored,
+    readStored: () => readStoredSave(browserStorage()),
     imports,
     onStart,
     onImportError: setImportError,

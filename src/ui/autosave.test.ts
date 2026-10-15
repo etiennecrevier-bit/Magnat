@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, toCalendar } from '../engine/clock.ts'
 import { NO_EVENTS } from '../engine/events.ts'
-import type { GameState } from '../engine/types.ts'
+import type { Day, GameState } from '../engine/types.ts'
 import { startAutosave, type AutosaveHost } from './autosave.ts'
+import { createSaveWriter, readStoredSave, type SaveStorage } from './saves.ts'
 import { createGameStore } from './store.ts'
 
 // Day 0 is May 1st: May has 31 days, so day 30 is May 31st and day 31 is
@@ -103,5 +104,94 @@ describe('startAutosave', () => {
     page.setHidden(true)
     expect(write).toHaveBeenCalledOnce()
     expect(page.listeners()).toBe(0)
+  })
+})
+
+/** One `localStorage` that every tab of the browser shares. */
+function sharedStorage(): SaveStorage {
+  const items = new Map<string, string>()
+  return {
+    getItem: (key) => items.get(key) ?? null,
+    setItem: (key, value) => {
+      items.set(key, value)
+    },
+  }
+}
+
+/**
+ * A tab playing `game`, autosaving into `storage` as App does: `failed()` is
+ * whether its last save failed, which shows App's banner.
+ */
+function openTab(storage: SaveStorage, game: GameState) {
+  const store = createGameStore(game, NO_EVENTS)
+  const page = createFakeHost()
+  const save = createSaveWriter(storage)
+  let failed = false
+  const stop = startAutosave(
+    store,
+    (saved) => {
+      failed = !save(saved)
+    },
+    page.host,
+  )
+  return { store, page, stop, failed: () => failed }
+}
+
+/** The game a tab gets from « Continuer ». */
+function continued(storage: SaveStorage): GameState {
+  const stored = readStoredSave(storage)
+  if (stored.status !== 'found') throw new Error('nothing to continue')
+  return stored.game
+}
+
+function storedDay(storage: SaveStorage): Day | null {
+  const stored = readStoredSave(storage)
+  return stored.status === 'found' ? stored.game.day : null
+}
+
+describe('startAutosave in two tabs on the same game', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('keeps the newer days when the tab behind is hidden last', () => {
+    const storage = sharedStorage()
+    const tabA = openTab(storage, createInitialState(5))
+    tabA.store.getState().advance(8)
+
+    // Tab B continues the stored game and plays further than tab A.
+    const tabB = openTab(storage, continued(storage))
+    tabB.store.getState().advance(LAST_OF_MAY)
+    tabB.page.setHidden(true)
+    tabB.stop()
+    expect(storedDay(storage)).toBe(LAST_OF_MAY)
+
+    // Tab A, still on day 8, is closed last.
+    tabA.page.setHidden(true)
+    tabA.stop()
+    expect(storedDay(storage)).toBe(LAST_OF_MAY)
+    expect(tabA.failed()).toBe(true)
+  })
+
+  it('keeps the newer days when the tab ahead is hidden last', () => {
+    const storage = sharedStorage()
+    const tabA = openTab(storage, createInitialState(5))
+    const tabB = openTab(storage, continued(storage))
+    tabA.store.getState().advance(12)
+    tabB.store.getState().advance(LAST_OF_MAY)
+
+    // Tab A, behind, is closed first.
+    tabA.page.setHidden(true)
+    tabA.stop()
+    expect(storedDay(storage)).toBe(12)
+
+    tabB.page.setHidden(true)
+    tabB.stop()
+    expect(storedDay(storage)).toBe(LAST_OF_MAY)
+    expect(tabB.failed()).toBe(false)
   })
 })
