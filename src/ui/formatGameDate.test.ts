@@ -5,6 +5,7 @@ import {
   formatGameMonth,
   formatGamePeriod,
   formatShortGameDate,
+  formatShortWeekdayName,
   formatWeekdayName,
 } from './formatGameDate.ts'
 
@@ -63,6 +64,17 @@ describe('formatWeekdayName', () => {
     { day: 7, text: 'lundi' },
   ])('names day $day $text', ({ day, text }) => {
     expect(formatWeekdayName(day)).toBe(text)
+  })
+})
+
+describe('formatShortWeekdayName', () => {
+  it.each([
+    { day: 0, text: 'lun.' },
+    { day: 3, text: 'jeu.' },
+    { day: 6, text: 'dim.' },
+    { day: 7, text: 'lun.' },
+  ])('names day $day $text', ({ day, text }) => {
+    expect(formatShortWeekdayName(day)).toBe(text)
   })
 })
 

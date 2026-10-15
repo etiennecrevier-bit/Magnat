@@ -10,14 +10,16 @@ import {
   FOOD_TRUCK,
   PERSONAL,
 } from '../engine/day.ts'
-import { resolveEvent } from '../engine/events.ts'
+import { NO_EVENTS, resolveEvent } from '../engine/events.ts'
 import { cents } from '../engine/money.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState, Profile } from '../engine/types.ts'
+import { createSettingsStore, settingsStore } from './settings.ts'
 import {
   NORMAL_SPEED,
   PAUSED,
   createGameStore,
+  gameStore,
   newGame,
   seedFromSearch,
 } from './store.ts'
@@ -45,6 +47,8 @@ describe('createGameStore', () => {
     expect(createGameStore().getState().resumeSpeed).toBeNull()
     expect(createGameStore().getState().panel).toBeNull()
     expect(createGameStore().getState().eventBefore).toBeNull()
+    expect(createGameStore().getState().reportWaiting).toBe(false)
+    expect(createGameStore().getState().slideIn).toBeNull()
   })
 
   it('can start from a given state', () => {
@@ -532,5 +536,343 @@ describe('decide', () => {
         .decide({ kind: 'price', product: 'cafe', price: cents(1) }),
     ).toThrow(RangeError)
     expect(store.getState().game.pendingDecisions).toBeNull()
+  })
+})
+
+/** The essai card alone on every morning from `firstDay`. */
+function essaiFrom(firstDay: number) {
+  return loadEventContent({
+    ...eventsJson,
+    pacing: { firstDay, minDaysBetween: 0, dailyChance: 1 },
+    events: eventsJson.events
+      .filter(({ id }) => id === 'essai')
+      .map((event) => ({ ...event, weight: 1 })),
+  })
+}
+
+/** A seed-1 game played with no event card to the morning of `day`. */
+function playedTo(day: number): GameState {
+  let game = createInitialState(1)
+  while (game.day < day) {
+    game = tick(
+      game,
+      FOOD_TRUCK,
+      CUSTOMERS,
+      DIFFICULTIES,
+      PERSONAL,
+      ENERGY,
+      NO_EVENTS,
+    )
+  }
+  return game
+}
+
+/** The weekly report on, in full only for the first weeks of a game. */
+const REPORT_AT_FIRST = { everyWeek: () => false }
+
+describe('the weekly report', () => {
+  it('stays out of a store without it: the days run past Monday', () => {
+    const store = createGameStore(createInitialState(1), NO_EVENTS)
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      game: { day: 10, lastWeek: { firstDay: 0 } },
+      panel: null,
+      reportWaiting: false,
+      slideIn: null,
+    })
+  })
+
+  it('opens in full on the Monday of each of the first 4 weeks, pausing the game', () => {
+    const store = createGameStore(
+      createInitialState(1),
+      NO_EVENTS,
+      REPORT_AT_FIRST,
+    )
+    store.getState().setSpeed(3)
+    for (const monday of [7, 14, 21, 28]) {
+      store.getState().advance(10)
+      expect(store.getState()).toMatchObject({
+        game: { day: monday, lastWeek: { firstDay: monday - 7 } },
+        panel: 'report',
+        speed: PAUSED,
+        resumeSpeed: 3,
+        slideIn: null,
+      })
+      // Nothing advances while it shows the week.
+      store.getState().advance(1)
+      expect(store.getState().game.day).toBe(monday)
+
+      store.getState().closePanel()
+      expect(store.getState()).toMatchObject({
+        panel: null,
+        speed: 3,
+        resumeSpeed: null,
+      })
+    }
+  })
+
+  it('slides in from the fifth week, without pausing', () => {
+    const store = createGameStore(playedTo(34), NO_EVENTS, REPORT_AT_FIRST)
+    store.getState().setSpeed(10)
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    store.getState().advance(5)
+
+    expect(store.getState()).toMatchObject({
+      game: { day: 35, lastWeek: { firstDay: 28 } },
+      panel: null,
+      speed: 10,
+      resumeSpeed: null,
+      slideIn: 28,
+    })
+    expect(listener).toHaveBeenCalledTimes(1)
+    store.getState().advance(1)
+    expect(store.getState()).toMatchObject({ game: { day: 36 }, slideIn: 28 })
+    store.getState().dismissSlideIn()
+    expect(store.getState().slideIn).toBeNull()
+  })
+
+  it('opens in full every week while « Ouvrir le bilan chaque semaine » is on', () => {
+    const settings = createSettingsStore(null)
+    settings.getState().setOpenReportEveryWeek(true)
+    const store = createGameStore(playedTo(34), NO_EVENTS, {
+      everyWeek: () => settings.getState().openReportEveryWeek,
+    })
+
+    store.getState().advance(1)
+    expect(store.getState()).toMatchObject({
+      game: { day: 35 },
+      panel: 'report',
+      speed: PAUSED,
+      resumeSpeed: NORMAL_SPEED,
+      slideIn: null,
+    })
+    store.getState().closePanel()
+
+    settings.getState().setOpenReportEveryWeek(false)
+    store.getState().advance(7)
+    expect(store.getState()).toMatchObject({
+      game: { day: 42 },
+      panel: null,
+      slideIn: 35,
+    })
+  })
+
+  it('shows before the event card on a Monday that brings both', () => {
+    const store = createGameStore(
+      createInitialState(1),
+      essaiFrom(7),
+      REPORT_AT_FIRST,
+    )
+    store.getState().setSpeed(3)
+
+    store.getState().advance(10)
+
+    expect(store.getState()).toMatchObject({
+      game: {
+        day: 7,
+        lastWeek: { firstDay: 0 },
+        events: { pending: { event: 'essai' } },
+      },
+      panel: 'report',
+      speed: PAUSED,
+      resumeSpeed: 3,
+    })
+    store.getState().advance(1)
+    expect(store.getState().game.day).toBe(7)
+
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: 'event',
+      speed: PAUSED,
+      resumeSpeed: 3,
+    })
+    store.getState().chooseEvent('rienFaire')
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: null,
+      speed: 3,
+      resumeSpeed: null,
+    })
+  })
+
+  it('opens in full before the event card after the first 4 weeks too, rather than sliding in', () => {
+    const store = createGameStore(playedTo(34), essaiFrom(35), REPORT_AT_FIRST)
+    store.getState().setSpeed(10)
+
+    store.getState().advance(1)
+
+    expect(store.getState()).toMatchObject({
+      game: {
+        day: 35,
+        lastWeek: { firstDay: 28 },
+        events: { pending: { event: 'essai' } },
+      },
+      panel: 'report',
+      speed: PAUSED,
+      resumeSpeed: 10,
+      slideIn: null,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ panel: 'event', speed: PAUSED })
+    store.getState().chooseEvent('rienFaire')
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: null,
+      speed: 10,
+      slideIn: null,
+    })
+  })
+
+  it('waits for a panel open when its Monday comes, then shows before the event card', () => {
+    const store = createGameStore(
+      createInitialState(1),
+      essaiFrom(7),
+      REPORT_AT_FIRST,
+    )
+    store.getState().setSpeed(10)
+    store.getState().openPanel('finances')
+
+    store.getState().advance(10)
+
+    expect(store.getState()).toMatchObject({
+      game: { day: 7, events: { pending: { event: 'essai' } } },
+      panel: 'finances',
+      reportWaiting: true,
+      speed: PAUSED,
+      resumeSpeed: 10,
+    })
+    store.getState().advance(1)
+    expect(store.getState().game.day).toBe(7)
+
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: 'report',
+      reportWaiting: false,
+      speed: PAUSED,
+      resumeSpeed: 10,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ panel: 'event', speed: PAUSED })
+    store.getState().chooseEvent('rienFaire')
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ panel: null, speed: 10 })
+  })
+
+  it('slides in once a panel open when its Monday comes closes', () => {
+    const store = createGameStore(playedTo(34), NO_EVENTS, REPORT_AT_FIRST)
+    store.getState().openPanel('manage')
+    store.getState().advance(1)
+    expect(store.getState()).toMatchObject({
+      game: { day: 35 },
+      panel: 'manage',
+      reportWaiting: false,
+      slideIn: 28,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: null,
+      speed: NORMAL_SPEED,
+      slideIn: 28,
+    })
+  })
+
+  it('opens in full from the card sliding in, which then goes away', () => {
+    const store = createGameStore(playedTo(34), NO_EVENTS, REPORT_AT_FIRST)
+    store.getState().setSpeed(3)
+    store.getState().advance(1)
+
+    store.getState().openPanel('report')
+
+    expect(store.getState()).toMatchObject({
+      panel: 'report',
+      speed: PAUSED,
+      resumeSpeed: 3,
+      slideIn: null,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: null,
+      speed: 3,
+      slideIn: null,
+    })
+  })
+
+  it('does not show again for a game started or loaded on its Monday', () => {
+    const store = createGameStore(
+      createInitialState(1),
+      essaiFrom(7),
+      REPORT_AT_FIRST,
+    )
+    store.getState().openPanel('finances')
+    store.getState().advance(10)
+    expect(store.getState().reportWaiting).toBe(true)
+    store.getState().startGame(playedTo(7))
+    expect(store.getState()).toMatchObject({
+      game: { day: 7, lastWeek: { firstDay: 0 } },
+      panel: null,
+      reportWaiting: false,
+      slideIn: null,
+      speed: NORMAL_SPEED,
+    })
+
+    const sliding = createGameStore(playedTo(34), NO_EVENTS, REPORT_AT_FIRST)
+    sliding.getState().advance(1)
+    expect(sliding.getState().slideIn).toBe(28)
+    sliding.getState().startGame(playedTo(35))
+    expect(sliding.getState().slideIn).toBeNull()
+  })
+
+  it('lets the shipped cards come up, after the reports of the Mondays before', () => {
+    const store = createGameStore(
+      createInitialState(1),
+      EVENTS,
+      REPORT_AT_FIRST,
+    )
+    const reported: number[] = []
+    while (
+      store.getState().game.events.pending === null &&
+      store.getState().game.day < 60
+    ) {
+      store.getState().advance(60 - store.getState().game.day)
+      if (store.getState().panel === 'report') {
+        reported.push(store.getState().game.day)
+        store.getState().closePanel()
+      }
+    }
+    const { game, panel, speed } = store.getState()
+    expect(game.events.pending).not.toBeNull()
+    expect(game.day).toBeGreaterThanOrEqual(EVENTS.pacing.firstDay)
+    expect(game.day).toBeLessThan(60)
+    expect(panel).toBe('event')
+    expect(speed).toBe(PAUSED)
+    expect(reported).toEqual(
+      [7, 14, 21, 28].filter((monday) => monday <= game.day),
+    )
+  })
+})
+
+describe('gameStore', () => {
+  afterEach(() => {
+    gameStore.setState(gameStore.getInitialState(), true)
+    settingsStore.getState().setOpenReportEveryWeek(false)
+  })
+
+  it("shows the weekly report as the player's settings say", () => {
+    gameStore.getState().startGame(createInitialState(1))
+    gameStore.getState().advance(10)
+    expect(gameStore.getState()).toMatchObject({
+      game: { day: 7 },
+      panel: 'report',
+    })
+
+    settingsStore.getState().setOpenReportEveryWeek(true)
+    gameStore.getState().startGame(playedTo(34))
+    gameStore.getState().advance(1)
+    expect(gameStore.getState()).toMatchObject({
+      game: { day: 35 },
+      panel: 'report',
+    })
   })
 })

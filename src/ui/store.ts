@@ -12,7 +12,9 @@ import {
 import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
 import { resolveEvent } from '../engine/events.ts'
 import { defaultProfile } from '../engine/profile.ts'
-import type { GameState, Profile } from '../engine/types.ts'
+import type { Day, GameState, Profile, WeekReport } from '../engine/types.ts'
+import { settingsStore } from './settings.ts'
+import { newWeekOf, opensFullReport } from './weeklyReport.ts'
 
 export const PAUSED = 0
 /** A multiplier of 1 is, by definition, the pace pacing.json calls normal. */
@@ -20,9 +22,17 @@ export const NORMAL_SPEED = 1
 
 /**
  * The panels: « Gérer le camion » and « Vos finances », which the top bar
- * opens, and the event card, which opens on its own when an event comes up.
+ * opens, the event card, which opens on its own when an event comes up, and
+ * the « Bilan de la semaine », which opens on its own on a Monday morning
+ * or from the card that slides in.
  */
-export type Panel = 'manage' | 'finances' | 'event'
+export type Panel = 'manage' | 'finances' | 'event' | 'report'
+
+/** How the store shows the « Bilan de la semaine ». */
+export interface WeeklyReportOptions {
+  /** Whether the player wants the full report every week. */
+  readonly everyWeek: () => boolean
+}
 
 export interface GameStoreState {
   game: GameState
@@ -46,6 +56,16 @@ export interface GameStoreState {
    * shows what it did; null otherwise.
    */
   eventBefore: GameState | null
+  /**
+   * Whether the full « Bilan de la semaine » waits for the panel open when
+   * its Monday came to close, before any event card.
+   */
+  reportWaiting: boolean
+  /**
+   * The Monday of the week the card sliding in shows, `lastWeek`'s; null
+   * when none shows. It hides while a panel is open.
+   */
+  slideIn: Day | null
   /** Ignored while a panel is open: the game stays paused. */
   setSpeed: (speed: number) => void
   /** Ignored while a panel is open: the game stays paused. */
@@ -57,20 +77,32 @@ export interface GameStoreState {
    * open, that panel stays and the card opens when it closes. Does nothing
    * while an event waits for the player's choice, nor while the card shows
    * what the choice did, which the next day would blur.
+   *
+   * With the weekly report on, it also stops on the Monday morning a new
+   * `lastWeek` comes. The full report opens in the event card's place, the
+   * card following when it closes: for the first weeks of a game, when the
+   * player wants it every week, and on a morning that brings an event,
+   * which pauses the game anyway. Otherwise the card slides in (`slideIn`)
+   * and the game goes on. Does nothing while the full report is open or
+   * waits for a panel to close, since the next Monday would replace the
+   * week it shows.
    */
   advance: (days: number) => void
   /**
    * Opens `panel`: remembers the speed, even `PAUSED`, and pauses. Does
    * nothing if a panel is already open, so that panel and the speed it
-   * remembered stay. The event card only opens on its own.
+   * remembered stay. The event card only opens on its own. The report takes
+   * the card sliding in away.
    */
   openPanel: (panel: Exclude<Panel, 'event'>) => void
   /**
-   * Closes the panel and resumes at the speed it remembered. While an event
-   * waits for the player's choice, the event card stays open, and any other
-   * panel gives way to it, the game still paused.
+   * Closes the panel and resumes at the speed it remembered. The full report
+   * waiting opens first, then, while an event waits for the player's
+   * choice, the event card, which stays open; the game stays paused.
    */
   closePanel: () => void
+  /** Takes the card sliding in away. */
+  dismissSlideIn: () => void
   /**
    * Plays the player's choice on the event waiting, through the engine's
    * `resolveEvent()`. The card stays open, and the game paused, to show
@@ -134,7 +166,8 @@ export function newGame(
 
 /**
  * The store's state for playing `game` from its start, at normal speed: on
- * the event card, paused, if an event waits for the player's choice.
+ * the event card, paused, if an event waits for the player's choice. The
+ * weekly report of a game loaded on a Monday does not show again.
  */
 function playing(game: GameState) {
   const waiting = game.events.pending !== null
@@ -145,16 +178,21 @@ function playing(game: GameState) {
     resumeSpeed: waiting ? NORMAL_SPEED : null,
     panel: waiting ? ('event' as const) : null,
     eventBefore: null,
+    reportWaiting: false,
+    slideIn: null,
   }
 }
 
 /**
  * A store playing `game`, whose days draw the event cards from `events`
- * and whose choices play them out.
+ * and whose choices play them out. With `weeklyReport`, it shows the
+ * « Bilan de la semaine » on each Monday morning (see `advance`); without,
+ * as for tests of other parts, the days run on.
  */
 export function createGameStore(
   game: GameState = createInitialState(randomSeed()),
   events: EventContent = EVENTS,
+  weeklyReport: WeeklyReportOptions | null = null,
 ): GameStore {
   return createStore<GameStoreState>()((set, get) => ({
     ...playing(game),
@@ -168,12 +206,24 @@ export function createGameStore(
       set({ speed: speed > PAUSED ? PAUSED : lastSpeed })
     },
     advance: (days) => {
-      const { game: start, speed, resumeSpeed, panel } = get()
-      if (days <= 0 || start.events.pending !== null || panel === 'event') {
+      const { game: start, speed, resumeSpeed, panel, reportWaiting } = get()
+      if (
+        days <= 0 ||
+        start.events.pending !== null ||
+        panel === 'event' ||
+        panel === 'report' ||
+        reportWaiting
+      ) {
         return
       }
       let next = start
-      for (let i = 0; i < days && next.events.pending === null; i += 1) {
+      let week: WeekReport | null = null
+      for (
+        let i = 0;
+        i < days && next.events.pending === null && week === null;
+        i += 1
+      ) {
+        const before = next
         next = tick(
           next,
           FOOD_TRUCK,
@@ -183,24 +233,52 @@ export function createGameStore(
           ENERGY,
           events,
         )
+        if (weeklyReport !== null) week = newWeekOf(before, next)
       }
-      // P3-10 (#98): the weekly report goes first on a morning that brings
-      // both. It is to open here, in the event card's place and with the
-      // same resumeSpeed; closePanel() then opens the card.
-      if (next.events.pending === null || resumeSpeed !== null) {
+      const eventComes = next.events.pending !== null
+      // The weekly report goes first on a morning that brings both: it
+      // opens in the event card's place, and closePanel() opens the card.
+      const opens =
+        week !== null &&
+        (eventComes ||
+          opensFullReport(week, weeklyReport?.everyWeek() ?? false))
+      if (opens) {
+        set(
+          resumeSpeed === null
+            ? {
+                game: next,
+                panel: 'report',
+                resumeSpeed: speed,
+                speed: PAUSED,
+                slideIn: null,
+              }
+            : { game: next, reportWaiting: true, slideIn: null },
+        )
+      } else if (week !== null) {
+        set({ game: next, slideIn: week.firstDay })
+      } else if (!eventComes || resumeSpeed !== null) {
         set({ game: next })
       } else {
         set({ game: next, panel: 'event', resumeSpeed: speed, speed: PAUSED })
       }
     },
     openPanel: (panel) => {
-      const { speed, resumeSpeed } = get()
+      const { speed, resumeSpeed, slideIn } = get()
       if (resumeSpeed !== null) return
-      set({ resumeSpeed: speed, speed: PAUSED, panel })
+      set({
+        resumeSpeed: speed,
+        speed: PAUSED,
+        panel,
+        slideIn: panel === 'report' ? null : slideIn,
+      })
     },
     closePanel: () => {
-      const { resumeSpeed, panel, game: current } = get()
+      const { resumeSpeed, panel, game: current, reportWaiting } = get()
       if (resumeSpeed === null) return
+      if (reportWaiting) {
+        set({ panel: 'report', reportWaiting: false })
+        return
+      }
       if (current.events.pending !== null) {
         if (panel !== 'event') set({ panel: 'event' })
         return
@@ -220,19 +298,25 @@ export function createGameStore(
         eventBefore: current,
       })
     },
+    dismissSlideIn: () => {
+      if (get().slideIn !== null) set({ slideIn: null })
+    },
     decide: (change) => set({ game: applyDecision(get().game, change) }),
     startGame: (next) => set(playing(next)),
   }))
 }
 
 /**
- * The store the app runs on. Until the start screen hands it the game to
- * play, it holds a new game with the default profile, seeded from the page
- * address when it has a `?seed=`, for the world to draw behind the menu.
- * Tests build their own with `createGameStore`.
+ * The store the app runs on, with the weekly report as the player's
+ * settings say. Until the start screen hands it the game to play, it holds
+ * a new game with the default profile, seeded from the page address when
+ * it has a `?seed=`, for the world to draw behind the menu. Tests build
+ * their own with `createGameStore`.
  */
 export const gameStore = createGameStore(
   newGame(typeof window === 'undefined' ? '' : window.location.search),
+  EVENTS,
+  { everyWeek: () => settingsStore.getState().openReportEveryWeek },
 )
 
 /**

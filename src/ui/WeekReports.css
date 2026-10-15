@@ -1,0 +1,15 @@
+/* The latest week's report under the table, on the panels' cream card so
+   its colours read as they do in the panel. */
+.week-reports__latest {
+  max-width: 44rem;
+  margin: 1.5rem 0 0;
+  padding: 1rem 1.25rem 1.25rem;
+  border: 2px solid #2b2622;
+  border-radius: 12px;
+  background: #fff7e8;
+  color: #2b2622;
+}
+
+.week-reports__latest h2 {
+  margin: 0 0 0.5rem;
+}

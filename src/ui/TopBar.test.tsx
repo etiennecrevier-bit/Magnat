@@ -226,6 +226,20 @@ describe('TopBar', () => {
     },
   )
 
+  it('shows the Bilan de la semaine on the first Monday, paused', () => {
+    gameStore.getState().startGame(createInitialState(1))
+    gameStore.getState().advance(10)
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toMatch(
+      /^<header class="top-bar">.*<\/header><dialog class="panel weekly-report-panel" aria-labelledby="weekly-report-title">.*<\/dialog>$/,
+    )
+    expect(html).toContain('Lundi 8 mai, an 1')
+    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+      label: 'Pause',
+      pressed: 'true',
+    })
+  })
+
   it('shows the event card while an event waits, paused', () => {
     const game = createInitialState(1)
     gameStore.getState().startGame({

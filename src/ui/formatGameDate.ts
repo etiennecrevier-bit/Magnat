@@ -12,6 +12,15 @@ const WEEKDAYS = [
   'Samedi',
   'Dimanche',
 ] as const
+const SHORT_WEEKDAYS = [
+  'lun.',
+  'mar.',
+  'mer.',
+  'jeu.',
+  'ven.',
+  'sam.',
+  'dim.',
+] as const
 const MONTHS = [
   'janvier',
   'février',
@@ -64,6 +73,11 @@ export function formatDayAndMonth(day: Day): string {
 /** The weekday of a game day, in lower case as in a sentence: `jeudi`. */
 export function formatWeekdayName(day: Day): string {
   return nameAt(WEEKDAYS, toCalendar(day).weekday).toLowerCase()
+}
+
+/** The short weekday of a game day, as a chart labels it: `lun.`. */
+export function formatShortWeekdayName(day: Day): string {
+  return nameAt(SHORT_WEEKDAYS, toCalendar(day).weekday)
 }
 
 /** French (Quebec) month and year of a game day, e.g. `Mai, an 1`. */

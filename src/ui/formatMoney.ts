@@ -42,13 +42,27 @@ export function formatStatementAmount(amount: Cents): string {
   return amount < 0 ? `(${text})` : text
 }
 
+/** The size of `amount` with the cents only when there are some: `750 $`. */
+function formatBriefMagnitude(amount: Cents): string {
+  const text = formatAmount(amount)
+  const size = text.endsWith(NO_CENTS) ? text.slice(0, -NO_CENTS.length) : text
+  return `${size}${NO_BREAK_SPACE}$`
+}
+
+/**
+ * Money in a sentence, with the cents only when there are some: `750 $`,
+ * `2,50 $`, `-1 200 $`.
+ */
+export function formatBriefMoney(amount: Cents): string {
+  const text = formatBriefMagnitude(amount)
+  return amount < 0 ? `-${text}` : text
+}
+
 /**
  * A change of money as the event cards write it, with its sign and the
  * cents only when there are some: `+750 $`, `−2,50 $` (U+2212).
  */
 export function formatSignedMoney(amount: Cents): string {
-  const text = formatAmount(amount)
-  const size = text.endsWith(NO_CENTS) ? text.slice(0, -NO_CENTS.length) : text
   const sign = amount < 0 ? MINUS_SIGN : '+'
-  return `${sign}${size}${NO_BREAK_SPACE}$`
+  return `${sign}${formatBriefMagnitude(amount)}`
 }
