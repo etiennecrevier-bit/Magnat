@@ -606,6 +606,19 @@ export function drawAvatar(
       sun,
     ),
   )
+  // It ends in a hand placed on its sleeve as the reaching arm's is on its own.
+  upper.addChild(
+    shadedCircle(
+      new Graphics({ label: 'otherHand' }),
+      torso / 2 + armWidth * 0.3,
+      neck + h * 0.34 + armWidth * 0.3,
+      armWidth * 0.55,
+      settings.skin,
+      style,
+      sun,
+      0.7,
+    ),
+  )
   upper.addChild(
     shadedRect(
       new Graphics({ label: 'shirt' }),
