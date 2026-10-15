@@ -15,7 +15,8 @@
     "typecheck": "tsc -b",
     "format": "prettier --write .",
     "deploy": "npm run build && wrangler deploy",
-    "sim": "tsx tools/sim/run.ts"
+    "sim": "tsx tools/sim/run.ts",
+    "balance": "tsx tools/balance/run.ts"
   },
   "dependencies": {
     "pixi.js": "^8.22.0",

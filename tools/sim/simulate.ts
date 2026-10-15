@@ -2,6 +2,11 @@ import { createHash } from 'node:crypto'
 import type { DifficultyId } from '../../src/content/schema.ts'
 import { createInitialState, tick, toCalendar } from '../../src/engine/clock.ts'
 import { FOOD_TRUCK } from '../../src/engine/day.ts'
+import {
+  applyDecision,
+  latestDecisions,
+  type DecisionChange,
+} from '../../src/engine/decisions.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import type { Cents } from '../../src/engine/money.ts'
 import { defaultProfile } from '../../src/engine/profile.ts'
@@ -59,14 +64,18 @@ export interface SimulationResult {
 
 /**
  * Starts a game from `seed` at `difficulty`, by default the new game
- * screen's, and plays `days` business days, from day 0. Throws a RangeError
- * unless `days` is a safe integer of at least 1, and `seed` and `difficulty`
- * are ones `createInitialState` accepts.
+ * screen's, makes `changes` to the starting decisions, in order, and plays
+ * `days` business days, from day 0. The changes are in effect from day 0,
+ * where the player's would wait for the next morning. Throws a RangeError
+ * unless `days` is a safe integer of at least 1, `seed` and `difficulty` are
+ * ones `createInitialState` accepts and every change is one `applyDecision`
+ * accepts.
  */
 export function simulate(
   seed: number,
   days: number,
   difficulty: DifficultyId = defaultProfile().difficulty,
+  changes: readonly DecisionChange[] = [],
 ): SimulationResult {
   if (!Number.isSafeInteger(days) || days < 1) {
     throw new RangeError(`Days to play must be a whole number from 1: ${days}`)
@@ -76,6 +85,13 @@ export function simulate(
     ...defaultProfile(),
     difficulty,
   })
+  for (const change of changes) state = applyDecision(state, change)
+  // What tick() does each morning, before day 0 is played.
+  state = {
+    ...state,
+    decisions: latestDecisions(state),
+    pendingDecisions: null,
+  }
   const daySummaries: DaySummary[] = []
   for (let day = 0; day < days; day += 1) {
     state = tick(state)
