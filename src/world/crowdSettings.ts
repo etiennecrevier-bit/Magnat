@@ -1,5 +1,6 @@
+import type { AssetManifest } from '../content/assets.ts'
 import type { AvatarFatigue } from '../content/avatarFatigue.ts'
-import { AVATAR_FATIGUE } from './manifest.ts'
+import { ASSETS, AVATAR_FATIGUE } from './manifest.ts'
 
 // How the street's customers look and move. These numbers only change what
 // the world draws, never the game, so they live here with the world rather
@@ -9,7 +10,8 @@ import { AVATAR_FATIGUE } from './manifest.ts'
 // 1440 × 900 design, except the card's and the pick's, which are CSS pixels
 // of the page; times are milliseconds. How fatigue shows on the avatar came
 // with a card that could edit src/content/, so it lives there instead, in
-// avatarFatigue.json.
+// avatarFatigue.json, and who fans themselves in a heat wave with another,
+// in assets.json.
 
 /** How the crowd replays yesterday's visits at one game speed. */
 export interface SpeedCrowd {
@@ -77,6 +79,8 @@ export interface CrowdSettings {
    * and dark circles, and the spill a botched unit leaves on the counter.
    */
   readonly fatigue: AvatarFatigue
+  /** Who fans themselves, and when: as in a heat wave. */
+  readonly fans: AssetManifest['fans']
   /** The badge that counts the day's customers at speeds with no walking. */
   readonly tally: {
     readonly x: number
@@ -154,6 +158,7 @@ export const CROWD: CrowdSettings = {
   bob: { height: 3, stride: 28 },
   avatar: { x: 982, feetY: 694, height: 150, skin: '#C98E62', hair: '#3B2A20' },
   fatigue: AVATAR_FATIGUE,
+  fans: ASSETS.fans,
   tally: { x: 420, y: 724, width: 330, height: 96, fontSize: 30 },
   card: { width: 260, gap: 10, margin: 8 },
   pickMargin: 8,

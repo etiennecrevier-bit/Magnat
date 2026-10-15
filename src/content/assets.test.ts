@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import assetsJson from './assets.json'
-import { colorNameSchema, loadAssetManifest } from './assets.ts'
+import { colorNameSchema, loadAssetManifest, type Shows } from './assets.ts'
+import { loadEventContent } from './schema.ts'
 
 /** A deep copy of the shipped manifest to break, one field at a time. */
 function shipped() {
@@ -131,6 +132,61 @@ describe('assets.json', () => {
       closedSign: 'closed',
       truck: undefined,
     })
+  })
+
+  it('shows each change to the street on its pieces, and the fans in a heat wave', () => {
+    const { pieces, fans } = loadAssetManifest()
+    const shows = Object.fromEntries(pieces.map((p) => [p.id, p.shows]))
+    expect(shows).toMatchObject({
+      'heat-sky': { event: 'canicule' },
+      'cones-left': { event: 'conesOrange' },
+      'cones-right': { event: 'conesOrange' },
+      'road-sign': { event: 'conesOrange' },
+      'rival-truck': { event: 'concurrence' },
+      bunting: { event: 'festival' },
+      'festival-banner': { event: 'festival' },
+      'out-of-order': { unavailable: 'cafe' },
+    })
+    expect(fans.shows).toEqual({ event: 'canicule' })
+  })
+
+  it('names only event cards that exist', () => {
+    const { pieces, fans } = loadAssetManifest()
+    const cards = new Set(loadEventContent().events.map(({ id }) => id))
+    const named = [...pieces.map((p) => p.shows), fans.shows].flatMap(
+      (shows?: Shows) =>
+        shows !== undefined && typeof shows === 'object' && 'event' in shows
+          ? [shows.event]
+          : [],
+    )
+    expect(named.length).toBeGreaterThan(0)
+    for (const event of named) expect(cards, event).toContain(event)
+  })
+
+  it('writes the signs in French', () => {
+    const text = Object.fromEntries(
+      loadAssetManifest().pieces.map((p) => [p.id, p.text]),
+    )
+    expect(text).toMatchObject({
+      'road-sign': 'Rue barrée',
+      'rival-truck': 'La Patate Pressée',
+      'festival-banner': 'Festival du Pas Pire',
+      'out-of-order': 'Hors service',
+      truck: undefined,
+    })
+  })
+
+  it('accepts each way a piece shows', () => {
+    for (const shows of [
+      'open',
+      'closed',
+      { event: 'festival' },
+      { unavailable: 'croissant' },
+    ]) {
+      const raw = shipped()
+      piece(raw, 'bunting').shows = shows
+      expect(() => loadAssetManifest(raw), JSON.stringify(shows)).not.toThrow()
+    }
   })
 
   it('accepts an image path under the art folder', () => {
@@ -264,6 +320,91 @@ describe('loadAssetManifest', () => {
       piece(raw, 'croissants').fill = { capacity: 100, steps: 0 }
     },
     /fill\.steps/,
+  )
+
+  rejects(
+    'a piece shown while an unknown product cannot be sold',
+    (raw) => {
+      piece(raw, 'out-of-order').shows = { unavailable: 'poutine' }
+    },
+    /pieces\[\d+\]\.shows/,
+  )
+  rejects(
+    'a piece shown with an empty event',
+    (raw) => {
+      piece(raw, 'bunting').shows = { event: '' }
+    },
+    /pieces\[\d+\]\.shows/,
+  )
+  rejects(
+    'a piece shown with an unknown key',
+    (raw) => {
+      piece(raw, 'bunting').shows = { event: 'festival', days: 3 }
+    },
+    /pieces\[\d+\]\.shows/,
+  )
+  rejects(
+    'a piece shown on some other kind of day',
+    (raw) => {
+      piece(raw, 'awning').shows = 'weekend'
+    },
+    /pieces\[\d+\]\.shows/,
+  )
+  for (const id of [
+    'road-sign',
+    'rival-truck',
+    'festival-banner',
+    'out-of-order',
+  ]) {
+    rejects(
+      `the ${id} without its text`,
+      (raw) => {
+        delete piece(raw, id).text
+      },
+      /pieces need a text/,
+    )
+  }
+  rejects(
+    'a text on a piece that writes none',
+    (raw) => {
+      piece(raw, 'tree').text = 'Arbre'
+    },
+    /tree pieces write no text/,
+  )
+  rejects(
+    'an empty text',
+    (raw) => {
+      piece(raw, 'road-sign').text = ''
+    },
+    /expected text without spaces at its ends/,
+  )
+  rejects(
+    'a text with a space at its end',
+    (raw) => {
+      piece(raw, 'road-sign').text = 'Rue barrée '
+    },
+    /expected text without spaces at its ends/,
+  )
+  rejects(
+    'a fan chance above 1',
+    (raw) => {
+      ;(raw.fans as { chance: number }).chance = 1.5
+    },
+    /fans\.chance/,
+  )
+  rejects(
+    'fans in an unknown colour',
+    (raw) => {
+      ;(raw.fans as { color: string }).color = 'pink'
+    },
+    /fans\.color/,
+  )
+  rejects(
+    'fans that never swing back',
+    (raw) => {
+      ;(raw.fans as { periodMs: number }).periodMs = 0
+    },
+    /fans\.periodMs/,
   )
 
   rejects(

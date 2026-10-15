@@ -9,18 +9,22 @@ import {
 } from 'pixi.js'
 import { describe, expect, it, vi } from 'vitest'
 import type { AssetManifest } from '../content/assets.ts'
+import type { StreetChange } from '../content/schema.ts'
+import { createInitialState, tick } from '../engine/clock.ts'
+import type { StreetModifier } from '../engine/types.ts'
 import { ART_URLS, loadArt } from './art.ts'
 import { tonesOf } from './light.ts'
 import { ASSETS } from './manifest.ts'
 import { SKY_COLOR } from './mountWorld.ts'
 import { buildScene, type Scene } from './scene.ts'
 import type { MakeFilters, ShadowFilters } from './shadows.ts'
-import type { TruckView } from './truckView.ts'
+import { truckView, type TruckView } from './truckView.ts'
 
 const OPEN: TruckView = {
   open: true,
   croissants: 70,
   businessName: "Le P'tit Camion",
+  modifiers: [],
 }
 const CLOSED: TruckView = { ...OPEN, open: false, croissants: 0 }
 
@@ -255,6 +259,7 @@ describe('the shadows on the ground', () => {
     ['tree', 'tree', 1],
     ['lamp-post', 'lampPost', 1],
     ['truck', 'wheel', 2],
+    ['rival-truck', 'wheel', 2],
   ] as const)(
     "throws the %s's shadows from its foot to the lower right",
     (id, kind, contacts) => {
@@ -510,5 +515,217 @@ describe('Scene.animate', () => {
     expect(steam.y).toBeCloseTo(0)
     expect(steam.alpha).toBeCloseTo(0)
     expect(node(scene, 'steam').position).toMatchObject({ x: 1024, y: 500 })
+  })
+})
+
+describe('Scene.update: the events on the street', () => {
+  /** A change from `event`, in effect on the day shown. */
+  const change = (event: string, what: StreetChange): StreetModifier => ({
+    event,
+    change: what,
+    fromDay: 2,
+    lastDay: 4,
+  })
+  const FEWER: StreetChange = { kind: 'walkIns', factor: 0.65 }
+  const MORE: StreetChange = { kind: 'walkIns', factor: 1.8 }
+  const COLD: StreetChange = {
+    kind: 'appeal',
+    product: 'chocolat',
+    factor: 0.3,
+  }
+  const CASES = [
+    {
+      name: 'construction',
+      modifier: change('conesOrange', FEWER),
+      pieces: ['cones-left', 'cones-right', 'road-sign'],
+    },
+    {
+      name: 'a competitor',
+      modifier: change('concurrence', { ...FEWER, segment: 'aubaine' }),
+      pieces: ['rival-truck'],
+    },
+    {
+      name: 'a festival',
+      modifier: change('festival', MORE),
+      pieces: ['bunting', 'festival-banner'],
+    },
+    {
+      name: 'a heat wave',
+      modifier: change('canicule', COLD),
+      pieces: ['heat-sky'],
+    },
+    {
+      name: 'café unavailable',
+      modifier: change('machineTousse', {
+        kind: 'unavailable',
+        product: 'cafe',
+      }),
+      pieces: ['out-of-order'],
+    },
+  ]
+  const EVENT_PIECES = CASES.flatMap(({ pieces }) => pieces)
+  const shown = (scene: Scene) =>
+    EVENT_PIECES.filter((id) => node(scene, id).visible)
+
+  it('lists every piece an event shows', () => {
+    const switched = ASSETS.pieces.filter((p) => typeof p.shows === 'object')
+    expect(switched.map((p) => p.id).sort()).toEqual([...EVENT_PIECES].sort())
+  })
+
+  it('hides every event piece while no change is in effect', () => {
+    const scene = build(ASSETS)
+    scene.update(OPEN)
+    expect(shown(scene)).toEqual([])
+    scene.update(CLOSED)
+    expect(shown(scene)).toEqual([])
+  })
+
+  it.each(CASES)(
+    'shows only the pieces of $name while it is in effect, then hides them',
+    ({ modifier, pieces }) => {
+      const scene = build(ASSETS)
+      scene.update({ ...OPEN, modifiers: [modifier] })
+      expect(shown(scene)).toEqual(pieces)
+      scene.update(OPEN)
+      expect(shown(scene)).toEqual([])
+    },
+  )
+
+  it('shows several at once, open or closed', () => {
+    const scene = build(ASSETS)
+    const [cones, rival, , heat] = CASES
+    scene.update({
+      ...CLOSED,
+      modifiers: [cones!.modifier, rival!.modifier, heat!.modifier],
+    })
+    expect(shown(scene)).toEqual([
+      ...cones!.pieces,
+      ...rival!.pieces,
+      ...heat!.pieces,
+    ])
+  })
+
+  it('shows no café card while another product cannot be sold', () => {
+    const scene = build(ASSETS)
+    scene.update({
+      ...OPEN,
+      modifiers: [
+        change('essai', { kind: 'unavailable', product: 'croissant' }),
+      ],
+    })
+    expect(node(scene, 'out-of-order').visible).toBe(false)
+  })
+
+  it.each(['cones-left', 'cones-right', 'road-sign', 'rival-truck'])(
+    "shows and hides the %s's shadows with it",
+    (id) => {
+      const scene = build(ASSETS)
+      const thrown = shadowsOf(scene, id)
+      expect(thrown.length).toBeGreaterThan(0)
+      scene.update(OPEN)
+      for (const shadow of thrown) expect(shadow.visible).toBe(false)
+      const [cones, rival] = CASES
+      scene.update({ ...OPEN, modifiers: [cones!.modifier, rival!.modifier] })
+      for (const shadow of thrown) expect(shadow.visible).toBe(true)
+      scene.update(OPEN)
+      for (const shadow of thrown) expect(shadow.visible).toBe(false)
+    },
+  )
+
+  it("keeps the street's other shadows whatever happens", () => {
+    const scene = build(ASSETS)
+    scene.update(OPEN)
+    for (const id of ['tree', 'lamp-post', 'truck']) {
+      for (const shadow of shadowsOf(scene, id)) {
+        expect(shadow.visible, id).toBe(true)
+      }
+    }
+  })
+
+  it.each([
+    ['cones-left', 'prop'],
+    ['cones-right', 'prop'],
+    ['road-sign', 'prop'],
+  ] as const)(
+    "throws the %s's shadows from each foot to the lower right",
+    (id, kind) => {
+      const scene = build(ASSETS)
+      const piece = ASSETS.pieces.find((p) => p.id === id)!
+      const ground = piece.y + piece.height
+      const thrown = shadowsOf(scene, id)
+      const cast = thrown.filter((s) => s.label.startsWith('cast:'))
+      const contact = thrown.filter((s) => s.label.startsWith('contact:'))
+      expect(cast.length).toBeGreaterThan(0)
+      for (const shadow of cast) {
+        // Each starts at its own foot.
+        const { minX, maxX, maxY } = shadow.getBounds()
+        expect(shadow.y).toBeCloseTo(ground)
+        expect(maxX - shadow.x).toBeGreaterThan(shadow.x - minX)
+        expect(maxY).toBeGreaterThan(ground)
+      }
+      expect(contact.length).toBeGreaterThan(1)
+      for (const shadow of contact) {
+        expect(shadow.y).toBeCloseTo(ground)
+        expect(shadow.alpha).toBe(ASSETS.light.contactShadow.opacity[kind])
+      }
+    },
+  )
+
+  it('stands a cone in its row for every 1.4 times its height', () => {
+    const scene = build(ASSETS)
+    const contacts = (id: string) =>
+      shadowsOf(scene, id).filter((s) => s.label.startsWith('contact:'))
+    for (const id of ['cones-left', 'cones-right']) {
+      const { width, height } = ASSETS.pieces.find((p) => p.id === id)!
+      expect(contacts(id), id).toHaveLength(Math.floor(width / (height * 1.4)))
+    }
+  })
+
+  it.each([
+    ['road-sign', ASSETS.palette.ink],
+    ['rival-truck', ASSETS.palette.cream],
+    ['festival-banner', ASSETS.palette.dangerRed],
+    ['out-of-order', ASSETS.palette.dangerRed],
+  ])('writes the %s its text in Fredoka', (id, fill) => {
+    const scene = build(ASSETS)
+    const piece = ASSETS.pieces.find((p) => p.id === id)!
+    const text = art(scene, id).getChildByLabel('text', true) as Text
+    expect(text.text).toBe(piece.text)
+    expect(text.style.fontFamily).toBe('Fredoka, sans-serif')
+    expect(text.style.fill).toBe(fill)
+  })
+
+  it('warms the sky of a heat wave behind the clouds', () => {
+    const scene = build(ASSETS)
+    const sky = scene.root.getChildByLabel('layer:sky')!
+    expect(sky.children[0]?.label).toBe('heat-sky')
+    expect(colours(art(scene, 'heat-sky'), 'fill')).toContain(
+      hex(ASSETS.palette.heatSky),
+    )
+  })
+
+  it('closes the truck on a day the street closes it, as on a day off', () => {
+    // Day 2, a Wednesday the truck opens, closed by a change made for it.
+    const wednesday = tick(tick(createInitialState(42)))
+    const closing: StreetModifier = {
+      event: 'chalet',
+      change: { kind: 'closed' },
+      fromDay: 2,
+      lastDay: 2,
+    }
+    const closed = {
+      ...wednesday,
+      events: { ...wednesday.events, modifiers: [closing] },
+    }
+    const scene = build(ASSETS)
+    scene.update(truckView(wednesday))
+    expect(node(scene, 'awning').visible).toBe(true)
+
+    scene.update(truckView(closed))
+    expect(node(scene, 'awning-rolled').visible).toBe(true)
+    expect(node(scene, 'closed-sign').visible).toBe(true)
+    expect(node(scene, 'awning').visible).toBe(false)
+    expect(node(scene, 'steam').visible).toBe(false)
+    expect(node(scene, 'croissants').children[0]?.visible).toBe(false)
   })
 })

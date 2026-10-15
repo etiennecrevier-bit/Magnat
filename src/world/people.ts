@@ -34,6 +34,14 @@ export interface Look {
   readonly height: number
   readonly office: OfficeCue | null
   readonly child: ChildLook | null
+  /** The colour of the fan they fan themselves with; null without one. */
+  readonly fan: string | null
+}
+
+/** The fans customers may carry: the chance of each, and their colour. */
+export interface FanPick {
+  readonly chance: number
+  readonly color: string
 }
 
 /** The accessory that shows each segment. */
@@ -54,13 +62,16 @@ export const CHILD_OFFSET = 0.32
 
 /**
  * Picks how a customer of `segment` looks, from `looks`. On a weekday some
- * carry an office cue; on a weekend some come with a child.
+ * carry an office cue; on a weekend some come with a child. With `fans`,
+ * as in a heat wave, some fan themselves: that takes one more draw, last,
+ * so without it the draws are the same.
  */
 export function pickLook(
   segment: SegmentId,
   dayType: DayTypeId,
   looks: CrowdSettings['looks'],
   random: () => number,
+  fans: FanPick | null = null,
 ): Look {
   const skin = pick(looks.skinTones, random)
   const clothes = pick(looks.clothes, random)
@@ -77,12 +88,18 @@ export function pickLook(
       height: within(looks.childHeight, random),
     }
   }
-  return { segment, skin, clothes, height, office, child }
+  const fan =
+    fans !== null && fans.chance > 0 && random() < fans.chance
+      ? fans.color
+      : null
+  return { segment, skin, clothes, height, office, child, fan }
 }
 
 /**
- * Draws a customer as `look` describes, with their accessory, office cue
- * and child labelled by name. A child stands to the left of the adult.
+ * Draws a customer as `look` describes, with their accessory, office cue,
+ * fan and child labelled by name. A child stands to the left of the adult.
+ * A regular holds their mug in the hand on the left, and a fan is held in
+ * the hand on the right.
  * The drawing is for a customer turned to `facing` by mirroring it (its
  * container's `scale.x`): either way, it is lit on the side that shows on
  * the screen's left.
@@ -96,8 +113,9 @@ export function drawCustomer(
   const h = look.height
   const root = new Container({ label: 'customer' })
   const sleeves = look.segment === 'chic' ? looks.coat : look.clothes
-  // A regular holds their mug in the hand on the left.
-  const holding: Side | null = look.segment === 'habitue' ? 'left' : null
+  const holding: Side[] = []
+  if (look.segment === 'habitue') holding.push('left')
+  if (look.fan !== null) holding.push('right')
   const sun: Side = facing === 1 ? 'left' : 'right'
   const neck = -h * 0.77
 
@@ -114,7 +132,7 @@ export function drawCustomer(
       clothes,
       looks.trousers,
       style,
-      null,
+      [],
       sun,
     )
   }
@@ -200,11 +218,11 @@ export function drawCustomer(
         .stroke(line(style, style.outline * 0.6)),
     )
   }
-  if (holding !== null) {
+  if (holding.includes('left')) {
     drawHeld(
       root,
       h,
-      holding,
+      'left',
       new Graphics({ label: 'mug' })
         .roundRect(-h * 0.025, -h * 0.13, h * 0.09, h * 0.14, 3)
         .fill(style.palette.cream)
@@ -219,7 +237,62 @@ export function drawCustomer(
       sun,
     )
   }
+  if (look.fan !== null) {
+    drawHeld(
+      root,
+      h,
+      'right',
+      drawFan(h, look.fan, style),
+      sleeves,
+      look.skin,
+      style,
+      sun,
+    )
+  }
   return root
+}
+
+/**
+ * A folding fan held upright, its pivot at 0, 0 in the hand: its leaves
+ * spread above, outlined like the mug, with the pleats in shade.
+ */
+function drawFan(h: number, color: string, style: DrawStyle): Graphics {
+  const reach = h * FAN.reach
+  const inner = reach * 0.3
+  const from = -Math.PI / 2 - FAN.spread
+  const to = -Math.PI / 2 + FAN.spread
+  const fan = new Graphics({ label: 'fan' })
+    .moveTo(...along(inner, from))
+    .arc(0, 0, reach, from, to)
+    .lineTo(...along(inner, to))
+    .arc(0, 0, inner, to, from, true)
+    .closePath()
+    .fill(color)
+    .stroke(line(style))
+  const pleats = FAN.pleats
+  for (let i = 1; i < pleats; i += 1) {
+    const angle = from + ((to - from) * i) / pleats
+    fan.moveTo(...along(inner, angle)).lineTo(...along(reach, angle))
+  }
+  return fan
+    .stroke({
+      width: style.outline * 0.5,
+      color: tonesOf(color, style.light).shade,
+    })
+    .moveTo(0, 0)
+    .lineTo(...along(inner, -Math.PI / 2))
+    .stroke(line(style, style.outline * 0.8))
+}
+
+/**
+ * A fan's size, as shares of the height of who holds it, and how wide its
+ * leaves open each way from upright, in radians.
+ */
+const FAN = { reach: 0.2, spread: 0.65, pleats: 5 } as const
+
+/** The point `radius` from 0, 0 at `angle`. */
+function along(radius: number, angle: number): [number, number] {
+  return [radius * Math.cos(angle), radius * Math.sin(angle)]
 }
 
 /** The bargain hunter's tote, as shares of the height. */
@@ -235,7 +308,7 @@ function toteShade(sun: Side): number[] {
 /**
  * Draws a body in `parent`, feet at 0, 0: legs, arms, torso and head, each
  * labelled and lit on the `sun` side. `sleeves` colours the arms, so a coat
- * covers them. The arm on the `holding` side stops at the elbow, for
+ * covers them. The arms on the `holding` sides stop at the elbow, for
  * drawHeld to finish.
  */
 function drawBody(
@@ -246,7 +319,7 @@ function drawBody(
   sleeves: string,
   trousers: string,
   style: DrawStyle,
-  holding: Side | null,
+  holding: readonly Side[],
   sun: Side,
 ): void {
   const head = h * 0.115
@@ -266,7 +339,7 @@ function drawBody(
   const arms = new Graphics({ label: 'arms' })
   for (const side of ['left', 'right'] as const) {
     const { x, y, width } = shoulder(h, side)
-    if (side === holding) {
+    if (holding.includes(side)) {
       shadedRect(
         arms,
         [x, y, width, h * UPPER_ARM, width / 2],

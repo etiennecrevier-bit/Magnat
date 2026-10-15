@@ -1,12 +1,37 @@
 import { describe, expect, it } from 'vitest'
-import type { ProductId } from '../content/schema.ts'
-import { createInitialState, tick } from '../engine/clock.ts'
-import { FOOD_TRUCK } from '../engine/day.ts'
+import type {
+  EventContent,
+  ProductId,
+  StreetChange,
+} from '../content/schema.ts'
+import { createInitialState, tick, toCalendar } from '../engine/clock.ts'
+import {
+  CUSTOMERS,
+  DIFFICULTIES,
+  ENERGY,
+  EVENTS,
+  FOOD_TRUCK,
+  PERSONAL,
+  playDay,
+} from '../engine/day.ts'
 import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
+import { resolveEvent } from '../engine/events.ts'
 import { PRODUCTS, onHand } from '../engine/inventory.ts'
 import { cents } from '../engine/money.ts'
-import type { GameState } from '../engine/types.ts'
-import { openingStock, opensToday, rackFill, truckView } from './truckView.ts'
+import { MODIFIER_KINDS } from '../engine/street.ts'
+import type {
+  DelayedEffect,
+  GameState,
+  StreetModifier,
+} from '../engine/types.ts'
+import {
+  modifiersToday,
+  openingStock,
+  opensToday,
+  rackFill,
+  showsOn,
+  truckView,
+} from './truckView.ts'
 
 const SEED = 42
 
@@ -32,6 +57,29 @@ function holding(
 function decide(state: GameState, ...changes: DecisionChange[]): GameState {
   return changes.reduce((next, change) => applyDecision(next, change), state)
 }
+
+/** A change to the street from `event`, from `fromDay` to `lastDay`. */
+function modifier(
+  event: string,
+  change: StreetChange,
+  fromDay: number,
+  lastDay: number,
+): StreetModifier {
+  return { event, change, fromDay, lastDay }
+}
+
+/** `state` with the changes to the street and the delayed effects given. */
+function withEvents(
+  state: GameState,
+  modifiers: readonly StreetModifier[],
+  delayed: readonly DelayedEffect[] = [],
+): GameState {
+  return { ...state, events: { ...state.events, modifiers, delayed } }
+}
+
+const CLOSED: StreetChange = { kind: 'closed' }
+const NO_CAFE: StreetChange = { kind: 'unavailable', product: 'cafe' }
+const FEWER: StreetChange = { kind: 'walkIns', factor: 0.65 }
 
 describe('rackFill (the croissant stock shown on the rack)', () => {
   it.each([
@@ -67,6 +115,7 @@ describe('truckView', () => {
       open: false,
       croissants: 0,
       businessName: "Le P'tit Camion",
+      modifiers: [],
     })
   })
 
@@ -85,6 +134,7 @@ describe('truckView', () => {
       open: true,
       croissants: 70,
       businessName: "Le P'tit Camion",
+      modifiers: [],
     })
     expect(rackFill(truckView(tuesday).croissants, 100, 4)).toBe(0.75)
   })
@@ -199,5 +249,198 @@ describe('openingStock', () => {
         state = next
       }
     })
+  })
+})
+
+describe('modifiersToday', () => {
+  it('counts a change from its first day to its last, both included', () => {
+    const fewer = modifier('conesOrange', FEWER, 3, 5)
+    const game = (day: number) => withEvents({ ...tuesday, day }, [fewer])
+    expect(modifiersToday(game(2))).toEqual([])
+    expect(modifiersToday(game(3))).toEqual([fewer])
+    expect(modifiersToday(game(5))).toEqual([fewer])
+    expect(modifiersToday(game(6))).toEqual([])
+  })
+
+  it('starts the street changes a choice queued for that morning or before, after the others', () => {
+    const fewer = modifier('conesOrange', FEWER, 0, 9)
+    const game = withEvents(
+      tuesday,
+      [fewer],
+      [
+        { day: 0, event: 'chalet', effect: { kind: 'closed', days: 2 } },
+        { day: 1, event: 'machineTousse', effect: { ...NO_CAFE, days: 4 } },
+        { day: 1, event: 'essai', effect: { kind: 'energy', amount: 5 } },
+        { day: 2, event: 'chalet', effect: { kind: 'closed', days: 1 } },
+      ],
+    )
+    expect(modifiersToday(game)).toEqual([
+      fewer,
+      modifier('chalet', CLOSED, 1, 2),
+      modifier('machineTousse', NO_CAFE, 1, 4),
+    ])
+  })
+
+  // The world repeats the engine's start of the day, which it may not
+  // call; this holds the two together. Every morning may bring an event, so
+  // that a summer sees every card that changes the street; the cards are
+  // the shipped ones, and the choices are taken in turn.
+  describe('agrees with the engine', () => {
+    const OFTEN: EventContent = {
+      ...EVENTS,
+      pacing: { firstDay: 0, minDaysBetween: 1, dailyChance: 1 },
+    }
+    /** From the 1st of May to the end of September. */
+    const DAYS = 153
+
+    /** Whether the engine opened the truck on the day it just played. */
+    function engineOpened(played: GameState): boolean {
+      const { day } = played.lastDay!
+      const days = [...(played.lastWeek?.days ?? []), ...played.weekSoFar.days]
+      return days.find((recorded) => recorded.day === day)!.open
+    }
+
+    it('on every morning of a game with events, through a summer', () => {
+      let state = createInitialState(SEED)
+      let chosen = 0
+      const events = new Set<string>()
+      const seen = { unavailable: 0, closedByEvent: 0, startingDelayed: 0 }
+      for (let day = 0; day < DAYS; day += 1) {
+        const today = modifiersToday(state)
+        const played = playDay(state)
+        expect(today, `day ${day}`).toEqual(played.lastDay!.modifiers)
+        expect(opensToday(state), `day ${day} open`).toBe(engineOpened(played))
+        expect(truckView(state).modifiers).toEqual(today)
+
+        for (const { event, change } of today) {
+          events.add(event)
+          if (change.kind === 'unavailable') seen.unavailable += 1
+        }
+        const { weekday } = toCalendar(state.day)
+        if (state.decisions.daysOpen.includes(weekday) && !opensToday(state)) {
+          seen.closedByEvent += 1
+        }
+        if (
+          state.events.delayed.some(
+            ({ day: due, effect }) =>
+              due <= state.day &&
+              (MODIFIER_KINDS as readonly string[]).includes(effect.kind),
+          )
+        ) {
+          seen.startingDelayed += 1
+        }
+
+        state = tick(
+          state,
+          FOOD_TRUCK,
+          CUSTOMERS,
+          DIFFICULTIES,
+          PERSONAL,
+          ENERGY,
+          OFTEN,
+        )
+        const { pending } = state.events
+        if (pending !== null) {
+          const card = OFTEN.events.find(({ id }) => id === pending.event)!
+          const choice = card.choices[chosen % card.choices.length]!
+          state = resolveEvent(state, choice.id, OFTEN)
+          chosen += 1
+        }
+      }
+      // The run covers what it is here for: every card that shows on the
+      // street, a product that cannot be sold, a day the street closes the
+      // truck, and a queued change that starts on its morning.
+      expect([...events]).toEqual(
+        expect.arrayContaining([
+          'conesOrange',
+          'concurrence',
+          'festival',
+          'canicule',
+          'machineTousse',
+        ]),
+      )
+      expect(seen.unavailable).toBeGreaterThan(0)
+      expect(seen.closedByEvent).toBeGreaterThan(0)
+      expect(seen.startingDelayed).toBeGreaterThan(0)
+    })
+  })
+})
+
+describe('a day the street closes the truck', () => {
+  /** Tuesday, an open day, closed by a change made for it. */
+  const closedTuesday = withEvents(tuesday, [modifier('chalet', CLOSED, 1, 1)])
+
+  it('keeps the truck closed with only what is on hand, as the engine does', () => {
+    expect(opensToday(closedTuesday)).toBe(false)
+    expect(truckView(closedTuesday)).toMatchObject({
+      open: false,
+      croissants: 0,
+    })
+    const stocked = holding(closedTuesday, 'cafe', 40)
+    expect(openingStock(stocked, 'cafe')).toBe(40)
+    const played = playDay(stocked)
+    expect(played.lastDay?.visits).toEqual([])
+    expect(onHand(played.inventory, 'cafe')).toBe(40)
+  })
+
+  it('opens again the day after', () => {
+    expect(opensToday({ ...closedTuesday, day: 2 })).toBe(true)
+  })
+
+  it('closes on the morning a queued closing starts', () => {
+    const queued = withEvents(
+      tuesday,
+      [],
+      [{ day: 1, event: 'formulaire14B', effect: { kind: 'closed', days: 1 } }],
+    )
+    expect(opensToday(queued)).toBe(false)
+  })
+})
+
+describe('openingStock while a product cannot be sold', () => {
+  it('restocks none of it, as the engine skips it, and the others as usual', () => {
+    const game = holding(
+      withEvents(tuesday, [modifier('machineTousse', NO_CAFE, 1, 3)]),
+      'cafe',
+      20,
+    )
+    expect(openingStock(game, 'cafe')).toBe(20)
+    expect(openingStock(game, 'croissant')).toBe(70)
+    expect(onHand(playDay(game).inventory, 'cafe')).toBe(20)
+  })
+})
+
+describe('showsOn', () => {
+  const view = (open: boolean, ...modifiers: StreetModifier[]) => ({
+    open,
+    modifiers,
+  })
+  const cones = modifier('conesOrange', FEWER, 1, 3)
+  const broken = modifier('machineTousse', NO_CAFE, 1, 3)
+
+  it('shows an open or closed piece on those days', () => {
+    expect(showsOn('open', view(true))).toBe(true)
+    expect(showsOn('open', view(false))).toBe(false)
+    expect(showsOn('closed', view(false))).toBe(true)
+    expect(showsOn('closed', view(true))).toBe(false)
+  })
+
+  it("shows an event's piece while any change from its card is in effect", () => {
+    const shows = { event: 'conesOrange' }
+    expect(showsOn(shows, view(true))).toBe(false)
+    expect(showsOn(shows, view(true, broken))).toBe(false)
+    expect(showsOn(shows, view(true, broken, cones))).toBe(true)
+    expect(showsOn(shows, view(false, cones))).toBe(true)
+  })
+
+  it("shows a product's piece while it cannot be sold, whatever made it so", () => {
+    expect(showsOn({ unavailable: 'cafe' }, view(true))).toBe(false)
+    expect(showsOn({ unavailable: 'cafe' }, view(true, cones))).toBe(false)
+    expect(showsOn({ unavailable: 'cafe' }, view(true, broken))).toBe(true)
+    expect(showsOn({ unavailable: 'croissant' }, view(true, broken))).toBe(
+      false,
+    )
+    const essai = modifier('essai', NO_CAFE, 1, 1)
+    expect(showsOn({ unavailable: 'cafe' }, view(false, essai))).toBe(true)
   })
 })

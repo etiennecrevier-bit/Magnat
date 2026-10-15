@@ -1,5 +1,5 @@
 {
-  "_note": "The world's pieces, drawn back to front in the order of `layers`, then in the order listed here. Positions and sizes are logical pixels of the 1440 × 900 design, which the world scales to the window. A piece with an `image` (a file path under src/world/art/) shows that image stretched to its size; without one, or when the image fails to load, the world draws a placeholder shape in its `color`, lit as `light` says. `shows` keeps a piece to open or closed days. `fill` makes the croissants follow the stock: `capacity` units fill the rack, shown in `steps` shelves. The `light.shadowLayer` holds no piece: the world draws the shadows on the ground there, under what stands on it.",
+  "_note": "The world's pieces, drawn back to front in the order of `layers`, then in the order listed here. Positions and sizes are logical pixels of the 1440 × 900 design, which the world scales to the window. A piece with an `image` (a file path under src/world/art/) shows that image stretched to its size; without one, or when the image fails to load, the world draws a placeholder shape in its `color`, lit as `light` says. `shows` keeps a piece to some days: `open` or `closed` ones; those a change to the street from an event card is in effect, `{ \"event\": <the card's id> }`; or those a product cannot be sold, `{ \"unavailable\": <the product> }`. `text` is what a sign or a board says, in French: the road sign, the rival truck, the banner and the « Hors service » card each need one, and no other piece takes one. `fans` sets who fans themselves while it `shows`, as in a heat wave: each customer who comes then holds a fan of `color` with `chance`, which swings `swing` radians each way and back once every `periodMs` real milliseconds. `fill` makes the croissants follow the stock: `capacity` units fill the rack, shown in `steps` shelves. The `light.shadowLayer` holds no piece: the world draws the shadows on the ground there, under what stands on it.",
   "designSize": { "width": 1440, "height": 900 },
   "palette": {
     "ink": "#2B2622",
@@ -19,7 +19,9 @@
     "foliage": "#5B8C47",
     "wood": "#9A6A43",
     "glass": "#9CC7DA",
-    "steel": "#B9C1C6"
+    "steel": "#B9C1C6",
+    "coneOrange": "#E2701F",
+    "heatSky": "#F3D9A4"
   },
   "outlineWidth": 3,
   "steamPuff": { "periodMs": 1600, "rise": 26 },
@@ -38,7 +40,8 @@
         "person": 0.5,
         "wheel": 0.55,
         "tree": 0.45,
-        "lampPost": 0.5
+        "lampPost": 0.5,
+        "prop": 0.5
       }
     },
     "ledgeShadow": {
@@ -87,6 +90,13 @@
     "glow": { "opacity": 0.18, "reach": 0.7 },
     "shadowLayer": "shadows"
   },
+  "fans": {
+    "shows": { "event": "canicule" },
+    "chance": 0.35,
+    "periodMs": 600,
+    "swing": 0.35,
+    "color": "cream"
+  },
   "layers": [
     "sky",
     "rooftops",
@@ -98,6 +108,17 @@
     "truck"
   ],
   "pieces": [
+    {
+      "id": "heat-sky",
+      "kind": "heatSky",
+      "layer": "sky",
+      "x": -1440,
+      "y": -2700,
+      "width": 4320,
+      "height": 3340,
+      "color": "heatSky",
+      "shows": { "event": "canicule" }
+    },
     {
       "id": "cloud-1",
       "kind": "cloud",
@@ -219,6 +240,75 @@
       "color": "ink"
     },
     {
+      "id": "rival-truck",
+      "kind": "rivalTruck",
+      "layer": "furniture",
+      "x": 1196,
+      "y": 380,
+      "width": 480,
+      "height": 380,
+      "color": "foliage",
+      "text": "La Patate Pressée",
+      "shows": { "event": "concurrence" }
+    },
+    {
+      "id": "bunting",
+      "kind": "bunting",
+      "layer": "furniture",
+      "x": -1440,
+      "y": 236,
+      "width": 4320,
+      "height": 70,
+      "color": "dangerRed",
+      "shows": { "event": "festival" }
+    },
+    {
+      "id": "festival-banner",
+      "kind": "banner",
+      "layer": "furniture",
+      "x": 880,
+      "y": 282,
+      "width": 400,
+      "height": 60,
+      "color": "cream",
+      "text": "Festival du Pas Pire",
+      "shows": { "event": "festival" }
+    },
+    {
+      "id": "cones-left",
+      "kind": "cones",
+      "layer": "furniture",
+      "x": 390,
+      "y": 656,
+      "width": 400,
+      "height": 48,
+      "color": "coneOrange",
+      "shows": { "event": "conesOrange" }
+    },
+    {
+      "id": "cones-right",
+      "kind": "cones",
+      "layer": "furniture",
+      "x": 1380,
+      "y": 656,
+      "width": 320,
+      "height": 48,
+      "color": "coneOrange",
+      "shows": { "event": "conesOrange" }
+    },
+    {
+      "id": "road-sign",
+      "kind": "roadSign",
+      "layer": "furniture",
+      "x": 480,
+      "y": 594,
+      "width": 170,
+      "height": 110,
+      "color": "coneOrange",
+      "text": "Rue barrée",
+      "shows": { "event": "conesOrange" }
+    },
+    {
       "id": "street",
       "kind": "street",
       "layer": "street",
@@ -278,6 +368,18 @@
       "width": 96,
       "height": 78,
       "color": "steel"
+    },
+    {
+      "id": "out-of-order",
+      "kind": "outOfOrderCard",
+      "layer": "truck",
+      "x": 1004,
+      "y": 570,
+      "width": 88,
+      "height": 52,
+      "color": "cream",
+      "text": "Hors service",
+      "shows": { "unavailable": "cafe" }
     },
     {
       "id": "steam",
