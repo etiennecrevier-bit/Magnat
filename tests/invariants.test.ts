@@ -1,7 +1,15 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import type { DifficultyId } from '../src/content/schema.ts'
+import type { DifficultyId, EventContent } from '../src/content/schema.ts'
 import { createInitialState, tick, toCalendar } from '../src/engine/clock.ts'
-import { FOOD_TRUCK } from '../src/engine/day.ts'
+import {
+  CUSTOMERS,
+  DIFFICULTIES,
+  ENERGY,
+  EVENTS,
+  FOOD_TRUCK,
+  PERSONAL,
+} from '../src/engine/day.ts'
+import { resolveEvent } from '../src/engine/events.ts'
 import { inventoryValue } from '../src/engine/inventory.ts'
 import { add, cents, sub, type Cents } from '../src/engine/money.ts'
 import { defaultProfile } from '../src/engine/profile.ts'
@@ -15,6 +23,7 @@ import {
 } from '../src/finance/journal.ts'
 import { balanceSheet, cashFlowStatement } from '../src/finance/statements.ts'
 import {
+  eventChooser,
   journalHash,
   simulate,
   type YearSummary,
@@ -23,9 +32,10 @@ import {
 // The safety net of issue #18: ten years of play for each seed, each at one
 // of the three difficulties, with the books checked against the game at the
 // close of every day, and the same game played twice to prove the engine
-// deterministic. The whole file must stay under BUDGET_MS in CI; if it gets
-// slower, make the slow part faster rather than checking fewer days or
-// seeds.
+// deterministic. The event cards come up as in a real game, answered at
+// random as `npm run sim -- --events random` does. The whole file must stay
+// under BUDGET_MS in CI; if it gets slower, make the slow part faster rather
+// than checking fewer days or seeds.
 
 const GAMES: readonly { seed: number; difficulty: DifficultyId }[] = [
   { seed: 1, difficulty: 'facile' },
@@ -38,8 +48,22 @@ const BUDGET_MS = 60_000
 const MAX_FAILURES = 10
 
 const CASH: AccountCode = '1000'
+const RECEIVABLES: AccountCode = '1100'
 const STOCKS: AccountCode = '1200'
 const ZERO = cents(0)
+
+/**
+ * The shipped events with the essai card in play: it never comes up in a
+ * real game, and it tries every effect.
+ */
+const EVENTS_IN_PLAY: EventContent = {
+  ...EVENTS,
+  events: EVENTS.events.map((event) =>
+    event.id === 'essai' ? { ...event, weight: 1 } : event,
+  ),
+}
+/** Fewer events than this over ten years would leave them untested. */
+const MIN_EVENTS = 100
 
 const started = performance.now()
 
@@ -53,7 +77,12 @@ interface Checked {
     balanceSheet: string[]
     cashFlow: string[]
     stocks: string[]
+    receivables: string[]
+    pacing: string[]
   }
+  /** Events that came up, follow-ups included, and those drawn. */
+  events: number
+  drawn: number
   checkedHash: string
   replayHash: string
   replayYears: readonly YearSummary[]
@@ -110,7 +139,11 @@ function check(seed: number, difficulty: DifficultyId): Checked {
       balanceSheet: [],
       cashFlow: [],
       stocks: [],
+      receivables: [],
+      pacing: [],
     },
+    events: 0,
+    drawn: 0,
     checkedHash: '',
     replayHash: '',
     replayYears: [],
@@ -126,10 +159,41 @@ function check(seed: number, difficulty: DifficultyId): Checked {
   })
   const tally = new Tally()
   tally.count(state.journal)
+  const choose = eventChooser('random', seed)
+  const { firstDay, minDaysBetween } = EVENTS_IN_PLAY.pacing
+  let lastDrawn: Day | null = null
   let monthStart: Day = 0
   while (state.day < DAYS) {
     const day = state.day
-    state = tick(state)
+    const { pending } = state.events
+    if (pending !== null) {
+      checked.events += 1
+      if (!pending.followUp) {
+        checked.drawn += 1
+        if (day < firstDay) {
+          fail('pacing', `day ${day}: an event before day ${firstDay}`)
+        }
+        if (lastDrawn !== null && day - lastDrawn < minDaysBetween) {
+          fail(
+            'pacing',
+            `day ${day}: an event ${day - lastDrawn} days after the last`,
+          )
+        }
+        lastDrawn = day
+      }
+      const card = EVENTS_IN_PLAY.events.find(({ id }) => id === pending.event)
+      if (card === undefined) throw new Error(`Unknown event ${pending.event}`)
+      state = resolveEvent(state, choose(card), EVENTS_IN_PLAY)
+    }
+    state = tick(
+      state,
+      FOOD_TRUCK,
+      CUSTOMERS,
+      DIFFICULTIES,
+      PERSONAL,
+      ENERGY,
+      EVENTS_IN_PLAY,
+    )
     const { journal } = state
     tally.count(journal)
     checked.days += 1
@@ -158,6 +222,19 @@ function check(seed: number, difficulty: DifficultyId): Checked {
     const lots = inventoryValue(state.inventory)
     if (stocks !== lots)
       fail('stocks', `day ${day}: Stocks ${stocks}, lots ${lots}`)
+
+    // Comptes clients, read from the tally, against what customers owe.
+    const owed = tally.net(RECEIVABLES)
+    const receivables = state.receivables.reduce(
+      (total, { amount }) => add(total, amount),
+      ZERO,
+    )
+    if (owed !== receivables) {
+      fail(
+        'receivables',
+        `day ${day}: Comptes clients ${owed}, receivables ${receivables}`,
+      )
+    }
 
     const isMonthEnd =
       day === DAYS - 1 || toCalendar(day + 1).month !== toCalendar(day).month
@@ -197,7 +274,7 @@ function check(seed: number, difficulty: DifficultyId): Checked {
   }
 
   checked.checkedHash = journalHash(state.journal)
-  const replay = simulate(seed, DAYS, difficulty)
+  const replay = simulate(seed, DAYS, difficulty, [], 'random', EVENTS_IN_PLAY)
   checked.replayHash = replay.journalHash
   checked.replayYears = replay.years
   return checked
@@ -237,6 +314,16 @@ describe.each(GAMES)(
 
     it('keeps Stocks equal to the cost of the lots on hand every day', () => {
       expect(checked.failures.stocks).toEqual([])
+    })
+
+    it('keeps Comptes clients equal to what customers owe every day', () => {
+      expect(checked.failures.receivables).toEqual([])
+    })
+
+    it(`draws events from day ${EVENTS_IN_PLAY.pacing.firstDay} on, at least ${EVENTS_IN_PLAY.pacing.minDaysBetween} days apart, follow-ups aside`, () => {
+      expect(checked.events).toBeGreaterThanOrEqual(MIN_EVENTS)
+      expect(checked.events).toBeGreaterThan(checked.drawn)
+      expect(checked.failures.pacing).toEqual([])
     })
 
     it('posts the same journal when the game is played again', () => {

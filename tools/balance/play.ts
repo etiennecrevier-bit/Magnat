@@ -9,7 +9,7 @@ import { cents, type Cents } from '../../src/engine/money.ts'
 import type { Day, DaySummary, PerProduct } from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import type { JournalEntry } from '../../src/finance/journal.ts'
-import { simulate } from '../sim/simulate.ts'
+import { simulate, type EventPolicy } from '../sim/simulate.ts'
 import { STRATEGIES, strategyChanges, type Strategy } from './strategies.ts'
 
 // Plays the strategies headless and sums up each game, with no I/O: report.ts
@@ -82,6 +82,8 @@ export interface BalanceRun {
   readonly years: number
   /** Games per strategy, on seeds 1 to `games`. */
   readonly games: number
+  /** How the event cards were answered; by default none came up. */
+  readonly events?: EventPolicy
   readonly difficulties: readonly DifficultyRun[]
 }
 
@@ -92,21 +94,31 @@ export interface BalanceOptions {
   readonly strategies?: readonly Strategy[]
   /** By default every difficulty, easiest first. */
   readonly difficulties?: readonly DifficultyId[]
+  /** How the event cards are answered; by default none come up. */
+  readonly events?: EventPolicy
   /** Called after each difficulty is played. */
   readonly onProgress?: (run: DifficultyRun) => void
 }
 
 /**
  * Plays `strategy` from `seed` at `difficulty` for `days` days, from day 0,
- * and sums up the game. Throws what `simulate` throws.
+ * answering the event cards by `events`, and sums up the game. Throws what
+ * `simulate` throws.
  */
 export function playStrategy(
   strategy: Strategy,
   difficulty: DifficultyId,
   seed: number,
   days: number,
+  events: EventPolicy = 'none',
 ): GameResult {
-  const result = simulate(seed, days, difficulty, strategyChanges(strategy))
+  const result = simulate(
+    seed,
+    days,
+    difficulty,
+    strategyChanges(strategy),
+    events,
+  )
   const { daySummaries, years } = result
   const lastYear = years.at(-1)
   if (lastYear === undefined) throw new Error(`Seed ${seed} played no year`)
@@ -142,14 +154,15 @@ export function playStrategy(
 
 /**
  * Plays every strategy at every difficulty on seeds 1 to `games`, for
- * `years` years each. Throws a RangeError unless both are whole numbers
- * from 1.
+ * `years` years each, answering the event cards by `events`. Throws a
+ * RangeError unless both are whole numbers from 1.
  */
 export function runBalance({
   years,
   games,
   strategies = STRATEGIES,
   difficulties = difficultyIdSchema.options,
+  events = 'none',
   onProgress,
 }: BalanceOptions): BalanceRun {
   for (const [name, value] of [
@@ -166,13 +179,14 @@ export function runBalance({
   return {
     years,
     games,
+    events,
     difficulties: difficulties.map((difficulty) => {
       const run: DifficultyRun = {
         difficulty,
         strategies: strategies.map((strategy) => ({
           strategy,
           games: seeds.map((seed) =>
-            playStrategy(strategy, difficulty, seed, days),
+            playStrategy(strategy, difficulty, seed, days, events),
           ),
         })),
       }

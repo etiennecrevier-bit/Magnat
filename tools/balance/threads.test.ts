@@ -4,6 +4,7 @@ import { cents } from '../../src/engine/money.ts'
 import { runBalance, type DifficultyRun } from './play.ts'
 import type { Strategy } from './strategies.ts'
 import {
+  jobOptions,
   playAll,
   playInWorker,
   type Playing,
@@ -78,6 +79,33 @@ describe('playAll', () => {
     await expect(all).rejects.toThrow('Moyen broke')
     // The others never ended, and were stopped.
     for (const { stop } of controls) expect(stop).toHaveBeenCalledOnce()
+  })
+})
+
+describe('jobOptions', () => {
+  it("is what runBalance plays for the job's one difficulty, its events policy included", () => {
+    expect(
+      jobOptions({
+        years: 2,
+        games: 3,
+        difficulty: 'moyen',
+        strategies,
+        events: 'random',
+      }),
+    ).toEqual({
+      years: 2,
+      games: 3,
+      strategies,
+      events: 'random',
+      difficulties: ['moyen'],
+    })
+    expect(jobOptions(job('facile'))).toEqual({
+      years: 1,
+      games: 1,
+      strategies: undefined,
+      events: undefined,
+      difficulties: ['facile'],
+    })
   })
 })
 

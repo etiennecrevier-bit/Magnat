@@ -8,7 +8,12 @@ import {
 } from '../../src/content/schema.ts'
 import type { Cents } from '../../src/engine/money.ts'
 import { defaultProfile } from '../../src/engine/profile.ts'
-import { simulate, type SimulationResult } from './simulate.ts'
+import {
+  EVENT_POLICIES,
+  simulate,
+  type EventPolicy,
+  type SimulationResult,
+} from './simulate.ts'
 
 // `npm run sim`: parses the options, plays the game, prints one row per year
 // and writes the full result to disk. The report is for developers, so it is
@@ -18,6 +23,8 @@ export interface SimArgs {
   readonly days: number
   readonly seed: number
   readonly difficulty: DifficultyId
+  /** How the event cards are answered. */
+  readonly events: EventPolicy
   /** Absolute path of the folder the result goes to. */
   readonly out: string
 }
@@ -26,14 +33,16 @@ const DEFAULTS = {
   days: 3650,
   seed: 42,
   difficulty: defaultProfile().difficulty,
+  events: 'random' as EventPolicy,
   out: fileURLToPath(new URL('../../out', import.meta.url)),
 }
 
-export const USAGE = `Usage: npm run sim -- [--days <n>] [--seed <n>] [--difficulty ${difficultyIdSchema.options.join('|')}] [--out <folder>]`
+export const USAGE = `Usage: npm run sim -- [--days <n>] [--seed <n>] [--difficulty ${difficultyIdSchema.options.join('|')}] [--events ${EVENT_POLICIES.join('|')}] [--out <folder>]`
 
 /**
  * Reads `--days` (a whole number from 1), `--seed` (a whole number from 0),
- * `--difficulty` (a difficulty's id, by default the new game screen's) and
+ * `--difficulty` (a difficulty's id, by default the new game screen's),
+ * `--events` (how the event cards are answered, by default `random`) and
  * `--out` (resolved from the current folder). Throws on anything else,
  * including positional arguments.
  */
@@ -44,6 +53,7 @@ export function parseSimArgs(argv: readonly string[]): SimArgs {
       days: { type: 'string' },
       seed: { type: 'string' },
       difficulty: { type: 'string' },
+      events: { type: 'string' },
       out: { type: 'string' },
     },
     strict: true,
@@ -53,6 +63,7 @@ export function parseSimArgs(argv: readonly string[]): SimArgs {
     days: wholeNumber('--days', values.days, DEFAULTS.days, 1),
     seed: wholeNumber('--seed', values.seed, DEFAULTS.seed, 0),
     difficulty: difficultyOf(values.difficulty),
+    events: eventPolicy(values.events, DEFAULTS.events),
     out: resolve(values.out ?? DEFAULTS.out),
   }
 }
@@ -84,7 +95,7 @@ export function formatReport(result: SimulationResult): string[] {
     Math.max(...rows.map((row) => row[column]?.length ?? 0)),
   )
   return [
-    `Seed ${result.seed}, ${result.days} days, difficulty ${result.difficulty}`,
+    `Seed ${result.seed}, ${result.days} days, difficulty ${result.difficulty}, events ${result.events}`,
     ...rows.map((row) =>
       row.map((cell, column) => cell.padStart(widths[column] ?? 0)).join('  '),
     ),
@@ -110,8 +121,8 @@ export function formatDollars(amount: Cents): string {
  */
 export function main(argv: readonly string[]): number {
   try {
-    const { days, seed, difficulty, out } = parseSimArgs(argv)
-    const result = simulate(seed, days, difficulty)
+    const { days, seed, difficulty, events, out } = parseSimArgs(argv)
+    const result = simulate(seed, days, difficulty, [], events)
     for (const line of formatReport(result)) console.log(line)
 
     mkdirSync(out, { recursive: true })
@@ -132,6 +143,24 @@ function difficultyOf(text: string | undefined): DifficultyId {
   if (known === undefined) {
     throw new RangeError(
       `--difficulty must be one of ${difficultyIdSchema.options.join(', ')}: ${text}`,
+    )
+  }
+  return known
+}
+
+/**
+ * Reads `text`, the value of `--events`, as a policy, or `fallback` when the
+ * option is absent. Throws a RangeError naming the option on anything else.
+ */
+export function eventPolicy(
+  text: string | undefined,
+  fallback: EventPolicy,
+): EventPolicy {
+  if (text === undefined) return fallback
+  const known = EVENT_POLICIES.find((policy) => policy === text)
+  if (known === undefined) {
+    throw new RangeError(
+      `--events must be one of ${EVENT_POLICIES.join(', ')}: ${text}`,
     )
   }
   return known

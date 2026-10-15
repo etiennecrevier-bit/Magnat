@@ -1,6 +1,7 @@
 import { Worker } from 'node:worker_threads'
 import type { DifficultyId } from '../../src/content/schema.ts'
-import type { DifficultyRun } from './play.ts'
+import type { EventPolicy } from '../sim/simulate.ts'
+import type { BalanceOptions, DifficultyRun } from './play.ts'
 import type { Strategy } from './strategies.ts'
 
 // Plays each difficulty of a run on its own worker thread (worker.ts), so
@@ -14,6 +15,19 @@ export interface WorkerJob {
   readonly difficulty: DifficultyId
   /** By default the whole grid. */
   readonly strategies?: readonly Strategy[]
+  /** How the event cards are answered; by default none come up. */
+  readonly events?: EventPolicy
+}
+
+/** What `runBalance()` plays for `job`: its one difficulty. */
+export function jobOptions({
+  years,
+  games,
+  difficulty,
+  strategies,
+  events,
+}: WorkerJob): BalanceOptions {
+  return { years, games, strategies, events, difficulties: [difficulty] }
 }
 
 /** A difficulty being played, and how to stop it. */

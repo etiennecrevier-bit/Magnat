@@ -19,6 +19,7 @@ describe('parseSimArgs', () => {
       days: 3650,
       seed: 42,
       difficulty: 'moyen',
+      events: 'random',
       out: join(root, 'out'),
     })
   })
@@ -31,6 +32,8 @@ describe('parseSimArgs', () => {
         '--seed=0',
         '--difficulty',
         'difficile',
+        '--events',
+        'first',
         '--out',
         'tmp/sims',
       ]),
@@ -38,9 +41,23 @@ describe('parseSimArgs', () => {
       days: 40,
       seed: 0,
       difficulty: 'difficile',
+      events: 'first',
       out: resolve('tmp/sims'),
     })
   })
+
+  it.each(['first', 'random', 'none'])('reads the events policy %s', (id) => {
+    expect(parseSimArgs([`--events=${id}`]).events).toBe(id)
+  })
+
+  it.each(['', 'First', 'all', ' none'])(
+    'rejects the events policy %j',
+    (text) => {
+      expect(() => parseSimArgs(['--events', text])).toThrow(
+        `--events must be one of first, random, none: ${text}`,
+      )
+    },
+  )
 
   it.each(['facile', 'moyen', 'difficile'])('reads the difficulty %s', (id) => {
     expect(parseSimArgs([`--difficulty=${id}`]).difficulty).toBe(id)
@@ -136,9 +153,11 @@ describe('formatReport', () => {
       daySummaries: [],
       journal: [],
       owner: { morningEnergy: [], personalCash: cents(0), unpaidRents: [] },
+      events: 'first',
+      eventHistory: [],
     }
     expect(formatReport(result)).toEqual([
-      'Seed 7, 400 days, difficulty facile',
+      'Seed 7, 400 days, difficulty facile, events first',
       'Year     Days      Revenue  Net income  Cash at year end  Units spoiled  Lost sales',
       '   1    0-364  $143,357.50      -$0.05     $1,000,000.00           5940         299',
       '   2  365-399        $0.00  -$1,234.56             $0.99              0          12',
@@ -175,7 +194,7 @@ describe('npm run sim', () => {
       out,
     )
     const file = join(out, 'sim-7-facile.json')
-    const expected = simulate(7, 40, 'facile')
+    const expected = simulate(7, 40, 'facile', [], 'random')
     expect(stderr).toBe('')
     expect(status).toBe(0)
     expect(stdout.trimEnd().split('\n')).toEqual([
@@ -185,6 +204,27 @@ describe('npm run sim', () => {
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(
       JSON.parse(JSON.stringify(expected)),
     )
+  }, 30_000)
+
+  it('plays the events policy it is given', () => {
+    const { status, stdout } = sim(
+      '--days',
+      '10',
+      '--seed',
+      '9',
+      '--events',
+      'none',
+      '--out',
+      out,
+    )
+    expect(status).toBe(0)
+    expect(stdout.split('\n')[0]).toBe(
+      'Seed 9, 10 days, difficulty moyen, events none',
+    )
+    const written = JSON.parse(
+      readFileSync(join(out, 'sim-9-moyen.json'), 'utf8'),
+    ) as { events: string }
+    expect(written.events).toBe('none')
   }, 30_000)
 
   it('exits with 1 and the usage on a bad option, writing nothing', () => {
