@@ -99,6 +99,7 @@ export function drawCustomer(
   // A regular holds their mug in the hand on the left.
   const holding: Side | null = look.segment === 'habitue' ? 'left' : null
   const sun: Side = facing === 1 ? 'left' : 'right'
+  const neck = -h * 0.77
 
   if (look.child !== null) {
     const { skin, clothes, height } = look.child
@@ -128,6 +129,24 @@ export function drawCustomer(
       ),
     )
   }
+  // A bargain hunter's tote hangs from their shoulder behind the arm, so
+  // the hand on its side shows.
+  if (look.segment === 'aubaine') {
+    root.addChild(
+      new Graphics({ label: 'bag' })
+        .moveTo(h * 0.18, -h * 0.5)
+        .lineTo(h * 0.12, neck + h * 0.03)
+        .moveTo(h * 0.31, -h * 0.5)
+        .lineTo(h * 0.14, neck + h * 0.03)
+        .stroke(line(style, style.outline * 0.7))
+        .poly(TOTE.map((share) => share * h))
+        .fill(tonesOf(looks.tote, style.light).lit)
+        .poly(toteShade(sun).map((share) => share * h))
+        .fill(tonesOf(looks.tote, style.light).shade)
+        .poly(TOTE.map((share) => share * h))
+        .stroke(line(style)),
+    )
+  }
   drawBody(
     root,
     h,
@@ -140,41 +159,22 @@ export function drawCustomer(
     sun,
   )
 
-  const neck = -h * 0.77
-  switch (look.segment) {
-    case 'aubaine':
-      root.addChild(
-        new Graphics({ label: 'bag' })
-          .moveTo(h * 0.18, -h * 0.5)
-          .lineTo(h * 0.12, neck + h * 0.03)
-          .moveTo(h * 0.31, -h * 0.5)
-          .lineTo(h * 0.14, neck + h * 0.03)
-          .stroke(line(style, style.outline * 0.7))
-          .poly(TOTE.map((share) => share * h))
-          .fill(tonesOf(looks.tote, style.light).lit)
-          .poly(toteShade(sun).map((share) => share * h))
-          .fill(tonesOf(looks.tote, style.light).shade)
-          .poly(TOTE.map((share) => share * h))
-          .stroke(line(style)),
+  if (look.segment === 'chic') {
+    root.addChild(
+      shadedRect(
+        new Graphics({ label: 'coat' }),
+        [-h * 0.18, neck, h * 0.36, h * 0.62, h * 0.08],
+        looks.coat,
+        style,
+        sun,
       )
-      break
-    case 'chic':
-      root.addChild(
-        shadedRect(
-          new Graphics({ label: 'coat' }),
-          [-h * 0.18, neck, h * 0.36, h * 0.62, h * 0.08],
-          looks.coat,
-          style,
-          sun,
-        )
-          .poly([-h * 0.07, neck, h * 0.07, neck, 0, neck + h * 0.12])
-          .fill(look.clothes)
-          .stroke(line(style, style.outline * 0.7))
-          .moveTo(0, neck + h * 0.12)
-          .lineTo(0, -h * 0.15)
-          .stroke(line(style, style.outline * 0.6)),
-      )
-      break
+        .poly([-h * 0.07, neck, h * 0.07, neck, 0, neck + h * 0.12])
+        .fill(look.clothes)
+        .stroke(line(style, style.outline * 0.7))
+        .moveTo(0, neck + h * 0.12)
+        .lineTo(0, -h * 0.15)
+        .stroke(line(style, style.outline * 0.6)),
+    )
   }
 
   if (look.office === 'laptopBag') {

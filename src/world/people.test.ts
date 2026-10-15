@@ -135,11 +135,12 @@ function hueOf(colour: string): { hue: number; saturation: number } {
   return { hue: (hue * 60 + 360) % 360, saturation }
 }
 
-/** A hand: its centre under the root and half its size. */
+/** A hand: its centre under the root, half its size and the part it is in. */
 interface Hand {
   readonly x: number
   readonly y: number
   readonly r: number
+  readonly part: Graphics
 }
 
 /**
@@ -158,7 +159,8 @@ function hands(root: Container, skin: string): Hand[] {
           const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
           const local = transform ? transform.apply(centre) : centre
           const { x, y } = node.toGlobal(local)
-          found.push({ x, y, r: Math.max(box.width, box.height) / 2 })
+          const r = Math.max(box.width, box.height) / 2
+          found.push({ x, y, r, part: node })
         }
       }
     }
@@ -166,6 +168,45 @@ function hands(root: Container, skin: string): Hand[] {
   }
   visit(root)
   return found
+}
+
+/** Every node under `root`, in the order they are drawn. */
+function drawOrder(root: Container): Container[] {
+  return root.children.flatMap((child) => [child, ...drawOrder(child)])
+}
+
+/**
+ * The share of `hand` that shows: of points spread over it, those that no
+ * part drawn after its own fills or outlines, the parts labelled `worn`
+ * aside.
+ */
+function shown(
+  root: Container,
+  hand: Hand,
+  worn: readonly string[] = [],
+): number {
+  const order = drawOrder(root)
+  const above = order
+    .slice(order.indexOf(hand.part) + 1)
+    .filter(
+      (node): node is Graphics =>
+        node instanceof Graphics && !worn.includes(node.label),
+    )
+  const steps = 8
+  let points = 0
+  let seen = 0
+  for (let i = -steps; i <= steps; i += 1) {
+    for (let j = -steps; j <= steps; j += 1) {
+      if (i * i + j * j > steps * steps) continue
+      const point = {
+        x: hand.x + (hand.r * i) / steps,
+        y: hand.y + (hand.r * j) / steps,
+      }
+      points += 1
+      if (!above.some((g) => g.containsPoint(g.toLocal(point)))) seen += 1
+    }
+  }
+  return seen / points
 }
 
 describe('pickLook', () => {
@@ -406,6 +447,23 @@ describe('drawCustomer', () => {
       }
     }
   })
+
+  it.each(PEOPLE)(
+    'keeps most of each hand in sight of what they carry: $name',
+    ({ look }) => {
+      for (const facing of [1, -1] as const) {
+        const drawn = turned(look, facing)
+        const skins = [look.skin, ...(look.child ? [look.child.skin] : [])]
+        for (const hand of skins.flatMap((skin) => hands(drawn, skin))) {
+          // A coat is worn over the arms, not carried.
+          expect(
+            shown(drawn, hand, ['coat']),
+            `facing ${facing}, hand at ${hand.x.toFixed(0)}`,
+          ).toBeGreaterThan(0.5)
+        }
+      }
+    },
+  )
 
   it('holds the mug in one of their own hands', () => {
     const drawn = drawCustomer(LOOK, STYLE, LOOKS)
