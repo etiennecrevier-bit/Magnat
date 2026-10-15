@@ -94,10 +94,17 @@ export interface Served {
   readonly visits: readonly Visit[]
   /** Each segment's visits, counted by how they ended. */
   readonly segments: Readonly<Record<SegmentId, SegmentSummary>>
-  /** Units bought: never more than were available. */
+  /** Units bought: with those botched, never more than were available. */
   readonly sold: PerProduct
   /** Units customers wanted after the product had sold out. */
   readonly lost: PerProduct
+  /** Units botched at the counter and thrown out. */
+  readonly botched: PerProduct
+  /**
+   * Each product's units taken from the stock, sold or botched, in the order
+   * they were taken, so the books can cost them first in, first out.
+   */
+  readonly withdrawals: Readonly<Record<ProductId, readonly Withdrawal[]>>
   /** Visits that left the line without being served. */
   readonly leftLine: number
   /**
@@ -114,10 +121,32 @@ export interface Served {
   readonly rngState: number
 }
 
-/** Who serves the walk-ins, and how long serving takes. */
+/**
+ * Units of one product taken from the stock one after the other, all sold
+ * or all botched.
+ */
+export interface Withdrawal {
+  readonly units: number
+  readonly botched: boolean
+}
+
+/** No unit of any product taken from the stock yet. */
+export function noWithdrawals(): Record<ProductId, Withdrawal[]> {
+  const none = (): Withdrawal[] => []
+  return Object.fromEntries(
+    PRODUCTS.map((product) => [product, none()]),
+  ) as Record<ProductId, Withdrawal[]>
+}
+
+/** Who serves the walk-ins, how long serving takes, and how well. */
 export interface Counter {
   readonly service: Service
   readonly servers: readonly Server[]
+  /**
+   * The share of the units made that are botched and made again: 0 when the
+   * owner is rested (see `effectsOf` in energy.ts).
+   */
+  readonly botchedShare: number
 }
 
 /**
@@ -165,6 +194,14 @@ export interface ExtraCrowd {
  * want, which takes the time of every unit ordered. When they reach the
  * counter, they buy each unit they want that is left; one sold out is a
  * lost sale, so a stockout hits the customers served later.
+ *
+ * Each unit made for a customer, counted from 1 in the order they are made
+ * that day, remakes aside, is botched when ⌊n × `botchedShare`⌋ goes up at
+ * it: a fixed quota rather than a draw, so at 0.02 every 50th unit. A
+ * botched unit leaves the stock and is thrown out, then the next unit left
+ * is made in its place; with none left, the customer loses it as a lost
+ * sale. Making it again takes no time, so the line never depends on the
+ * stock or the fatigue.
  *
  * Never mutates its arguments.
  */
@@ -215,7 +252,23 @@ export function serveWalkIns(
     patienceSeconds(customers.segments[id], crowd),
   )
   const left: Record<ProductId, number> = { ...available }
+  const sold = perProduct(() => 0) as Record<ProductId, number>
   const lost = perProduct(() => 0) as Record<ProductId, number>
+  const botched = perProduct(() => 0) as Record<ProductId, number>
+  const withdrawals = noWithdrawals()
+  /** Takes one unit of `product` from the stock, sold or botched. */
+  const take = (product: ProductId, asBotched: boolean) => {
+    left[product] -= 1
+    const runs = withdrawals[product]
+    const last = runs.at(-1)
+    if (last?.botched === asBotched) {
+      runs[runs.length - 1] = { units: last.units + 1, botched: asBotched }
+    } else {
+      runs.push({ units: 1, botched: asBotched })
+    }
+  }
+  const { botchedShare } = counter
+  let made = 0
   const tally = perSegment<Record<keyof SegmentSummary, number>>(() => ({
     visits: 0,
     buyers: 0,
@@ -232,6 +285,7 @@ export function serveWalkIns(
     let outcome: VisitOutcome = tooExpensive ? 'tooExpensive' : 'browsed'
     let servedMinute: number | null = null
     let leftMinute: number | null = null
+    let thrownOut = 0
     if (wanted.length > 0) {
       const second = arrivalMinute * SECONDS_PER_MINUTE
       const { wait, waiting } = line.ahead(second)
@@ -249,13 +303,27 @@ export function serveWalkIns(
         // they take the stock in that order too.
         outcome = 'soldOut'
         for (const product of wanted) {
-          if (left[product] > 0) {
-            left[product] -= 1
-            bought[product] = 1
-            outcome = 'bought'
-          } else {
+          if (left[product] === 0) {
             lost[product] += 1
+            continue
           }
+          made += 1
+          if (
+            Math.floor(made * botchedShare) >
+            Math.floor((made - 1) * botchedShare)
+          ) {
+            take(product, true)
+            botched[product] += 1
+            thrownOut += 1
+            if (left[product] === 0) {
+              lost[product] += 1
+              continue
+            }
+          }
+          take(product, false)
+          sold[product] += 1
+          bought[product] = 1
+          outcome = 'bought'
         }
       }
     }
@@ -266,6 +334,7 @@ export function serveWalkIns(
       outcome,
       servedMinute,
       leftMinute,
+      botched: thrownOut,
     })
 
     const counts = tally[segment]
@@ -278,8 +347,10 @@ export function serveWalkIns(
   return {
     visits,
     segments: tally,
-    sold: perProduct((product) => available[product] - left[product]),
+    sold,
     lost,
+    botched,
+    withdrawals,
     leftLine,
     averageWaitSeconds:
       reachedCounter === 0 ? 0 : Math.round(totalWait / reachedCounter),

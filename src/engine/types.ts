@@ -57,6 +57,13 @@ export interface DaySummary {
    * counter; 0 when nobody did.
    */
   readonly longestWaitSeconds: number
+  /** The owner's energy at the close, 0 to 100, before the night. */
+  readonly energy: number
+  /**
+   * Units botched at the counter and thrown out, written off as « Produits
+   * ratés »: the visits' `botched`, summed.
+   */
+  readonly botched: number
 }
 
 /** One customer segment's visits on a business day. */
@@ -91,6 +98,11 @@ export interface Visit {
    * null unless the visit ended in `leftLine`.
    */
   readonly leftMinute: number | null
+  /**
+   * Units of their order the owner botched and threw out, each made again
+   * if a unit was left; 0 when the owner is rested.
+   */
+  readonly botched: number
 }
 
 /**
@@ -206,4 +218,10 @@ export interface GameState {
   readonly profile: Profile
   /** The owner's own money, outside the company's books. */
   readonly personal: PersonalAccount
+  /**
+   * The owner's energy, 0 to 100: on the morning of `day`, or at its close
+   * in what `playDay()` returns. A tired owner serves slower and botches
+   * units.
+   */
+  readonly energy: number
 }

@@ -1,4 +1,10 @@
-import type { DayType, Segment, Service } from '../content/schema.ts'
+import type {
+  DayType,
+  EnergyContent,
+  Segment,
+  Service,
+} from '../content/schema.ts'
+import { effectsOf } from './energy.ts'
 import type { GameState } from './types.ts'
 
 // The line at the counter: who serves, how long serving takes, and how long
@@ -22,11 +28,18 @@ const AVATAR: Server = { speed: 1 }
 
 /**
  * Who serves at the counter on business day `state.day`: for now the avatar
- * alone, at speed 1. Employees will add servers and speeds (phase 3).
+ * alone, at speed 1 when rested. Tired, they take `serviceTimeIncrease`
+ * longer (see `effectsOf` in energy.ts), so their speed is
+ * 1 ÷ (1 + `serviceTimeIncrease`), by their energy that morning, which
+ * holds for the whole day. Employees will add servers and speeds (phase 3).
  */
-// Typed rather than declared with a parameter, which would go unused until
-// then; callers already pass the state.
-export const servers: (state: GameState) => readonly Server[] = () => [AVATAR]
+export function servers(
+  state: GameState,
+  energy: EnergyContent,
+): readonly Server[] {
+  const { serviceTimeIncrease } = effectsOf(state.energy, energy)
+  return [{ speed: AVATAR.speed / (1 + serviceTimeIncrease) }]
+}
 
 /**
  * The longest wait in line, in seconds, a customer of `segment` accepts on a

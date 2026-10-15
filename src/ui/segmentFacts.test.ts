@@ -19,6 +19,7 @@ function visit(segment: Visit['segment'], bought = NONE): Visit {
     outcome,
     servedMinute: outcome === 'bought' ? 420 : null,
     leftMinute: null,
+    botched: 0,
   }
 }
 
@@ -45,6 +46,8 @@ const DAY: DaySummary = {
   leftLine: 0,
   averageWaitSeconds: 0,
   longestWaitSeconds: 0,
+  energy: 100,
+  botched: 0,
 }
 
 describe('segmentFacts', () => {

@@ -9,6 +9,7 @@ import {
 import { createInitialState, tick } from './clock.ts'
 import { FOOD_TRUCK, playDay } from './day.ts'
 import { applyDecision } from './decisions.ts'
+import { FULL_ENERGY } from './energy.ts'
 import { inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
 import { LABELS } from './personal.ts'
@@ -78,6 +79,24 @@ const LOW_PAY = played(
     pay: cents(40_000),
   }),
 )
+
+/**
+ * A game open every day from day 1, played up to the first day the owner,
+ * worn out, botched a unit.
+ */
+function botchedDay(): GameState {
+  let state = applyDecision(createInitialState(SEED), {
+    kind: 'daysOpen',
+    weekdays: [1, 2, 3, 4, 5, 6, 7],
+  })
+  for (let day = 0; day < 60; day += 1) {
+    state = tick(state)
+    if ((state.lastDay?.botched ?? 0) > 0) return state
+  }
+  throw new Error('No unit botched in 60 days')
+}
+
+const BOTCHED = botchedDay()
 
 /** A cheaper price for café, waiting for the next morning. */
 function withPendingPrice(state: GameState): GameState {
@@ -149,8 +168,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(6)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 6 })
+    expect(SAVE_VERSION).toBe(7)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 7 })
   })
 
   it.each<Profile>([
@@ -228,6 +247,17 @@ describe('serialize and deserialize', () => {
     expect(resumed.personal.unpaidRents).not.toEqual(
       LOW_PAY.personal.unpaidRents,
     )
+  })
+
+  it('give back a worn-out owner who botched units, and the next days the same', () => {
+    const { lastDay, energy } = BOTCHED
+    expect(energy).toBeLessThan(FULL_ENERGY)
+    expect(lastDay?.botched).toBeGreaterThan(0)
+    expect(lastDay?.visits.some(({ botched }) => botched > 0)).toBe(true)
+    expect(reloaded(BOTCHED)).toStrictEqual(BOTCHED)
+    const closed = playDay(BOTCHED)
+    expect(reloaded(closed)).toStrictEqual(closed)
+    expect(played(30, reloaded(BOTCHED))).toStrictEqual(played(30, BOTCHED))
   })
 
   it('give back decisions waiting for the next morning', () => {
@@ -318,7 +348,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 5, 7, '6', null])('saveVersion %j', (version) => {
+  it.each([0, 1, 6, 8, '7', null])('saveVersion %j', (version) => {
     expectInvalid(withValue('saveVersion', version), [
       `unsupported saveVersion ${JSON.stringify(version)}`,
     ])
@@ -381,6 +411,10 @@ describe('deserialize rejects', () => {
     'personal.movements.0.day',
     'personal.movements.0.label',
     'personal.movements.0.amount',
+    'energy',
+    'lastDay.energy',
+    'lastDay.botched',
+    'lastDay.visits.0.botched',
   ])('a save missing %s', (path) => {
     const at = path.replace(/\.(\d+)/g, '[$1]')
     expectInvalid(without(path), [`→ at ${at}`])
@@ -603,6 +637,75 @@ describe('deserialize rejects', () => {
         ])
       },
     )
+  })
+
+  describe("the owner's energy", () => {
+    // FORTNIGHT is the morning after Sunday, day 13, which the truck opened.
+    const closedAt = FORTNIGHT.lastDay?.energy ?? 0
+
+    it('starts from a tired Sunday and a night of rest', () => {
+      expect(closedAt).toBeLessThan(FORTNIGHT.energy)
+      expect(FORTNIGHT.energy).toBeLessThan(FULL_ENERGY)
+    })
+
+    it.each([-1, 100.5, '50', null])('of %j', (energy) => {
+      expectInvalid(withValue('energy', energy), ['→ at energy'])
+    })
+
+    it.each([-0.5, 101, '50', null])('of %j at the last close', (energy) => {
+      expectInvalid(withValue('lastDay.energy', energy), [
+        '→ at lastDay.energy',
+      ])
+    })
+
+    it('below the close before, after a night that only gives energy back', () => {
+      const energy = closedAt - 1
+      expectInvalid(withValue('energy', energy), [
+        `energy is ${energy} on the morning of day 14, below the ${closedAt} of the close before`,
+      ])
+    })
+
+    it("other than the last day's at its close", () => {
+      // Day 14 is a Monday: closed, the owner rests up to full.
+      const closed = playDay(FORTNIGHT)
+      const at = closed.energy
+      expect(at).toBe(FULL_ENERGY)
+      const text = withValue('energy', at - 1, serialize(closed))
+      expectInvalid(text, [
+        `energy is ${at - 1} at the close of day 14, not lastDay's ${at}`,
+      ])
+      expect(reloaded(closed).energy).toBe(at)
+    })
+
+    it('other than full before day 0 is played', () => {
+      const text = withValue('energy', 99, serialize(createInitialState(SEED)))
+      expectInvalid(text, [
+        `energy is 99 before day 0 is played, not ${FULL_ENERGY}`,
+      ])
+    })
+
+    it.each([-1, 1.5, '1', null])('with a visit that botched %j', (botched) => {
+      expectInvalid(withValue('lastDay.visits.0.botched', botched), [
+        '→ at lastDay.visits[0].botched',
+      ])
+    })
+
+    it("with botched units other than its visits'", () => {
+      const text = serialize(BOTCHED)
+      const botched = BOTCHED.lastDay?.botched ?? 0
+      expectInvalid(withValue('lastDay.botched', botched + 1, text), [
+        `lastDay.botched is ${botched + 1}, not the ${botched} its visits botched`,
+      ])
+      expectInvalid(withValue('lastDay.botched', -1), ['→ at lastDay.botched'])
+    })
+
+    it('in a game saved before the energy, as version 6', () => {
+      const text = edited('energy', (save, key) => {
+        delete save[key]
+        save.saveVersion = 6
+      })
+      expectInvalid(text, ['unsupported saveVersion 6'])
+    })
   })
 
   describe('decisions', () => {

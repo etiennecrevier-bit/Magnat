@@ -64,6 +64,7 @@ function visit(
     servedMinute:
       outcome === 'bought' || outcome === 'soldOut' ? arrivalMinute : null,
     leftMinute: outcome === 'leftLine' ? arrivalMinute : null,
+    botched: 0,
   }
 }
 

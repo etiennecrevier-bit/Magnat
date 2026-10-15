@@ -50,6 +50,8 @@ describe('TodayPanelView', () => {
       leftLine: 0,
       averageWaitSeconds: 0,
       longestWaitSeconds: 0,
+      energy: 100,
+      botched: 0,
     })
     expect(html).toContain(`Hier${S}: Jeudi 4 mai, an 1`)
     expect(html).toContain(

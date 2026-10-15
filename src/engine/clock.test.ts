@@ -1,9 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { difficultyIdSchema, loadDifficultyContent } from '../content/schema.ts'
+import {
+  difficultyIdSchema,
+  loadDifficultyContent,
+  loadEnergyContent,
+} from '../content/schema.ts'
 import * as calendar from './calendar.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
-import { DIFFICULTIES, FOOD_TRUCK, openingJournal, playDay } from './day.ts'
+import {
+  CUSTOMERS,
+  DIFFICULTIES,
+  ENERGY,
+  FOOD_TRUCK,
+  PERSONAL,
+  openingJournal,
+  playDay,
+} from './day.ts'
 import { startingDecisions } from './decisions.ts'
+import { FULL_ENERGY } from './energy.ts'
 import { cents } from './money.ts'
 import { openingAccount } from './personal.ts'
 import { defaultProfile } from './profile.ts'
@@ -23,7 +36,7 @@ const DEFAULT_ACCOUNT = openingAccount(
 )
 
 describe('createInitialState', () => {
-  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions and the default profile", () => {
+  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile and the owner at full energy", () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
@@ -36,7 +49,9 @@ describe('createInitialState', () => {
       pendingDecisions: null,
       profile: defaultProfile(),
       personal: DEFAULT_ACCOUNT,
+      energy: 100,
     })
+    expect(FULL_ENERGY).toBe(100)
   })
 
   it.each([-1, 1.5, 2 ** 32, Number.NaN])('rejects seed %s', (seed) => {
@@ -135,14 +150,35 @@ describe('createInitialState', () => {
 })
 
 describe('tick', () => {
-  it('plays the day, then moves on to the next day', () => {
+  it('plays the day, then moves on to the next day after a night of rest', () => {
     let state = createInitialState(42)
     for (let day = 0; day < 8; day += 1) {
       const next = tick(state)
-      expect(next).toEqual({ ...playDay(state), day: day + 1 })
+      const played = playDay(state)
+      expect(next).toEqual({
+        ...played,
+        day: day + 1,
+        energy: Math.min(FULL_ENERGY, played.energy + ENERGY.nightRecovery),
+      })
       expect(next.lastDay?.day).toBe(day)
+      expect(next.lastDay?.energy).toBe(played.energy)
       state = next
     }
+  })
+
+  it('rests the owner each night by the energy it is given, up to full', () => {
+    // Day 1 is a Tuesday, the shipped truck's first open day.
+    const morning = tick(createInitialState(42))
+    expect(morning.energy).toBe(FULL_ENERGY)
+    const tiring = loadEnergyContent({ ...ENERGY, nightRecovery: 0.5 })
+    const play = (energy = ENERGY) =>
+      tick(morning, FOOD_TRUCK, CUSTOMERS, DIFFICULTIES, PERSONAL, energy)
+    const closed = playDay(morning).energy
+    expect(closed).toBeLessThan(FULL_ENERGY - ENERGY.nightRecovery)
+    expect(play().energy).toBe(closed + ENERGY.nightRecovery)
+    expect(play(tiring).energy).toBe(closed + 0.5)
+    const restful = loadEnergyContent({ ...ENERGY, nightRecovery: 100 })
+    expect(play(restful).energy).toBe(FULL_ENERGY)
   })
 
   it('returns a new state without mutating its input', () => {

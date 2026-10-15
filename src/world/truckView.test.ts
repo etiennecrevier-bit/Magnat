@@ -141,7 +141,8 @@ describe('openingStock', () => {
 
   // The world repeats the engine's morning restock, which it may not call;
   // this holds the two together. Whatever the truck opens with is sold,
-  // spoiled at the close or still on hand after it.
+  // botched by a worn-out owner, spoiled at the close or still on hand after
+  // it. The day sums up the units botched over every product.
   describe('agrees with the engine', () => {
     const changes: Record<number, DecisionChange[]> = {
       10: [
@@ -179,15 +180,19 @@ describe('openingStock', () => {
         state = decide(state, ...(changes[day] ?? []))
         const next = tick(state)
         const played = next.lastDay!
+        let botched = 0
         for (const product of PRODUCTS) {
           const atClose =
             played.sold[product] +
             played.spoiled[product] +
             onHand(next.inventory, product)
-          expect(openingStock(state, product), `day ${day}, ${product}`).toBe(
+          const opening = openingStock(state, product)
+          expect(opening, `day ${day}, ${product}`).toBeGreaterThanOrEqual(
             atClose,
           )
+          botched += opening - atClose
         }
+        expect(botched, `day ${day} botched`).toBe(played.botched)
         expect(played.visits.length > 0, `day ${day} open`).toBe(
           opensToday(state),
         )

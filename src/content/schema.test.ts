@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import difficultyJson from './difficulty.json'
+import energyJson from './energy.json'
 import foodTruckJson from './foodtruck.json'
 import personalJson from './personal.json'
 import profileJson from './profile.json'
@@ -8,6 +9,7 @@ import {
   difficultyIdSchema,
   loadCustomerContent,
   loadDifficultyContent,
+  loadEnergyContent,
   loadFoodTruckContent,
   loadPersonalContent,
   loadProfileContent,
@@ -733,5 +735,80 @@ describe('loadPersonalContent', () => {
   it('rejects a mistyped key', () => {
     const raw = withPersonalValue('rent', 130_000)
     expect(() => loadPersonalContent(raw)).toThrow('Unrecognized key: "rent"')
+  })
+})
+
+describe('loadEnergyContent', () => {
+  const loadEnergy: Load = loadEnergyContent
+  const reject = (raw: unknown, path: string) =>
+    expectRejected(raw, path, loadEnergy)
+  const withEnergyValue = (path: string, value: unknown) =>
+    withValue(path, value, energyJson)
+
+  it('loads the shipped energy.json, tired before exhausted', () => {
+    const { tired, exhausted } = loadEnergyContent()
+    expect(exhausted.below).toBeLessThan(tired.below)
+    expect(exhausted.serviceTimeIncrease).toBeGreaterThan(
+      tired.serviceTimeIncrease,
+    )
+    expect(exhausted.botchedShare).toBeGreaterThan(tired.botchedShare)
+  })
+
+  it('names energy.json in its error', () => {
+    expect(() => loadEnergyContent({})).toThrow(/^energy\.json is invalid/)
+  })
+
+  it('accepts an owner nothing tires', () => {
+    const raw = {
+      ...energyJson,
+      openDayCost: 0,
+      costPerCustomerServed: 0,
+      debtStress: 0,
+    }
+    expect(loadEnergyContent(raw)).toMatchObject({ openDayCost: 0 })
+  })
+
+  it.each([
+    ['openDayCost', -1],
+    ['openDayCost', 100.5],
+    ['openDayCost', '6'],
+    ['costPerCustomerServed', -0.01],
+    ['nightRecovery', 101],
+    ['closedDayRecovery', null],
+    ['debtStress', -10],
+    ['tired.below', 0],
+    ['tired.below', 101],
+    ['tired.serviceTimeIncrease', -0.2],
+    ['tired.botchedShare', 1.5],
+    ['exhausted.botchedShare', -0.05],
+  ])('rejects %s = %j', (path, value) => {
+    reject(withEnergyValue(path, value), path)
+  })
+
+  it.each([
+    'openDayCost',
+    'costPerCustomerServed',
+    'nightRecovery',
+    'closedDayRecovery',
+    'debtStress',
+    'tired',
+    'exhausted.below',
+    'exhausted.serviceTimeIncrease',
+    'exhausted.botchedShare',
+  ])('rejects a missing %s', (path) => {
+    reject(without(path, energyJson), path)
+  })
+
+  it.each([50, 60])(
+    'rejects an exhausted owner below %d, not under the tired 50',
+    (below) => {
+      reject(withEnergyValue('exhausted.below', below), 'exhausted.below')
+    },
+  )
+
+  it('rejects a mistyped key', () => {
+    const raw = withEnergyValue('tired.slower', 0.2)
+    reject(raw, 'tired')
+    expect(() => loadEnergyContent(raw)).toThrow('Unrecognized key: "slower"')
   })
 })

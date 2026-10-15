@@ -120,19 +120,29 @@ const PLENTY = stock(10_000)
 const INSTANT: Counter = {
   service: { baseSeconds: 0, perItemSeconds: 0, maxAheadInLine: 0 },
   servers: [{ speed: 1 }],
+  botchedShare: 0,
 }
 
-/** The shipped service, with the avatar alone at speed 1. */
+/** The shipped service, with the avatar alone at speed 1, rested. */
 const SHIPPED_COUNTER: Counter = {
   service: FOOD_TRUCK.service,
   servers: [{ speed: 1 }],
+  botchedShare: 0,
 }
 
-/** The shipped service with `change` made, and a server at each speed. */
-function counter(change: Partial<Service>, speeds = [1]): Counter {
+/**
+ * The shipped service with `change` made, a server at each speed, and
+ * `botchedShare` of the units made botched.
+ */
+function counter(
+  change: Partial<Service>,
+  speeds = [1],
+  botchedShare = 0,
+): Counter {
   return {
     service: { ...FOOD_TRUCK.service, ...change },
     servers: speeds.map((speed) => ({ speed })),
+    botchedShare,
   }
 }
 
@@ -505,6 +515,7 @@ describe('serveWalkIns', () => {
       serve(walkIns, {
         counter: counter({ baseSeconds: 600, maxAheadInLine: 0 }, [2]),
       }),
+      serve(walkIns, { counter: counter({}, [1], 0.5) }),
     ]
     const draws = 2 + 120 * (2 + PRODUCTS.length)
     expect(base.rngState).toBe(advance(seedRng(42), draws))
@@ -534,6 +545,151 @@ describe('serveWalkIns', () => {
     const available = Object.freeze(stock(5))
     serve(weekday(100), { available })
     expect(available).toEqual(stock(5))
+  })
+})
+
+describe('botched units', () => {
+  /** Everyone wants one of each product at 3 $; `cafe` units are left. */
+  function cafeOnly(customers: number, cafe: number, botchedShare: number) {
+    return serve(weekday(customers, { productAppeal: perProduct(() => 1) }), {
+      customers: everyone({ base: 1, reference: 300, sensitivity: 4 }),
+      price: () => cents(300),
+      available: stock({ cafe }),
+      counter: { ...INSTANT, botchedShare },
+    })
+  }
+
+  const units = (count: PerProduct) =>
+    PRODUCTS.reduce((total, product) => total + count[product], 0)
+
+  it('botches nothing at a share of 0, taking each product in one run', () => {
+    const served = serve(weekday(300), {
+      available: stock({ cafe: 120, chocolat: 5, croissant: 60 }),
+    })
+    expect(served.botched).toEqual(stock(0))
+    expect(served.visits.every(({ botched }) => botched === 0)).toBe(true)
+    expect(served.withdrawals).toEqual({
+      cafe: [{ units: 120, botched: false }],
+      chocolat: [{ units: 5, botched: false }],
+      croissant: [{ units: 60, botched: false }],
+    })
+  })
+
+  it('takes no unit of a product nobody bought', () => {
+    const served = cafeOnly(5, 0, 0.5)
+    expect(served.withdrawals).toEqual({
+      cafe: [],
+      chocolat: [],
+      croissant: [],
+    })
+    expect(served.botched).toEqual(stock(0))
+  })
+
+  it('botches every 2nd unit made at 0.5, and makes it again from the stock', () => {
+    // Only café is left, so each customer is made one unit: units 2, 4 and 6
+    // are botched, each followed by the one made in its place.
+    const served = cafeOnly(6, 100, 0.5)
+    expect(served.visits.map(({ botched }) => botched)).toEqual([
+      0, 1, 0, 1, 0, 1,
+    ])
+    expect(served.visits.every(({ outcome }) => outcome === 'bought')).toBe(
+      true,
+    )
+    expect(served.sold).toEqual({ cafe: 6, chocolat: 0, croissant: 0 })
+    expect(served.botched).toEqual({ cafe: 3, chocolat: 0, croissant: 0 })
+    expect(served.lost).toEqual({ cafe: 0, chocolat: 6, croissant: 6 })
+    expect(served.withdrawals.cafe).toEqual([
+      { units: 1, botched: false },
+      { units: 1, botched: true },
+      { units: 2, botched: false },
+      { units: 1, botched: true },
+      { units: 2, botched: false },
+      { units: 1, botched: true },
+      { units: 1, botched: false },
+    ])
+  })
+
+  it('loses the sale of a botched unit when none is left to make it again', () => {
+    // Two cafés: the first customer gets one, the second's is botched and
+    // the last unit with it, and the third finds none.
+    const served = cafeOnly(3, 2, 0.5)
+    expect(served.visits.map(({ botched }) => botched)).toEqual([0, 1, 0])
+    expect(served.visits.map(({ outcome }) => outcome)).toEqual([
+      'bought',
+      'soldOut',
+      'soldOut',
+    ])
+    expect(served.sold.cafe).toBe(1)
+    expect(served.botched.cafe).toBe(1)
+    expect(served.lost.cafe).toBe(2)
+    expect(served.withdrawals.cafe).toEqual([
+      { units: 1, botched: false },
+      { units: 1, botched: true },
+    ])
+  })
+
+  it.each([0.02, 0.05])(
+    'botches one unit in %d of those made, by a quota rather than a draw',
+    (share) => {
+      const served = serve(weekday(300), {
+        counter: { ...INSTANT, botchedShare: share },
+      })
+      const made = units(served.sold)
+      expect(made).toBeGreaterThan(200)
+      expect(units(served.botched)).toBe(Math.floor(made * share))
+      expect(
+        served.visits.reduce((total, { botched }) => total + botched, 0),
+      ).toBe(units(served.botched))
+      for (const product of PRODUCTS) {
+        const taken = (botched: boolean) =>
+          served.withdrawals[product]
+            .filter((run) => run.botched === botched)
+            .reduce((total, run) => total + run.units, 0)
+        expect(taken(false)).toBe(served.sold[product])
+        expect(taken(true)).toBe(served.botched[product])
+      }
+    },
+  )
+
+  it('brings the same customers, line and waits whatever the share', () => {
+    const walkIns = weekday(150)
+    const rested = serve(walkIns, { counter: SHIPPED_COUNTER })
+    for (const share of [0.02, 0.05, 1]) {
+      const tired = serve(walkIns, { counter: counter({}, [1], share) })
+      expect(units(tired.botched)).toBeGreaterThan(0)
+      expect(tired.rngState).toBe(rested.rngState)
+      expect(
+        tired.visits.map(({ arrivalMinute, servedMinute, leftMinute }) => ({
+          arrivalMinute,
+          servedMinute,
+          leftMinute,
+        })),
+      ).toEqual(
+        rested.visits.map(({ arrivalMinute, servedMinute, leftMinute }) => ({
+          arrivalMinute,
+          servedMinute,
+          leftMinute,
+        })),
+      )
+      expect(tired.averageWaitSeconds).toBe(rested.averageWaitSeconds)
+      expect(tired.longestWaitSeconds).toBe(rested.longestWaitSeconds)
+    }
+  })
+
+  it('takes a unit for each botched one, never more than are on hand', () => {
+    // Everyone wants one of each, far more than is on hand.
+    const available = stock({ cafe: 40, chocolat: 30, croissant: 20 })
+    const served = serve(weekday(200, { productAppeal: perProduct(() => 1) }), {
+      customers: everyone({ base: 1, reference: 300, sensitivity: 4 }),
+      price: () => cents(300),
+      available,
+      counter: { ...INSTANT, botchedShare: 0.25 },
+    })
+    for (const product of PRODUCTS) {
+      const taken = served.sold[product] + served.botched[product]
+      expect(taken).toBe(available[product])
+    }
+    expect(units(served.lost)).toBeGreaterThan(0)
   })
 })
 

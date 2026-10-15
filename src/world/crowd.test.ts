@@ -25,6 +25,7 @@ function visit(outcome: VisitOutcome = 'bought', minute = 450): Visit {
     bought: { cafe: outcome === 'bought' ? 1 : 0, chocolat: 0, croissant: 0 },
     servedMinute: outcome === 'bought' || outcome === 'soldOut' ? minute : null,
     leftMinute: outcome === 'leftLine' ? minute : null,
+    botched: 0,
   }
 }
 

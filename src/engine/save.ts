@@ -18,6 +18,7 @@ import {
 } from '../finance/journal.ts'
 import { FOOD_TRUCK } from './day.ts'
 import { validateDecisions } from './decisions.ts'
+import { FULL_ENERGY } from './energy.ts'
 import { PRODUCTS, inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
 import { LABELS, isKept } from './personal.ts'
@@ -32,16 +33,17 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 6 adds the
- * owner's personal account: a version 5 game has none. Version 5 spends the
- * marketing budget: a version 4 game has no marketing history. Version 4
- * adds the line at the counter: a version 3 `lastDay` has no visits served
- * or left and no waits. Version 3 opened the books by difficulty and
- * charged the real costs. A version 2 game's books hold no truck and no
- * loan, so it would repay a loan it never took and depreciate a truck it
- * never bought.
+ * change can no longer load (rule 8 in CLAUDE.md). Version 7 adds the
+ * owner's energy and botched units: a version 6 game has neither. Version 6
+ * adds the owner's personal account: a version 5 game has none. Version 5
+ * spends the marketing budget: a version 4 game has no marketing history.
+ * Version 4 adds the line at the counter: a version 3 `lastDay` has no
+ * visits served or left and no waits. Version 3 opened the books by
+ * difficulty and charged the real costs. A version 2 game's books hold no
+ * truck and no loan, so it would repay a loan it never took and depreciate
+ * a truck it never bought.
  */
-export const SAVE_VERSION = 6
+export const SAVE_VERSION = 7
 
 const STOCKS: AccountCode = '1200'
 
@@ -63,6 +65,8 @@ const signedMoney = z.int().transform((n) => cents(n))
 const count = z.int().nonnegative()
 
 const gameDay = z.int().nonnegative()
+
+const energyLevel = z.number().min(0).max(FULL_ENERGY)
 
 const generatorState = z
   .int()
@@ -129,11 +133,14 @@ const daySummarySchema = z.strictObject({
       // Service may run past closing time, even past midnight.
       servedMinute: count.nullable(),
       leftMinute: minuteOfDay.nullable(),
+      botched: count,
     }),
   ),
   leftLine: count,
   averageWaitSeconds: count,
   longestWaitSeconds: count,
+  energy: energyLevel,
+  botched: count,
 })
 
 // `validateDecisions()` checks the limits and the days open.
@@ -188,6 +195,7 @@ const saveSchema = z.strictObject({
   pendingDecisions: decisionsSchema.nullable(),
   profile: profileSchema,
   personal: personalSchema,
+  energy: energyLevel,
 })
 
 type Save = z.output<typeof saveSchema>
@@ -210,6 +218,7 @@ export function serialize(state: GameState): string {
     pendingDecisions: state.pendingDecisions,
     profile: state.profile,
     personal: state.personal,
+    energy: state.energy,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -223,8 +232,11 @@ export function serialize(state: GameState): string {
  * `postEntry()` and none is dated after the save's day; the books add up
  * within the safe integer range; the lots are oldest first, none bought
  * after the save's day, and they cost what the Stocks account carries;
- * `lastDay` is the save's day or the day before, and null only on day 0;
- * the marketing history holds one day for each day played up to the
+ * `lastDay` is the save's day or the day before, and null only on day 0,
+ * with its `botched` the sum of its visits'; the owner's energy is full
+ * before day 0 is played, `lastDay`'s energy on its own day, and no lower
+ * than it the morning after, since a night only gives energy back; the
+ * marketing history holds one day for each day played up to the
  * content's `awarenessDays`, none above the most the budget may be; the
  * decisions, and those pending if any, keep within the content's limits
  * and each product's kind of restock rule; the profile passes
@@ -247,6 +259,7 @@ export function deserialize(
   checkBooks(save, journal)
   checkInventory(save, journal)
   checkLastDay(save)
+  checkEnergy(save)
   checkMarketingHistory(save, content)
   checkDecisions('decisions', save.decisions, content)
   if (save.pendingDecisions !== null) {
@@ -267,6 +280,7 @@ export function deserialize(
     pendingDecisions: save.pendingDecisions,
     profile: save.profile,
     personal: save.personal,
+    energy: save.energy,
   }
 }
 
@@ -340,8 +354,42 @@ function checkInventory(save: Save, journal: Journal): void {
 function checkLastDay({ day, lastDay }: Save): void {
   if (lastDay === null) {
     if (day !== 0) invalid(`lastDay is null on day ${day}`)
-  } else if (lastDay.day !== day && lastDay.day !== day - 1) {
+    return
+  }
+  if (lastDay.day !== day && lastDay.day !== day - 1) {
     invalid(`lastDay is day ${lastDay.day} on day ${day}`)
+  }
+  const botched = lastDay.visits.reduce(
+    (total, visit) => total + visit.botched,
+    0,
+  )
+  if (lastDay.botched !== botched) {
+    invalid(
+      `lastDay.botched is ${lastDay.botched}, not the ${botched} its visits botched`,
+    )
+  }
+}
+
+/**
+ * The owner's energy as the game could leave it: full until day 0 is
+ * played, `lastDay`'s at its close, and the morning after no lower, since
+ * a night only gives energy back.
+ */
+function checkEnergy({ day, lastDay, energy }: Save): void {
+  if (lastDay === null) {
+    if (energy !== FULL_ENERGY) {
+      invalid(`energy is ${energy} before day 0 is played, not ${FULL_ENERGY}`)
+    }
+  } else if (lastDay.day === day) {
+    if (energy !== lastDay.energy) {
+      invalid(
+        `energy is ${energy} at the close of day ${day}, not lastDay's ${lastDay.energy}`,
+      )
+    }
+  } else if (energy < lastDay.energy) {
+    invalid(
+      `energy is ${energy} on the morning of day ${day}, below the ${lastDay.energy} of the close before`,
+    )
   }
 }
 

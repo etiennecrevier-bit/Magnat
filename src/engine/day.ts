@@ -1,12 +1,14 @@
 import {
   loadCustomerContent,
   loadDifficultyContent,
+  loadEnergyContent,
   loadFoodTruckContent,
   loadPersonalContent,
   type CustomerContent,
   type Difficulty,
   type DifficultyContent,
   type DifficultyId,
+  type EnergyContent,
   type FoodTruckContent,
   type PersonalContent,
   type ProductId,
@@ -23,10 +25,13 @@ import { loanSchedule } from '../finance/loan.ts'
 import { monthsSinceStart, toCalendar } from './calendar.ts'
 import {
   dayTypeOf,
+  noWithdrawals,
   perSegment,
   serveWalkIns,
   type Served,
+  type Withdrawal,
 } from './customers.ts'
+import { effectsOf, energyAtClose } from './energy.ts'
 import {
   PRODUCTS,
   onHand,
@@ -36,9 +41,9 @@ import {
 } from './inventory.ts'
 import { marketingCrowd, rememberSpend } from './marketing.ts'
 import { add, cents, mulInt, mulRatio, sub, type Cents } from './money.ts'
-import { livePersonalDay } from './personal.ts'
+import { inDebt, livePersonalDay } from './personal.ts'
 import { servers } from './service.ts'
-import type { Day, Decisions, GameState, Lot, PerProduct } from './types.ts'
+import type { Day, Decisions, GameState, Lot } from './types.ts'
 
 /** The shipped food truck content, validated once when the engine loads. */
 export const FOOD_TRUCK: FoodTruckContent = loadFoodTruckContent()
@@ -51,6 +56,12 @@ export const DIFFICULTIES: DifficultyContent = loadDifficultyContent()
 
 /** The owner's shipped living costs, validated once when the engine loads. */
 export const PERSONAL: PersonalContent = loadPersonalContent()
+
+/**
+ * What shipped tires the owner and what fatigue does, validated once when
+ * the engine loads.
+ */
+export const ENERGY: EnergyContent = loadEnergyContent()
 
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
@@ -87,6 +98,7 @@ const MEMO = {
   purchases: 'Achat de marchandises',
   sales: 'Ventes au comptant',
   costOfSales: 'Coût des marchandises vendues',
+  botched: 'Produits ratés',
   packaging: 'Emballages',
   cardFees: 'Frais de cartes',
   fuel: 'Carburant et entretien',
@@ -156,17 +168,20 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * month, open or closed: the month's charges (see `monthlyCharges`). On a
  * day the truck opens: the morning restock, then the walk-in customers,
  * with those the marketing of the days before brings on top (see
- * `marketingCrowd`), lining up at the counter, where `servers(state)` serve
- * them from the stock on hand, what the sales cost in packaging and card
- * fees, the fuel and the day's marketing budget. On a day it is closed,
- * nobody comes, nothing is bought and nothing is spent on marketing, so the
- * generator does not move. On payday, open or closed, the owner's weekly
- * pay. Every day: the spoilage at the close. Every entry is dated
- * `state.day`. Then the owner's own day, outside the books, with
- * `personal` as their living costs (see `livePersonalDay`). Returns a new
- * state on the same day with the books, the stock, the generator, the
- * marketing history, `lastDay` and the owner's personal account brought up
- * to the close; never mutates `state`. Cash may go negative.
+ * `marketingCrowd`), lining up at the counter, where `servers()` serve
+ * them from the stock on hand, slower and botching units the more tired the
+ * owner is that morning (see `effectsOf`), what the sales cost in packaging
+ * and card fees, the fuel and the day's marketing budget. On a day it is
+ * closed, nobody comes, nothing is bought and nothing is spent on
+ * marketing, so the generator does not move. On payday, open or closed,
+ * the owner's weekly pay. Every day: the spoilage at the close. Every entry
+ * is dated `state.day`. Then the owner's own day, outside the books, with
+ * `personal` as their living costs (see `livePersonalDay`), and what the
+ * day did to their energy, with `energy` as what tires them (see
+ * `energyAtClose`). Returns a new state on the same day with the books, the
+ * stock, the generator, the marketing history, `lastDay`, the owner's
+ * personal account and their energy brought up to the close; never mutates
+ * `state`. Cash may go negative.
  */
 export function playDay(
   state: GameState,
@@ -174,9 +189,11 @@ export function playDay(
   customers: CustomerContent = CUSTOMERS,
   difficulties: DifficultyContent = DIFFICULTIES,
   personal: PersonalContent = PERSONAL,
+  energy: EnergyContent = ENERGY,
 ): GameState {
   const { day, decisions } = state
   const { dayOfMonth, weekday } = toCalendar(day)
+  const open = decisions.daysOpen.includes(weekday)
   let journal = state.journal
   let lots = state.inventory
   let served = closed(state.rngState)
@@ -188,7 +205,7 @@ export function playDay(
     journal = monthlyCharges(journal, day, content, truck)
   }
 
-  if (decisions.daysOpen.includes(weekday)) {
+  if (open) {
     const restocked = restock(lots, day, decisions.restock, content)
     journal = post(journal, day, MEMO.purchases, [
       debit(INVENTORY, restocked.cost),
@@ -203,14 +220,23 @@ export function playDay(
       customers,
       price,
       perProduct((product) => onHand(restocked.lots, product)),
-      { service: content.service, servers: servers(state) },
+      {
+        service: content.service,
+        servers: servers(state, energy),
+        botchedShare: effectsOf(state.energy, energy).botchedShare,
+      },
       marketingCrowd(state.marketingHistory, content.marketing),
     )
 
     // The sale, its cost and what it costs to make are separate entries, so
     // each cash entry's other lines stay on one row of the état des flux de
     // trésorerie.
-    const sales = sell(restocked.lots, served.sold, price, content.products)
+    const sales = sell(
+      restocked.lots,
+      served.withdrawals,
+      price,
+      content.products,
+    )
     journal = post(journal, day, MEMO.sales, [
       debit(CASH, sales.revenue),
       credit(SALES, sales.revenue),
@@ -218,6 +244,10 @@ export function playDay(
     journal = post(journal, day, MEMO.costOfSales, [
       debit(COST_OF_GOODS_SOLD, sales.cost),
       credit(INVENTORY, sales.cost),
+    ])
+    journal = post(journal, day, MEMO.botched, [
+      debit(INVENTORY_LOSSES, sales.botchedCost),
+      credit(INVENTORY, sales.botchedCost),
     ])
     journal = pay(journal, day, MEMO.packaging, PACKAGING, sales.packaging)
     const { share, feeRate } = content.cardPayments
@@ -251,6 +281,25 @@ export function playDay(
     credit(INVENTORY, expired.cost),
   ])
 
+  const account = livePersonalDay(
+    state.personal,
+    day,
+    decisions.ownerWeeklyPay,
+    content.ownerPayWeekday,
+    personal,
+  )
+  const closingEnergy = energyAtClose(
+    state.energy,
+    {
+      open,
+      customersServed: served.visits.filter(
+        ({ servedMinute }) => servedMinute !== null,
+      ).length,
+      stressed: weekday === content.ownerPayWeekday && inDebt(account),
+    },
+    energy,
+  )
+
   return {
     ...state,
     rngState: served.rngState,
@@ -272,14 +321,14 @@ export function playDay(
       leftLine: served.leftLine,
       averageWaitSeconds: served.averageWaitSeconds,
       longestWaitSeconds: served.longestWaitSeconds,
+      energy: closingEnergy,
+      botched: PRODUCTS.reduce(
+        (total, product) => total + served.botched[product],
+        0,
+      ),
     },
-    personal: livePersonalDay(
-      state.personal,
-      day,
-      decisions.ownerWeeklyPay,
-      content.ownerPayWeekday,
-      personal,
-    ),
+    personal: account,
+    energy: closingEnergy,
   }
 }
 
@@ -370,6 +419,8 @@ function closed(rngState: number): Served {
     })),
     sold: none,
     lost: none,
+    botched: none,
+    withdrawals: noWithdrawals(),
     leftLine: 0,
     averageWaitSeconds: 0,
     longestWaitSeconds: 0,
@@ -413,36 +464,47 @@ interface Sales {
   revenue: Cents
   /** What the units sold cost, first in, first out. */
   cost: Cents
+  /** What the units botched cost, first in, first out. */
+  botchedCost: Cents
   /** What the units sold went out in. */
   packaging: Cents
 }
 
 /**
- * Takes the units customers bought out of the stock, oldest lot first, and
- * prices them. Customers buy one at a time as they are served, but taking a
- * product's day total at once takes the same units from the same lots.
+ * Takes the units customers bought, and those botched, out of the stock,
+ * oldest lot first, in the order the counter took them, and prices those
+ * sold. Customers buy one at a time as they are served, but taking a run of
+ * a product's units at once takes the same units from the same lots; a
+ * rested day has one run of each product, its day total.
  */
 function sell(
   lots: readonly Lot[],
-  sold: PerProduct,
+  withdrawals: Readonly<Record<ProductId, readonly Withdrawal[]>>,
   price: (product: ProductId) => Cents,
   products: FoodTruckContent['products'],
 ): Sales {
   let left = lots
   let revenue = ZERO
   let cost = ZERO
+  let botchedCost = ZERO
   let packaging = ZERO
   for (const product of PRODUCTS) {
-    const taken = takeFifo(left, product, sold[product])
-    left = taken.lots
-    revenue = add(revenue, mulInt(price(product), taken.taken))
-    cost = add(cost, taken.cost)
-    packaging = add(
-      packaging,
-      mulInt(products[product].packagingCents, taken.taken),
-    )
+    for (const { units, botched } of withdrawals[product]) {
+      const taken = takeFifo(left, product, units)
+      left = taken.lots
+      if (botched) {
+        botchedCost = add(botchedCost, taken.cost)
+        continue
+      }
+      revenue = add(revenue, mulInt(price(product), taken.taken))
+      cost = add(cost, taken.cost)
+      packaging = add(
+        packaging,
+        mulInt(products[product].packagingCents, taken.taken),
+      )
+    }
   }
-  return { lots: left, revenue, cost, packaging }
+  return { lots: left, revenue, cost, botchedCost, packaging }
 }
 
 /**
