@@ -1,0 +1,40 @@
+/* A newspaper's band along the bottom of the window, over the street, in
+   the panels' ink and cream. The page keeps room for it under the screens. */
+.ticker {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  padding: 0.375rem 1rem;
+  border-top: 2px solid #2b2622;
+  background: #fff7e8;
+  color: #2b2622;
+}
+
+body:has(.ticker) {
+  padding-bottom: 2.75rem;
+}
+
+.ticker p {
+  margin: 0;
+}
+
+.ticker__paper {
+  flex: none;
+  padding: 0 0.5rem;
+  border-radius: 4px;
+  background: #f7c948;
+  color: #2b2622;
+  font-weight: 700;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+.ticker__text {
+  min-width: 0;
+}

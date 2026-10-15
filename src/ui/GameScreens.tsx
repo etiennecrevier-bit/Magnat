@@ -1,15 +1,18 @@
 import { useState } from 'react'
+import EventLog from './EventLog.tsx'
 import FinancialStatements from './FinancialStatements.tsx'
 import Messages from './Messages.tsx'
 import { downloadSave } from './saves.ts'
 import { gameStore } from './store.ts'
+import Ticker from './Ticker.tsx'
 import TodayPanel from './TodayPanel.tsx'
 
-export type Screen = 'today' | 'statements'
+export type Screen = 'today' | 'statements' | 'events'
 
 const SCREENS: Record<Screen, string> = {
   today: "Aujourd'hui",
   statements: 'États financiers',
+  events: 'Journal des événements',
 }
 
 interface GameScreensViewProps {
@@ -57,12 +60,17 @@ export function GameScreensView({
           Exporter la sauvegarde
         </button>
       </nav>
-      {screen === 'today' ? <TodayPanel /> : <FinancialStatements />}
+      {screen === 'today' && <TodayPanel />}
+      {screen === 'statements' && <FinancialStatements />}
+      {screen === 'events' && <EventLog />}
     </main>
   )
 }
 
-/** The screens, opening on Aujourd'hui, exporting the app store's game. */
+/**
+ * The screens, opening on Aujourd'hui, exporting the app store's game, with
+ * the La Presse-Citron ticker along the bottom.
+ */
 export default function GameScreens({
   autosaveFailed = false,
 }: {
@@ -70,11 +78,14 @@ export default function GameScreens({
 }) {
   const [screen, setScreen] = useState<Screen>('today')
   return (
-    <GameScreensView
-      screen={screen}
-      onScreenChange={setScreen}
-      onExport={() => downloadSave(gameStore.getState().game)}
-      autosaveFailed={autosaveFailed}
-    />
+    <>
+      <GameScreensView
+        screen={screen}
+        onScreenChange={setScreen}
+        onExport={() => downloadSave(gameStore.getState().game)}
+        autosaveFailed={autosaveFailed}
+      />
+      <Ticker />
+    </>
   )
 }
