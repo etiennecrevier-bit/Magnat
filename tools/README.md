@@ -15,7 +15,7 @@ Plays the game from day 0 without a screen, with the shipped content, at one dif
 | `--difficulty` | `moyen` | How the game starts: `facile`, `moyen` or `difficile`, as on the new game screen, whose default it is. It sets the opening books and the truck's charges. |
 | `--out`        | `out/`  | Folder the result goes to, relative to the current one (the repo root under `npm run`).                                           |
 
-The full result goes to `<out>/sim-<seed>-<difficulty>.json`: the seed, the difficulty, the days, the journal hash, the yearly rows, each day's summary (units sold, revenue, lost sales and spoilage per product) and every journal entry. Ten years make about 6.5 MB. `out/` is git-ignored.
+The full result goes to `<out>/sim-<seed>-<difficulty>.json`: the seed, the difficulty, the days, the journal hash, the yearly rows, each day's summary (units sold, revenue, lost sales and spoilage per product), every journal entry, and `owner`, the owner's side outside the books: `morningEnergy`, their energy each morning before the day is played, `personalCash` at the end, and `unpaidRents`, every 1st of the month whose rent went unpaid over the whole run (the game itself keeps only the last 12 months). Ten years make about 6.5 MB. `out/` is git-ignored.
 
 The code is in `sim/`: `simulate.ts` plays the game and sums it up without I/O, `cli.ts` parses the options, prints the report and writes the file, and `run.ts` is the entry point `tsx` runs.
 
@@ -31,7 +31,7 @@ This only holds while the top bar shows year 1 (N up to 244, December 31st): the
 npm run balance -- --years 1 --games 30
 ```
 
-Plays scripted strategies headless at each difficulty, to see whether the economy works before anyone plays it: which strategies win, which go broke and which decisions change nothing. A strategy holds the same decisions from day 0 to the end of the game. It sets every price at -20%, base, +20% or +40% from the starting prices (rounded half up to the price step), buys 40, 70 or 110 croissants each morning the truck opens, spends $0, $30 or $80 a day on marketing, and opens 6 days (closed on Monday) or 7. That makes 72 strategies; café and chocolat chaud keep their starting restock and the owner their starting pay. Each strategy plays seeds 1 to `--games` at Facile, Moyen and Difficile, for `--years` × 365 days from May 1st, year 1.
+Plays scripted strategies headless at each difficulty, to see whether the economy works before anyone plays it: which strategies win, which go broke and which decisions change nothing. A strategy holds the same decisions from day 0 to the end of the game. It sets every price at -20%, base, +20% or +40% from the starting prices (rounded half up to the price step), buys 40, 70 or 110 croissants each morning the truck opens, spends $0, $30 or $80 a day on marketing, opens 5, 6 or 7 days a week, and pays the owner $400, $700 or $1,000 a week. The schedules nest: 6 days closes on Monday, the quietest weekday, and 5 days on Sunday too. That makes 4 × 3 × 3 × 3 × 3 = 324 strategies; café and chocolat chaud keep their starting restock. Each strategy plays seeds 1 to `--games` at Facile, Moyen and Difficile, for `--years` × 365 days from May 1st, year 1.
 
 | Option    | Default                   | Meaning                                                                                  |
 | --------- | ------------------------- | ---------------------------------------------------------------------------------------- |
@@ -39,20 +39,40 @@ Plays scripted strategies headless at each difficulty, to see whether the econom
 | `--games` | 30                        | Games per strategy and difficulty, on seeds 1 to this, a whole number from 1.            |
 | `--out`   | `docs/balance/phase-2.md` | File the report goes to, relative to the current folder (the repo root under `npm run`). |
 
-The report, in Markdown, starts with the 10 best and the 10 worst strategies at each difficulty, then ranks all 72. The best has the highest median cash at the end; ties go to the higher median net income, then to the strategy listed first in the grid. For each strategy, over its games:
+The report, in Markdown, starts with the design targets (one-year runs only, below), then the 10 best and the 10 worst strategies at each difficulty, then ranks all 324. The best has the highest median wealth at the end: the Encaisse plus the owner's personal cash, as if the business were theirs alone. The owner's pay only moves money from one to the other, so it counts through what it does to the owner: debt stress tires them, and a tired owner serves slower. Ties go to the fewer median unpaid rents, then to the higher median net income, then to the strategy listed first in the grid; so when no pay tires the owner, $700 ranks above $1,000 by its net income, and $400 below both when it leaves a rent unpaid. For each strategy, over its games:
 
-- the median and the worst Encaisse at the close of the last day;
-- the median net income over the game;
+- the median wealth at the end, and the median and worst Encaisse at the close of the last day;
+- the median net income over the game, after the owner's pay;
+- the owner's median personal cash at the end, and the median count of unpaid rents;
 - the lowest Encaisse after any journal entry of any game. A day pays its purchases, and the 1st of the month its charges, before its sales come in, so this catches a shortfall the cash at the close would hide;
 - the share of games whose cash went below zero at any point, when the truck would have needed the bank;
+- the owner's median average energy each morning, and the median mornings they started « Épuisé »;
+- the median units botched at the counter;
 - the median spoilage rate: units written off ÷ (units sold + units written off), every product together;
-- the median visits lost to stockouts and to prices: those that bought nothing because what the customer wanted had sold out, or because a price was above what they pay. Customers lost to the line are not counted until the game has one (#62).
+- the median visits lost to stockouts, to prices and to the line: those that bought nothing because what the customer wanted had sold out, because a price was above what they pay, or because the line was too long for them.
 
-Under each difficulty's best and worst, a "Changed nothing" line names any choice whose values all played the same books (by journal hash) for every seed, the other choices held, such as the marketing budget while the engine does not charge it (#63).
+Under each difficulty's best and worst, a "Changed nothing" line names any choice whose values all played the same books (by journal hash) for every seed, the other choices held.
 
-The progress and the time each difficulty took go to the console only, so the same options always write the same file. The default run plays 72 × 3 × 30 = 6,480 one-year games on one thread: 2 min 17 s, about 45 s per difficulty, for the committed report. `docs/balance/phase-2.md` is committed: run the command again, and commit the new report, after any change to the engine or the content that moves the numbers.
+### Design targets
 
-The code is in `balance/`: `strategies.ts` builds the grid and the decisions each strategy makes, `play.ts` plays the games through `simulate()` and sums each one up, `report.ts` ranks the strategies and writes the Markdown without I/O, `cli.ts` parses the options and writes the file, and `run.ts` is the entry point `tsx` runs.
+A one-year report checks the targets of #58 at each difficulty, ✓ or ✗ with what the run measured, n/a where a target does not apply to the difficulty. A strategy beats another only by what it played, never by the order of the grid. The targets are #58's, in `balance/targets.ts`:
+
+1. The best strategy's net income lands within $5,000 of Facile $30,000, Moyen $20,000 and Difficile $10,000.
+2. Moyen and Difficile: every careless strategy (+40% and 110 croissants a day: prices far off and much too much stock) goes below zero before October 1st, in its first 5 months, in more than half of its games. Each strategy counts on its own, so the others cannot hide one that survives.
+3. Facile: the starting decisions (base prices, 70 croissants, $0, 6 days, $700) never go below zero.
+4. The best strategy at base or +20% beats the best at -20% or +40%.
+5. At +20% and at +40%, the best strategy spending $30 a day on marketing beats the best spending $0 and the best spending $80.
+6. On 5 or 6 days a week, -20% prices lose at least 5% of the visits to the line, pooled over the games, and at least twice the share base prices lose.
+7. The best strategy on 5 or 6 days beats the best on 7.
+8. Moyen and Difficile: paying the owner $400 a week leaves a rent unpaid in every game.
+
+### Running it
+
+Each difficulty plays on its own worker thread, so the three play side by side and the progress line of each comes when it is done. They play the same games in the same order as one thread would, so the report is the same. The progress and the times go to the console only, so the same options always write the same file. The default run plays 324 × 3 × 30 = 29,160 one-year games: 6 min for the committed report, on three threads. `docs/balance/phase-2.md` is committed: run the command again, and commit the new report, after any change to the engine or the content that moves the numbers.
+
+Everything from the line `<!-- Written by hand: npm run balance keeps everything below this line. -->` to the end of the report is hand-written: a new run keeps it as it is, under the new numbers.
+
+The code is in `balance/`: `strategies.ts` builds the grid and the decisions each strategy makes, `play.ts` plays the games through `simulate()` and sums each one up, `summary.ts` sums up each strategy's games and ranks them, `targets.ts` checks the design targets, `report.ts` writes the Markdown, all without I/O. `threads.ts` plays each difficulty on a worker thread running `worker.ts`, `cli.ts` parses the options and writes the file, and `run.ts` is the entry point `tsx` runs.
 
 ## The 10-year invariant test
 

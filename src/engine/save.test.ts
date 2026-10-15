@@ -538,8 +538,9 @@ describe('deserialize rejects', () => {
     })
 
     it('whose lots are not oldest first', () => {
-      expectInvalid(withValue('inventory.0.boughtOnDay', 10), [
-        'lot 2 is older than the lot before it: day 9 < day 10',
+      const second = FORTNIGHT.inventory[1]?.boughtOnDay ?? 0
+      expectInvalid(withValue('inventory.0.boughtOnDay', second + 1), [
+        `lot 2 is older than the lot before it: day ${second} < day ${second + 1}`,
       ])
     })
 

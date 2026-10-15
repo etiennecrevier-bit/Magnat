@@ -1,22 +1,22 @@
 {
-  "_note": "Starting values, tuned in P2-16",
+  "_note": "Tuned in P2-19 (#58) with the balance bot: see docs/balance/phase-2.md",
   "segments": {
     "aubaine": {
       "name": "Chasseurs d'aubaines",
-      "patienceMinutes": 5,
+      "patienceMinutes": 3,
       "products": {
         "cafe": {
-          "referencePriceCents": 200,
+          "referencePriceCents": 230,
           "purchaseProbability": 0.9,
           "sensitivity": 8
         },
         "chocolat": {
-          "referencePriceCents": 275,
+          "referencePriceCents": 250,
           "purchaseProbability": 0.6,
           "sensitivity": 8
         },
         "croissant": {
-          "referencePriceCents": 250,
+          "referencePriceCents": 270,
           "purchaseProbability": 0.6,
           "sensitivity": 8
         }
@@ -24,21 +24,21 @@
     },
     "habitue": {
       "name": "Habitués",
-      "patienceMinutes": 4,
+      "patienceMinutes": 5,
       "products": {
         "cafe": {
-          "referencePriceCents": 250,
+          "referencePriceCents": 310,
           "purchaseProbability": 0.95,
           "sensitivity": 4
         },
         "chocolat": {
-          "referencePriceCents": 350,
+          "referencePriceCents": 340,
           "purchaseProbability": 0.5,
           "sensitivity": 4
         },
         "croissant": {
-          "referencePriceCents": 325,
-          "purchaseProbability": 0.55,
+          "referencePriceCents": 360,
+          "purchaseProbability": 0.75,
           "sensitivity": 4
         }
       }
@@ -48,19 +48,19 @@
       "patienceMinutes": 3,
       "products": {
         "cafe": {
-          "referencePriceCents": 350,
+          "referencePriceCents": 390,
           "purchaseProbability": 0.7,
-          "sensitivity": 1.5
+          "sensitivity": 3
         },
         "chocolat": {
-          "referencePriceCents": 450,
+          "referencePriceCents": 420,
           "purchaseProbability": 0.5,
-          "sensitivity": 1.5
+          "sensitivity": 3
         },
         "croissant": {
           "referencePriceCents": 450,
-          "purchaseProbability": 0.45,
-          "sensitivity": 1.5
+          "purchaseProbability": 0.6,
+          "sensitivity": 3
         }
       },
       "tooCheap": { "belowRatio": 0.4, "steepness": 15 }

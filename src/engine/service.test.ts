@@ -61,11 +61,11 @@ describe('servers', () => {
     expect(servers(state, ENERGY)).toEqual([{ speed }])
   })
 
-  it('takes 20 % longer tired and 40 % longer exhausted, as shipped', () => {
+  it('takes 20 % longer tired and 80 % longer exhausted, as shipped', () => {
     const at = (energy: number) =>
       servers({ ...createInitialState(42), energy }, ENERGY)[0]?.speed
     expect(at(49)).toBe(1 / 1.2)
-    expect(at(24)).toBe(1 / 1.4)
+    expect(at(24)).toBe(1 / 1.8)
   })
 })
 
