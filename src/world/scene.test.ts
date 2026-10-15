@@ -316,14 +316,50 @@ describe('the shadows on the ground', () => {
     expect(cast.filters).toEqual([expect.objectContaining({ blur, opacity })])
   })
 
-  it('fades each cast shadow on its own where the renderer cannot filter', () => {
+  it('shows the cast shadows through one texture at their opacity where the renderer cannot filter', () => {
     const scene = build(ASSETS, new Map(), null)
     const { cast } = ground(scene)
+    // Drawn opaque into the texture, which alone fades: where two overlap,
+    // the ground is no darker.
+    expect(cast.isCachedAsTexture).toBe(true)
     expect(cast.alpha).toBe(ASSETS.light.castShadow.opacity)
+    expect(cast.children.length).toBeGreaterThan(1)
+    for (const shadow of cast.children) expect(shadow.alpha).toBe(1)
     expect(cast.filters ?? []).toEqual([])
-    scene.setEffects('simple')
-    expect(cast.filters ?? []).toEqual([])
+
+    for (const effects of ['simple', 'full'] as const) {
+      scene.setEffects(effects)
+      expect(cast.isCachedAsTexture).toBe(true)
+      expect(cast.alpha).toBe(ASSETS.light.castShadow.opacity)
+      expect(cast.filters ?? []).toEqual([])
+    }
     expect(() => scene.destroy()).not.toThrow()
+  })
+
+  it('redraws that texture as the shadows move, at the pixels it is asked for', () => {
+    const scene = build(ASSETS, new Map(), null)
+    const group = ground(scene).cast.renderGroup!
+    scene.shadows.redraw(3)
+    expect(group.textureOptions.resolution).toBe(3)
+    expect(group.textureNeedsUpdate).toBe(true)
+
+    // As a render draws it.
+    group.textureNeedsUpdate = false
+    scene.shadows.redraw(3)
+    expect(group.textureNeedsUpdate).toBe(true)
+    expect(group.textureOptions.resolution).toBe(3)
+    group.textureNeedsUpdate = false
+    scene.shadows.redraw(1.5)
+    expect(group.textureOptions.resolution).toBe(1.5)
+    expect(group.textureNeedsUpdate).toBe(true)
+  })
+
+  it('keeps the cast shadows out of any texture where the filters fade them', () => {
+    const scene = build(ASSETS)
+    const { cast } = ground(scene)
+    scene.shadows.redraw(2)
+    expect(cast.isCachedAsTexture).toBe(false)
+    expect(cast.alpha).toBe(1)
   })
 
   it('frees the textures it made when it is taken down', () => {

@@ -17,11 +17,12 @@ export interface WorldApp {
   readonly stage: Container
   /**
    * Which renderer Pixi picked: WebGL, WebGPU or Canvas 2D (`RendererType`),
-   * and WebGL's back buffer, which the world turns off when nothing blends
-   * with it.
+   * its pixels per logical pixel, and WebGL's back buffer, which the world
+   * turns on only when something blends with it.
    */
   readonly renderer?: {
     readonly type: number
+    readonly resolution?: number
     readonly backBuffer?: { useBackBuffer: boolean }
   }
   /** The canvas size, in the logical pixels the stage is drawn in. */
@@ -44,10 +45,11 @@ export interface WorldApp {
 export type StartWorld = (app: WorldApp) => Promise<() => void>
 
 /**
- * The options the world starts Pixi with: the sky, on a canvas that fills
- * `view` and follows its resizes at the screen's pixel density. WebGL draws
- * to a back buffer, which the overlay and soft light of the atmosphere
- * blend with (see atmosphere.ts).
+ * The options the world starts Pixi with: the sky, on an antialiased canvas
+ * that fills `view` and follows its resizes at the screen's pixel density.
+ * WebGL starts without its back buffer, since Pixi antialiases the canvas
+ * only then; the street turns it on for the overlay and soft light of the
+ * full visual effects (see atmosphere.ts), and it antialiases as well.
  */
 export function worldOptions(view: Window): Partial<ApplicationOptions> {
   return {
@@ -56,7 +58,7 @@ export function worldOptions(view: Window): Partial<ApplicationOptions> {
     resolution: view.devicePixelRatio,
     autoDensity: true,
     antialias: true,
-    useBackBuffer: true,
+    useBackBuffer: false,
   }
 }
 

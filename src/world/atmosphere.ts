@@ -1,7 +1,7 @@
 // Overlay and soft light are advanced blend modes, which Pixi only knows
-// once this is imported; they also need the renderer's back buffer (see
-// worldOptions in mountWorld.ts). Their sprites stay opaque: the textures
-// hold their opacity (see `strayOf` in noise.ts).
+// once this is imported; they also need WebGL's back buffer, which the
+// street turns on for them (see startStreet). Their sprites stay opaque:
+// the textures hold their opacity (see `strayOf` in noise.ts).
 import 'pixi.js/advanced-blend-modes'
 import { Container, Sprite, TilingSprite, type Texture } from 'pixi.js'
 import type { Light, Palette } from '../content/assets.ts'

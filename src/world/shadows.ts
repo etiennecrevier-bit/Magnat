@@ -15,7 +15,9 @@ import type { VisualEffects } from '../ui/settings.ts'
 // cast shadows, slate shapes reaching to the lower right, away from the sun,
 // then the contact shadows, a tight soft ellipse under each foot, wheel and
 // post. The cast shadows are drawn opaque and blurred together, then shown
-// at one opacity, so where two overlap the ground is no darker.
+// at one opacity, so where two overlap the ground is no darker. Where the
+// renderer has no filters, they are drawn opaque into one texture, which
+// shows at that opacity, without the blur.
 
 /** What the cast shadows' filters do: blur their edge, then fade them. */
 export interface ShadowFilters {
@@ -34,7 +36,7 @@ export type MakeFilters = (wanted: ShadowFilters) => Filter[]
 /**
  * Pixi's filters for a renderer of `type`. Its Canvas 2D renderer, used
  * where WebGL and WebGPU are missing, skips filters: there are none, and
- * the cast shadows fade one by one instead.
+ * the cast shadows show through one texture instead (see `createShadows`).
  */
 export function filtersFor(type: number | undefined): MakeFilters | null {
   return type === RendererType.CANVAS ? null : PIXI_FILTERS
@@ -104,6 +106,12 @@ export interface Shadows {
   ) => Sprite
   /** Blurs the cast shadows' edge with the full visual effects only. */
   setEffects: (effects: VisualEffects) => void
+  /**
+   * Where the cast shadows show through one texture, draws them into it
+   * again, at `resolution` pixels per unit of the layer, since they move
+   * each frame. Elsewhere it does nothing.
+   */
+  redraw: (resolution: number) => void
   /** Frees the filters. */
   destroy: () => void
 }
@@ -112,8 +120,10 @@ export interface Shadows {
  * Fills `layer`, the manifest's shadow layer, with the cast shadows and
  * the contact shadows, shown with the full visual effects until
  * `setEffects` says otherwise. `spot` is the soft spot contact shadows
- * stretch. Without `makeFilters`, where the renderer cannot filter, each
- * cast shadow fades on its own, so where two overlap the ground is darker.
+ * stretch. Without `makeFilters`, where the renderer cannot filter, the
+ * cast shadows are drawn opaque into one texture, cached until `redraw`,
+ * which shows at their opacity: where two overlap the ground is still no
+ * darker, but their edge stays sharp.
  */
 export function createShadows(
   layer: Container,
@@ -137,8 +147,12 @@ export function createShadows(
     }
     return made
   }
-  if (makeFilters === null) cast.alpha = castShadow.opacity
-  else cast.filters = filtersOf('full')
+  // The texture's pixels per unit; Pixi's default is the screen's.
+  let resolution: number | undefined
+  if (makeFilters === null) {
+    cast.cacheAsTexture(true)
+    cast.alpha = castShadow.opacity
+  } else cast.filters = filtersOf('full')
 
   return {
     cast,
@@ -205,6 +219,14 @@ export function createShadows(
     },
     setEffects: (effects) => {
       if (makeFilters !== null) cast.filters = filtersOf(effects)
+    },
+    redraw: (wanted) => {
+      if (makeFilters !== null) return
+      if (wanted === resolution) cast.updateCacheTexture()
+      else {
+        resolution = wanted
+        cast.cacheAsTexture({ resolution })
+      }
     },
     destroy: () => {
       cast.filters = []

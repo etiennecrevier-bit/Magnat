@@ -110,15 +110,15 @@ export async function startStreet(
   scene.root.addChild(customers.root)
 
   // The screen follows the window; each frame refits the scene if it moved.
-  let fitted = { width: -1, height: -1 }
+  let fitted = { width: -1, height: -1, scale: 1 }
   // The part of the design on screen, where customers come and go.
   let span: Span = { left: 0, right: manifest.designSize.width }
   const fit = () => {
     const { width, height } = app.screen
     if (width === fitted.width && height === fitted.height) return
-    fitted = { width, height }
     const design = manifest.designSize
     const { scale, x, y } = fitScene(width, height, design.width, design.height)
+    fitted = { width, height, scale }
     for (const layer of [scene.root, customers.labels]) {
       layer.scale.set(scale)
       layer.position.set(x, y)
@@ -130,7 +130,8 @@ export async function startStreet(
     scene.setEffects(effects)
     atmosphere.setEffects(effects)
     // Only the grain and the unevenness blend with the back buffer, which
-    // costs a copy of the screen each frame.
+    // costs a copy of the screen each frame. Both it and the canvas, which
+    // Pixi starts without it, antialias.
     const backBuffer = app.renderer?.backBuffer
     if (backBuffer !== undefined) backBuffer.useBackBuffer = effects === 'full'
   }
@@ -169,6 +170,9 @@ export async function startStreet(
     fit()
     scene.animate(ticker.deltaMS)
     customers.frame(ticker.deltaMS, store.getState().speed, span)
+    // Where the cast shadows show through one texture, its pixels are the
+    // screen's.
+    scene.shadows.redraw(fitted.scale * (app.renderer?.resolution ?? 1))
     showCard()
   }
 

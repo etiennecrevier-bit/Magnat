@@ -1177,7 +1177,8 @@ describe('startStreet: the light over the street', () => {
   })
 
   it('draws to the back buffer only for the full effects, which blend with it', async () => {
-    const backBuffer = { useBackBuffer: true }
+    // Pixi starts without it (see worldOptions).
+    const backBuffer = { useBackBuffer: false }
     const app = {
       ...createFakeApp(),
       renderer: { type: RendererType.WEBGL, backBuffer },
@@ -1199,15 +1200,45 @@ describe('startStreet: the light over the street', () => {
     expect(backBuffer.useBackBuffer).toBe(true)
   })
 
-  it("fades the cast shadows one by one where Pixi's renderer cannot filter", async () => {
+  it("shows the cast shadows through one texture, redrawn each frame at the screen's pixels, where Pixi's renderer cannot filter", async () => {
     // Its Canvas 2D renderer, where WebGL and WebGPU are missing, skips
-    // filters; it never gets any.
-    const app = { ...createFakeApp(), renderer: { type: RendererType.CANVAS } }
+    // filters; it never gets any. The scene is drawn at twice its design
+    // size, on a screen of two pixels per logical pixel.
+    const app = {
+      ...createFakeApp(2880, 1800),
+      renderer: { type: RendererType.CANVAS, resolution: 2 },
+    }
     const loaders = { ...createLoaders(), makeFilters: undefined }
-    await startStreet(app, mondayStore(), loaders)
+    const settings = createSettingsStore(null)
+    const store = wednesdayStore(true)
+    await startStreet(
+      app,
+      store,
+      loaders,
+      ASSETS,
+      busyCrowd(),
+      createPicker(),
+      settings,
+    )
     const cast = piece(app, 'layer:shadows').getChildByLabel('cast')!
-    expect(cast.alpha).toBe(ASSETS.light.castShadow.opacity)
-    expect(cast.filters ?? []).toEqual([])
+    const group = cast.renderGroup!
+    const redrawn = () => {
+      expect(group.textureNeedsUpdate).toBe(true)
+      expect(group.textureOptions.resolution).toBe(4)
+      // As a render draws it.
+      group.textureNeedsUpdate = false
+    }
+
+    for (const effects of ['full', 'simple'] as const) {
+      settings.getState().setVisualEffects(effects)
+      expect(play(app, store, 6000, 4000, redrawn)).toBeGreaterThan(0)
+      expect(cast.isCachedAsTexture).toBe(true)
+      expect(cast.alpha).toBe(ASSETS.light.castShadow.opacity)
+      expect(cast.filters ?? []).toEqual([])
+      // The customers' shadows, like the street's, are opaque in it.
+      expect(customerShadows(app, 'cast').length).toBeGreaterThan(0)
+      for (const shadow of cast.children) expect(shadow.alpha).toBe(1)
+    }
   })
 
   it('starts with the simple effects when the player picked them', async () => {
