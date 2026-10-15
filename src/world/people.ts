@@ -313,6 +313,19 @@ export function drawBubble(mood: Mood, style: PlaceholderStyle): Container {
   return new Container({ label: 'bubble', children: [back, face] })
 }
 
+/**
+ * Draws the ring on the ground under a customer `height` tall whose card is
+ * open, centred on their feet at 0, 0, in player blue.
+ */
+export function drawPickMark(
+  height: number,
+  style: PlaceholderStyle,
+): Graphics {
+  return new Graphics({ label: 'pickMark' })
+    .ellipse(0, 0, height * 0.3, height * 0.06)
+    .stroke({ width: style.outline * 1.5, color: style.palette.playerBlue })
+}
+
 /** The avatar's drawing and the arm that serves. */
 export interface AvatarArt {
   readonly root: Container
