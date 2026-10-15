@@ -6,6 +6,7 @@ import eventsJson from './events.json'
 import foodTruckJson from './foodtruck.json'
 import personalJson from './personal.json'
 import profileJson from './profile.json'
+import reportJson from './report.json'
 import segmentsJson from './segments.json'
 
 // Every object is strict, so a mistyped key while tuning fails loudly instead
@@ -826,6 +827,63 @@ export const eventContentSchema = z
 export type EventContent = z.output<typeof eventContentSchema>
 
 /**
+ * The facts of a week the « Bilan de la semaine » may tell, in the order
+ * that breaks a tie between equal weights.
+ */
+export const weekFactIdSchema = z.enum([
+  'profitUpCashDown',
+  'unpaidRent',
+  'receivableDue',
+  'spoilage',
+  'bestWeek',
+  'lostToLine',
+  'daysOpenInARow',
+])
+
+export type WeekFactId = z.infer<typeof weekFactIdSchema>
+
+/** How much a fact matters: the highest weight is told first. */
+const factWeight = z.int().nonnegative()
+
+/**
+ * When each fact of a week is worth telling, and how much it matters.
+ * Keyed by every `WeekFactId`, so a new fact fails the type check until it
+ * has its thresholds.
+ */
+const weekFactsSchema = z.strictObject({
+  /**
+   * A bénéfice net above 0 while the encaisse went down, or went up at
+   * least `minGapCents` less than the bénéfice.
+   */
+  profitUpCashDown: z.strictObject({ weight: factWeight, minGapCents: money }),
+  /** The owner's rent went unpaid during the week. */
+  unpaidRent: z.strictObject({ weight: factWeight }),
+  /** A customer owes something due within `withinDays` of the Sunday. */
+  receivableDue: z.strictObject({ weight: factWeight, withinDays: count }),
+  /** The stock written off cost more than `aboveCents`. */
+  spoilage: z.strictObject({ weight: factWeight, aboveCents: money }),
+  /** Ventes above those of every earlier week of the game. */
+  bestWeek: z.strictObject({ weight: factWeight }),
+  /** More than `aboveVisits` visits left the line. */
+  lostToLine: z.strictObject({ weight: factWeight, aboveVisits: count }),
+  /** The truck opened at least `atLeast` days in a row. */
+  daysOpenInARow: z.strictObject({
+    weight: factWeight,
+    atLeast: z.int().positive(),
+  }),
+} satisfies Record<WeekFactId, z.ZodType>)
+
+/** What the « Bilan de la semaine » tells of a week. */
+export const reportContentSchema = z.strictObject({
+  _note: z.string().optional(),
+  /** The most facts told about a week. */
+  maxFacts: z.int().positive(),
+  facts: weekFactsSchema,
+})
+
+export type ReportContent = z.output<typeof reportContentSchema>
+
+/**
  * Validates the food truck's content and returns it typed, with money as
  * `Cents`. Throws an Error naming every invalid field. Pass `raw` only to
  * check other data; by default it reads `foodtruck.json`.
@@ -897,6 +955,15 @@ export function loadEnergyContent(raw: unknown = energyJson): EnergyContent {
  */
 export function loadEventContent(raw: unknown = eventsJson): EventContent {
   return parsed(eventContentSchema, raw, 'events.json')
+}
+
+/**
+ * Validates when the facts of a week are worth telling and returns them
+ * typed, with money as `Cents`. Throws an Error naming every invalid field.
+ * Pass `raw` only to check other data; by default it reads `report.json`.
+ */
+export function loadReportContent(raw: unknown = reportJson): ReportContent {
+  return parsed(reportContentSchema, raw, 'report.json')
 }
 
 function parsed<T extends z.ZodType>(
