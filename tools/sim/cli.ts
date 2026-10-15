@@ -2,7 +2,12 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
+import {
+  difficultyIdSchema,
+  type DifficultyId,
+} from '../../src/content/schema.ts'
 import type { Cents } from '../../src/engine/money.ts'
+import { defaultProfile } from '../../src/engine/profile.ts'
 import { simulate, type SimulationResult } from './simulate.ts'
 
 // `npm run sim`: parses the options, plays the game, prints one row per year
@@ -12,6 +17,7 @@ import { simulate, type SimulationResult } from './simulate.ts'
 export interface SimArgs {
   readonly days: number
   readonly seed: number
+  readonly difficulty: DifficultyId
   /** Absolute path of the folder the result goes to. */
   readonly out: string
 }
@@ -19,15 +25,16 @@ export interface SimArgs {
 const DEFAULTS = {
   days: 3650,
   seed: 42,
+  difficulty: defaultProfile().difficulty,
   out: fileURLToPath(new URL('../../out', import.meta.url)),
 }
 
-export const USAGE =
-  'Usage: npm run sim -- [--days <n>] [--seed <n>] [--out <folder>]'
+export const USAGE = `Usage: npm run sim -- [--days <n>] [--seed <n>] [--difficulty ${difficultyIdSchema.options.join('|')}] [--out <folder>]`
 
 /**
- * Reads `--days` (a whole number from 1), `--seed` (a whole number from 0)
- * and `--out` (resolved from the current folder). Throws on anything else,
+ * Reads `--days` (a whole number from 1), `--seed` (a whole number from 0),
+ * `--difficulty` (a difficulty's id, by default the new game screen's) and
+ * `--out` (resolved from the current folder). Throws on anything else,
  * including positional arguments.
  */
 export function parseSimArgs(argv: readonly string[]): SimArgs {
@@ -36,6 +43,7 @@ export function parseSimArgs(argv: readonly string[]): SimArgs {
     options: {
       days: { type: 'string' },
       seed: { type: 'string' },
+      difficulty: { type: 'string' },
       out: { type: 'string' },
     },
     strict: true,
@@ -44,6 +52,7 @@ export function parseSimArgs(argv: readonly string[]): SimArgs {
   return {
     days: wholeNumber('--days', values.days, DEFAULTS.days, 1),
     seed: wholeNumber('--seed', values.seed, DEFAULTS.seed, 0),
+    difficulty: difficultyOf(values.difficulty),
     out: resolve(values.out ?? DEFAULTS.out),
   }
 }
@@ -75,7 +84,7 @@ export function formatReport(result: SimulationResult): string[] {
     Math.max(...rows.map((row) => row[column]?.length ?? 0)),
   )
   return [
-    `Seed ${result.seed}, ${result.days} days`,
+    `Seed ${result.seed}, ${result.days} days, difficulty ${result.difficulty}`,
     ...rows.map((row) =>
       row.map((cell, column) => cell.padStart(widths[column] ?? 0)).join('  '),
     ),
@@ -97,16 +106,16 @@ export function formatDollars(amount: Cents): string {
 
 /**
  * Runs `npm run sim` with `argv`, the options after `--`, and returns the
- * exit code. Writes `sim-<seed>.json` into the `--out` folder.
+ * exit code. Writes `sim-<seed>-<difficulty>.json` into the `--out` folder.
  */
 export function main(argv: readonly string[]): number {
   try {
-    const { days, seed, out } = parseSimArgs(argv)
-    const result = simulate(seed, days)
+    const { days, seed, difficulty, out } = parseSimArgs(argv)
+    const result = simulate(seed, days, difficulty)
     for (const line of formatReport(result)) console.log(line)
 
     mkdirSync(out, { recursive: true })
-    const file = join(out, `sim-${seed}.json`)
+    const file = join(out, `sim-${seed}-${difficulty}.json`)
     writeFileSync(file, `${JSON.stringify(result, null, 2)}\n`)
     console.log(`Wrote ${file}`)
     return 0
@@ -115,6 +124,17 @@ export function main(argv: readonly string[]): number {
     console.error(USAGE)
     return 1
   }
+}
+
+function difficultyOf(text: string | undefined): DifficultyId {
+  if (text === undefined) return DEFAULTS.difficulty
+  const known = difficultyIdSchema.options.find((id) => id === text)
+  if (known === undefined) {
+    throw new RangeError(
+      `--difficulty must be one of ${difficultyIdSchema.options.join(', ')}: ${text}`,
+    )
+  }
+  return known
 }
 
 function wholeNumber(

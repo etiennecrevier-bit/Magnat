@@ -5,25 +5,25 @@ import { add, mulInt, type Cents } from '../engine/money.ts'
 /** How the cash gauge reads the encaisse. */
 export type CashLevel = 'healthy' | 'low' | 'negative'
 
-/** What the truck pays every day, whether it sells or not. */
-export const DAILY_FIXED_COSTS: Cents = add(
-  FOOD_TRUCK.dailyFixedCostsCents.rentAndPermit,
-  FOOD_TRUCK.dailyFixedCostsCents.fuelAndMaintenance,
+/** What every truck pays each month, whether it sells or not. */
+export const MONTHLY_FIXED_COSTS: Cents = add(
+  FOOD_TRUCK.monthlyCostsCents.permitParkingAndCommissary,
+  FOOD_TRUCK.monthlyCostsCents.insurance,
 )
 
-/** Cash reads low below this many days of fixed costs. */
-export const LOW_BELOW_DAYS = cashGauge.lowBelowDaysOfFixedCosts
+/** Cash reads low below this many months of fixed costs. */
+export const LOW_BELOW_MONTHS = cashGauge.lowBelowMonthsOfFixedCosts
 
 /**
- * Negative below zero, low below `lowBelowDays` days of fixed costs, healthy
- * from there up.
+ * Negative below zero, low below `lowBelowMonths` months of fixed costs,
+ * healthy from there up.
  */
 export function cashLevel(
   cash: Cents,
-  dailyFixedCosts: Cents = DAILY_FIXED_COSTS,
-  lowBelowDays: number = LOW_BELOW_DAYS,
+  monthlyFixedCosts: Cents = MONTHLY_FIXED_COSTS,
+  lowBelowMonths: number = LOW_BELOW_MONTHS,
 ): CashLevel {
   if (cash < 0) return 'negative'
-  if (cash < mulInt(dailyFixedCosts, lowBelowDays)) return 'low'
+  if (cash < mulInt(monthlyFixedCosts, lowBelowMonths)) return 'low'
   return 'healthy'
 }

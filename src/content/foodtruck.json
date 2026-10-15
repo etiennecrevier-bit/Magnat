@@ -1,27 +1,33 @@
 {
   "_note": "Starting values, tuned in P2-16",
-  "startingCapitalCents": 1000000,
   "products": {
     "cafe": {
       "name": "Café",
-      "unitCostCents": 40,
+      "unitCostCents": 45,
+      "packagingCents": 20,
       "shelfLifeDays": 90
     },
     "chocolat": {
       "name": "Chocolat chaud",
       "unitCostCents": 55,
+      "packagingCents": 20,
       "shelfLifeDays": 90
     },
     "croissant": {
       "name": "Croissant",
-      "unitCostCents": 90,
+      "unitCostCents": 110,
+      "packagingCents": 5,
       "shelfLifeDays": 1
     }
   },
-  "dailyFixedCostsCents": {
-    "rentAndPermit": 4500,
-    "fuelAndMaintenance": 2000
+  "truck": { "priceCents": 8500000, "usefulLifeMonths": 120 },
+  "monthlyCostsCents": {
+    "permitParkingAndCommissary": 150000,
+    "insurance": 25000
   },
+  "fuelAndMaintenancePerOpenDayCents": 2000,
+  "cardPayments": { "share": 0.85, "feeRate": 0.025 },
+  "ownerPayWeekday": 5,
   "walkIns": {
     "noiseStdDevRatio": 0.15,
     "opensAtMinute": 420,

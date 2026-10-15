@@ -64,7 +64,7 @@ How the player runs the truck. `startingDecisions()` in `src/engine/decisions.ts
 | `prices` | `Readonly<Record<ProductId, Cents>>` | What one unit of each product sells for: a whole multiple of `priceCents.step` within `priceCents`. `currentPrice(state, product)` in `src/engine/day.ts` reads it. |
 | `restock` | `Readonly<Record<ProductId, RestockRule>>` | How each product is restocked each morning the truck opens: `buyDaily` buys `quantity` units, `topUp` buys back up to `upTo` units on hand once they fall below `whenBelow`. Each count is within `units`, and `whenBelow` is no higher than `upTo`. A product keeps the kind of rule it starts with: the croissants are a daily order, the drinks are topped up. |
 | `daysOpen` | `readonly number[]` | The ISO weekdays the truck opens, from 1 = Monday to 7 = Sunday: ascending, each once, at least `minDaysOpen` of them. `applyDecision` sorts the weekdays it is given. |
-| `ownerWeeklyPay` | `Cents` | What the owner pays themself each week, within `ownerWeeklyPayCents`. Stored only: P2-14 pays it. |
+| `ownerWeeklyPay` | `Cents` | What the owner pays themself each week, within `ownerWeeklyPayCents`. The business pays it on payday, `ownerPayWeekday` in the content, whether the truck opens or not. |
 | `marketingDaily` | `Cents` | What the truck spends on marketing each day, within `marketingDailyCents`. Stored only: P2-05 spends it. |
 
 ### `Profile`
@@ -75,7 +75,7 @@ Who the player is, as they set it up on the new game screen. `defaultProfile()` 
 | --- | --- | --- |
 | `businessName` | `string` | The business's name: on the truck's sign and in the top bar. |
 | `avatar` | `Avatar` | The owner's avatar: `femme` or `homme`, the zod enum in `src/content/schema.ts`. |
-| `difficulty` | `DifficultyId` | How the game started: `facile`, `moyen` or `difficile`, the zod enum in `src/content/schema.ts`. `src/content/difficulty.json` says what each one means. Every difficulty opens the same books until P2-14 makes them follow it. |
+| `difficulty` | `DifficultyId` | How the game started: `facile`, `moyen` or `difficile`, the zod enum in `src/content/schema.ts`. `src/content/difficulty.json` says what each one means. It sets the books the game opens with (see the starting state below) and what the truck costs each month. |
 
 ### `Lot`
 
@@ -128,28 +128,36 @@ One walk-in customer at the truck.
 
 ### `Day` and `PerProduct`
 
-- `Day` is a whole number counting from 0. `toCalendar()` in `src/engine/clock.ts` turns it into a date: day 0 is Monday, May 1st, year 1, when food truck season starts. Years have 365 days with real month lengths and no leap years. Weekdays follow ISO 8601, from 1 = Monday to 7 = Sunday.
+- `Day` is a whole number counting from 0. `toCalendar()` in `src/engine/calendar.ts`, which `src/engine/clock.ts` exports too, turns it into a date: day 0 is Monday, May 1st, year 1, when food truck season starts. Years have 365 days with real month lengths and no leap years. Weekdays follow ISO 8601, from 1 = Monday to 7 = Sunday. `monthsSinceStart()` in the same file counts the calendar months from day 0's: 0 all through the first May, 1 in June, 12 from May 1st, year 2.
 - `PerProduct` is a read-only record holding a whole number for each `ProductId`. The products (`cafe`, `chocolat` and `croissant`) are the zod enum in `src/content/schema.ts`. `PRODUCTS` in `src/engine/inventory.ts` lists them in the order the game walks through them, and `perProduct()` builds a record.
 
 ### The starting state
 
-`createInitialState(seed, content, profile)` in `src/engine/clock.ts` throws a RangeError unless `seed` is an integer in [0, 2^32) and `profile` passes `validateProfile()`. Otherwise it returns:
+`createInitialState(seed, content, profile, difficulties)` in `src/engine/clock.ts` throws a RangeError unless `seed` is an integer in [0, 2^32) and `profile` passes `validateProfile()`, or if the difficulty's loan is more than the truck and the starting cash together. Otherwise it returns:
 - `day` 0, the `seed`, and `rngState` from `seedRng(seed)`, which is the seed itself;
-- `journal` from `openingJournal()`: one entry on day 0, *Mise de fonds*, Dr 1000 Encaisse / Cr 3000 Capital-actions for `startingCapitalCents`;
+- `journal` from `openingJournal(profile.difficulty)` in `src/engine/day.ts`: the entries of day 0, which leave `startingCashCents` of the difficulty in Encaisse. The truck's price is `truck.priceCents` in `src/content/foodtruck.json`.
+  - Facile: *Mise de fonds*, Dr 1000 Encaisse / Cr 3000 Capital-actions for the starting cash; then *Camion apporté par le propriétaire*, Dr 1500 Équipement / Cr 3000 Capital-actions for the truck's price, which moves no cash.
+  - Moyen: *Mise de fonds*, Dr 1000 / Cr 3000 for the starting cash plus the truck's price minus the loan; then *Emprunt de démarrage*, Dr 1000 / Cr 2500 Emprunts bancaires for `loanCents`; then *Achat du camion*, Dr 1500 / Cr 1000 for the truck's price.
+  - Difficile: *Mise de fonds* only. The truck is leased, so the books never carry it.
 - an empty `inventory` and a null `lastDay`;
 - `decisions` from `startingDecisions()`, which throws a RangeError if the content's starting decisions break its own limits, and a null `pendingDecisions`.
 - a copy of `profile`, which is `defaultProfile()` unless the new game screen gives another.
 
 ## Order of operations in `tick()`
 
-<!-- tools/architecture-doc.test.ts plays days and checks that the memos in
-italics below are exactly the entries each day posts, in the same order. Keep
-every memo in italics, once, and nothing else in italics in this section. -->
+<!-- tools/architecture-doc.test.ts plays days of each difficulty and checks
+that every entry a day posts is one of the memos in italics below, in the same
+order, and that each of them posts. Keep every memo in italics, once, and
+nothing else in italics in this section. -->
 
-`tick(state)` in `src/engine/clock.ts` calls `playDay(state, weekday)` in `src/engine/day.ts`, with the weekday of `state.day` from `toCalendar()`. It then returns the state `playDay` gave back with `day` + 1, the pending decisions, if any, as its `decisions`, and a null `pendingDecisions`. `playDay` plays the day with `state.decisions` and never reads `pendingDecisions`. It goes through these steps in this order. Every entry it posts is dated `state.day`.
+`tick(state)` in `src/engine/clock.ts` calls `playDay(state)` in `src/engine/day.ts`. It then returns the state `playDay` gave back with `day` + 1, the pending decisions, if any, as its `decisions`, and a null `pendingDecisions`. `playDay` reads the date of `state.day` from `toCalendar()`, plays the day with `state.decisions` and never reads `pendingDecisions`. It goes through these steps in this order. Every entry it posts is dated `state.day`.
 
-Steps 1 to 3 happen only on a day the truck opens, when `decisions.daysOpen` holds the weekday. On a closed day nobody comes and nothing is bought: no purchase, no sale, no draw from the generator, and a `lastDay` with no visit and nothing sold. Steps 4 to 6 happen every day.
+Step 0 happens on the 1st of the month, open or closed. Steps 1 to 4 happen only on a day the truck opens, when `decisions.daysOpen` holds the weekday. On a closed day nobody comes and nothing is bought: no purchase, no sale, no fuel, no draw from the generator, and a `lastDay` with no visit and nothing sold. Step 5 happens on payday, open or closed, and steps 6 and 7 every day.
 
+0. **The month's charges**, from `monthlyCostsCents` in the content and the difficulty in `state.profile`. Day 0 is May 1st, so the first month is charged on day 0. Entry *Permis, stationnement et cuisine*: Dr 6100 Loyer et permis / Cr 1000 Encaisse for `permitParkingAndCommissary`. Entry *Assurances*: Dr 6150 Assurances / Cr 1000 for `insurance`. Then the truck's, by how it came:
+   - Moyen pays its loan from the month after the loan: the 1st of month `k` from `monthsSinceStart()`, for `k` from 1 to `termMonths`, pays payment `k` of `loanSchedule(loanCents, annualRateBasisPoints, termMonths)` in `src/finance/loan.ts`. Entry *Intérêts sur l'emprunt*: Dr 7000 Intérêts / Cr 1000 for its interest, which a loan without interest never posts. Entry *Remboursement de l'emprunt*: Dr 2500 Emprunts bancaires / Cr 1000 for its principal.
+   - Facile and Moyen depreciate the truck straight line from month 0 to month `usefulLifeMonths` − 1, then stop. Entry *Amortissement du camion*: Dr 6400 Amortissement / Cr 1510 Amortissement cumulé for `truck.priceCents` ÷ `usefulLifeMonths`, rounded down to the cent; the last month adds what the rounding left, so the months add up to the price.
+   - Difficile leases it. Entry *Location du camion*: Dr 6120 Location du camion / Cr 1000 for `monthlyLeaseCents`.
 1. **Morning restock.** For each product in `PRODUCTS` order, its rule in `decisions.restock` sets the order size. `buyDaily` buys `quantity` units. `topUp` buys up to `upTo` units on hand when the units on hand are below `whenBelow`. Each purchase becomes a new lot at the end of `inventory`, at the product's `unitCostCents`. Entry *Achat de marchandises*: Dr 1200 Stocks / Cr 1000 Encaisse for what the day's purchases cost.
 2. **Walk-ins.** `serveWalkIns()` in `src/engine/customers.ts` serves the day's customers. `dayTypeOf()` gives the crowd: `finDeSemaine` on Saturday and Sunday, `semaine` otherwise, each with its own traffic, segment shares, product appeal and arrival curve in `walkIns.dayTypes`. Prices come from `currentPrice(state, product)` in `src/engine/day.ts`, which returns the product's price in `decisions.prices`. The draws come in this order, and their number never depends on the prices or the stock, so a seed brings the same customers at every price:
    1. `normal()` draws twice for a noise factor with a mean of 1 and a standard deviation of `noiseStdDevRatio`. The day's customers are the crowd's `customers` × noise, rounded and never below zero.
@@ -158,14 +166,15 @@ Steps 1 to 3 happen only on a day the truck opens, when `decisions.daysOpen` hol
    4. In that order, each customer draws once per product, in `PRODUCTS` order. They want one unit when the draw is below `purchaseProbability()` in `src/engine/customers.ts`, whose doc comment gives the formula: the segment's base probability × the crowd's appeal for the product × a logistic curve in price ÷ reference price, clamped to [0, 1]. They buy it when a unit is left; otherwise it is a lost sale, so a stockout hits the customers who come later.
 
    No other step draws, so these are all of a day's draws. This step posts nothing. A closed day draws nothing, so the days open change which draws the later days get.
-3. **Sales.** Product by product, in `PRODUCTS` order, the units the customers bought leave the stock, oldest lot first (FIFO, `takeFifo()` in `src/engine/inventory.ts`), priced at `currentPrice()`. Taking a product's day total at once takes the same units from the same lots as taking them one customer at a time. Entry *Ventes au comptant*: Dr 1000 Encaisse / Cr 4000 Ventes for the revenue. Then entry *Coût des marchandises vendues*: Dr 5000 Coût des marchandises vendues / Cr 1200 Stocks for what the units sold cost, each at its own lot's unit cost. These are two entries rather than one, so the other lines of each cash entry stay on one row of the état des flux de trésorerie.
-4. **Fixed costs.** Entry *Loyer, permis, carburant et entretien*: Dr 6100 Loyer et permis for `rentAndPermit` and Dr 6200 Carburant et entretien for `fuelAndMaintenance` / Cr 1000 Encaisse for both, from `dailyFixedCostsCents`.
-5. **Spoilage at the close.** `removeExpired()` in `src/engine/inventory.ts` writes off every lot whose shelf life ends that day, as `Lot` describes above. Entry *Marchandises périmées*: Dr 5100 Pertes sur stocks / Cr 1200 Stocks for what those lots cost.
-6. **The new state.** `playDay` returns the state with the new `rngState`, `journal`, `inventory` and a `lastDay` for `state.day`, with the day's visits.
+3. **Sales.** Product by product, in `PRODUCTS` order, the units the customers bought leave the stock, oldest lot first (FIFO, `takeFifo()` in `src/engine/inventory.ts`), priced at `currentPrice()`. Taking a product's day total at once takes the same units from the same lots as taking them one customer at a time. Entry *Ventes au comptant*: Dr 1000 Encaisse / Cr 4000 Ventes for the revenue. Then entry *Coût des marchandises vendues*: Dr 5000 Coût des marchandises vendues / Cr 1200 Stocks for what the units sold cost, each at its own lot's unit cost. Then what the sales cost to make, paid the same day. Entry *Emballages*: Dr 5200 Emballages / Cr 1000 for each unit sold times its product's `packagingCents`. Entry *Frais de cartes*: Dr 6500 Frais bancaires et de cartes / Cr 1000 for the card fees: the revenue times `cardPayments.share` is what customers paid by card, and that times `cardPayments.feeRate` is the fee, each rounded to the cent half away from zero by `mulRatio()`. Each of these is an entry of its own, so the other lines of each cash entry stay on one row of the état des flux de trésorerie.
+4. **Fuel.** Entry *Carburant et entretien*: Dr 6200 Carburant et entretien / Cr 1000 for `fuelAndMaintenancePerOpenDayCents`.
+5. **Payday**, on the ISO weekday `ownerPayWeekday`. Entry *Paie du propriétaire*: Dr 6000 Salaires / Cr 1000 for `decisions.ownerWeeklyPay`. A change the player makes is paid from the next morning, like every decision.
+6. **Spoilage at the close.** `removeExpired()` in `src/engine/inventory.ts` writes off every lot whose shelf life ends that day, as `Lot` describes above. Entry *Marchandises périmées*: Dr 5100 Pertes sur stocks / Cr 1200 Stocks for what those lots cost.
+7. **The new state.** `playDay` returns the state with the new `rngState`, `journal`, `inventory` and a `lastDay` for `state.day`, with the day's visits.
 
 What every step shares:
-- A line with a zero amount is dropped, and an entry left with no line is not posted. A day with nothing bought or nothing spoiled has no entry for that step.
-- Nothing checks the cash first: purchases and fixed costs are paid even when Encaisse goes negative.
+- A line with a zero amount is dropped, and an entry left with no line is not posted. A day with nothing bought, nothing sold or nothing spoiled has no entry for that step, and a pay of 0 posts nothing.
+- Nothing checks the cash first: purchases and charges are paid even when Encaisse goes negative.
 
 Outside unit tests, three callers advance the game:
 - `advance(days)` in the UI store (`src/ui/store.ts`). The real-time loop in `src/ui/gameLoop.ts` calls it with the whole days that have passed at the current speed, paced by `src/content/pacing.json`.
@@ -185,7 +194,7 @@ The journal, its entries and their lines are frozen. `postEntry` copies the entr
 
 In the game, only the engine posts entries. It goes through the private helpers `post()`, `debit()` and `credit()` in `src/engine/day.ts`, and keeps the memos the player reads in that file's `MEMO` table. Each step of the day posts its own entries, as listed above.
 
-The chart of accounts is in `src/finance/accounts.ts`: 18 accounts with their codes, French names, types and normal balances. Phase 1 posts to eight of them: 1000 Encaisse, 1200 Stocks, 3000 Capital-actions, 4000 Ventes, 5000 Coût des marchandises vendues, 5100 Pertes sur stocks, 6100 Loyer et permis and 6200 Carburant et entretien. The other ten are there for the phases to come.
+The chart of accounts is in `src/finance/accounts.ts`: 22 accounts with their codes, French names, types and normal balances. The game posts to 18 of them: 1000 Encaisse, 1200 Stocks, 1500 Équipement, 1510 Amortissement cumulé, 2500 Emprunts bancaires, 3000 Capital-actions, 4000 Ventes, 5000 Coût des marchandises vendues, 5100 Pertes sur stocks, 5200 Emballages, 6000 Salaires, 6100 Loyer et permis, 6120 Location du camion, 6150 Assurances, 6200 Carburant et entretien, 6400 Amortissement, 6500 Frais bancaires et de cartes and 7000 Intérêts. The other three (1100 Comptes clients, 2000 Comptes fournisseurs and 6300 Marketing) are there for the cards to come; 3100 Bénéfices non répartis is never posted to, as the bilan below explains.
 
 Everything else only reads the books:
 - `balance()` and `trialBalance()` in `src/finance/journal.ts` sum the entries up to a day.
@@ -196,15 +205,16 @@ Money is `Cents` from `src/engine/money.ts`: a branded number that only `cents()
 
 ## Where content is loaded
 
-- `src/content/foodtruck.json` holds the food truck's numbers: starting capital, products, fixed costs, walk-ins, the decisions a game starts with (`startingDecisions`) and the limits the player's decisions are held to (`decisionLimits`). The walk-ins are the crowds of the truck's spot: the opening hours, the arrival slots, the noise, and for each type of day (`semaine`, `finDeSemaine`) its traffic, segment shares, product appeal, patience and arrival curve. `loadFoodTruckContent()` in `src/content/schema.ts` validates it with zod and types its money as `Cents`. Every object is strict, so a mistyped key fails instead of being dropped.
+- `src/content/foodtruck.json` holds the food truck's numbers: the products (with their packaging), the truck's price and useful life, the monthly costs, the fuel per open day, the card payments, payday, walk-ins, the decisions a game starts with (`startingDecisions`) and the limits the player's decisions are held to (`decisionLimits`). The walk-ins are the crowds of the truck's spot: the opening hours, the arrival slots, the noise, and for each type of day (`semaine`, `finDeSemaine`) its traffic, segment shares, product appeal, patience and arrival curve. `loadFoodTruckContent()` in `src/content/schema.ts` validates it with zod and types its money as `Cents`. Every object is strict, so a mistyped key fails instead of being dropped.
+- `src/content/difficulty.json` holds the three ways to start a game: the cash in the bank once the truck is settled, and how the truck comes, owned, bought with a loan (its amount, yearly rate in basis points and term in months) or leased (its monthly lease). `loadDifficultyContent()` in `src/content/schema.ts` validates it.
 - `src/content/segments.json` holds the customer segments: for each segment and product, a reference price, a base purchase probability and a sensitivity, and for the chic segment how a price far below its reference puts it off (`tooCheap`). `loadCustomerContent()` in `src/content/schema.ts` validates it the same way.
-- `src/engine/day.ts` calls both loaders once, when the module loads, and exports the results as `FOOD_TRUCK` and `CUSTOMERS`. An invalid file throws as soon as the engine is imported.
-- `createInitialState()`, `tick()`, `playDay()`, `openingJournal()`, `startingDecisions()` and `applyDecision()` take a `content` argument that defaults to `FOOD_TRUCK`, and `tick()` and `playDay()` take a `customers` argument after it that defaults to `CUSTOMERS`, so a test can play with other numbers. The UI, the simulation and the invariant test use the defaults.
-- The UI reads `FOOD_TRUCK` too: product names in `src/ui/TodayPanel.tsx`, and the daily fixed costs for the cash gauge in `src/ui/cashLevel.ts`.
+- `src/engine/day.ts` calls the three loaders once, when the module loads, and exports the results as `FOOD_TRUCK`, `CUSTOMERS` and `DIFFICULTIES`. An invalid file throws as soon as the engine is imported.
+- `createInitialState()`, `tick()`, `playDay()`, `openingJournal()`, `startingDecisions()` and `applyDecision()` take a `content` argument that defaults to `FOOD_TRUCK`. `tick()` and `playDay()` take a `customers` argument after it that defaults to `CUSTOMERS`, and `createInitialState()`, `tick()`, `playDay()` and `openingJournal()` a last `difficulties` argument that defaults to `DIFFICULTIES`, so a test can play with other numbers. The UI, the simulation and the invariant test use the defaults.
+- The UI reads `FOOD_TRUCK` too: product names in `src/ui/TodayPanel.tsx`, and the monthly costs for the cash gauge in `src/ui/cashLevel.ts`. The new game screen reads `src/content/difficulty.json` through `src/ui/newGame.ts`.
 - `src/content/pacing.json` (real milliseconds per game day, the speeds, the most days per animation frame) is read by `src/ui/gameLoop.ts` and `src/ui/TopBar.tsx`. `src/content/cashGauge.json` is read by `src/ui/cashLevel.ts`. The engine reads neither: it knows nothing of real time.
 
 Some numbers stay in code on purpose, because they are facts rather than tunables:
-- the calendar, in `src/engine/clock.ts`;
+- the calendar, in `src/engine/calendar.ts`;
 - the first weekend day, in `src/engine/customers.ts`;
 - the ISO weekdays, 1 = Monday to 7 = Sunday, in `src/engine/decisions.ts` and `src/content/schema.ts`;
 - the minutes in a day, in `src/content/schema.ts`;
@@ -214,16 +224,16 @@ Some numbers stay in code on purpose, because they are facts rather than tunable
 
 ## Invariants enforced by `tests/invariants.test.ts`
 
-The test plays 3650 days, ten years, for each of the seeds 1, 42 and 2026, calling `tick()` with the shipped content and its starting decisions.
+The test plays 3650 days, ten years, for three games, one per difficulty: seed 1 at Facile, seed 42 at Moyen and seed 2026 at Difficile. It calls `tick()` with the shipped content and its starting decisions.
 
 After every day's close, it checks:
-- the trial balance up to that day: total debits equal total credits;
+- the trial balance up to that day: total debits equal total credits. It keeps each account's balance as a running tally, adding each day's new entries once, rather than summing the whole journal again every day;
 - the bilan: Actifs = Passifs + Capitaux propres;
-- Stocks: the ledger balance of 1200, read from the trial balance, equals `inventoryValue()` of the lots on hand.
+- Stocks: the ledger balance of 1200, read from the tally, equals `inventoryValue()` of the lots on hand.
 
-At the end of every calendar month, it checks that the état des flux de trésorerie's net change for the month equals the change in Encaisse. Day 0 is May 1st, so the run covers exactly 120 months.
+At the end of every calendar month, it checks that `trialBalance()` in `src/finance/journal.ts` balances and agrees with the tally on every account, and that the état des flux de trésorerie's net change for the month equals the change in Encaisse. Day 0 is May 1st, so the run covers exactly 120 months: the whole of Moyen's loan and the whole useful life of the truck.
 
-It then plays each seed again through `simulate()` in `tools/sim/simulate.ts` and checks:
+It then plays each game again through `simulate()` in `tools/sim/simulate.ts`, at the same difficulty, and checks:
 - the replay's `journalHash`, the sha256 of the entries, equals the first run's, so the engine is deterministic;
 - the replay sums up as ten whole 365-day years: days 0 to 364, 365 to 729, and so on.
 
@@ -238,4 +248,5 @@ The whole file must finish within 60 seconds. If it gets slower, make the slow p
   - `src/engine/types.ts` starts with its frozen header;
   - every type it exports has a heading under "The shape of `GameState`", and every field of an interface has a row in that heading's table;
   - every path this page cites exists;
-  - the memos in "Order of operations in `tick()`" are exactly the entries each day posts, in the same order. It checks the order of the entries only, not the order of steps that post nothing.
+  - the memos in "The starting state" name every entry each difficulty's books open with;
+  - every entry a day posts is one of the memos in "Order of operations in `tick()`", in the same order, and each of those memos posts within five weeks of play at the three difficulties. It checks the order of the entries only, not the order of steps that post nothing.

@@ -38,7 +38,9 @@ const MEMO = {
   purchases: 'Achat de marchandises',
   sales: 'Ventes au comptant',
   costOfSales: 'Coût des marchandises vendues',
-  fixedCosts: 'Loyer, permis, carburant et entretien',
+  packaging: 'Emballages',
+  cardFees: 'Frais de cartes',
+  fuel: 'Carburant et entretien',
   spoilage: 'Marchandises périmées',
 }
 
@@ -103,7 +105,7 @@ function revenueAt(
 /**
  * Checks the day `state` closed was a closed day, played from `before`:
  * nobody came, nothing was bought or sold, the generator did not move, and
- * the fixed costs were still paid.
+ * nothing that only an open day costs was paid.
  */
 function expectClosed(state: GameState, before: GameState): void {
   const lastDay = summary(state)
@@ -120,7 +122,9 @@ function expectClosed(state: GameState, before: GameState): void {
   expect(memos).not.toContain(MEMO.purchases)
   expect(memos).not.toContain(MEMO.sales)
   expect(memos).not.toContain(MEMO.costOfSales)
-  expect(memos).toContain(MEMO.fixedCosts)
+  expect(memos).not.toContain(MEMO.packaging)
+  expect(memos).not.toContain(MEMO.cardFees)
+  expect(memos).not.toContain(MEMO.fuel)
 }
 
 function expectOpen(state: GameState): void {

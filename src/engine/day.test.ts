@@ -2,8 +2,12 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import {
   loadCustomerContent,
+  loadDifficultyContent,
   loadFoodTruckContent,
   type CustomerContent,
+  type Difficulty,
+  type DifficultyContent,
+  type DifficultyId,
   type DayType,
   type DayTypeId,
   type FoodTruckContent,
@@ -16,31 +20,44 @@ import type { AccountCode } from '../finance/accounts.ts'
 import { balance, trialBalance, type JournalEntry } from '../finance/journal.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
 import { SEGMENTS, dayTypeOf, perSegment } from './customers.ts'
-import { CUSTOMERS, FOOD_TRUCK, currentPrice, openingJournal } from './day.ts'
+import { CUSTOMERS, DIFFICULTIES, FOOD_TRUCK, currentPrice } from './day.ts'
 import { applyDecision } from './decisions.ts'
 import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
-import { cents } from './money.ts'
+import { cents, mulRatio } from './money.ts'
+import { defaultProfile } from './profile.ts'
 import type { Day, DaySummary, GameState, PerProduct } from './types.ts'
 
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
 
 const MEMO = {
-  capital: 'Mise de fonds',
+  permit: 'Permis, stationnement et cuisine',
+  insurance: 'Assurances',
+  depreciation: 'Amortissement du camion',
   purchases: 'Achat de marchandises',
   sales: 'Ventes au comptant',
   costOfSales: 'Coût des marchandises vendues',
-  fixedCosts: 'Loyer, permis, carburant et entretien',
+  packaging: 'Emballages',
+  cardFees: 'Frais de cartes',
+  fuel: 'Carburant et entretien',
   spoilage: 'Marchandises périmées',
 }
 
-/** What a day is played with: the truck's numbers and its customers. */
+/**
+ * What a day is played with: the truck's numbers, its customers and the
+ * ways to start a game.
+ */
 interface Content {
   truck: FoodTruckContent
   customers: CustomerContent
+  difficulties: DifficultyContent
 }
 
-const SHIPPED: Content = { truck: FOOD_TRUCK, customers: CUSTOMERS }
+const SHIPPED: Content = {
+  truck: FOOD_TRUCK,
+  customers: CUSTOMERS,
+  difficulties: DIFFICULTIES,
+}
 
 function byProduct<T>(value: (product: ProductId) => T): Record<ProductId, T> {
   return Object.fromEntries(
@@ -95,6 +112,7 @@ const FLAT: Content = {
       })),
     })),
   }),
+  difficulties: DIFFICULTIES,
 }
 
 // Content variants: each change returns new content, and `variant` validates
@@ -113,10 +131,11 @@ function shipped(...changes: Change[]): Content {
   )
 }
 
-function validated({ truck, customers }: Content): Content {
+function validated({ truck, customers, difficulties }: Content): Content {
   return {
     truck: loadFoodTruckContent(truck),
     customers: loadCustomerContent(customers),
+    difficulties: loadDifficultyContent(difficulties),
   }
 }
 
@@ -217,21 +236,51 @@ function pricing(id: ProductId, price: number): Change {
   }))
 }
 
-function fixedCosts(rentAndPermit: number, fuelAndMaintenance: number): Change {
+function packaging(id: ProductId, packagingCents: number): Change {
+  return product(id, { packagingCents: cents(packagingCents) })
+}
+
+function monthlyCosts(permit: number, insurance: number): Change {
   return truck((t) => ({
     ...t,
-    dailyFixedCostsCents: {
-      rentAndPermit: cents(rentAndPermit),
-      fuelAndMaintenance: cents(fuelAndMaintenance),
+    monthlyCostsCents: {
+      permitParkingAndCommissary: cents(permit),
+      insurance: cents(insurance),
     },
   }))
 }
 
-function capital(startingCapitalCents: number): Change {
+function fuel(perOpenDay: number): Change {
   return truck((t) => ({
     ...t,
-    startingCapitalCents: cents(startingCapitalCents),
+    fuelAndMaintenancePerOpenDayCents: cents(perOpenDay),
   }))
+}
+
+function cards(share: number, feeRate: number): Change {
+  return truck((t) => ({ ...t, cardPayments: { share, feeRate } }))
+}
+
+/** The truck's price and the months it is depreciated over. */
+function truckWorth(priceCents: number, usefulLifeMonths: number): Change {
+  return truck((t) => ({
+    ...t,
+    truck: { priceCents: cents(priceCents), usefulLifeMonths },
+  }))
+}
+
+/** Changes how a game of difficulty `id` starts. */
+function difficulty(id: DifficultyId, change: Partial<Difficulty>): Change {
+  return (content) => ({
+    ...content,
+    difficulties: {
+      ...content.difficulties,
+      difficulties: {
+        ...content.difficulties.difficulties,
+        [id]: { ...content.difficulties.difficulties[id], ...change },
+      },
+    },
+  })
 }
 
 function buyDaily(quantity: number): RestockRule {
@@ -244,13 +293,23 @@ function topUp(whenBelow: number, upTo: number): RestockRule {
 
 const NO_RESTOCK = restocking(byProduct(() => buyDaily(0)))
 
-function start(content: Content = SHIPPED, seed = 42): GameState {
-  return createInitialState(seed, content.truck)
+/** Day 0 of a game, by default at the default difficulty, Moyen. */
+function start(
+  content: Content = SHIPPED,
+  seed = 42,
+  level: DifficultyId = defaultProfile().difficulty,
+): GameState {
+  return createInitialState(
+    seed,
+    content.truck,
+    { ...defaultProfile(), difficulty: level },
+    content.difficulties,
+  )
 }
 
 /** One tick with this content. */
 function step(state: GameState, content: Content): GameState {
-  return tick(state, content.truck, content.customers)
+  return tick(state, content.truck, content.customers, content.difficulties)
 }
 
 /** The state after each of `days` ticks, in order. */
@@ -399,20 +458,6 @@ function expectConsistent(state: GameState, content: Content): void {
   expect(totalDebit).toBe(totalCredit)
 }
 
-describe('the opening books', () => {
-  it('hold the starting capital, paid in on day 0', () => {
-    const { journal } = createInitialState(42)
-    expect(journal).toEqual(openingJournal(FOOD_TRUCK))
-    expect(journal.entries).toEqual([
-      transfer(0, MEMO.capital, CASH, '3000', FOOD_TRUCK.startingCapitalCents),
-    ])
-  })
-
-  it('are empty when there is no starting capital', () => {
-    expect(openingJournal(variant(capital(0)).truck).entries).toEqual([])
-  })
-})
-
 describe('currentPrice', () => {
   it("is each product's price in the decisions", () => {
     for (const product of PRODUCTS) {
@@ -436,30 +481,37 @@ describe('tick', () => {
       unitCost('cafe', 40),
       unitCost('chocolat', 55),
       unitCost('croissant', 90),
-      fixedCosts(4500, 2000),
+      packaging('cafe', 20),
+      packaging('chocolat', 15),
+      packaging('croissant', 5),
+      monthlyCosts(150_000, 25_000),
+      fuel(2_000),
+      cards(0.85, 0.025),
+      truckWorth(12_000_000, 120),
     )
     const from = start(content)
     const state = step(from, content)
     const price = (id: ProductId) => currentPrice(from, id)
     const revenue = 10 * price('cafe') + 10 * price('chocolat')
+    const cardFees = mulRatio(mulRatio(cents(revenue), 0.85), 0.025)
 
     expect(state.day).toBe(1)
+    // Day 0 is Monday, May 1st: the month's charges come first. Moyen's truck
+    // depreciates from its first month; its loan is first paid in June.
     expect(state.journal.entries).toEqual([
       ...from.journal.entries,
+      transfer(0, MEMO.permit, '6100', CASH, 150_000),
+      transfer(0, MEMO.insurance, '6150', CASH, 25_000),
+      transfer(0, MEMO.depreciation, '6400', '1510', 100_000),
       transfer(0, MEMO.purchases, INVENTORY, CASH, 30 * 40 + 12 * 55 + 7 * 90),
       transfer(0, MEMO.sales, CASH, '4000', revenue),
       transfer(0, MEMO.costOfSales, '5000', INVENTORY, 10 * 40 + 10 * 55),
-      {
-        day: 0,
-        memo: MEMO.fixedCosts,
-        lines: [
-          { account: '6100', debit: 4500, credit: 0 },
-          { account: '6200', debit: 2000, credit: 0 },
-          { account: CASH, debit: 0, credit: 6500 },
-        ],
-      },
+      transfer(0, MEMO.packaging, '5200', CASH, 10 * 20 + 10 * 15),
+      transfer(0, MEMO.cardFees, '6500', CASH, cardFees),
+      transfer(0, MEMO.fuel, '6200', CASH, 2_000),
       transfer(0, MEMO.spoilage, '5100', INVENTORY, 7 * 90),
     ])
+    expect(cardFees).toBeGreaterThan(0)
     expect(state.inventory).toEqual([
       { product: 'cafe', quantity: 20, unitCost: 40, boughtOnDay: 0 },
       { product: 'chocolat', quantity: 2, unitCost: 55, boughtOnDay: 0 },
@@ -840,32 +892,6 @@ describe('restocking', () => {
   )
 })
 
-describe('fixed costs', () => {
-  it('are paid every day, weekends and closed days included', () => {
-    const { rentAndPermit, fuelAndMaintenance } =
-      FOOD_TRUCK.dailyFixedCostsCents
-    // Day 0 is a Monday, closed under the starting decisions.
-    const last = after(7)
-    expect(summary(after(1)).visits).toEqual([])
-    for (let day = 0; day < 7; day += 1) {
-      expect(entry(last, day, MEMO.fixedCosts).lines).toEqual([
-        { account: '6100', debit: rentAndPermit, credit: 0 },
-        { account: '6200', debit: fuelAndMaintenance, credit: 0 },
-        { account: CASH, debit: 0, credit: rentAndPermit + fuelAndMaintenance },
-      ])
-    }
-  })
-
-  it('leave out a cost of zero', () => {
-    const content = variant(fixedCosts(0, 2000))
-    const state = after(1, content)
-    expect(entry(state, 0, MEMO.fixedCosts).lines).toEqual([
-      { account: '6200', debit: 2000, credit: 0 },
-      { account: CASH, debit: 0, credit: 2000 },
-    ])
-  })
-})
-
 describe('spoilage', () => {
   it('writes overstocked croissants off the same evening', () => {
     const content = variant(
@@ -942,27 +968,42 @@ describe('spoilage', () => {
 
 describe('cash', () => {
   it('may go negative', () => {
-    const content = variant(capital(0), crowd(0))
-    const state = after(1, content)
-    const purchases = entry(state, 0, MEMO.purchases).lines[0]?.debit ?? 0
-    const { rentAndPermit, fuelAndMaintenance } =
-      content.truck.dailyFixedCostsCents
-    expect(balance(state.journal, CASH, { toDay: 0 })).toBe(
-      -(purchases + rentAndPermit + fuelAndMaintenance),
+    // Difficile with no cash at all, paying the month and a day's fuel.
+    const content = variant(
+      difficulty('difficile', {
+        startingCashCents: cents(0),
+        truck: { kind: 'lease', monthlyLeaseCents: cents(180_000) },
+      }),
+      monthlyCosts(150_000, 25_000),
+      fuel(2_000),
+      crowd(0),
     )
-    expect(() => play(30, content)).not.toThrow()
+    const from = start(content, 42, 'difficile')
+    expect(from.journal.entries).toEqual([])
+    const state = after(1, content, from)
+    const purchases = entry(state, 0, MEMO.purchases).lines[0]?.debit ?? 0
+    expect(purchases).toBeGreaterThan(0)
+    expect(balance(state.journal, CASH, { toDay: 0 })).toBe(
+      -(150_000 + 25_000 + 180_000 + purchases + 2_000),
+    )
+    expect(() => play(30, content, from)).not.toThrow()
   })
 
   it('moves not at all on a day with nothing to record', () => {
-    // Customers come, but with no stock nothing sells, and nothing is owed.
+    // Customers come, but with no stock nothing sells, and nothing is owed:
+    // no cash paid in, no month to pay, no fuel, and day 0 is no payday.
     const content = variant(
-      capital(0),
+      difficulty('difficile', {
+        startingCashCents: cents(0),
+        truck: { kind: 'lease', monthlyLeaseCents: cents(0) },
+      }),
+      monthlyCosts(0, 0),
+      fuel(0),
       NO_RESTOCK,
-      fixedCosts(0, 0),
       crowd(10),
       buying({ cafe: 1, chocolat: 1, croissant: 1 }),
     )
-    const state = after(1, content)
+    const state = after(1, content, start(content, 42, 'difficile'))
     expect(state.journal.entries).toEqual([])
     const { visits, segments, ...rest } = summary(state)
     expect(rest).toEqual({

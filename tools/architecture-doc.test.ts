@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 import {
+  difficultyIdSchema,
   loadCustomerContent,
   loadFoodTruckContent,
 } from '../src/content/schema.ts'
@@ -11,11 +12,12 @@ import { createInitialState, tick } from '../src/engine/clock.ts'
 import { SEGMENTS } from '../src/engine/customers.ts'
 import { FOOD_TRUCK, openingJournal } from '../src/engine/day.ts'
 import { PRODUCTS } from '../src/engine/inventory.ts'
+import { defaultProfile } from '../src/engine/profile.ts'
 
 // Keeps docs/architecture.md in step with the code it describes: the frozen
 // header of src/engine/types.ts, a heading for each type it exports and a
-// table row for each field, every repo path the page cites, and the order in
-// which tick() posts a day's entries.
+// table row for each field, every repo path the page cites, the entries the
+// books open with, and the order in which tick() posts a day's entries.
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const DOC = 'docs/architecture.md'
@@ -31,10 +33,12 @@ const ITALIC = /(?<!\*)\*([^*\n]+)\*(?!\*)/g
 /** A repo path in a code span, such as `src/engine/day.ts`. */
 const REPO_PATH = /`((?:src|tests|tools|docs)\/[^`\s]*)`/g
 
-// Content under which every step that posts an entry posts it every day: the
-// truck opens every day, and each product is bought daily, far more than a
-// day's customers want, and spoils at its first close. The seed, the
-// customers and the days are fixed, so the run is too.
+// Content under which every step of an open day posts its entry every day:
+// the truck opens every day, and each product is bought daily, far more than
+// a day's customers want, and spoils at its first close. The 1st of the
+// month, payday and the loan's first payment, a month in, come within the
+// days played. The seed, the customers and the days are fixed, so the run is
+// too.
 const CROWD = {
   name: 'Test',
   segmentShares: Object.fromEntries(
@@ -45,18 +49,23 @@ const CROWD = {
   arrivalWeights: [1, 1, 1, 1],
 }
 const EVERY_ENTRY = loadFoodTruckContent({
-  startingCapitalCents: 1_000_000,
   products: Object.fromEntries(
     PRODUCTS.map((product) => [
       product,
       {
         name: product,
         unitCostCents: 100,
+        packagingCents: 10,
         shelfLifeDays: 1,
       },
     ]),
   ),
-  dailyFixedCostsCents: { rentAndPermit: 4_000, fuelAndMaintenance: 2_000 },
+  // The shipped truck, so Moyen's loan pays for part of it.
+  truck: FOOD_TRUCK.truck,
+  monthlyCostsCents: { permitParkingAndCommissary: 150_000, insurance: 25_000 },
+  fuelAndMaintenancePerOpenDayCents: 2_000,
+  cardPayments: { share: 0.85, feeRate: 0.025 },
+  ownerPayWeekday: 5,
   walkIns: {
     noiseStdDevRatio: 0.1,
     opensAtMinute: 420,
@@ -101,8 +110,9 @@ const EVERY_CUSTOMER = loadCustomerContent({
   ),
 })
 const SEED = 42
-/** Two weeks, so weekdays and weekends both play. */
-const DAYS = 14
+/** Five weeks from May 1st, so weekdays, weekends and June 1st all play. */
+const DAYS = 35
+const DIFFICULTIES = difficultyIdSchema.options
 
 const doc = readFileSync(resolve(root, DOC), 'utf8')
 
@@ -209,8 +219,8 @@ describe(DOC, () => {
     },
   )
 
-  it('names the entry the books open with', () => {
-    const memos = openingJournal().entries.map(({ memo }) => memo)
+  it.each(DIFFICULTIES)('names the entries a %s game opens with', (level) => {
+    const memos = openingJournal(level).entries.map(({ memo }) => memo)
     expect(memos.length).toBeGreaterThan(0)
     expect(italics(shape)).toEqual(expect.arrayContaining(memos))
   })
@@ -224,14 +234,29 @@ describe(DOC, () => {
   it("lists each day's entries in the order tick() posts them", () => {
     const documented = italics(order)
     expect(documented.length).toBeGreaterThan(0)
+    expect(new Set(documented).size).toBe(documented.length)
 
-    let state = createInitialState(SEED, EVERY_ENTRY)
-    const posted: string[][] = []
-    for (let day = 0; day < DAYS; day += 1) {
-      const before = state.journal.entries.length
-      state = tick(state, EVERY_ENTRY, EVERY_CUSTOMER)
-      posted.push(state.journal.entries.slice(before).map(({ memo }) => memo))
+    const posted = new Set<string>()
+    for (const level of DIFFICULTIES) {
+      let state = createInitialState(SEED, EVERY_ENTRY, {
+        ...defaultProfile(),
+        difficulty: level,
+      })
+      for (let day = 0; day < DAYS; day += 1) {
+        const before = state.journal.entries.length
+        state = tick(state, EVERY_ENTRY, EVERY_CUSTOMER)
+        const memos = state.journal.entries
+          .slice(before)
+          .map(({ memo }) => memo)
+        // The day's memos, each found later in the list than the one before.
+        const places = memos.map((memo) => documented.indexOf(memo))
+        expect(
+          places.every((place, i) => place > (places[i - 1] ?? -1)),
+          `day ${day} of a ${level} game: ${memos.join(', ')}`,
+        ).toBe(true)
+        for (const memo of memos) posted.add(memo)
+      }
     }
-    expect(posted).toEqual(Array.from({ length: DAYS }, () => documented))
+    expect([...posted].sort()).toEqual([...documented].sort())
   })
 })

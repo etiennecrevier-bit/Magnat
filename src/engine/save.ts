@@ -31,9 +31,12 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md).
+ * change can no longer load (rule 8 in CLAUDE.md). Version 3 opens the books
+ * by difficulty and charges the real costs. A version 2 game's books hold no
+ * truck and no loan, so it would repay a loan it never took and depreciate a
+ * truck it never bought.
  */
-export const SAVE_VERSION = 2
+export const SAVE_VERSION = 3
 
 const STOCKS: AccountCode = '1200'
 

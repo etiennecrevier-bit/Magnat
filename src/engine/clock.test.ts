@@ -1,19 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import {
-  createInitialState,
-  tick,
-  toCalendar,
-  type CalendarDate,
-} from './clock.ts'
-import { FOOD_TRUCK, openingJournal, playDay } from './day.ts'
+import { loadDifficultyContent } from '../content/schema.ts'
+import * as calendar from './calendar.ts'
+import { createInitialState, tick, toCalendar } from './clock.ts'
+import { DIFFICULTIES, FOOD_TRUCK, openingJournal, playDay } from './day.ts'
 import { startingDecisions } from './decisions.ts'
 import { defaultProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
-import type { Day, Profile } from './types.ts'
-
-// Month lengths of a non-leap year, kept apart from clock.ts so the ten-year
-// walk checks it against an independent spec.
-const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+import type { Profile } from './types.ts'
 
 const CUSTOM: Profile = {
   businessName: 'Chez Mimi 🥐',
@@ -22,12 +15,12 @@ const CUSTOM: Profile = {
 }
 
 describe('createInitialState', () => {
-  it('starts on day 0, seeded, with no stock, the capital paid in, the starting decisions and the default profile', () => {
+  it("starts on day 0, seeded, with no stock, the default difficulty's opening books, the starting decisions and the default profile", () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
       rngState: seedRng(42),
-      journal: openingJournal(),
+      journal: openingJournal(defaultProfile().difficulty),
       inventory: [],
       lastDay: null,
       decisions: startingDecisions(),
@@ -40,14 +33,35 @@ describe('createInitialState', () => {
     expect(() => createInitialState(seed)).toThrow(RangeError)
   })
 
-  it("keeps the player's profile, as a copy, and opens the same books for every difficulty until P2-14", () => {
+  it("keeps the player's profile, as a copy, and opens its difficulty's books", () => {
     const profile = { ...CUSTOM }
     const state = createInitialState(42, FOOD_TRUCK, profile)
     expect(state.profile).toEqual(CUSTOM)
     expect(state.profile).not.toBe(profile)
-    expect({ ...state, profile: defaultProfile() }).toEqual(
-      createInitialState(42),
-    )
+    expect(state.journal).toEqual(openingJournal(CUSTOM.difficulty))
+    expect(state.journal).not.toEqual(createInitialState(42).journal)
+    expect({
+      ...state,
+      profile: defaultProfile(),
+      journal: openingJournal(defaultProfile().difficulty),
+    }).toEqual(createInitialState(42))
+  })
+
+  it('rejects a loan above the truck and the starting cash together', () => {
+    const moyen = DIFFICULTIES.difficulties.moyen
+    const { startingCashCents, truck } = moyen
+    if (truck.kind !== 'loan') throw new Error('Moyen borrows')
+    const loanCents = startingCashCents + FOOD_TRUCK.truck.priceCents + 1
+    const difficulties = loadDifficultyContent({
+      difficulties: {
+        ...DIFFICULTIES.difficulties,
+        moyen: { ...moyen, truck: { ...truck, loanCents } },
+      },
+    })
+    const profile = { ...CUSTOM, difficulty: 'moyen' } as const
+    expect(() =>
+      createInitialState(42, FOOD_TRUCK, profile, difficulties),
+    ).toThrow(RangeError)
   })
 
   it('keeps only the fields of a profile', () => {
@@ -71,12 +85,11 @@ describe('createInitialState', () => {
 })
 
 describe('tick', () => {
-  it('plays the day on its weekday, then moves on to the next day', () => {
+  it('plays the day, then moves on to the next day', () => {
     let state = createInitialState(42)
     for (let day = 0; day < 8; day += 1) {
-      const { weekday } = toCalendar(day)
       const next = tick(state)
-      expect(next).toEqual({ ...playDay(state, weekday), day: day + 1 })
+      expect(next).toEqual({ ...playDay(state), day: day + 1 })
       expect(next.lastDay?.day).toBe(day)
       state = next
     }
@@ -97,92 +110,7 @@ describe('tick', () => {
 })
 
 describe('toCalendar', () => {
-  const cases: { when: string; day: Day; date: CalendarDate }[] = [
-    {
-      when: 'day 0 is Monday, May 1st, year 1',
-      day: 0,
-      date: { year: 1, month: 5, dayOfMonth: 1, weekday: 1 },
-    },
-    {
-      when: 'the first Sunday is May 7th',
-      day: 6,
-      date: { year: 1, month: 5, dayOfMonth: 7, weekday: 7 },
-    },
-    {
-      when: 'the week rolls over to Monday on May 8th',
-      day: 7,
-      date: { year: 1, month: 5, dayOfMonth: 8, weekday: 1 },
-    },
-    {
-      when: 'May ends on the 31st',
-      day: 30,
-      date: { year: 1, month: 5, dayOfMonth: 31, weekday: 3 },
-    },
-    {
-      when: 'June follows May',
-      day: 31,
-      date: { year: 1, month: 6, dayOfMonth: 1, weekday: 4 },
-    },
-    {
-      when: 'year 1 ends on December 31st',
-      day: 244,
-      date: { year: 1, month: 12, dayOfMonth: 31, weekday: 7 },
-    },
-    {
-      when: 'year 2 starts on January 1st',
-      day: 245,
-      date: { year: 2, month: 1, dayOfMonth: 1, weekday: 1 },
-    },
-    {
-      when: 'February has 28 days',
-      day: 303,
-      date: { year: 2, month: 2, dayOfMonth: 28, weekday: 3 },
-    },
-    {
-      when: 'March 1st follows February 28th, with no leap day',
-      day: 304,
-      date: { year: 2, month: 3, dayOfMonth: 1, weekday: 4 },
-    },
-    {
-      when: 'the season starts again on May 1st, year 2',
-      day: 365,
-      date: { year: 2, month: 5, dayOfMonth: 1, weekday: 2 },
-    },
-    {
-      when: 'the largest safe day still gets an exact date',
-      day: Number.MAX_SAFE_INTEGER,
-      date: { year: 24677258232168, month: 6, dayOfMonth: 6, weekday: 4 },
-    },
-  ]
-
-  it.each(cases)('$when', ({ day, date }) => {
-    expect(toCalendar(day)).toEqual(date)
-  })
-
-  it('advances one calendar day at a time for ten years', () => {
-    let previous = toCalendar(0)
-    for (let day = 1; day <= 3650; day += 1) {
-      const { year, month, dayOfMonth, weekday } = previous
-      const endOfMonth = dayOfMonth === DAYS_IN_MONTH[month - 1]
-      const endOfYear = endOfMonth && month === 12
-      const date = toCalendar(day)
-      expect(date).toEqual({
-        year: endOfYear ? year + 1 : year,
-        month: endOfMonth ? (month % 12) + 1 : month,
-        dayOfMonth: endOfMonth ? 1 : dayOfMonth + 1,
-        weekday: (weekday % 7) + 1,
-      })
-      previous = date
-    }
-  })
-
-  it.each([
-    -1,
-    1.5,
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-    Number.MAX_SAFE_INTEGER + 1,
-  ])('rejects day %s', (day) => {
-    expect(() => toCalendar(day)).toThrow(RangeError)
+  it("is the calendar's, exported from the clock too", () => {
+    expect(toCalendar).toBe(calendar.toCalendar)
   })
 })

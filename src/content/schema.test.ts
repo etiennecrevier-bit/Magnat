@@ -101,9 +101,11 @@ describe('loadFoodTruckContent', () => {
     `${LIMITS}.ownerWeeklyPayCents.max`,
     'products.cafe.unitCostCents',
     'products.croissant.unitCostCents',
-    'startingCapitalCents',
-    'dailyFixedCostsCents.rentAndPermit',
-    'dailyFixedCostsCents.fuelAndMaintenance',
+    'products.chocolat.packagingCents',
+    'truck.priceCents',
+    'monthlyCostsCents.permitParkingAndCommissary',
+    'monthlyCostsCents.insurance',
+    'fuelAndMaintenancePerOpenDayCents',
   ])('rejects a float in %s', (path) => {
     expectRejected(withValue(path, 12.5), path)
   })
@@ -160,6 +162,49 @@ describe('loadFoodTruckContent', () => {
     expect(() => loadFoodTruckContent(withValue(path, value))).toThrow(
       `Unrecognized key: "${key}"`,
     )
+  })
+
+  it.each([
+    ['startingCapitalCents', 1_000_000],
+    ['dailyFixedCostsCents', { rentAndPermit: 4500, fuelAndMaintenance: 2000 }],
+  ])('rejects %s, which the real costs replaced', (path, value) => {
+    expect(() => loadFoodTruckContent(withValue(path, value))).toThrow(
+      `Unrecognized key: "${path}"`,
+    )
+  })
+
+  it.each([
+    'products.cafe.packagingCents',
+    'truck.usefulLifeMonths',
+    'monthlyCostsCents.insurance',
+    'fuelAndMaintenancePerOpenDayCents',
+    'cardPayments.feeRate',
+    'ownerPayWeekday',
+  ])('rejects a missing %s', (path) => {
+    expectRejected(without(path), path)
+  })
+
+  it.each([
+    ['cardPayments.share', 1.2],
+    ['cardPayments.share', -0.1],
+    ['cardPayments.feeRate', 1.5],
+    ['cardPayments.feeRate', -0.025],
+    ['ownerPayWeekday', 0],
+    ['ownerPayWeekday', 8],
+    ['ownerPayWeekday', 5.5],
+    ['truck.usefulLifeMonths', 0],
+    ['truck.usefulLifeMonths', 120.5],
+    ['truck.priceCents', -1],
+  ])('rejects %s = %d', (path, value) => {
+    expectRejected(withValue(path, value), path)
+  })
+
+  it('accepts cards at both ends of their range', () => {
+    const raw = withValue('cardPayments', { share: 1, feeRate: 0 })
+    expect(loadFoodTruckContent(raw).cardPayments).toEqual({
+      share: 1,
+      feeRate: 0,
+    })
   })
 
   it('rejects the walk-ins of phase 1', () => {
@@ -466,10 +511,34 @@ describe('loadDifficultyContent', () => {
   it.each([
     ['difficulties.facile.startingCashCents', 12.5],
     ['difficulties.moyen.truck.loanCents', -1],
+    // loanSchedule() takes no loan of nothing; a game without one is Facile.
+    ['difficulties.moyen.truck.loanCents', 0],
+    ['difficulties.moyen.truck.annualRateBasisPoints', -1],
+    ['difficulties.moyen.truck.annualRateBasisPoints', 7.5],
+    ['difficulties.moyen.truck.termMonths', 0],
+    ['difficulties.moyen.truck.termMonths', 1.5],
     ['difficulties.difficile.truck.monthlyLeaseCents', 1800.5],
     ['difficulties.moyen.name', ''],
   ])('rejects %s = %s', (path, value) => {
     reject(withDifficultyValue(path, value), path)
+  })
+
+  it.each([
+    'difficulties.moyen.truck.annualRateBasisPoints',
+    'difficulties.moyen.truck.termMonths',
+  ])('rejects a loan without %s', (path) => {
+    reject(without(path, difficultyJson), path)
+  })
+
+  it('accepts a loan without interest', () => {
+    const raw = withDifficultyValue(
+      'difficulties.moyen.truck.annualRateBasisPoints',
+      0,
+    )
+    expect(loadDifficultyContent(raw).difficulties.moyen.truck).toMatchObject({
+      kind: 'loan',
+      annualRateBasisPoints: 0,
+    })
   })
 })
 

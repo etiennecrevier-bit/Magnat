@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
-import { serialize } from '../engine/save.ts'
+import { SAVE_VERSION, serialize } from '../engine/save.ts'
 import type { GameState } from '../engine/types.ts'
 import {
   INVALID_SAVE_FILE,
@@ -82,7 +82,10 @@ describe('readStoredSave', () => {
     ['text that is not JSON', 'pas une partie'],
     [
       'a save of version 1',
-      serialize(GAME).replace('"saveVersion":2', '"saveVersion":1'),
+      serialize(GAME).replace(
+        `"saveVersion":${SAVE_VERSION}`,
+        '"saveVersion":1',
+      ),
     ],
     ['a tampered save', serialize(GAME).replace('"Chez Mimi"', '" Chez Mimi"')],
   ])('reports %s as unreadable, with the reason in the console', (_, text) => {
@@ -157,7 +160,10 @@ describe('readImportedSave', () => {
     ['JSON that is not a save', '{"partie": 1}'],
     [
       'a save of version 1',
-      serialize(GAME).replace('"saveVersion":2', '"saveVersion":1'),
+      serialize(GAME).replace(
+        `"saveVersion":${SAVE_VERSION}`,
+        '"saveVersion":1',
+      ),
     ],
     ['a tampered save', serialize(GAME).replace('"day":40', '"day":41')],
   ])('rejects %s with a French message', (_, text) => {

@@ -1,5 +1,5 @@
 {
-  "_note": "The three ways to start a game (#44). Only what the new game screen shows for now; P2-14 adds what the opening books need.",
+  "_note": "The three ways to start a game (#44): the cash in the bank once the truck is settled, and how the truck comes. The truck's price and useful life are in foodtruck.json.",
   "difficulties": {
     "facile": {
       "name": "Facile",
@@ -9,7 +9,12 @@
     "moyen": {
       "name": "Moyen",
       "startingCashCents": 1000000,
-      "truck": { "kind": "loan", "loanCents": 7000000 }
+      "truck": {
+        "kind": "loan",
+        "loanCents": 7000000,
+        "annualRateBasisPoints": 800,
+        "termMonths": 60
+      }
     },
     "difficile": {
       "name": "Difficile",

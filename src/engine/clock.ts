@@ -1,56 +1,44 @@
-import type { CustomerContent, FoodTruckContent } from '../content/schema.ts'
-import { CUSTOMERS, FOOD_TRUCK, openingJournal, playDay } from './day.ts'
+import type {
+  CustomerContent,
+  DifficultyContent,
+  FoodTruckContent,
+} from '../content/schema.ts'
+import {
+  CUSTOMERS,
+  DIFFICULTIES,
+  FOOD_TRUCK,
+  openingJournal,
+  playDay,
+} from './day.ts'
 import { latestDecisions, startingDecisions } from './decisions.ts'
 import { defaultProfile, validateProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
-import type { Day, GameState, Profile } from './types.ts'
+import type { GameState, Profile } from './types.ts'
 
-// The game calendar: 365-day years with real month lengths and no leap years.
-// Day 0 is Monday, May 1st, year 1, when food truck season starts. These are
-// calendar facts, not tunables, so they stay here rather than in src/content/.
-const MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const
-const DAYS_PER_YEAR = MONTH_LENGTHS.reduce((total, length) => total + length, 0)
-const DAYS_PER_WEEK = 7
-const START_YEAR = 1
-const START_MONTH = 5
-const START_WEEKDAY = 1
-/** Days from January 1st to the start date, so day 0 is this day of year 1. */
-const START_DAY_OF_YEAR = MONTH_LENGTHS.slice(0, START_MONTH - 1).reduce(
-  (total, length) => total + length,
-  0,
-)
-
-/**
- * A game day as people read it. Every field counts from 1: `year` from 1,
- * `month` 1–12 (1 = January), `dayOfMonth` 1–31 and `weekday` in ISO 8601
- * order, 1 = Monday to 7 = Sunday.
- */
-export interface CalendarDate {
-  year: number
-  month: number
-  dayOfMonth: number
-  weekday: number
-}
+// The calendar lives in calendar.ts, which day.ts reads too; it is exported
+// from here as well, where the UI and the tools have always found it.
+export { toCalendar, type CalendarDate } from './calendar.ts'
 
 /**
  * Starts a game on day 0 with its generator seeded from `seed`, no stock,
- * books holding only the owner's capital, the content's starting decisions
- * and the player's `profile`. Every difficulty opens the same books until
- * P2-14. Throws a RangeError unless `seed` is an integer in [0, 2^32), if
- * the starting decisions break the content's limits, or if `profile` breaks
- * `validateProfile()`.
+ * the opening books of the profile's difficulty (see `openingJournal`), the
+ * content's starting decisions and the player's `profile`. Throws a
+ * RangeError unless `seed` is an integer in [0, 2^32), if the starting
+ * decisions break the content's limits, if `profile` breaks
+ * `validateProfile()`, or if the difficulty leaves a negative Mise de fonds.
  */
 export function createInitialState(
   seed: number,
   content: FoodTruckContent = FOOD_TRUCK,
   profile: Profile = defaultProfile(),
+  difficulties: DifficultyContent = DIFFICULTIES,
 ): GameState {
   validateProfile(profile)
   return {
     day: 0,
     seed,
     rngState: seedRng(seed),
-    journal: openingJournal(content),
+    journal: openingJournal(profile.difficulty, content, difficulties),
     inventory: [],
     lastDay: null,
     decisions: startingDecisions(content),
@@ -72,47 +60,13 @@ export function tick(
   state: GameState,
   content: FoodTruckContent = FOOD_TRUCK,
   customers: CustomerContent = CUSTOMERS,
+  difficulties: DifficultyContent = DIFFICULTIES,
 ): GameState {
-  const played = playDay(
-    state,
-    toCalendar(state.day).weekday,
-    content,
-    customers,
-  )
+  const played = playDay(state, content, customers, difficulties)
   return {
     ...played,
     day: state.day + 1,
     decisions: latestDecisions(played),
     pendingDecisions: null,
   }
-}
-
-/** Throws a RangeError unless `day` is a non-negative safe integer. */
-export function toCalendar(day: Day): CalendarDate {
-  if (!Number.isSafeInteger(day) || day < 0) {
-    throw new RangeError(`Invalid game day: ${day}`)
-  }
-
-  // Take whole years out before adding the start offset, so the arithmetic
-  // stays exact up to the largest safe day.
-  const dayInYear = day % DAYS_PER_YEAR
-  let year = START_YEAR + (day - dayInYear) / DAYS_PER_YEAR
-  let dayOfYear = START_DAY_OF_YEAR + dayInYear
-  if (dayOfYear >= DAYS_PER_YEAR) {
-    year += 1
-    dayOfYear -= DAYS_PER_YEAR
-  }
-
-  let month = 1
-  let dayOfMonth = dayOfYear + 1
-  for (const length of MONTH_LENGTHS) {
-    if (dayOfMonth <= length) break
-    dayOfMonth -= length
-    month += 1
-  }
-
-  const weekday =
-    ((START_WEEKDAY - 1 + (day % DAYS_PER_WEEK)) % DAYS_PER_WEEK) + 1
-
-  return { year, month, dayOfMonth, weekday }
 }
