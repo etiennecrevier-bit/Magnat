@@ -5,11 +5,18 @@ import {
   type ProductId,
   type Segment,
   type SegmentId,
+  type Service,
   type WalkIns,
 } from '../content/schema.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
 import type { Cents } from './money.ts'
 import { next, normal } from './rng.ts'
+import {
+  SECONDS_PER_MINUTE,
+  openLine,
+  patienceSeconds,
+  type Server,
+} from './service.ts'
 import type {
   PerProduct,
   SegmentSummary,
@@ -17,8 +24,8 @@ import type {
   VisitOutcome,
 } from './types.ts'
 
-// Walk-in customers: how many come, when, from which segment, and what each
-// one buys at today's prices.
+// Walk-in customers: how many come, when, from which segment, what each one
+// wants at today's prices, and what they buy if they wait in line for it.
 
 /** Every customer segment, in the order the game walks through them. */
 export const SEGMENTS: readonly SegmentId[] = segmentIdSchema.options
@@ -91,30 +98,55 @@ export interface Served {
   readonly sold: PerProduct
   /** Units customers wanted after the product had sold out. */
   readonly lost: PerProduct
+  /** Visits that left the line without being served. */
+  readonly leftLine: number
+  /**
+   * The average wait, in whole seconds, of the customers who reached the
+   * counter; 0 when nobody did.
+   */
+  readonly averageWaitSeconds: number
+  /**
+   * The longest wait, in whole seconds, of a customer who reached the
+   * counter; 0 when nobody did.
+   */
+  readonly longestWaitSeconds: number
   /** The generator state after the day's draws. */
   readonly rngState: number
 }
 
+/** Who serves the walk-ins, and how long serving takes. */
+export interface Counter {
+  readonly service: Service
+  readonly servers: readonly Server[]
+}
+
 /**
- * Serves one day's walk-ins, with the `dayType`'s crowd and `available`
- * units of each product on hand. The draws always come in this order and
- * number, whatever the prices and the stock, so the same generator state
- * brings the same customers at every price:
+ * Serves one day's walk-ins, with the `dayType`'s crowd, `available` units
+ * of each product on hand and `counter` serving them. The draws always come
+ * in this order and number, whatever the prices, the stock and the counter,
+ * so the same generator state brings the same customers at every price, and
+ * a bigger crowd brings the same customers first, then more:
  *
  * 1. `normal()` draws twice for the day's noise, with a mean of 1 and a
  *    standard deviation of `noiseStdDevRatio`. The day's customers are the
  *    day type's `customers` × noise, rounded and never below zero.
- * 2. Each customer draws once for their arrival minute (a slot by its
- *    `arrivalWeights`, then the minute within it from where the draw fell),
- *    then once for their segment (by its share).
- * 3. Customers line up by arrival minute; those arriving the same minute
- *    keep the order they were drawn in.
- * 4. In that order, each customer draws once per product, in `PRODUCTS`
- *    order, and wants one unit when the draw is below
- *    `purchaseProbability()`. They buy it if a unit is left; otherwise it is
- *    a lost sale, so a stockout hits the customers who come later. One who
- *    does not want it, at a price above their reference, but whose draw is
- *    below what they would buy at the reference, found it too expensive.
+ * 2. Each customer, one after the other, draws once for their arrival
+ *    minute (a slot by its `arrivalWeights`, then the minute within it from
+ *    where the draw fell), once for their segment (by its share), then once
+ *    per product, in `PRODUCTS` order. They want one unit when the draw is
+ *    below `purchaseProbability()`. One who does not want it, at a price
+ *    above their reference, but whose draw is below what they would buy at
+ *    the reference, found it too expensive.
+ *
+ * Then customers line up by arrival minute; those arriving the same minute
+ * keep the order they were drawn in, and arrive at the start of the minute.
+ * One who wants nothing walks on. One who wants something looks at the line
+ * (`openLine()` in service.ts) and leaves it, buying nothing, if more than
+ * `maxAheadInLine` customers are still waiting or the wait is longer than
+ * their `patienceSeconds()`. Otherwise they join it and order what they
+ * want, which takes the time of every unit ordered. When they reach the
+ * counter, they buy each unit they want that is left; one sold out is a
+ * lost sale, so a stockout hits the customers served later.
  *
  * Never mutates its arguments.
  */
@@ -125,6 +157,7 @@ export function serveWalkIns(
   customers: CustomerContent,
   price: (product: ProductId) => Cents,
   available: PerProduct,
+  counter: Counter,
 ): Served {
   const crowd = walkIns.dayTypes[dayType]
   const odds = dayOdds(customers, crowd.productAppeal, price)
@@ -136,7 +169,7 @@ export function serveWalkIns(
   const count = Math.max(0, Math.round(crowd.customers * noise))
 
   let state = afterNoise
-  const arrivals: { arrivalMinute: number; segment: SegmentId }[] = []
+  const arrivals: Arrival[] = []
   for (let customer = 0; customer < count; customer += 1) {
     const [when, afterWhen] = next(state)
     const [who, afterWho] = next(afterWhen)
@@ -146,14 +179,30 @@ export function serveWalkIns(
       arrivalSlotMinutes - 1,
       Math.floor(within * arrivalSlotMinutes),
     )
+    const segment = SEGMENTS[pickSegment(who)[0]] as SegmentId
+    const wanted: ProductId[] = []
+    let tooExpensive = false
+    for (const { product, wants, wouldAtReference } of odds[segment]) {
+      const [draw, after] = next(state)
+      state = after
+      if (draw < wants) wanted.push(product)
+      else if (draw < wouldAtReference) tooExpensive = true
+    }
     arrivals.push({
       arrivalMinute: opensAtMinute + slot * arrivalSlotMinutes + minute,
-      segment: SEGMENTS[pickSegment(who)[0]] as SegmentId,
+      segment,
+      wanted,
+      tooExpensive,
     })
   }
   // Array.prototype.sort is stable, so ties keep the order they were drawn.
   arrivals.sort((a, b) => a.arrivalMinute - b.arrivalMinute)
 
+  const { service } = counter
+  const line = openLine(counter.servers, service)
+  const patience = perSegment((id) =>
+    patienceSeconds(customers.segments[id], crowd),
+  )
   const left: Record<ProductId, number> = { ...available }
   const lost = perProduct(() => 0) as Record<ProductId, number>
   const tally = perSegment<Record<keyof SegmentSummary, number>>(() => ({
@@ -163,36 +212,50 @@ export function serveWalkIns(
     soldOut: 0,
   }))
   const visits: Visit[] = []
-  for (const { arrivalMinute, segment } of arrivals) {
-    const bought = {} as Record<ProductId, number>
-    let boughtAny = false
-    let soldOut = false
-    let tooExpensive = false
-    for (const { product, wants, wouldAtReference } of odds[segment]) {
-      const [draw, after] = next(state)
-      state = after
-      bought[product] = 0
-      if (draw < wants) {
-        if (left[product] > 0) {
-          left[product] -= 1
-          bought[product] = 1
-          boughtAny = true
-        } else {
-          lost[product] += 1
-          soldOut = true
+  let leftLine = 0
+  let reachedCounter = 0
+  let totalWait = 0
+  let longestWait = 0
+  for (const { arrivalMinute, segment, wanted, tooExpensive } of arrivals) {
+    const bought = perProduct(() => 0) as Record<ProductId, number>
+    let outcome: VisitOutcome = tooExpensive ? 'tooExpensive' : 'browsed'
+    let servedMinute: number | null = null
+    let leftMinute: number | null = null
+    if (wanted.length > 0) {
+      const second = arrivalMinute * SECONDS_PER_MINUTE
+      const { wait, waiting } = line.ahead(second)
+      if (waiting > service.maxAheadInLine || wait > patience[segment]) {
+        outcome = 'leftLine'
+        leftMinute = arrivalMinute
+        leftLine += 1
+      } else {
+        const start = line.join(second, wanted.length)
+        servedMinute = Math.floor(start / SECONDS_PER_MINUTE)
+        reachedCounter += 1
+        totalWait += start - second
+        longestWait = Math.max(longestWait, start - second)
+        // Customers reach the counter in the order they join the line, so
+        // they take the stock in that order too.
+        outcome = 'soldOut'
+        for (const product of wanted) {
+          if (left[product] > 0) {
+            left[product] -= 1
+            bought[product] = 1
+            outcome = 'bought'
+          } else {
+            lost[product] += 1
+          }
         }
-      } else if (draw < wouldAtReference) {
-        tooExpensive = true
       }
     }
-    const outcome: VisitOutcome = boughtAny
-      ? 'bought'
-      : soldOut
-        ? 'soldOut'
-        : tooExpensive
-          ? 'tooExpensive'
-          : 'browsed'
-    visits.push({ arrivalMinute, segment, bought, outcome })
+    visits.push({
+      arrivalMinute,
+      segment,
+      bought,
+      outcome,
+      servedMinute,
+      leftMinute,
+    })
 
     const counts = tally[segment]
     counts.visits += 1
@@ -206,8 +269,22 @@ export function serveWalkIns(
     segments: tally,
     sold: perProduct((product) => available[product] - left[product]),
     lost,
+    leftLine,
+    averageWaitSeconds:
+      reachedCounter === 0 ? 0 : Math.round(totalWait / reachedCounter),
+    longestWaitSeconds: Math.round(longestWait),
     rngState: state,
   }
+}
+
+/** A customer as they arrive, before the line. */
+interface Arrival {
+  arrivalMinute: number
+  segment: SegmentId
+  /** The products they want one unit of, in `PRODUCTS` order. */
+  wanted: ProductId[]
+  /** Whether a price above their reference kept them from wanting one. */
+  tooExpensive: boolean
 }
 
 interface Odds {

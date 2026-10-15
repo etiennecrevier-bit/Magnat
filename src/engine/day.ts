@@ -33,6 +33,7 @@ import {
   takeFifo,
 } from './inventory.ts'
 import { add, cents, mulInt, mulRatio, sub, type Cents } from './money.ts'
+import { servers } from './service.ts'
 import type { Day, Decisions, GameState, Lot, PerProduct } from './types.ts'
 
 /** The shipped food truck content, validated once when the engine loads. */
@@ -145,8 +146,8 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * Plays business day `state.day` with `state.decisions`. On the 1st of the
  * month, open or closed: the month's charges (see `monthlyCharges`). On a
  * day the truck opens: the morning restock, then the walk-in customers
- * buying from the stock on hand as they arrive, what the sales cost in
- * packaging and card fees, and the fuel. On a day it is closed, nobody comes
+ * lining up at the counter, where `servers(state)` serve them from the stock
+ * on hand, what the sales cost in packaging and card fees, and the fuel. On a day it is closed, nobody comes
  * and nothing is bought, so the generator does not move. On payday, open or
  * closed, the owner's weekly pay. Every day: the spoilage at the close.
  * Every entry is dated `state.day`. Returns a new state on the same day with
@@ -186,6 +187,7 @@ export function playDay(
       customers,
       price,
       perProduct((product) => onHand(restocked.lots, product)),
+      { service: content.service, servers: servers(state) },
     )
 
     // The sale, its cost and what it costs to make are separate entries, so
@@ -243,6 +245,9 @@ export function playDay(
       spoiled: expired.spoiled,
       segments: served.segments,
       visits: served.visits,
+      leftLine: served.leftLine,
+      averageWaitSeconds: served.averageWaitSeconds,
+      longestWaitSeconds: served.longestWaitSeconds,
     },
   }
 }
@@ -334,6 +339,9 @@ function closed(rngState: number): Served {
     })),
     sold: none,
     lost: none,
+    leftLine: 0,
+    averageWaitSeconds: 0,
+    longestWaitSeconds: 0,
     rngState,
   }
 }
@@ -380,7 +388,7 @@ interface Sales {
 
 /**
  * Takes the units customers bought out of the stock, oldest lot first, and
- * prices them. Customers buy one at a time as they arrive, but taking a
+ * prices them. Customers buy one at a time as they are served, but taking a
  * product's day total at once takes the same units from the same lots.
  */
 function sell(

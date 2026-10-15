@@ -12,7 +12,14 @@ function visit(segment: Visit['segment'], bought = NONE): Visit {
   const outcome = Object.values(bought).some((units) => units > 0)
     ? 'bought'
     : 'browsed'
-  return { arrivalMinute: 420, segment, bought, outcome }
+  return {
+    arrivalMinute: 420,
+    segment,
+    bought,
+    outcome,
+    servedMinute: outcome === 'bought' ? 420 : null,
+    leftMinute: null,
+  }
 }
 
 const DAY: DaySummary = {
@@ -35,6 +42,9 @@ const DAY: DaySummary = {
     visit('aubaine'),
     visit('habitue'),
   ],
+  leftLine: 0,
+  averageWaitSeconds: 0,
+  longestWaitSeconds: 0,
 }
 
 describe('segmentFacts', () => {

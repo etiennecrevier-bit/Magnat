@@ -295,8 +295,29 @@ describe('loadFoodTruckContent', () => {
     ['walkIns.closesAtMinute', 1470],
     ['walkIns.arrivalSlotMinutes', 0],
     ['walkIns.arrivalSlotMinutes', 30.5],
+    ['service.baseSeconds', -1],
+    ['service.baseSeconds', 40.5],
+    ['service.perItemSeconds', -15],
+    ['service.perItemSeconds', 7.5],
+    ['service.maxAheadInLine', -1],
+    ['service.maxAheadInLine', 8.5],
   ])('rejects %s = %d', (path, value) => {
     expectRejected(withValue(path, value), path.replace(/\.(\d+)$/, '[$1]'))
+  })
+
+  it('rejects a missing service', () => {
+    expectRejected(without('service'), 'service')
+  })
+
+  it('rejects an unknown key in the service', () => {
+    expectRejected(withValue('service.servers', 2), 'service')
+  })
+
+  it('accepts a service that takes no time', () => {
+    const service = { baseSeconds: 0, perItemSeconds: 0, maxAheadInLine: 0 }
+    expect(loadFoodTruckContent(withValue('service', service)).service).toEqual(
+      service,
+    )
   })
 
   it('rejects segment shares that do not sum to 1', () => {
@@ -435,8 +456,23 @@ describe('loadCustomerContent', () => {
     ['segments.chic.tooCheap.steepness', 0],
     ['segments.chic.tooCheap.steepness', -15],
     ['segments.chic.name', ''],
+    ['segments.chic.patienceMinutes', 0],
+    ['segments.aubaine.patienceMinutes', -8],
+    ['segments.habitue.patienceMinutes', '6'],
   ])('rejects %s = %s', (path, value) => {
     reject(withCustomerValue(path, value), path)
+  })
+
+  it('rejects a segment without patienceMinutes', () => {
+    reject(
+      without('segments.habitue.patienceMinutes', segmentsJson),
+      'segments.habitue.patienceMinutes',
+    )
+  })
+
+  it('accepts a patience in fractions of a minute', () => {
+    const raw = withCustomerValue('segments.chic.patienceMinutes', 2.5)
+    expect(loadCustomerContent(raw).segments.chic.patienceMinutes).toBe(2.5)
   })
 
   it('accepts a segment without tooCheap', () => {

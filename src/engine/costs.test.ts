@@ -150,6 +150,8 @@ function selling(customers: number): Setup {
     })),
     cardPayments: { share: 0.85, feeRate: 0.025 },
     walkIns: crowd(customers, { productAppeal: byProduct(() => 1) }),
+    // Served the moment they arrive, so no one leaves the line.
+    service: { ...FOOD_TRUCK.service, baseSeconds: 0, perItemSeconds: 0 },
   })
   return {
     ...SHIPPED,
@@ -166,6 +168,7 @@ function selling(customers: number): Setup {
     customers: loadCustomerContent({
       segments: perSegment((id) => ({
         name: CUSTOMERS.segments[id].name,
+        patienceMinutes: CUSTOMERS.segments[id].patienceMinutes,
         products: byProduct((product) => ({
           referencePriceCents: prices[product],
           purchaseProbability: wants[product],

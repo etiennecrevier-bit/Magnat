@@ -52,6 +52,7 @@
       }
     }
   },
+  "service": { "baseSeconds": 40, "perItemSeconds": 15, "maxAheadInLine": 8 },
   "startingDecisions": {
     "pricesCents": { "cafe": 325, "chocolat": 350, "croissant": 375 },
     "restock": {

@@ -32,6 +32,26 @@ function reloaded(state: GameState): GameState {
 
 const DAY_400 = played(400)
 
+/**
+ * A game at the lowest prices, played up to the first day some customers
+ * left the line.
+ */
+function lineDay(): GameState {
+  let state = createInitialState(SEED)
+  for (const product of ['cafe', 'chocolat', 'croissant'] as const) {
+    state = applyDecision(state, {
+      kind: 'price',
+      product,
+      price: cents(LIMITS.priceCents.min),
+    })
+  }
+  for (let day = 0; day < 60; day += 1) {
+    state = tick(state)
+    if ((state.lastDay?.leftLine ?? 0) > 0) return state
+  }
+  throw new Error('No one left the line in 60 days')
+}
+
 /** A cheaper price for café, waiting for the next morning. */
 function withPendingPrice(state: GameState): GameState {
   return applyDecision(state, {
@@ -97,8 +117,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(3)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 3 })
+    expect(SAVE_VERSION).toBe(4)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 4 })
   })
 
   it.each<Profile>([
@@ -114,6 +134,15 @@ describe('serialize and deserialize', () => {
 
   it('give back the state after 400 days', () => {
     expect(reloaded(DAY_400)).toStrictEqual(DAY_400)
+  })
+
+  it('give back a day when some customers left the line', () => {
+    const busy = lineDay()
+    const visits = busy.lastDay?.visits ?? []
+    expect(visits.some(({ outcome }) => outcome === 'leftLine')).toBe(true)
+    expect(visits.some(({ servedMinute }) => servedMinute !== null)).toBe(true)
+    expect(busy.lastDay?.longestWaitSeconds).toBeGreaterThan(0)
+    expect(reloaded(busy)).toStrictEqual(busy)
   })
 
   it('give back the state on day 0, before any day is played', () => {
@@ -200,7 +229,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 4, '3', null])('saveVersion %j', (version) => {
+  it.each([0, 1, 3, 5, '4', null])('saveVersion %j', (version) => {
     expectInvalid(withValue('saveVersion', version), [
       `unsupported saveVersion ${JSON.stringify(version)}`,
     ])
@@ -442,6 +471,36 @@ describe('deserialize rejects', () => {
         '→ at lastDay.visits[0].arrivalMinute',
       ])
     })
+
+    it.each(['servedMinute', 'leftMinute'])(
+      'with a visit missing its %s',
+      (field) => {
+        expectInvalid(without(`lastDay.visits.0.${field}`), [
+          `→ at lastDay.visits[0].${field}`,
+        ])
+      },
+    )
+
+    it.each([
+      ['servedMinute', 450.5],
+      ['servedMinute', -1],
+      ['leftMinute', 450.5],
+      ['leftMinute', 1441],
+    ])('with a visit whose %s is %j', (field, value) => {
+      expectInvalid(withValue(`lastDay.visits.0.${field}`, value), [
+        `→ at lastDay.visits[0].${field}`,
+      ])
+    })
+
+    it.each(['leftLine', 'averageWaitSeconds', 'longestWaitSeconds'])(
+      'with its %s missing or negative',
+      (field) => {
+        expectInvalid(without(`lastDay.${field}`), [`→ at lastDay.${field}`])
+        expectInvalid(withValue(`lastDay.${field}`, -1), [
+          `→ at lastDay.${field}`,
+        ])
+      },
+    )
   })
 
   describe('decisions', () => {
@@ -530,6 +589,22 @@ describe('deserialize rejects', () => {
         narrowed,
       )
     })
+  })
+
+  it('a game saved before the line, as version 3', () => {
+    // Its last day has no visits served or left and no waits.
+    const text = edited('lastDay', (save, key) => {
+      const lastDay = save[key] as Json
+      delete lastDay.leftLine
+      delete lastDay.averageWaitSeconds
+      delete lastDay.longestWaitSeconds
+      for (const visit of lastDay.visits as Json[]) {
+        delete visit.servedMinute
+        delete visit.leftMinute
+      }
+      save.saveVersion = 3
+    })
+    expectInvalid(text, ['unsupported saveVersion 3'])
   })
 
   it('a game saved before the real costs, as version 2', () => {

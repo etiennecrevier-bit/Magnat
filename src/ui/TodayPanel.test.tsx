@@ -47,6 +47,9 @@ describe('TodayPanelView', () => {
         chic: { visits: 24, buyers: 24, tooExpensive: 0, soldOut: 0 },
       },
       visits: [],
+      leftLine: 0,
+      averageWaitSeconds: 0,
+      longestWaitSeconds: 0,
     })
     expect(html).toContain(`Hier${S}: Jeudi 4 mai, an 1`)
     expect(html).toContain(

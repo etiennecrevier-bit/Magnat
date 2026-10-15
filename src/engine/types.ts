@@ -45,6 +45,18 @@ export interface DaySummary {
   readonly segments: Readonly<Record<SegmentId, SegmentSummary>>
   /** Every walk-in's visit, in arrival order. */
   readonly visits: readonly Visit[]
+  /** Visits that left the line without being served. */
+  readonly leftLine: number
+  /**
+   * The average wait, in whole seconds, of the customers who reached the
+   * counter; 0 when nobody did.
+   */
+  readonly averageWaitSeconds: number
+  /**
+   * The longest wait, in whole seconds, of a customer who reached the
+   * counter; 0 when nobody did.
+   */
+  readonly longestWaitSeconds: number
 }
 
 /** One customer segment's visits on a business day. */
@@ -69,14 +81,27 @@ export interface Visit {
   readonly bought: PerProduct
   /** How the visit ended. */
   readonly outcome: VisitOutcome
+  /**
+   * When they reached the counter, in minutes from midnight; null if they
+   * never lined up. Service may run past closing time.
+   */
+  readonly servedMinute: number | null
+  /**
+   * When they left the line without being served, in minutes from midnight;
+   * null unless the visit ended in `leftLine`.
+   */
+  readonly leftMinute: number | null
 }
 
 /**
- * How a visit ended: `bought` if they bought anything. Otherwise `soldOut`
- * if something they wanted had sold out, then `tooExpensive` if a price
- * above their reference kept them from buying, and `browsed` if neither.
+ * How a visit ended: `bought` if they bought anything. Otherwise `leftLine`
+ * if they wanted something but left the line before being served, then
+ * `soldOut` if something they wanted had sold out, then `tooExpensive` if a
+ * price above their reference kept them from buying, and `browsed` if
+ * neither.
  */
-export type VisitOutcome = 'bought' | 'tooExpensive' | 'soldOut' | 'browsed'
+export type VisitOutcome =
+  'bought' | 'tooExpensive' | 'soldOut' | 'leftLine' | 'browsed'
 
 /**
  * How the player runs the truck. `applyDecision()` in decisions.ts changes

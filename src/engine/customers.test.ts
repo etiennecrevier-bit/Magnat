@@ -8,6 +8,7 @@ import {
   type ProductId,
   type Segment,
   type SegmentId,
+  type Service,
   type WalkIns,
 } from '../content/schema.ts'
 import {
@@ -16,13 +17,14 @@ import {
   perSegment,
   purchaseProbability,
   serveWalkIns,
+  type Counter,
   type Served,
 } from './customers.ts'
 import { CUSTOMERS, FOOD_TRUCK } from './day.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
 import { cents, type Cents } from './money.ts'
 import { next, seedRng } from './rng.ts'
-import type { PerProduct } from './types.ts'
+import type { PerProduct, Visit } from './types.ts'
 
 interface Odds {
   base: number
@@ -35,9 +37,10 @@ interface TooCheap {
   steepness: number
 }
 
-function rawSegment(odds: Odds, tooCheap?: TooCheap) {
+function rawSegment(odds: Odds, tooCheap?: TooCheap, patienceMinutes = 5) {
   return {
     name: 'Test',
+    patienceMinutes,
     products: Object.fromEntries(
       PRODUCTS.map((product) => [
         product,
@@ -61,6 +64,19 @@ function everyone(odds: Odds, tooCheap?: TooCheap): CustomerContent {
 /** A segment deciding every product with these odds, validated. */
 function segment(odds: Odds, tooCheap?: TooCheap): Segment {
   return everyone(odds, tooCheap).segments.aubaine
+}
+
+/**
+ * Every segment wanting one of each product at 3 $, its reference price,
+ * and waiting in line up to `patienceMinutes`, validated.
+ */
+function keen(patienceMinutes: number): CustomerContent {
+  const raw = rawSegment(
+    { base: 1, reference: 300, sensitivity: 4 },
+    undefined,
+    patienceMinutes,
+  )
+  return loadCustomerContent({ segments: perSegment(() => raw) })
 }
 
 /**
@@ -99,6 +115,26 @@ function stock(units: number | Partial<Record<ProductId, number>>) {
 
 const PLENTY = stock(10_000)
 
+/** A counter that serves everyone the moment they arrive: no one waits. */
+const INSTANT: Counter = {
+  service: { baseSeconds: 0, perItemSeconds: 0, maxAheadInLine: 0 },
+  servers: [{ speed: 1 }],
+}
+
+/** The shipped service, with the avatar alone at speed 1. */
+const SHIPPED_COUNTER: Counter = {
+  service: FOOD_TRUCK.service,
+  servers: [{ speed: 1 }],
+}
+
+/** The shipped service with `change` made, and a server at each speed. */
+function counter(change: Partial<Service>, speeds = [1]): Counter {
+  return {
+    service: { ...FOOD_TRUCK.service, ...change },
+    servers: speeds.map((speed) => ({ speed })),
+  }
+}
+
 function serve(
   walkIns: WalkIns,
   options: {
@@ -106,6 +142,7 @@ function serve(
     customers?: CustomerContent
     price?: (product: ProductId) => Cents
     available?: PerProduct
+    counter?: Counter
   } = {},
 ): Served {
   return serveWalkIns(
@@ -115,6 +152,7 @@ function serve(
     options.customers ?? CUSTOMERS,
     options.price ?? prices(),
     options.available ?? PLENTY,
+    options.counter ?? INSTANT,
   )
 }
 
@@ -448,7 +486,7 @@ describe('serveWalkIns', () => {
     }
   })
 
-  it('makes the same draws whatever the prices and the stock', () => {
+  it('makes the same draws whatever the prices, the stock and the counter', () => {
     const walkIns = weekday(120)
     const base = serve(walkIns)
     const variants = [
@@ -459,6 +497,10 @@ describe('serveWalkIns', () => {
         price: prices({ chocolat: 50 }),
         available: stock({ cafe: 1 }),
         customers: everyone({ base: 1, reference: 100, sensitivity: 0 }),
+      }),
+      serve(walkIns, { counter: SHIPPED_COUNTER }),
+      serve(walkIns, {
+        counter: counter({ baseSeconds: 600, maxAheadInLine: 0 }, [2]),
       }),
     ]
     const draws = 2 + 120 * (2 + PRODUCTS.length)
@@ -489,5 +531,367 @@ describe('serveWalkIns', () => {
     const available = Object.freeze(stock(5))
     serve(weekday(100), { available })
     expect(available).toEqual(stock(5))
+  })
+})
+
+describe('the line', () => {
+  /**
+   * Walk-ins where all `customers` come in the first minute of the day,
+   * 7 h 00, liking every product, with no noise and a patience multiplier
+   * of 1, validated.
+   */
+  function oneMinute(customers: number): WalkIns {
+    const crowd = {
+      ...FOOD_TRUCK.walkIns.dayTypes.semaine,
+      customers,
+      productAppeal: perProduct(() => 1),
+      patienceMultiplier: 1,
+      arrivalWeights: [1],
+    }
+    return loadFoodTruckContent({
+      ...FOOD_TRUCK,
+      walkIns: {
+        noiseStdDevRatio: 0,
+        opensAtMinute: 420,
+        closesAtMinute: 421,
+        arrivalSlotMinutes: 1,
+        dayTypes: { semaine: crowd, finDeSemaine: crowd },
+      },
+    }).walkIns
+  }
+
+  /** 7 h 00, in seconds from midnight. */
+  const OPENING = 420 * 60
+
+  /** The minute a customer who waited `seconds` from 7 h 00 is served. */
+  const servedAt = (seconds: number) => Math.floor((OPENING + seconds) / 60)
+
+  const outcomes = (served: Served) =>
+    served.visits.map(({ outcome }) => outcome)
+
+  const times = <T>(count: number, value: T) =>
+    Array.from({ length: count }, () => value)
+
+  it('serves the line in turn and sends away those who find more than 8 waiting', () => {
+    // Each customer orders three units: 40 + 3 × 15 = 85 s at the counter.
+    const served = serve(oneMinute(12), {
+      customers: keen(20),
+      price: () => cents(300),
+      available: stock({ cafe: 50, chocolat: 50, croissant: 10 }),
+      counter: SHIPPED_COUNTER,
+    })
+    expect(outcomes(served)).toEqual([
+      ...times(10, 'bought'),
+      ...times(2, 'leftLine'),
+    ])
+    expect(served.visits.map(({ servedMinute }) => servedMinute)).toEqual([
+      ...Array.from({ length: 10 }, (_, turn) => servedAt(85 * turn)),
+      null,
+      null,
+    ])
+    expect(served.visits.map(({ leftMinute }) => leftMinute)).toEqual([
+      ...times(10, null),
+      420,
+      420,
+    ])
+    expect(served.leftLine).toBe(2)
+    // Waits of 0, 85, …, 765 s.
+    expect(served.averageWaitSeconds).toBe(383)
+    expect(served.longestWaitSeconds).toBe(765)
+    // Those who left took no croissant and lost no sale.
+    expect(served.sold).toEqual({ cafe: 10, chocolat: 10, croissant: 10 })
+    expect(served.lost).toEqual({ cafe: 0, chocolat: 0, croissant: 0 })
+  })
+
+  it('sends away those whose wait is longer than their patience', () => {
+    // Two minutes: the third would wait 170 s, and so would everyone after.
+    const served = serve(oneMinute(12), {
+      customers: keen(2),
+      price: () => cents(300),
+      counter: SHIPPED_COUNTER,
+    })
+    expect(outcomes(served)).toEqual([
+      ...times(2, 'bought'),
+      ...times(10, 'leftLine'),
+    ])
+    expect(served.longestWaitSeconds).toBe(85)
+  })
+
+  it('keeps a customer whose wait is exactly their patience', () => {
+    // 60 s each, whatever they order: waits of 0, 60, 120 and 180 s.
+    const served = serve(oneMinute(4), {
+      customers: keen(2),
+      price: () => cents(300),
+      counter: counter({ baseSeconds: 60, perItemSeconds: 0 }),
+    })
+    expect(outcomes(served)).toEqual([...times(3, 'bought'), 'leftLine'])
+    expect(served.longestWaitSeconds).toBe(120)
+  })
+
+  it('keeps a customer who finds exactly maxAheadInLine waiting', () => {
+    // The first is at the counter, so the others find 0, 1, 2 and 3 waiting.
+    const served = serve(oneMinute(5), {
+      customers: keen(60),
+      price: () => cents(300),
+      counter: counter({ maxAheadInLine: 2 }),
+    })
+    expect(outcomes(served)).toEqual([...times(4, 'bought'), 'leftLine'])
+  })
+
+  it('takes the time of a sold-out order, so the next customer waits for it', () => {
+    // One croissant: the second customer finds everything sold out.
+    const served = serve(oneMinute(3), {
+      customers: keen(20),
+      price: () => cents(300),
+      available: stock({ croissant: 1 }),
+      counter: SHIPPED_COUNTER,
+    })
+    expect(outcomes(served)).toEqual(['bought', 'soldOut', 'soldOut'])
+    expect(served.visits.map(({ servedMinute }) => servedMinute)).toEqual([
+      servedAt(0),
+      servedAt(85),
+      servedAt(170),
+    ])
+    expect(served.longestWaitSeconds).toBe(170)
+    expect(served.lost).toEqual({ cafe: 3, chocolat: 3, croissant: 2 })
+  })
+
+  it('serves more at once with more servers, and sooner with faster ones', () => {
+    const options = {
+      customers: keen(20),
+      price: () => cents(300),
+      counter: SHIPPED_COUNTER,
+    }
+    const alone = serve(oneMinute(12), options)
+    const two = serve(oneMinute(12), {
+      ...options,
+      counter: counter({}, [1, 1]),
+    })
+    const fast = serve(oneMinute(12), { ...options, counter: counter({}, [2]) })
+    // Two at the counter: the 12th still finds 9 waiting, against the 11th
+    // and 12th with one server.
+    expect(alone.leftLine).toBe(2)
+    expect(two.leftLine).toBe(1)
+    expect(two.longestWaitSeconds).toBe(5 * 85)
+    expect(fast.leftLine).toBe(alone.leftLine)
+    // 765 s ÷ 2, rounded to the second.
+    expect(fast.longestWaitSeconds).toBe(383)
+  })
+
+  it('brings the same customers first when the crowd grows, wanting the same', () => {
+    const small = serve(weekday(120)).visits
+    const big = serve(weekday(240)).visits
+    // Those who come the same minute keep the order they were drawn in, so
+    // the small crowd's visits come in the same order within the big one's.
+    let found = 0
+    for (const visit of big) {
+      if (found < small.length && sameVisit(visit, small[found])) found += 1
+    }
+    expect(found).toBe(small.length)
+  })
+
+  it('accounts for every visit with the shipped line', () => {
+    const served = serve(weekday(240), {
+      price: prices({ cafe: 200, chocolat: 250, croissant: 250 }),
+      counter: SHIPPED_COUNTER,
+    })
+    const { visits } = served
+    const left = visits.filter(({ outcome }) => outcome === 'leftLine')
+    expect(left.length).toBeGreaterThan(0)
+    expect(served.leftLine).toBe(left.length)
+    let lastServed = 0
+    for (const visit of visits) {
+      const units = PRODUCTS.reduce((n, p) => n + visit.bought[p], 0)
+      if (visit.outcome === 'leftLine') {
+        expect(units).toBe(0)
+        expect(visit.leftMinute).toBe(visit.arrivalMinute)
+        expect(visit.servedMinute).toBeNull()
+      } else if (visit.servedMinute === null) {
+        expect(['tooExpensive', 'browsed']).toContain(visit.outcome)
+        expect(visit.leftMinute).toBeNull()
+      } else {
+        expect(['bought', 'soldOut']).toContain(visit.outcome)
+        expect(visit.leftMinute).toBeNull()
+        expect(visit.servedMinute).toBeGreaterThanOrEqual(visit.arrivalMinute)
+        expect(visit.servedMinute).toBeGreaterThanOrEqual(lastServed)
+        lastServed = visit.servedMinute
+      }
+    }
+    expect(served.longestWaitSeconds).toBeGreaterThanOrEqual(
+      served.averageWaitSeconds,
+    )
+    const total = SEGMENTS.reduce((n, id) => n + served.segments[id].visits, 0)
+    expect(total).toBe(visits.length)
+  })
+
+  it('waits nothing and loses no one on a day with no customers', () => {
+    const served = serve(weekday(0), { counter: SHIPPED_COUNTER })
+    expect(served).toMatchObject({
+      leftLine: 0,
+      averageWaitSeconds: 0,
+      longestWaitSeconds: 0,
+    })
+  })
+})
+
+function sameVisit(a: Visit, b: Visit | undefined): boolean {
+  return (
+    b !== undefined &&
+    a.arrivalMinute === b.arrivalMinute &&
+    a.segment === b.segment &&
+    PRODUCTS.every((product) => a.bought[product] === b.bought[product])
+  )
+}
+
+// The issue's acceptance criteria, checked with the shipped content on every
+// seed of SEEDS. A line customers may leave is not monotone in general: one
+// impatient customer with a big order who leaves can let two patient ones
+// with small orders stay. So these hold on every seed checked, not on every
+// seed there is.
+describe('the line, with the shipped content', () => {
+  /** Every seed the criteria are checked on; seed 406 is among them. */
+  const SEEDS = Array.from({ length: 1000 }, (_, seed) => seed)
+
+  /** The stock a game opens its first day with. */
+  const OPENING_STOCK = stock({ cafe: 300, chocolat: 150, croissant: 70 })
+
+  const PRICE_LEVELS = {
+    starting: prices(FOOD_TRUCK.startingDecisions.pricesCents),
+    low: prices({ cafe: 200, chocolat: 250, croissant: 250 }),
+    lowest: prices({ cafe: 100, chocolat: 150, croissant: 150 }),
+  }
+
+  /** The price levels where the shipped crowds already form a line. */
+  const BUSY_LEVELS = ['starting', 'low'] as const
+
+  const DAY_TYPES = ['semaine', 'finDeSemaine'] as const
+
+  /** The shipped walk-ins, with each day type's customers × `factor`. */
+  function crowds(factor: number, walkIns = FOOD_TRUCK.walkIns): WalkIns {
+    const { semaine, finDeSemaine } = walkIns.dayTypes
+    return loadFoodTruckContent({
+      ...FOOD_TRUCK,
+      walkIns: {
+        ...walkIns,
+        dayTypes: {
+          semaine: { ...semaine, customers: semaine.customers * factor },
+          finDeSemaine: {
+            ...finDeSemaine,
+            customers: finDeSemaine.customers * factor,
+          },
+        },
+      },
+    }).walkIns
+  }
+
+  /** Walk-ins where both day types bring `crowd`, with their own patience. */
+  function sameCrowd(crowd: DayType): WalkIns {
+    const { walkIns } = FOOD_TRUCK
+    const { semaine, finDeSemaine } = walkIns.dayTypes
+    return loadFoodTruckContent({
+      ...FOOD_TRUCK,
+      walkIns: {
+        ...walkIns,
+        dayTypes: {
+          semaine: { ...crowd, patienceMultiplier: semaine.patienceMultiplier },
+          finDeSemaine: {
+            ...crowd,
+            patienceMultiplier: finDeSemaine.patienceMultiplier,
+          },
+        },
+      },
+    }).walkIns
+  }
+
+  /** How many left the line on `seed`. */
+  function leftLineOn(
+    seed: number,
+    walkIns: WalkIns,
+    dayType: (typeof DAY_TYPES)[number],
+    price: (product: ProductId) => Cents,
+    by: Counter = SHIPPED_COUNTER,
+  ): number {
+    return serveWalkIns(
+      seedRng(seed),
+      walkIns,
+      dayType,
+      CUSTOMERS,
+      price,
+      OPENING_STOCK,
+      by,
+    ).leftLine
+  }
+
+  /** How many left the line on each of SEEDS. */
+  function leftLine(
+    walkIns: WalkIns,
+    dayType: (typeof DAY_TYPES)[number],
+    price: (product: ProductId) => Cents,
+    by: Counter = SHIPPED_COUNTER,
+  ): number[] {
+    return SEEDS.map((seed) => leftLineOn(seed, walkIns, dayType, price, by))
+  }
+
+  /** The seeds on which `more` is below `fewer`. */
+  function below(more: number[], fewer: number[]): number[] {
+    return SEEDS.filter((_, index) => (more[index] ?? 0) < (fewer[index] ?? 0))
+  }
+
+  const sum = (counts: number[]) => counts.reduce((a, b) => a + b, 0)
+
+  it('sends more customers away when the walk-ins double, never fewer', () => {
+    for (const dayType of DAY_TYPES) {
+      for (const [level, price] of Object.entries(PRICE_LEVELS)) {
+        const usual = leftLine(crowds(1), dayType, price)
+        const doubled = leftLine(crowds(2), dayType, price)
+        expect(below(doubled, usual), `${dayType}, ${level} prices`).toEqual([])
+        expect(sum(doubled), `${dayType}, ${level} prices`).toBeGreaterThan(
+          sum(usual),
+        )
+      }
+    }
+  })
+
+  it('never sends fewer away on seed 406 when the walk-ins double', () => {
+    // Before each customer drew their wants with their arrival, the bigger
+    // crowd wanted other things and sent 0 away here against 1.
+    const price = PRICE_LEVELS.starting
+    expect(SEEDS).toContain(406)
+    expect(leftLineOn(406, crowds(2), 'semaine', price)).toBeGreaterThanOrEqual(
+      leftLineOn(406, crowds(1), 'semaine', price),
+    )
+  })
+
+  it('sends fewer customers away with faster service', () => {
+    const faster: Record<string, Counter> = {
+      'a server at speed 2': counter({}, [2]),
+      '30 s + 10 s a unit': counter({ baseSeconds: 30, perItemSeconds: 10 }),
+    }
+    for (const dayType of DAY_TYPES) {
+      for (const level of BUSY_LEVELS) {
+        const price = PRICE_LEVELS[level]
+        const shipped = leftLine(crowds(2), dayType, price)
+        for (const [name, by] of Object.entries(faster)) {
+          const quick = leftLine(crowds(2), dayType, price, by)
+          const scenario = `${dayType}, ${level} prices, ${name}`
+          expect(below(shipped, quick), scenario).toEqual([])
+          expect(sum(quick), scenario).toBeLessThan(sum(shipped))
+        }
+      }
+    }
+  })
+
+  it('sends weekday customers away from a given line more often than weekend ones', () => {
+    for (const crowd of DAY_TYPES) {
+      const walkIns = sameCrowd(FOOD_TRUCK.walkIns.dayTypes[crowd])
+      for (const level of BUSY_LEVELS) {
+        const price = PRICE_LEVELS[level]
+        const weekday = leftLine(walkIns, 'semaine', price)
+        const weekend = leftLine(walkIns, 'finDeSemaine', price)
+        const scenario = `the ${crowd} crowd, ${level} prices`
+        expect(below(weekday, weekend), scenario).toEqual([])
+        expect(sum(weekday), scenario).toBeGreaterThan(sum(weekend))
+      }
+    }
   })
 })

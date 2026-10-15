@@ -3,6 +3,7 @@
   "segments": {
     "aubaine": {
       "name": "Chasseurs d'aubaines",
+      "patienceMinutes": 5,
       "products": {
         "cafe": {
           "referencePriceCents": 200,
@@ -23,6 +24,7 @@
     },
     "habitue": {
       "name": "Habitués",
+      "patienceMinutes": 4,
       "products": {
         "cafe": {
           "referencePriceCents": 250,
@@ -43,6 +45,7 @@
     },
     "chic": {
       "name": "Clientèle chic",
+      "patienceMinutes": 3,
       "products": {
         "cafe": {
           "referencePriceCents": 350,
