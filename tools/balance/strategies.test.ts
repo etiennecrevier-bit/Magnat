@@ -6,9 +6,11 @@ import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { cents } from '../../src/engine/money.ts'
 import {
   changedPrice,
+  formatPriceChange,
   PRICE_CHANGES,
   STRATEGIES,
   strategyChanges,
+  WEEKDAYS,
   type Strategy,
 } from './strategies.ts'
 
@@ -19,25 +21,29 @@ const BASE: Strategy = {
   croissantsPerDay: 70,
   marketingDaily: cents(0),
   daysOpen: 6,
+  ownerWeeklyPay: cents(70_000),
 }
 
 describe('STRATEGIES', () => {
-  it('holds every combination of the grid once, prices first', () => {
-    expect(STRATEGIES).toHaveLength(4 * 3 * 3 * 2)
+  it("holds every combination of the grid once, prices first, the owner's pay last", () => {
+    expect(STRATEGIES).toHaveLength(4 * 3 * 3 * 3 * 3)
     const keys = STRATEGIES.map((strategy) => JSON.stringify(strategy))
     expect(new Set(keys).size).toBe(STRATEGIES.length)
     expect(STRATEGIES[0]).toEqual({
       priceChange: -20,
       croissantsPerDay: 40,
       marketingDaily: 0,
-      daysOpen: 6,
+      daysOpen: 5,
+      ownerWeeklyPay: 40_000,
     })
-    expect(STRATEGIES[1]).toMatchObject({ priceChange: -20, daysOpen: 7 })
+    expect(STRATEGIES[1]).toMatchObject({ daysOpen: 5, ownerWeeklyPay: 70_000 })
+    expect(STRATEGIES[3]).toMatchObject({ daysOpen: 6, ownerWeeklyPay: 40_000 })
     expect(STRATEGIES.at(-1)).toEqual({
       priceChange: 40,
       croissantsPerDay: 110,
       marketingDaily: 8000,
       daysOpen: 7,
+      ownerWeeklyPay: 100_000,
     })
   })
 
@@ -45,6 +51,29 @@ describe('STRATEGIES', () => {
     expect([
       ...new Set(STRATEGIES.map(({ marketingDaily }) => marketingDaily)),
     ]).toEqual([0, 3000, 8000])
+  })
+
+  it("tries 5, 6 and 7 days open and the owner's pay of $400, $700 and $1,000 a week", () => {
+    expect([...new Set(STRATEGIES.map(({ daysOpen }) => daysOpen))]).toEqual([
+      5, 6, 7,
+    ])
+    expect([
+      ...new Set(STRATEGIES.map(({ ownerWeeklyPay }) => ownerWeeklyPay)),
+    ]).toEqual([40_000, 70_000, 100_000])
+  })
+})
+
+describe('WEEKDAYS', () => {
+  it('nests the schedules: 6 days closes on Monday, 5 on Sunday too', () => {
+    expect(WEEKDAYS).toEqual({
+      5: [2, 3, 4, 5, 6],
+      6: [2, 3, 4, 5, 6, 7],
+      7: [1, 2, 3, 4, 5, 6, 7],
+    })
+  })
+
+  it('opens 6 days as the content starts', () => {
+    expect(WEEKDAYS[6]).toEqual(FOOD_TRUCK.startingDecisions.daysOpen)
   })
 })
 
@@ -79,13 +108,14 @@ describe('changedPrice', () => {
 })
 
 describe('strategyChanges', () => {
-  it('sets the prices, the croissants, the marketing and the days open', () => {
+  it("sets the prices, the croissants, the marketing, the days open and the owner's pay", () => {
     expect(
       strategyChanges({
         priceChange: 40,
         croissantsPerDay: 110,
         marketingDaily: cents(3000),
         daysOpen: 7,
+        ownerWeeklyPay: cents(40_000),
       }),
     ).toEqual([
       { kind: 'price', product: 'cafe', price: 455 },
@@ -98,13 +128,17 @@ describe('strategyChanges', () => {
       },
       { kind: 'marketingDaily', budget: 3000 },
       { kind: 'daysOpen', weekdays: [1, 2, 3, 4, 5, 6, 7] },
+      { kind: 'ownerWeeklyPay', pay: 40_000 },
     ])
   })
 
-  it('closes on Monday when the truck opens 6 days', () => {
-    expect(strategyChanges(BASE).at(-1)).toEqual({
+  it.each([
+    [5, [2, 3, 4, 5, 6]],
+    [6, [2, 3, 4, 5, 6, 7]],
+  ] as const)('opens %i days on %j', (daysOpen, weekdays) => {
+    expect(strategyChanges({ ...BASE, daysOpen })).toContainEqual({
       kind: 'daysOpen',
-      weekdays: [2, 3, 4, 5, 6, 7],
+      weekdays,
     })
   })
 
@@ -120,7 +154,7 @@ describe('strategyChanges', () => {
           cafe: start.decisions.restock.cafe,
           chocolat: start.decisions.restock.chocolat,
         },
-        ownerWeeklyPay: start.decisions.ownerWeeklyPay,
+        ownerWeeklyPay: strategy.ownerWeeklyPay,
       })
     }
   })
@@ -132,5 +166,16 @@ describe('strategyChanges', () => {
       start,
     )
     expect(pendingDecisions).toEqual(start.decisions)
+  })
+})
+
+describe('formatPriceChange', () => {
+  it.each([
+    [-20, '-20%'],
+    [0, 'base'],
+    [20, '+20%'],
+    [40, '+40%'],
+  ])('writes %i as %s', (priceChange, text) => {
+    expect(formatPriceChange(priceChange)).toBe(text)
   })
 })

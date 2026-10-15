@@ -47,6 +47,22 @@ export interface YearSummary {
   readonly lostSales: number
 }
 
+/** The owner's side of the game, outside the books. */
+export interface OwnerSummary {
+  /**
+   * The owner's energy each morning, before the day is played: entry `n` is
+   * day `n`'s, and day 0's is the full energy a game starts with.
+   */
+  readonly morningEnergy: readonly number[]
+  /** The owner's personal cash at the end of the run. */
+  readonly personalCash: Cents
+  /**
+   * Every 1st of the month whose rent went unpaid, in order, over the whole
+   * run: the game's account keeps only the last 12 months.
+   */
+  readonly unpaidRents: readonly Day[]
+}
+
 export interface SimulationResult {
   readonly seed: number
   /** How the game started: the opening books and the truck's charges. */
@@ -60,6 +76,7 @@ export interface SimulationResult {
   readonly daySummaries: readonly DaySummary[]
   /** Every entry in the books at the end of the run. */
   readonly journal: readonly JournalEntry[]
+  readonly owner: OwnerSummary
 }
 
 /**
@@ -93,10 +110,14 @@ export function simulate(
     pendingDecisions: null,
   }
   const daySummaries: DaySummary[] = []
+  const morningEnergy: number[] = []
+  const unpaidRents: Day[] = []
   for (let day = 0; day < days; day += 1) {
+    morningEnergy.push(state.energy)
     state = tick(state)
     if (state.lastDay === null) throw new Error(`Day ${day} left no summary`)
     daySummaries.push(state.lastDay)
+    if (state.personal.unpaidRents.at(-1) === day) unpaidRents.push(day)
   }
 
   return {
@@ -107,6 +128,7 @@ export function simulate(
     years: summarizeYears(state.journal, daySummaries),
     daySummaries,
     journal: state.journal.entries,
+    owner: { morningEnergy, personalCash: state.personal.cash, unpaidRents },
   }
 }
 

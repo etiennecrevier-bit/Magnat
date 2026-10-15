@@ -3,9 +3,10 @@ import {
   type DifficultyId,
 } from '../../src/content/schema.ts'
 import { SEGMENTS } from '../../src/engine/customers.ts'
+import { ENERGY } from '../../src/engine/day.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
-import type { DaySummary, PerProduct } from '../../src/engine/types.ts'
+import type { Day, DaySummary, PerProduct } from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import type { JournalEntry } from '../../src/finance/journal.ts'
 import { simulate } from '../sim/simulate.ts'
@@ -34,6 +35,25 @@ export interface GameResult {
   readonly lowestCash: Cents
   /** Whether the cash went below zero, when the game would need the bank. */
   readonly wentBelowZero: boolean
+  /**
+   * The day of the first entry that left Encaisse below zero, or null when
+   * none did.
+   */
+  readonly firstDayBelowZero: Day | null
+  /** The owner's personal cash at the end of the game, outside the books. */
+  readonly personalCash: Cents
+  /** The 1sts of the month whose rent went unpaid. */
+  readonly unpaidRents: number
+  /** The owner's energy each morning, averaged over every day played. */
+  readonly averageEnergy: number
+  /** Mornings the owner started « Épuisé », below `exhausted.below`. */
+  readonly daysExhausted: number
+  /** Units botched at the counter and made again. */
+  readonly botched: number
+  /** Visits, every day and every segment. */
+  readonly visits: number
+  /** Visits that left the line without being served. */
+  readonly lostToLine: number
   /** Units of every product sold. */
   readonly unitsSold: number
   /** Units of every product written off at the close. */
@@ -90,15 +110,28 @@ export function playStrategy(
   const { daySummaries, years } = result
   const lastYear = years.at(-1)
   if (lastYear === undefined) throw new Error(`Seed ${seed} played no year`)
-  const lowest = lowestCash(result.journal)
+  const { morningEnergy, personalCash, unpaidRents } = result.owner
+  const firstBelow = firstDayBelowZero(result.journal)
   return {
     seed,
     cashAtEnd: lastYear.cashAtYearEnd,
     netIncome: cents(
       years.reduce((total, { netIncome }) => total + netIncome, 0),
     ),
-    lowestCash: lowest,
-    wentBelowZero: lowest < 0,
+    lowestCash: lowestCash(result.journal),
+    wentBelowZero: firstBelow !== null,
+    firstDayBelowZero: firstBelow,
+    personalCash,
+    unpaidRents: unpaidRents.length,
+    averageEnergy:
+      morningEnergy.reduce((total, energy) => total + energy, 0) /
+      morningEnergy.length,
+    daysExhausted: morningEnergy.filter(
+      (energy) => energy < ENERGY.exhausted.below,
+    ).length,
+    botched: sum(daySummaries.map(({ botched }) => botched)),
+    visits: sum(daySummaries.map(({ visits }) => visits.length)),
+    lostToLine: sum(daySummaries.map(({ leftLine }) => leftLine)),
     unitsSold: totalUnits(daySummaries.map(({ sold }) => sold)),
     unitsSpoiled: totalUnits(daySummaries.map(({ spoiled }) => spoiled)),
     lostToStockouts: totalVisits(daySummaries, 'soldOut'),
@@ -166,6 +199,28 @@ export function lowestCash(entries: readonly JournalEntry[]): Cents {
     lowest = Math.min(lowest, cash)
   }
   return cents(lowest)
+}
+
+/**
+ * The day of the first of `entries`, taken whole and in order from the first,
+ * that left Encaisse below zero; null when none did. An entry that moves
+ * cash both ways counts once, by its net, as in `lowestCash`.
+ */
+export function firstDayBelowZero(
+  entries: readonly JournalEntry[],
+): Day | null {
+  let cash = 0
+  for (const { day, lines } of entries) {
+    for (const { account, debit, credit } of lines) {
+      if (account === CASH) cash += debit - credit
+    }
+    if (cash < 0) return day
+  }
+  return null
+}
+
+function sum(values: readonly number[]): number {
+  return values.reduce((total, value) => total + value, 0)
 }
 
 function totalUnits(counts: readonly PerProduct[]): number {

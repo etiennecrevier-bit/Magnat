@@ -1,19 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { cents } from '../../src/engine/money.ts'
-import type { DifficultyRun, GameResult } from './play.ts'
+import type { BalanceRun, DifficultyRun, GameResult } from './play.ts'
 import {
   formatCount,
-  formatPriceChange,
   formatReport,
+  HAND_WRITTEN,
+  unchangedDecisions,
+  withHandWritten,
+} from './report.ts'
+import type { Strategy } from './strategies.ts'
+import {
+  compareResults,
   median,
   medianCents,
   rank,
   ranked,
   summarize,
-  unchangedDecisions,
   type StrategySummary,
-} from './report.ts'
-import type { Strategy } from './strategies.ts'
+} from './summary.ts'
 
 // Summing up a strategy's games, ranking the strategies and writing the
 // report, on hand-made games.
@@ -23,6 +27,7 @@ const BASE: Strategy = {
   croissantsPerDay: 70,
   marketingDaily: cents(0),
   daysOpen: 6,
+  ownerWeeklyPay: cents(70_000),
 }
 
 function game(seed: number, fields: Partial<GameResult> = {}): GameResult {
@@ -32,6 +37,14 @@ function game(seed: number, fields: Partial<GameResult> = {}): GameResult {
     netIncome: cents(0),
     lowestCash: cents(0),
     wentBelowZero: false,
+    firstDayBelowZero: null,
+    personalCash: cents(0),
+    unpaidRents: 0,
+    averageEnergy: 100,
+    daysExhausted: 0,
+    botched: 0,
+    visits: 0,
+    lostToLine: 0,
     unitsSold: 0,
     unitsSpoiled: 0,
     lostToStockouts: 0,
@@ -82,6 +95,12 @@ describe('summarize', () => {
       cashAtEnd: cents(1000),
       netIncome: cents(100),
       lowestCash: cents(500),
+      personalCash: cents(-200),
+      unpaidRents: 2,
+      averageEnergy: 80,
+      daysExhausted: 0,
+      botched: 3,
+      lostToLine: 40,
       unitsSold: 90,
       unitsSpoiled: 10,
       lostToStockouts: 5,
@@ -92,6 +111,13 @@ describe('summarize', () => {
       netIncome: cents(-50),
       lowestCash: cents(-800),
       wentBelowZero: true,
+      firstDayBelowZero: 31,
+      personalCash: cents(5000),
+      unpaidRents: 0,
+      averageEnergy: 20.5,
+      daysExhausted: 200,
+      botched: 90,
+      lostToLine: 10,
       unitsSold: 50,
       unitsSpoiled: 50,
       lostToStockouts: 2,
@@ -101,6 +127,12 @@ describe('summarize', () => {
     game(3, {
       cashAtEnd: cents(401),
       lowestCash: cents(200),
+      personalCash: cents(99),
+      unpaidRents: 1,
+      averageEnergy: 50,
+      daysExhausted: 7,
+      botched: 1,
+      lostToLine: 25,
       lostToStockouts: 9,
       lostToPrices: 1,
     }),
@@ -111,14 +143,22 @@ describe('summarize', () => {
       strategy: BASE,
       index: 4,
       games: 3,
+      // Each game's cash and personal cash together: 800, 4,700 and 500.
+      medianWealth: 800,
       medianCashAtEnd: 401,
       worstCashAtEnd: -300,
       medianNetIncome: 0,
+      medianPersonalCash: 99,
+      medianUnpaidRents: 1,
       lowestCash: -800,
       gamesBelowZero: 1,
+      medianAverageEnergy: 50,
+      medianDaysExhausted: 7,
+      medianBotched: 3,
       medianSpoilageRate: 0.1,
       medianLostToStockouts: 5,
       medianLostToPrices: 7,
+      medianLostToLine: 25,
     })
   })
 
@@ -130,6 +170,10 @@ describe('summarize', () => {
         game(4, {
           cashAtEnd: cents(2000),
           netIncome: cents(51),
+          personalCash: cents(0),
+          unpaidRents: 4,
+          averageEnergy: 60,
+          lostToLine: 30,
           unitsSold: 25,
           unitsSpoiled: 75,
           lostToStockouts: 4,
@@ -140,8 +184,13 @@ describe('summarize', () => {
     )
     expect(summary).toMatchObject({
       games: 4,
+      medianWealth: 1400,
       medianCashAtEnd: 701,
       medianNetIncome: 26,
+      medianPersonalCash: 50,
+      medianUnpaidRents: 1.5,
+      medianAverageEnergy: 55,
+      medianLostToLine: 27.5,
       medianLostToStockouts: 4.5,
       medianLostToPrices: 4.5,
     })
@@ -156,26 +205,56 @@ describe('summarize', () => {
 describe('rank', () => {
   function summary(
     index: number,
-    medianCashAtEnd: number,
+    medianWealth: number,
+    medianUnpaidRents: number,
     medianNetIncome: number,
   ): StrategySummary {
     return {
       ...summarize(BASE, [game(1)], index),
-      medianCashAtEnd: cents(medianCashAtEnd),
+      medianWealth: cents(medianWealth),
+      medianUnpaidRents,
       medianNetIncome: cents(medianNetIncome),
     }
   }
 
-  it('puts the most cash first, then the most net income, then the run order', () => {
+  it('puts the most wealth first, then the fewest unpaid rents, then the most net income, then the run order', () => {
     const summaries = [
-      summary(0, 100, 5),
-      summary(1, 300, -10),
-      summary(2, 100, 7),
-      summary(3, 100, 5),
-      summary(4, -50, 1000),
+      summary(0, 100, 0, 5),
+      summary(1, 300, 9, -10),
+      summary(2, 100, 0, 7),
+      summary(3, 100, 0, 5),
+      summary(4, -50, 0, 1000),
+      summary(5, 100, 1, 900),
     ]
-    expect(rank(summaries).map(({ index }) => index)).toEqual([1, 2, 0, 3, 4])
-    expect(summaries.map(({ index }) => index)).toEqual([0, 1, 2, 3, 4])
+    expect(rank(summaries).map(({ index }) => index)).toEqual([
+      1, 2, 0, 3, 5, 4,
+    ])
+    expect(summaries.map(({ index }) => index)).toEqual([0, 1, 2, 3, 4, 5])
+  })
+
+  it('ranks by the wealth, not by the cash the pay leaves in the business', () => {
+    const run: DifficultyRun = {
+      difficulty: 'moyen',
+      strategies: [
+        {
+          strategy: { ...BASE, ownerWeeklyPay: cents(40_000) },
+          games: [
+            game(1, {
+              cashAtEnd: cents(9000),
+              personalCash: cents(-1000),
+              unpaidRents: 3,
+            }),
+          ],
+        },
+        {
+          strategy: BASE,
+          games: [
+            game(1, { cashAtEnd: cents(6000), personalCash: cents(2000) }),
+          ],
+        },
+      ],
+    }
+    expect(ranked(run).map(({ index }) => index)).toEqual([1, 0])
   })
 
   it('numbers the ranks of a run from 1', () => {
@@ -195,6 +274,24 @@ describe('rank', () => {
       [1, 1, { ...BASE, daysOpen: 7 }],
       [2, 0, BASE],
     ])
+  })
+})
+
+describe('compareResults', () => {
+  const summary = (fields: Partial<StrategySummary>, index = 0) => ({
+    ...summarize(BASE, [game(1)], index),
+    ...fields,
+  })
+
+  it('is 0 for a tie on what was played, whatever the run order', () => {
+    expect(compareResults(summary({}, 0), summary({}, 5))).toBe(0)
+  })
+
+  it('is below 0 when the first does better, above when it does worse', () => {
+    const richer = summary({ medianWealth: cents(10) })
+    const poorer = summary({ medianWealth: cents(5) })
+    expect(compareResults(richer, poorer)).toBeLessThan(0)
+    expect(compareResults(poorer, richer)).toBeGreaterThan(0)
   })
 })
 
@@ -246,17 +343,6 @@ describe('unchangedDecisions', () => {
   })
 })
 
-describe('formatPriceChange', () => {
-  it.each([
-    [-20, '-20%'],
-    [0, 'base'],
-    [20, '+20%'],
-    [40, '+40%'],
-  ])('writes %i as %s', (priceChange, text) => {
-    expect(formatPriceChange(priceChange)).toBe(text)
-  })
-})
-
 describe('formatCount', () => {
   it.each([
     [0, '0'],
@@ -275,6 +361,7 @@ describe('formatReport', () => {
     croissantsPerDay: 110,
     marketingDaily: cents(3000),
     daysOpen: 7,
+    ownerWeeklyPay: cents(70_000),
   }
   const winning = [
     game(1, {
@@ -282,6 +369,14 @@ describe('formatReport', () => {
       netIncome: cents(10_000),
       lowestCash: cents(-5),
       wentBelowZero: true,
+      firstDayBelowZero: 3,
+      personalCash: cents(50_000),
+      unpaidRents: 0,
+      averageEnergy: 61.25,
+      daysExhausted: 10,
+      botched: 40,
+      visits: 30_000,
+      lostToLine: 300,
       unitsSold: 900,
       unitsSpoiled: 100,
       lostToStockouts: 3,
@@ -292,6 +387,13 @@ describe('formatReport', () => {
       cashAtEnd: cents(100_001),
       netIncome: cents(20_001),
       lowestCash: cents(50),
+      personalCash: cents(49_999),
+      unpaidRents: 1,
+      averageEnergy: 70,
+      daysExhausted: 12,
+      botched: 45,
+      visits: 31_000,
+      lostToLine: 351,
       unitsSold: 800,
       unitsSpoiled: 200,
       lostToStockouts: 4,
@@ -305,10 +407,13 @@ describe('formatReport', () => {
       netIncome: cents(-1_000_000),
       lowestCash: cents(-2_500_000),
       wentBelowZero: true,
+      firstDayBelowZero: 0,
+      personalCash: cents(-100_000),
+      unpaidRents: 12,
       journalHash: `b${seed}`,
     }),
   )
-  const report = formatReport({
+  const run: BalanceRun = {
     years: 1,
     games: 2,
     difficulties: [
@@ -322,6 +427,7 @@ describe('formatReport', () => {
               croissantsPerDay: 40,
               marketingDaily: cents(0),
               daysOpen: 6,
+              ownerWeeklyPay: cents(40_000),
             },
             games: losing,
           },
@@ -333,25 +439,25 @@ describe('formatReport', () => {
         ],
       },
     ],
-  })
+  }
+  const report = formatReport(run)
   const lines = report.split('\n')
 
   const HEADER =
-    '| # | Prices | Croissants/day | Marketing/day | Days open | Median cash at end | Worst cash at end | Median net income | Lowest cash | Below zero | Spoilage | Lost to stockouts | Lost to prices |'
-  const ALIGN =
-    '| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |'
+    '| # | Prices | Croissants/day | Marketing/day | Days open | Pay/week | Median wealth at end | Median cash at end | Worst cash at end | Median net income | Personal cash at end | Unpaid rents | Lowest cash | Below zero | Average energy | Days exhausted | Botched | Spoilage | Lost to stockouts | Lost to prices | Lost to the line |'
+  const ALIGN = `| ---: | --- |${' ---: |'.repeat(19)}`
   const FIRST =
-    '| 1 | +20% | 110 | $30.00 | 7 | $1,117.29 | $1,000.01 | $150.01 | -$0.05 | 50% | 15.0% | 3.5 | 1,250.5 |'
+    '| 1 | +20% | 110 | $30.00 | 7 | $700.00 | $1,617.28 | $1,117.29 | $1,000.01 | $150.01 | $500.00 | 0.5 | -$0.05 | 50% | 65.6 | 11 | 42.5 | 15.0% | 3.5 | 1,250.5 | 325.5 |'
   const SECOND =
-    '| 2 | +20% | 110 | $0.00 | 7 | $1,117.29 | $1,000.01 | $150.01 | -$0.05 | 50% | 15.0% | 3.5 | 1,250.5 |'
+    '| 2 | +20% | 110 | $0.00 | 7 | $700.00 | $1,617.28 | $1,117.29 | $1,000.01 | $150.01 | $500.00 | 0.5 | -$0.05 | 50% | 65.6 | 11 | 42.5 | 15.0% | 3.5 | 1,250.5 | 325.5 |'
   const LAST =
-    '| 3 | -20% | 40 | $0.00 | 6 | -$20,000.00 | -$20,000.00 | -$10,000.00 | -$25,000.00 | 100% | 0.0% | 0 | 0 |'
+    '| 3 | -20% | 40 | $0.00 | 6 | $400.00 | -$21,000.00 | -$20,000.00 | -$20,000.00 | -$10,000.00 | -$1,000.00 | 12 | -$25,000.00 | 100% | 100.0 | 0 | 0 | 0.0% | 0 | 0 | 0 |'
 
   it('opens with the command that wrote it and what each game plays', () => {
     expect(lines.slice(0, 3)).toEqual([
       '# Balance report: phase 2',
       '',
-      'Generated by `npm run balance -- --years 1 --games 2`: do not edit by hand. The numbers go stale whenever the engine or the content changes; run the command again then.',
+      'Generated by `npm run balance -- --years 1 --games 2`: do not edit by hand, except under the comment at the end that says so. The numbers go stale whenever the engine or the content changes; run the command again then.',
     ])
     expect(lines).toContain(
       'Each game starts at one difficulty on one of seeds 1 to 2 and plays 365 days from May 1st, year 1, with one strategy in effect from day 0. A strategy sets:',
@@ -360,11 +466,45 @@ describe('formatReport', () => {
       '- every price at -20%, base, +20%, +40% from the starting prices (Café $3.25, Chocolat chaud $3.50, Croissant $3.75), rounded half up to the price step;',
     )
     expect(lines).toContain(
-      'Café and chocolat chaud keep their starting restock rules and the owner keeps the starting pay of $700.00 a week. Each difficulty plays 3 strategies × 2 games.',
+      '- the days open, a week: 5, 6, 7, where 6 closes on Monday and 5 on Sunday and Monday;',
     )
     expect(lines).toContain(
-      '- Customers lost to the line are not counted: the game has no line until #62 (P2-03).',
+      "- the owner's pay, a week: $400.00, $700.00, $1,000.00.",
     )
+    expect(lines).toContain(
+      'Café and chocolat chaud keep their starting restock rules. Each difficulty plays 3 strategies × 2 games.',
+    )
+    expect(lines).toContain(
+      '- **#**: the rank by median wealth at the end, highest first; ties go to the fewer median unpaid rents, then to the higher median net income, then to the strategy listed first in the grid.',
+    )
+    expect(report).not.toContain('#62')
+  })
+
+  it('checks the design targets of a one-year run, before the tables', () => {
+    const start = lines.indexOf('## Design targets')
+    const end = lines.indexOf('## Best and worst')
+    expect(start).toBeGreaterThan(lines.indexOf('## Columns'))
+    expect(end).toBeGreaterThan(start)
+    const section = lines.slice(start, end)
+    expect(section.slice(4, 6)).toEqual(['| Target | Moyen |', '| --- | --- |'])
+    const rows = section.slice(6, -1)
+    expect(rows).toHaveLength(8)
+    expect(section.at(-1)).toBe('')
+    // Moyen's net income target, the default decisions' (Facile only) and
+    // the price target, as the run plays them.
+    expect(rows[0]).toMatch(
+      /^\| The best strategy's net income .* \| ✗ \$150\.01 \|$/,
+    )
+    expect(rows[2]).toMatch(/ \| n\/a \|$/)
+    expect(rows[3]).toMatch(
+      / \| ✓ best at \+20%: #1; best at -20% or \+40%: #3 \|$/,
+    )
+  })
+
+  it('checks no design target over more than one year', () => {
+    const twoYears = formatReport({ ...run, years: 2 })
+    expect(twoYears).not.toContain('## Design targets')
+    expect(twoYears).toContain('plays 730 days')
   })
 
   it('lists the best and the worst first, then every strategy', () => {
@@ -419,5 +559,48 @@ describe('formatReport', () => {
       'Each game starts at one difficulty on seed 1 and plays 730 days',
     )
     expect(single).toContain('### Facile')
+  })
+})
+
+describe('withHandWritten', () => {
+  const report = '# Report\n\nNew numbers.\n'
+
+  it('keeps everything from the hand-written line on, after a blank line', () => {
+    const previous = [
+      '# Report',
+      '',
+      'Old numbers.',
+      '',
+      HAND_WRITTEN,
+      '',
+      '## Before and after',
+      '',
+      'Written by hand.',
+      '',
+    ].join('\n')
+    expect(withHandWritten(previous, report)).toBe(
+      [
+        '# Report',
+        '',
+        'New numbers.',
+        '',
+        HAND_WRITTEN,
+        '',
+        '## Before and after',
+        '',
+        'Written by hand.',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('gives the report alone with no hand-written line or no file', () => {
+    expect(withHandWritten('# Report\n\nOld numbers.\n', report)).toBe(report)
+    expect(withHandWritten(null, report)).toBe(report)
+  })
+
+  it('writes the same file again when nothing changed', () => {
+    const once = withHandWritten(`old\n${HAND_WRITTEN}\nmine\n`, report)
+    expect(withHandWritten(once, report)).toBe(once)
   })
 })
