@@ -8,6 +8,37 @@ type Json = Record<string, unknown>
 
 const KINDS = eventEffectSchema.options.map((option) => option.shape.kind.value)
 
+/** The cards of issue #93, in its order. */
+const CARDS = [
+  'grosseCommande',
+  'chequeDansLaMalle',
+  'conesOrange',
+  'machineTousse',
+  'critique',
+  'influenceuse',
+  'concurrence',
+  'formulaire14B',
+  'chalet',
+  'canicule',
+  'festival',
+  'premierJuillet',
+]
+
+/** The portraits of issue #95, one per character but the silhouette. */
+const PORTRAITS = [
+  'gillesLacasse',
+  'rejeanLalonde',
+  'bertrand',
+  'solangeBeaulieuFortin',
+  'coralieLumiere',
+  'sylvain',
+  'liseTremblayCote',
+  'martine',
+  'normand',
+  'jeanPhilippe',
+  'meteorologue',
+]
+
 /** A copy of the shipped file to break, as plain JSON. */
 function shipped(): Json {
   return JSON.parse(JSON.stringify(eventsJson)) as Json
@@ -88,6 +119,58 @@ describe('events.json', () => {
   it('holds the essai card, which never comes up in a real game', () => {
     const essai = content.events.find(({ id }) => id === 'essai')
     expect(essai?.weight).toBe(0)
+  })
+
+  it('holds the essai card, then the twelve cards of issue #93 in order', () => {
+    expect(content.events.map(({ id }) => id)).toEqual(['essai', ...CARDS])
+  })
+
+  it('may draw every card but essai, unless it only comes as a follow-up', () => {
+    for (const { id, weight, conditions } of content.events.slice(1)) {
+      if (conditions?.followUpOnly !== true)
+        expect(weight, id).toBeGreaterThan(0)
+    }
+  })
+
+  it('brings each follow-up-only card as the follow-up of another, and only those', () => {
+    const followUps = new Set(
+      content.events.flatMap(({ choices }) =>
+        choices.flatMap(({ outcomes }) =>
+          outcomes.flatMap(({ effects }) =>
+            effects.flatMap((effect) =>
+              effect.kind === 'followUp' && effect.event !== 'essai'
+                ? [effect.event]
+                : [],
+            ),
+          ),
+        ),
+      ),
+    )
+    const followUpOnly = content.events
+      .filter(({ conditions }) => conditions?.followUpOnly === true)
+      .map(({ id }) => id)
+    expect([...followUps]).toEqual(followUpOnly)
+  })
+
+  it('tags a choice « Risqué » exactly when it leaves something to chance', () => {
+    for (const { id, choices } of content.events) {
+      for (const { id: choice, tags, outcomes } of choices) {
+        const effects = outcomes.flatMap(({ effects: list }) => list)
+        const leftToChance =
+          outcomes.length > 1 ||
+          effects.some(
+            (effect) => effect.kind === 'followUp' && effect.chance < 1,
+          )
+        expect(tags.includes('Risqué'), `${id}, ${choice}`).toBe(leftToChance)
+      }
+    }
+  })
+
+  it('names the characters by the ids of their portraits in issue #95', () => {
+    const characters = new Set(
+      content.events.slice(1).map(({ character }) => character.id),
+    )
+    expect([...characters].sort()).toEqual([...PORTRAITS].sort())
   })
 
   it('tries every kind of effect, both timings and an outcome left to chance on the essai card', () => {

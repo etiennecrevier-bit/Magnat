@@ -237,12 +237,14 @@ describe('advance', () => {
   })
 })
 
-// The essai card on every morning from day 0: the shipped pacing and weight
-// keep it out of a real game.
+// The essai card alone on every morning from day 0: the shipped pacing and
+// weight keep it out of a real game.
 const ESSAI_EVERY_DAY = loadEventContent({
   ...eventsJson,
   pacing: { firstDay: 0, minDaysBetween: 0, dailyChance: 1 },
-  events: eventsJson.events.map((event) => ({ ...event, weight: 1 })),
+  events: eventsJson.events
+    .filter(({ id }) => id === 'essai')
+    .map((event) => ({ ...event, weight: 1 })),
 })
 
 function tickWithEssai(state: GameState): GameState {
@@ -409,13 +411,16 @@ describe('the event card', () => {
     expect(store.getState()).toMatchObject({ panel: null, speed: 10 })
   })
 
-  it('never comes up with the shipped events, whose only card never draws', () => {
+  it('stops the days on the morning a shipped card comes up, never before the first day', () => {
     const store = createGameStore(createInitialState(1))
     store.getState().advance(60)
-    expect(store.getState()).toMatchObject({
-      game: { day: 60, events: { pending: null, history: [] } },
-      panel: null,
-    })
+    const { game, panel, speed } = store.getState()
+    expect(game.events.pending).not.toBeNull()
+    expect(game.events.history).toEqual([])
+    expect(game.day).toBeGreaterThanOrEqual(EVENTS.pacing.firstDay)
+    expect(game.day).toBeLessThan(60)
+    expect(panel).toBe('event')
+    expect(speed).toBe(PAUSED)
   })
 })
 

@@ -1,8 +1,7 @@
 import { z } from 'zod'
 
-// The La Presse-Citron headlines, from src/content/headlines.fr.json, which
-// P3-05 (#93) adds with the event cards. Until it does, the glob finds no
-// file and the ticker stays hidden. The file holds:
+// The La Presse-Citron headlines, from src/content/headlines.fr.json. Without
+// the file, the glob finds none and the ticker stays hidden. The file holds:
 // - `events`: the text of each headline an event's `headline` effect
 //   queues, by the headline's id;
 // - `general`: the headlines the ticker cycles through, at least one;

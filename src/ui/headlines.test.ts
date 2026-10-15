@@ -27,7 +27,7 @@ describe('readHeadlines', () => {
   })
 })
 
-// The file comes with P3-05 (#93); until then the ticker stays hidden.
+// The shipped file, or the hidden ticker without one.
 describe.skipIf(HEADLINES_FILE === undefined)('the shipped headlines', () => {
   it('give a text to every headline an event queues', () => {
     const ids = EVENTS.events.flatMap(({ choices }) =>

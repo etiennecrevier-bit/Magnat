@@ -1,0 +1,33 @@
+{
+  "_note": "The La Presse-Citron ticker (src/ui/headlines.ts). events: the text of each headline an event's headline effect queues, by its id. general: the everyday headlines the ticker cycles through. Parody institutions, real places, never mean about a group of people.",
+  "events": {
+    "essai": "Une carte d'essai fait la une. Si vous lisez ceci, quelque chose cloche.",
+    "critiqueEmballee": "Notre critique a goûté le meilleur croissant de la rue. Elle en a mangé six pour en être sûre.",
+    "critiqueTiede": "Camions de rue : des croissants « honnêtes », selon notre critique.",
+    "critiqueNeutre": "Notre critique a mangé dans un camion de rue. Elle a payé. C'est tout.",
+    "critiqueAcide": "Notre critique a payé son croissant au sou près. Elle le regrette encore.",
+    "festivalPasPire": "Le Festival du Pas Pire envahit la rue en fin de semaine. Les organisateurs : « Ça va être pas pire. »"
+  },
+  "general": [
+    "La Ville exige un 14e formulaire pour vendre des croissants sur roues.",
+    "Le Bureau des permis et des formulaires lance un formulaire pour demander un formulaire.",
+    "Rue Saint-Denis : les cônes orange fêtent leur troisième anniversaire.",
+    "Le Congrès québécois des optimistes prévoit une excellente année. Comme l'an dernier.",
+    "Météo : il fera beau, sauf s'il pleut, prévient La Presse-Citron.",
+    "Le prix du beurre grimpe. Les croissants demandent une augmentation.",
+    "Nids-de-poule : la Ville songe à leur donner des noms pour mieux les suivre.",
+    "Un écureuil du parc La Fontaine vole un croissant entier. La police n'a aucune piste.",
+    "Un comptable rappelle que le profit et l'encaisse, ce n'est pas la même chose. Personne ne l'écoute.",
+    "Le Plateau compte désormais plus de camions de rue que de places de stationnement.",
+    "1er juillet : les divans du Plateau réclament un congé férié à eux.",
+    "La Presse-Citron lance sa section économie. Elle tient sur un reçu de caisse.",
+    "Le Festival du Pas Pire promet une édition « encore moins pire » cette année.",
+    "La Banque Prudente promet des frais plus simples. L'explication coûtera 2,50 $.",
+    "Marché Jean-Talon : la tomate de l'année est élue. La courgette conteste le résultat.",
+    "Un camion à poutine et un camion à croissants signent un traité de paix. Le café reste neutre.",
+    "La Ville installe un parcomètre devant un autre parcomètre.",
+    "Un client paie comptant. Le camion à côté demande à voir le billet de près.",
+    "Mont Royal : un randonneur atteint le sommet et regrette de ne pas avoir apporté de croissant.",
+    "Vieux-Port : un congrès sur la patience commencera quand tout le monde sera arrivé."
+  ]
+}
