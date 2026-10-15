@@ -174,6 +174,15 @@ describe('worldOptions', () => {
       resolution: 2,
       autoDensity: true,
       antialias: true,
+      useBackBuffer: false,
     })
+  })
+
+  it('starts WebGL without its back buffer, so its canvas antialiases', () => {
+    // Pixi antialiases the WebGL canvas only without the back buffer; the
+    // street turns that on for the full visual effects, which blend with it.
+    const options = worldOptions({ devicePixelRatio: 1 } as Window)
+    expect(options.antialias).toBe(true)
+    expect(options.useBackBuffer).toBe(false)
   })
 })

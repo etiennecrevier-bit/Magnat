@@ -1,33 +1,90 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { useStore } from 'zustand'
 import type { Avatar, DifficultyId } from '../content/schema.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
 import { formatGameDate } from './formatGameDate.ts'
 import { DIFFICULTIES, difficultyLine, readBusinessName } from './newGame.ts'
 import { browserStorage, readStoredSave, type StoredSave } from './saves.ts'
+import {
+  settingsStore,
+  VISUAL_EFFECTS,
+  type SettingsStore,
+  type VisualEffects,
+} from './settings.ts'
 import { createSaveImports, startMenuActions } from './startMenu.ts'
 import { newGame } from './store.ts'
 import './StartScreen.css'
 
 const AVATARS: Record<Avatar, string> = { femme: 'Femme', homme: 'Homme' }
 
+const EFFECTS: Record<VisualEffects, string> = {
+  full: 'Complets',
+  simple: 'Simples',
+}
+
+interface VisualEffectsFieldProps {
+  visualEffects: VisualEffects
+  onChange: (visualEffects: VisualEffects) => void
+}
+
+/**
+ * The « Effets visuels » setting: complets, or simples for slower
+ * computers. The world behind the menu shows the change at once.
+ */
+export function VisualEffectsField({
+  visualEffects,
+  onChange,
+}: VisualEffectsFieldProps) {
+  return (
+    <fieldset className="start-screen__setting">
+      <legend>Effets visuels</legend>
+      <div className="start-screen__options">
+        {VISUAL_EFFECTS.map((option) => (
+          <label key={option} className="start-screen__option">
+            <input
+              type="radio"
+              name="visualEffects"
+              value={option}
+              checked={option === visualEffects}
+              onChange={() => onChange(option)}
+            />
+            {EFFECTS[option]}
+          </label>
+        ))}
+      </div>
+      <p className="start-screen__hint">
+        Les effets simples allègent la rue pour les ordinateurs plus lents.
+      </p>
+    </fieldset>
+  )
+}
+
 interface StartMenuViewProps {
   /** What the browser holds: « Continuer » shows only for a game it loads. */
   stored: StoredSave
   /** Why the last imported file was rejected, if it was. */
   importError: string | null
+  /** The visual effects the player picked, kept in this browser. */
+  visualEffects: VisualEffects
   onContinue: () => void
   onNewGame: () => void
   onImport: (file: File) => void
+  onVisualEffectsChange: (visualEffects: VisualEffects) => void
 }
 
-/** The first screen: continue the saved game, start one, or import one. */
+/**
+ * The first screen: continue the saved game, start one, or import one;
+ * and the visual effects.
+ */
 export function StartMenuView({
   stored,
   importError,
+  visualEffects,
   onContinue,
   onNewGame,
   onImport,
+  onVisualEffectsChange,
 }: StartMenuViewProps) {
   const headingId = useId()
   const savedId = useId()
@@ -98,6 +155,10 @@ export function StartMenuView({
           {importError}
         </p>
       )}
+      <VisualEffectsField
+        visualEffects={visualEffects}
+        onChange={onVisualEffectsChange}
+      />
     </section>
   )
 }
@@ -223,13 +284,16 @@ export function NewGameFormView({
 }
 
 /**
- * The start screen wired to the browser's saves: the menu, then the new
- * game form. `onStart` gets the game to play, new, continued or imported.
+ * The start screen wired to the browser's saves and `settings`: the menu,
+ * then the new game form. `onStart` gets the game to play, new, continued
+ * or imported.
  */
 export default function StartScreen({
   onStart,
+  settings = settingsStore,
 }: {
   onStart: (game: GameState) => void
+  settings?: SettingsStore
 }) {
   const [stored] = useState(() => readStoredSave(browserStorage()))
   const [imports] = useState(() => createSaveImports())
@@ -239,6 +303,8 @@ export default function StartScreen({
   const [difficulty, setDifficulty] = useState(defaults.difficulty)
   const [businessName, setBusinessName] = useState(defaults.businessName)
   const [avatar, setAvatar] = useState(defaults.avatar)
+  const visualEffects = useStore(settings, (state) => state.visualEffects)
+  const setVisualEffects = useStore(settings, (state) => state.setVisualEffects)
   const actions = startMenuActions({
     stored,
     imports,
@@ -281,9 +347,11 @@ export default function StartScreen({
       <StartMenuView
         stored={stored}
         importError={importError}
+        visualEffects={visualEffects}
         onContinue={actions.continueGame}
         onNewGame={actions.newGame}
         onImport={(file) => void actions.importFile(file)}
+        onVisualEffectsChange={setVisualEffects}
       />
     </main>
   )

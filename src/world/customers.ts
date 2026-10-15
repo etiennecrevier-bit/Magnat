@@ -1,5 +1,4 @@
 import { Container, Graphics, Text } from 'pixi.js'
-import type { AssetManifest } from '../content/assets.ts'
 import type { CustomerLines } from '../content/lines.ts'
 import type { Avatar, EnergyContent, WalkIns } from '../content/schema.ts'
 import { fatigueOf, type Fatigue } from '../engine/energy.ts'
@@ -23,26 +22,34 @@ import {
 } from './fatigue.ts'
 import { TITLE_FONT, TITLE_FONT_FAMILY } from './fonts.ts'
 import {
+  CHILD_OFFSET,
   drawAvatar,
   drawBubble,
   drawCustomer,
   drawPickMark,
   drawSpill,
   pickLook,
+  type Look,
 } from './people.ts'
-import type { PlaceholderStyle } from './placeholders.ts'
+import type { DrawStyle } from './placeholders.ts'
 import {
   createDayClock,
   createSampler,
   replayOf,
   type Replay,
 } from './replay.ts'
+import type { Shadows } from './shadows.ts'
 import { opensToday } from './truckView.ts'
 
 /** The customers on the street, the avatar who serves them and the tally. */
 export interface Customers {
-  /** The customers and the tally, to add above the street's layers. */
+  /** The customers, to add above the street's layers. */
   readonly root: Container
+  /**
+   * The tally, which shows numbers: to add over the textures drawn over the
+   * world, with the street's transform.
+   */
+  readonly labels: Container
   /** Follows the game the store holds. */
   onGame: (game: GameState) => void
   /**
@@ -81,7 +88,10 @@ export interface Picked {
 export interface CustomersSetup {
   /** The street's root, holding `layer:truck` and its `counter`. */
   readonly street: Container
-  readonly manifest: AssetManifest
+  /** What the street is drawn with. */
+  readonly style: DrawStyle
+  /** The shadows on the ground, where each customer adds theirs. */
+  readonly shadows: Shadows
   readonly crowd: CrowdSettings
   /** The opening hours yesterday's arrival minutes count from. */
   readonly walkIns: WalkIns
@@ -114,18 +124,15 @@ export interface CustomersSetup {
  * card closes once they walk off the screen or the street clears.
  */
 export function startCustomers(setup: CustomersSetup): Customers {
-  const { street, manifest, crowd: settings, random } = setup
-  const style: PlaceholderStyle = {
-    palette: manifest.palette,
-    outline: manifest.outlineWidth,
-  }
+  const { street, style, shadows, crowd: settings, random } = setup
   const root = new Container({ label: 'customers', sortableChildren: true })
+  const labels = new Container({ label: 'labels' })
   const crowd = createCrowd(settings, random)
   const clock = createDayClock(setup.msPerDay)
   const sampler = createSampler(setup.walkIns, settings.speeds, random)
   const tally = drawTally(settings.tally, style)
   tally.root.visible = false
-  root.addChild(tally.root)
+  labels.addChild(tally.root)
 
   const truckLayer = street.getChildByLabel('layer:truck')
   const counter = truckLayer?.getChildByLabel('counter') ?? null
@@ -203,6 +210,15 @@ export function startCustomers(setup: CustomersSetup): Customers {
       view.root.position.set(c.x, c.y - bobOf(c.walked, settings.bob))
       view.root.zIndex = c.y
       view.figure.scale.x = c.facing
+      view.facesRight.visible = c.facing === 1
+      view.facesLeft.visible = c.facing === -1
+      // The shadows stay on the ground as the customer steps, each under
+      // its own feet: a child's are on the side the customer faces away from.
+      for (const { at, cast, contact } of view.shadows) {
+        const x = c.x + at * c.facing
+        cast.position.set(x, c.y)
+        contact.position.set(x, c.y)
+      }
       view.bubble.visible = c.bubble
       const offScreen = c.x < span.left || c.x > span.right
       if (c.id === pickedId && c.phase === 'leaving' && offScreen) pick(null)
@@ -210,13 +226,14 @@ export function startCustomers(setup: CustomersSetup): Customers {
     for (const [id, view] of views) {
       if (present.has(id)) continue
       if (id === pickedId) pick(null)
-      view.root.destroy({ children: true })
+      destroyView(view)
       views.delete(id)
     }
   }
 
   return {
     root,
+    labels,
     onGame: (game) => {
       open = opensToday(game)
       fatigue = fatigueOf(game.energy, setup.energy)
@@ -271,10 +288,12 @@ export function startCustomers(setup: CustomersSetup): Customers {
           random,
         )
         const view = createCustomerView(
-          drawCustomer(look, style, settings.looks),
+          look,
+          style,
+          settings.looks,
+          shadows,
           drawBubble(c.mood, style),
           drawPickMark(look.height, style),
-          look.height,
         )
         views.set(c.id, view)
         root.addChild(view.root)
@@ -316,8 +335,10 @@ export function startCustomers(setup: CustomersSetup): Customers {
       avatar = null
       spill.destroy()
       pickedId = null
+      for (const view of views.values()) destroyView(view)
       views.clear()
       root.destroy({ children: true })
+      labels.destroy({ children: true })
     },
   }
 }
@@ -326,28 +347,90 @@ interface CustomerView {
   readonly root: Container
   /** The person, turned to face where they walk. */
   readonly figure: Container
+  /**
+   * The person drawn to face right and to face left, mirrored by the
+   * figure, each lit from the screen's left: only one shows.
+   */
+  readonly facesRight: Container
+  readonly facesLeft: Container
   readonly bubble: Container
   /** The ring at their feet while their card is open. */
   readonly mark: Container
+  /**
+   * The shadows on the ground of the customer and of the child they come
+   * with, `at` that far right of their feet as they face right.
+   */
+  readonly shadows: readonly {
+    readonly at: number
+    readonly cast: Container
+    readonly contact: Container
+  }[]
   /** Their card, from the first time the player picks them. */
   card: CustomerCard | null
 }
 
+/** How wide a person's shadows are, as shares of their height. */
+const BODY_WIDTH = 0.26
+const FEET_WIDTH = 0.34
+
 function createCustomerView(
-  figure: Container,
+  look: Look,
+  style: DrawStyle,
+  looks: CrowdSettings['looks'],
+  shadows: Shadows,
   bubble: Container,
   mark: Container,
-  height: number,
 ): CustomerView {
-  figure.label = 'figure'
-  bubble.y = -height - 6
+  const facesRight = drawCustomer(look, style, looks, 1)
+  const facesLeft = drawCustomer(look, style, looks, -1)
+  facesRight.label = 'facesRight'
+  facesLeft.label = 'facesLeft'
+  facesLeft.visible = false
+  const figure = new Container({
+    label: 'figure',
+    children: [facesRight, facesLeft],
+  })
+  bubble.y = -look.height - 6
   bubble.visible = false
   mark.visible = false
   const root = new Container({
     label: 'customer',
     children: [mark, figure, bubble],
   })
-  return { root, figure, bubble, mark, card: null }
+  const people = [{ at: 0, height: look.height }]
+  if (look.child !== null) {
+    people.push({ at: -look.height * CHILD_OFFSET, height: look.child.height })
+  }
+  const grounded = people.map(({ at, height }) => ({
+    at,
+    cast: shadows.castBody('customer', 0, 0, height * BODY_WIDTH, height),
+    contact: shadows.contactShadow(
+      'customer',
+      0,
+      0,
+      height * FEET_WIDTH,
+      'person',
+    ),
+  }))
+  return {
+    root,
+    figure,
+    facesRight,
+    facesLeft,
+    bubble,
+    mark,
+    shadows: grounded,
+    card: null,
+  }
+}
+
+/** Takes a customer off the street, with their shadows. */
+function destroyView(view: CustomerView): void {
+  view.root.destroy({ children: true })
+  for (const { cast, contact } of view.shadows) {
+    cast.destroy()
+    contact.destroy()
+  }
 }
 
 /** Whether the owner botched a unit for `customer`. */
@@ -367,7 +450,7 @@ function boxOf(node: Container): Box {
  */
 function startAvatar(
   kind: Avatar,
-  style: PlaceholderStyle,
+  style: DrawStyle,
   settings: CrowdSettings,
   random: () => number,
 ) {
@@ -447,10 +530,7 @@ interface Tally {
 }
 
 /** The badge that counts the day's customers served and lost. */
-function drawTally(
-  settings: CrowdSettings['tally'],
-  style: PlaceholderStyle,
-): Tally {
+function drawTally(settings: CrowdSettings['tally'], style: DrawStyle): Tally {
   const { x, y, width, height, fontSize } = settings
   const { palette } = style
   const badge = new Container({ label: 'tally', x, y })

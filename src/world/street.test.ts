@@ -1,16 +1,28 @@
-import { Container, Texture, type Text, type Ticker } from 'pixi.js'
+import {
+  Container,
+  Graphics,
+  RendererType,
+  Sprite,
+  Texture,
+  TilingSprite,
+  type Filter,
+  type Text,
+  type Ticker,
+} from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState } from '../engine/clock.ts'
 import { ENERGY, FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { next, seedRng } from '../engine/rng.ts'
 import type { Visit } from '../engine/types.ts'
+import { createSettingsStore } from '../ui/settings.ts'
 import { createGameStore, type GameStore } from '../ui/store.ts'
 import type { SegmentId } from '../content/schema.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
 import { placeCard, saying, type Box, type Point } from './customerCard.ts'
 import { ASSETS, LINES } from './manifest.ts'
 import { SEGMENT_ACCESSORY } from './people.ts'
+import type { ShadowFilters } from './shadows.ts'
 import { createPicker, NOBODY_THERE, type Picker } from './picker.ts'
 import { replayOf } from './replay.ts'
 import { startStreet, type StreetCrowd, type StreetLoaders } from './street.ts'
@@ -37,11 +49,20 @@ function createFakeApp(width = 1440, height = 900) {
 
 function createLoaders(): StreetLoaders & {
   loadFont: ReturnType<typeof vi.fn>
+  asked: ShadowFilters[]
 } {
+  // Pixi's filters need a canvas, which Node has none of: these only say
+  // what they were asked for.
+  const asked: ShadowFilters[] = []
   return {
     loadFont: vi.fn(async () => undefined),
     loadTexture: vi.fn(async () => Texture.EMPTY),
     measureWidth: () => 100,
+    makeFilters: (wanted) => {
+      asked.push(wanted)
+      return [{ ...wanted, destroy: () => {} }] as unknown as Filter[]
+    },
+    asked,
   }
 }
 
@@ -76,12 +97,21 @@ describe('startStreet', () => {
     const app = createFakeApp(1280, 800)
     await startStreet(app, mondayStore(), createLoaders())
 
-    const [root] = app.stage.children
-    expect(app.stage.children).toHaveLength(1)
-    expect(root?.label).toBe('street')
+    const [root, atmosphere, labels] = app.stage.children
+    expect(app.stage.children.map((layer) => layer.label)).toEqual([
+      'street',
+      'atmosphere',
+      'labels',
+    ])
     expect(root?.scale.x).toBeCloseTo(1280 / 1440)
     expect(root?.scale.y).toBeCloseTo(1280 / 1440)
     expect(root?.position).toMatchObject({ x: 0, y: 0 })
+    // The tally goes over the atmosphere, where the street has it.
+    expect(labels?.scale.x).toBe(root?.scale.x)
+    expect(labels?.scale.y).toBe(root?.scale.y)
+    expect(labels?.position).toMatchObject({ x: root?.x, y: root?.y })
+    expect(labels?.getChildByLabel('tally')).not.toBeNull()
+    expect(atmosphere?.position).toMatchObject({ x: 0, y: 0 })
     expect(piece(app, 'closed-sign').visible).toBe(true)
     expect(piece(app, 'awning').visible).toBe(false)
   })
@@ -186,7 +216,7 @@ describe('startStreet', () => {
 
     expect(warn).toHaveBeenCalledTimes(2)
     expect(piece(app, 'truck').children[0]?.label).toBe('placeholder')
-    expect(app.stage.children).toHaveLength(1)
+    expect(app.stage.children).toHaveLength(3)
   })
 })
 
@@ -778,9 +808,16 @@ function figureOf(walker: Container): Container {
   return figure
 }
 
+/** The drawing the figure shows: the one for the way the customer faces. */
+function shownOf(walker: Container): Container {
+  const shown = figureOf(walker).children.filter((c) => c.visible)
+  if (shown.length !== 1) throw new Error(`${shown.length} drawings shown`)
+  return shown[0]!
+}
+
 /** The segment a customer's accessory shows. */
 function segmentOf(walker: Container): SegmentId {
-  const figure = figureOf(walker)
+  const figure = shownOf(walker)
   const segments = Object.keys(SEGMENT_ACCESSORY) as SegmentId[]
   const found = segments.find(
     (segment) => figure.getChildByLabel(SEGMENT_ACCESSORY[segment]) !== null,
@@ -916,8 +953,8 @@ describe('startStreet: picking a customer', () => {
     const { walker, point } = playUntil(app, store, () =>
       alone(app, (w) =>
         figureOf(w).scale.x === -1
-          ? (figureOf(w).getChildByLabel('child') ??
-            figureOf(w).getChildByLabel('bag'))
+          ? (shownOf(w).getChildByLabel('child') ??
+            shownOf(w).getChildByLabel('bag'))
           : null,
       ),
     )
@@ -1053,5 +1090,298 @@ describe('startStreet: picking a customer', () => {
     expect(() => picker.at(point)).not.toThrow()
     expect(picker.over(point)).toBe(false)
     expect(picker.view().open).toBeNull()
+  })
+})
+
+describe('startStreet: the light over the street', () => {
+  function atmosphereOf(app: ReturnType<typeof createFakeApp>) {
+    const layer = app.stage.getChildByLabel('atmosphere')!
+    const part = <T extends Container>(label: string) =>
+      layer.getChildByLabel(label) as T
+    return {
+      layer,
+      glow: part<Sprite>('glow'),
+      unevenness: part<Sprite>('unevenness'),
+      vignette: part<Sprite>('vignette'),
+      grain: part<TilingSprite>('grain'),
+    }
+  }
+
+  it('covers the whole screen with the glow, the unevenness, the vignette and the grain', async () => {
+    const app = createFakeApp(1280, 1000)
+    await startStreet(app, mondayStore(), createLoaders())
+    const { layer, glow, unevenness, vignette, grain } = atmosphereOf(app)
+    expect(layer.children).toEqual([glow, unevenness, vignette, grain])
+    for (const sprite of [glow, unevenness, vignette, grain]) {
+      expect(sprite.width).toBeCloseTo(1280)
+      expect(sprite.height).toBeCloseTo(1000)
+      expect(sprite.visible).toBe(true)
+    }
+    expect(grain).toBeInstanceOf(TilingSprite)
+    expect(grain.blendMode).toBe('overlay')
+    expect(unevenness.blendMode).toBe('soft-light')
+    expect(glow.blendMode).toBe('inherit')
+    // Opaque: their textures hold the 40 % and the 30 % (see strayOf).
+    expect(grain.alpha).toBe(1)
+    expect(unevenness.alpha).toBe(1)
+    expect(grain.texture.width).toBe(ASSETS.light.grain.size)
+  })
+
+  it('refits the atmosphere when the screen changes size', async () => {
+    const app = createFakeApp()
+    await startStreet(app, mondayStore(), createLoaders())
+    app.screen.width = 1920
+    app.screen.height = 1200
+    app.frame()
+    const { grain, vignette } = atmosphereOf(app)
+    expect(grain.width).toBeCloseTo(1920)
+    expect(vignette.height).toBeCloseTo(1200)
+  })
+
+  it('follows the visual effects the player picks, and stops when the street does', async () => {
+    const app = createFakeApp()
+    const settings = createSettingsStore(null)
+    const loaders = createLoaders()
+    const stop = await startStreet(
+      app,
+      mondayStore(),
+      loaders,
+      ASSETS,
+      busyCrowd(),
+      createPicker(),
+      settings,
+    )
+    const { grain, unevenness, glow, vignette } = atmosphereOf(app)
+    const cast = piece(app, 'layer:shadows').getChildByLabel('cast')!
+    const { blur, opacity } = ASSETS.light.castShadow
+    expect(loaders.asked).toEqual([{ blur, opacity }])
+
+    settings.getState().setVisualEffects('simple')
+    expect(grain.visible).toBe(false)
+    expect(unevenness.visible).toBe(false)
+    expect(glow.visible).toBe(true)
+    expect(vignette.visible).toBe(true)
+    expect(loaders.asked.at(-1)).toEqual({ blur: 0, opacity })
+    expect(cast.filters).toEqual([
+      expect.objectContaining({ blur: 0, opacity }),
+    ])
+
+    settings.getState().setVisualEffects('full')
+    expect(grain.visible).toBe(true)
+    expect(unevenness.visible).toBe(true)
+    expect(cast.filters).toEqual([expect.objectContaining({ blur, opacity })])
+
+    stop()
+    expect(() => settings.getState().setVisualEffects('simple')).not.toThrow()
+    expect(grain.destroyed).toBe(true)
+  })
+
+  it('draws to the back buffer only for the full effects, which blend with it', async () => {
+    // Pixi starts without it (see worldOptions).
+    const backBuffer = { useBackBuffer: false }
+    const app = {
+      ...createFakeApp(),
+      renderer: { type: RendererType.WEBGL, backBuffer },
+    }
+    const settings = createSettingsStore(null)
+    await startStreet(
+      app,
+      mondayStore(),
+      createLoaders(),
+      ASSETS,
+      busyCrowd(),
+      createPicker(),
+      settings,
+    )
+    expect(backBuffer.useBackBuffer).toBe(true)
+    settings.getState().setVisualEffects('simple')
+    expect(backBuffer.useBackBuffer).toBe(false)
+    settings.getState().setVisualEffects('full')
+    expect(backBuffer.useBackBuffer).toBe(true)
+  })
+
+  it("shows the cast shadows through one texture, redrawn each frame at the screen's pixels, where Pixi's renderer cannot filter", async () => {
+    // Its Canvas 2D renderer, where WebGL and WebGPU are missing, skips
+    // filters; it never gets any. The scene is drawn at twice its design
+    // size, on a screen of two pixels per logical pixel.
+    const app = {
+      ...createFakeApp(2880, 1800),
+      renderer: { type: RendererType.CANVAS, resolution: 2 },
+    }
+    const loaders = { ...createLoaders(), makeFilters: undefined }
+    const settings = createSettingsStore(null)
+    const store = wednesdayStore(true)
+    await startStreet(
+      app,
+      store,
+      loaders,
+      ASSETS,
+      busyCrowd(),
+      createPicker(),
+      settings,
+    )
+    const cast = piece(app, 'layer:shadows').getChildByLabel('cast')!
+    const group = cast.renderGroup!
+    const redrawn = () => {
+      expect(group.textureNeedsUpdate).toBe(true)
+      expect(group.textureOptions.resolution).toBe(4)
+      // As a render draws it.
+      group.textureNeedsUpdate = false
+    }
+
+    for (const effects of ['full', 'simple'] as const) {
+      settings.getState().setVisualEffects(effects)
+      expect(play(app, store, 6000, 4000, redrawn)).toBeGreaterThan(0)
+      expect(cast.isCachedAsTexture).toBe(true)
+      expect(cast.alpha).toBe(ASSETS.light.castShadow.opacity)
+      expect(cast.filters ?? []).toEqual([])
+      // The customers' shadows, like the street's, are opaque in it.
+      expect(customerShadows(app, 'cast').length).toBeGreaterThan(0)
+      for (const shadow of cast.children) expect(shadow.alpha).toBe(1)
+    }
+  })
+
+  it('starts with the simple effects when the player picked them', async () => {
+    const app = createFakeApp()
+    const settings = createSettingsStore(null)
+    settings.getState().setVisualEffects('simple')
+    const loaders = createLoaders()
+    await startStreet(
+      app,
+      mondayStore(),
+      loaders,
+      ASSETS,
+      busyCrowd(),
+      createPicker(),
+      settings,
+    )
+    expect(atmosphereOf(app).grain.visible).toBe(false)
+    expect(loaders.asked.at(-1)?.blur).toBe(0)
+  })
+})
+
+/** The contact or cast shadows customers throw, on the ground. */
+function customerShadows(
+  app: ReturnType<typeof createFakeApp>,
+  kind: 'cast' | 'contact',
+): Container[] {
+  return piece(app, 'layer:shadows')
+    .getChildByLabel(kind)!
+    .children.filter((s) => s.label === `${kind}:customer`)
+}
+
+/**
+ * Where each shade fill under `part` and the lit fill drawn over it are
+ * drawn on the stage, along x.
+ */
+function shading(part: Graphics): { shade: number; lit: number }[] {
+  const xs = part.context.instructions
+    .flatMap((i) => (i.action === 'fill' ? [i.data] : []))
+    .map((data) => {
+      const { shape, transform } = data.path.shapePath.shapePrimitives[0]!
+      const box = shape.getBounds()
+      const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+      return part.toGlobal(transform ? transform.apply(centre) : centre).x
+    })
+  const pairs: { shade: number; lit: number }[] = []
+  for (let i = 0; i + 1 < xs.length; i += 2) {
+    pairs.push({ shade: xs[i]!, lit: xs[i + 1]! })
+  }
+  return pairs
+}
+
+/** A weekend crowd in which everyone comes with a child. */
+function familyCrowd(): StreetCrowd {
+  const crowd = busyCrowd(5)
+  const looks = { ...crowd.settings.looks, familyChance: 1 }
+  return { ...crowd, settings: { ...crowd.settings, looks } }
+}
+
+/** Sunday, replaying Saturday's visits, open every day. */
+function sundayStore(): GameStore {
+  const store = wednesdayStore(true)
+  store.getState().advance(6 - store.getState().game.day)
+  return store
+}
+
+describe('startStreet: the customers in the sun', () => {
+  it("throws each customer's and child's shadows under their own feet, lit from the left as they turn", async () => {
+    const app = createFakeApp()
+    const store = sundayStore()
+    await startStreet(app, store, createLoaders(), ASSETS, familyCrowd())
+    const street = app.stage.children[0]!
+    const { bob } = CROWD
+    const facings = new Map<Container, Set<number>>()
+    let checked = 0
+    let lifted = false
+    for (let t = 16; t <= 20_000; t += 16) {
+      app.frame(16)
+      const contacts = customerShadows(app, 'contact')
+      const casts = customerShadows(app, 'cast')
+      // One of each for every customer and every child.
+      expect(contacts).toHaveLength(walkers(app).length * 2)
+      expect(casts).toHaveLength(contacts.length)
+      for (const walker of walkers(app)) {
+        const figure = figureOf(walker)
+        const shown = shownOf(walker)
+        facings.set(
+          walker,
+          (facings.get(walker) ?? new Set()).add(figure.scale.x),
+        )
+        const child = shown.getChildByLabel('child')!
+        const feet = [walker.x, walker.x + child.x * figure.scale.x]
+        for (const x of feet) {
+          const under = contacts.filter((s) => Math.abs(s.x - x) < 1e-6)
+          expect(under).toHaveLength(1)
+          // On the ground: the walker bobs above it, the shadow never does.
+          const lift = under[0]!.y - walker.y
+          expect(lift).toBeGreaterThanOrEqual(0)
+          expect(lift).toBeLessThanOrEqual(bob.height + 1e-6)
+          lifted ||= lift > 0.5
+          const cast = casts.find((s) => Math.abs(s.x - x) < 1e-6)!
+          expect(cast.y).toBe(under[0]!.y)
+          // To the lower right, whichever way they face.
+          const box = cast.getBounds()
+          const foot = street.toGlobal({ x, y: cast.y })
+          expect(box.maxX - foot.x).toBeGreaterThan(foot.x - box.minX)
+          expect(box.maxY).toBeGreaterThan(foot.y)
+        }
+        for (const part of [
+          shown.getChildByLabel('head'),
+          shown.getChildByLabel('torso'),
+          child.getChildByLabel('head'),
+        ] as Graphics[]) {
+          for (const { shade, lit } of shading(part)) {
+            expect(lit).toBeLessThan(shade)
+          }
+        }
+        checked += 1
+      }
+    }
+    expect(checked).toBeGreaterThan(100)
+    expect(lifted).toBe(true)
+    // Some turned on the way, and stayed lit from the left.
+    const turned = [...facings.values()].filter((seen) => seen.size === 2)
+    expect(turned.length).toBeGreaterThan(0)
+  })
+
+  it("takes each customer's shadows away with them, and leaves the street's", async () => {
+    const app = createFakeApp()
+    const store = wednesdayStore(true)
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    play(app, store, 12_000, 4000)
+    expect(walkers(app).length).toBeGreaterThan(0)
+    const before = customerShadows(app, 'contact')
+    expect(before).toHaveLength(walkers(app).length)
+
+    store.getState().setSpeed(10)
+    app.frame(16)
+
+    expect(walkers(app)).toHaveLength(0)
+    expect(customerShadows(app, 'contact')).toHaveLength(0)
+    expect(customerShadows(app, 'cast')).toHaveLength(0)
+    expect(before.every((s) => s.destroyed)).toBe(true)
+    const layer = piece(app, 'layer:shadows')
+    expect(layer.getChildByLabel('contact')!.children.length).toBeGreaterThan(0)
   })
 })

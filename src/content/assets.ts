@@ -75,6 +75,124 @@ const hexColor = z
 
 const size = z.number().positive()
 
+/** A share or an opacity, from 0 (none) to 1 (all). */
+const share = z.number().min(0).max(1)
+
+/** How dark or light a material's lines are, from the light's two colours. */
+const tone = z.enum(['sun', 'slate'])
+
+/** The seed of a texture's noise, for the engine's generator. */
+const seed = z.int().nonnegative()
+
+/**
+ * The sun, the shade and the textures of the look approved for #89. Only
+ * placeholders are lit this way: real art comes with its own light.
+ */
+const lightSchema = z.strictObject({
+  _note: z.string().optional(),
+  /** The warm light everything lit is mixed with. */
+  sun: hexColor,
+  /** The shade colour: never black, never purple. */
+  slate: hexColor,
+  /** A face looking up: mixed with the sun, a bright rim on its front edge. */
+  topFace: z.strictObject({
+    light: share,
+    rim: z.strictObject({ light: share, width: size }),
+  }),
+  /** A face looking at the viewer: lighter at the top, darker at the foot. */
+  litSide: z.strictObject({ topLight: share, footSlate: share }),
+  /** A face turned away from the sun. */
+  shadeSide: z.strictObject({ slate: share }),
+  /** The shadows thrown on the ground, all shown at one opacity. */
+  castShadow: z.strictObject({
+    opacity: share,
+    /** The blur of their edge, in pixels. */
+    blur: z.number().nonnegative(),
+    /** How far right and down they reach, as shares of their caster's height. */
+    reach: z.number().nonnegative(),
+    drop: z.number().nonnegative(),
+  }),
+  /** The tight ellipse under what stands on the ground. */
+  contactShadow: z.strictObject({
+    /** How deep the ellipse is, as a share of its width. */
+    depth: size,
+    opacity: z.strictObject({
+      person: share,
+      wheel: share,
+      tree: share,
+      lampPost: share,
+    }),
+  }),
+  /** The short shadow a ledge throws on the wall under it. */
+  ledgeShadow: z.strictObject({
+    opacity: share,
+    /** How far down each kind of ledge's shadow fades out, in pixels. */
+    depth: z.strictObject({
+      cornice: size,
+      balcony: size,
+      sill: size,
+      awning: size,
+      curb: size,
+    }),
+  }),
+  /** Bricks, tiles and the asphalt's speckle, at low contrast. */
+  material: z.strictObject({
+    lineOpacity: z.strictObject({ min: share, max: share }),
+    /** One brick and one tile, their joints `line` pixels wide. */
+    brick: z.strictObject({
+      width: size,
+      height: size,
+      line: size,
+      tone,
+      seed,
+    }),
+    tile: z.strictObject({
+      width: size,
+      height: size,
+      line: size,
+      tone,
+      seed,
+    }),
+    /** `count` specks in a tile `size` pixels square. */
+    speckle: z.strictObject({
+      size: z.int().positive(),
+      count: z.int().nonnegative(),
+      tone,
+      seed,
+    }),
+  }),
+  /** Large soft blotches over the world. */
+  unevenness: z.strictObject({
+    blend: z.literal('soft-light'),
+    opacity: share,
+    /** How many blotches across the screen. */
+    cells: z.int().positive(),
+    amplitude: share,
+    seed,
+  }),
+  /** Fine noise over the world, tiled. */
+  grain: z.strictObject({
+    blend: z.literal('overlay'),
+    opacity: share,
+    size: z.int().positive(),
+    amplitude: share,
+    seed,
+  }),
+  /** The darker corners. */
+  vignette: z.strictObject({
+    color: colorNameSchema,
+    opacity: share,
+    /** The share of the radius, from the middle, it leaves clear. */
+    clear: share,
+  }),
+  /** The sun's warmth from the upper left corner. */
+  glow: z.strictObject({ opacity: share, reach: size }),
+  /** The layer the shadows on the ground go in, under what stands there. */
+  shadowLayer: z.string().min(1),
+})
+
+export type Light = z.output<typeof lightSchema>
+
 const pieceSchema = z.strictObject({
   id: z.string().min(1),
   kind: pieceKindSchema,
@@ -117,7 +235,7 @@ export const assetManifestSchema = z
     }),
     // A record keyed by the enum needs every colour and rejects any other.
     palette: z.record(colorNameSchema, hexColor),
-    /** The width of the placeholders' dark outlines. */
+    /** The width of the dark outlines round people, bubbles and the tally. */
     outlineWidth: size,
     /** The espresso machine's steam: one puff rises and fades each period. */
     steamPuff: z.strictObject({
@@ -131,6 +249,8 @@ export const assetManifestSchema = z
       /** Room left on each side of the name, which shrinks to fit. */
       paddingX: z.number().nonnegative(),
     }),
+    /** How the placeholders are lit, and the textures over the world. */
+    light: lightSchema,
     /** Layer ids, back to front. */
     layers: z.array(z.string().min(1)).min(1),
     pieces: z.array(pieceSchema),
@@ -148,6 +268,23 @@ export const assetManifestSchema = z
       layers.add(layer)
     })
 
+    // The world fills the shadow layer itself.
+    const { shadowLayer, material } = manifest.light
+    if (!layers.has(shadowLayer)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `unknown layer: ${shadowLayer}`,
+        path: ['light', 'shadowLayer'],
+      })
+    }
+    if (material.lineOpacity.min > material.lineOpacity.max) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'the least line opacity is above the most',
+        path: ['light', 'material', 'lineOpacity'],
+      })
+    }
+
     const ids = new Set<string>()
     manifest.pieces.forEach((piece, index) => {
       if (ids.has(piece.id)) {
@@ -162,6 +299,13 @@ export const assetManifestSchema = z
         ctx.addIssue({
           code: 'custom',
           message: `unknown layer: ${piece.layer}`,
+          path: ['pieces', index, 'layer'],
+        })
+      }
+      if (piece.layer === shadowLayer) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'the shadow layer holds no piece',
           path: ['pieces', index, 'layer'],
         })
       }

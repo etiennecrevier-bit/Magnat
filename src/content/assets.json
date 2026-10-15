@@ -1,5 +1,5 @@
 {
-  "_note": "The world's pieces, drawn back to front in the order of `layers`, then in the order listed here. Positions and sizes are logical pixels of the 1440 × 900 design, which the world scales to the window. A piece with an `image` (a file path under src/world/art/) shows that image stretched to its size; without one, or when the image fails to load, the world draws a placeholder shape in its `color`. `shows` keeps a piece to open or closed days. `fill` makes the croissants follow the stock: `capacity` units fill the rack, shown in `steps` shelves.",
+  "_note": "The world's pieces, drawn back to front in the order of `layers`, then in the order listed here. Positions and sizes are logical pixels of the 1440 × 900 design, which the world scales to the window. A piece with an `image` (a file path under src/world/art/) shows that image stretched to its size; without one, or when the image fails to load, the world draws a placeholder shape in its `color`, lit as `light` says. `shows` keeps a piece to open or closed days. `fill` makes the croissants follow the stock: `capacity` units fill the rack, shown in `steps` shelves. The `light.shadowLayer` holds no piece: the world draws the shadows on the ground there, under what stands on it.",
   "designSize": { "width": 1440, "height": 900 },
   "palette": {
     "ink": "#2B2622",
@@ -15,7 +15,7 @@
     "dangerRed": "#B3261E",
     "playerBlue": "#2F6FB0",
     "haze": "#A9C6D3",
-    "asphalt": "#67625D",
+    "asphalt": "#5C5752",
     "foliage": "#5B8C47",
     "wood": "#9A6A43",
     "glass": "#9CC7DA",
@@ -24,7 +24,79 @@
   "outlineWidth": 3,
   "steamPuff": { "periodMs": 1600, "rise": 26 },
   "signText": { "fontSize": 30, "color": "cream", "paddingX": 18 },
-  "layers": ["sky", "rooftops", "buildings", "sidewalk", "street", "truck"],
+  "light": {
+    "_note": "One sun from the upper left, in the morning: every shadow falls to the lower right (#89). Colours mix in 8-bit sRGB, each channel rounding half to even. A top face is its colour mixed with `topFace.light` of `sun`, with a rim mixed with `topFace.rim.light` of `sun`, `topFace.rim.width` deep, along its front edge. A lit side is its colour, a gradient from `litSide.topLight` of `sun` at the top to `litSide.footSlate` of `slate` at the foot. A shade side is its colour mixed with `shadeSide.slate` of `slate`. Cast shadows are `slate` shapes drawn in one layer, blurred by `castShadow.blur` pixels, then shown at `castShadow.opacity`, so overlaps never double; each reaches right by `reach` and down by `drop` of its caster's height. Contact shadows are soft ellipses `contactShadow.depth` as deep as they are wide, at their kind's opacity. Ledges throw `ledgeShadow.opacity` of slate on the wall under them, fading to nothing over their depth in pixels. Material lines (bricks, tiles, the asphalt's speckle, the leaves) show at `material.lineOpacity`, in `sun` or `slate`. Over the world only, never over the panels: the painted unevenness (smooth noise, `cells` blotches across) in soft light, the grain (noise `size` pixels square, tiled) in overlay, each around mid-grey by `amplitude` of the full range and seeded by `seed`; the vignette in `vignette.color` (a palette colour), 0 inside `clear` of the radius and `opacity` at the corners; and a warm glow of `sun` from the upper left corner, `opacity` there and gone by `reach` of the diagonal. The simple visual effects drop the unevenness, the grain and the blur.",
+    "sun": "#FFF1CF",
+    "slate": "#34404F",
+    "topFace": { "light": 0.22, "rim": { "light": 0.5, "width": 2 } },
+    "litSide": { "topLight": 0.26, "footSlate": 0.3 },
+    "shadeSide": { "slate": 0.4 },
+    "castShadow": { "opacity": 0.38, "blur": 2, "reach": 0.36, "drop": 0.08 },
+    "contactShadow": {
+      "depth": 0.26,
+      "opacity": {
+        "person": 0.5,
+        "wheel": 0.55,
+        "tree": 0.45,
+        "lampPost": 0.5
+      }
+    },
+    "ledgeShadow": {
+      "opacity": 0.55,
+      "depth": {
+        "cornice": 30,
+        "balcony": 26,
+        "sill": 20,
+        "awning": 28,
+        "curb": 14
+      }
+    },
+    "material": {
+      "lineOpacity": { "min": 0.12, "max": 0.2 },
+      "brick": {
+        "width": 24,
+        "height": 9,
+        "line": 2,
+        "tone": "slate",
+        "seed": 89
+      },
+      "tile": {
+        "width": 96,
+        "height": 25,
+        "line": 2,
+        "tone": "slate",
+        "seed": 90
+      },
+      "speckle": { "size": 64, "count": 90, "tone": "sun", "seed": 91 }
+    },
+    "unevenness": {
+      "blend": "soft-light",
+      "opacity": 0.3,
+      "cells": 6,
+      "amplitude": 0.5,
+      "seed": 92
+    },
+    "grain": {
+      "blend": "overlay",
+      "opacity": 0.4,
+      "size": 128,
+      "amplitude": 0.35,
+      "seed": 93
+    },
+    "vignette": { "color": "ink", "opacity": 0.26, "clear": 0.62 },
+    "glow": { "opacity": 0.18, "reach": 0.7 },
+    "shadowLayer": "shadows"
+  },
+  "layers": [
+    "sky",
+    "rooftops",
+    "buildings",
+    "sidewalk",
+    "street",
+    "shadows",
+    "furniture",
+    "truck"
+  ],
   "pieces": [
     {
       "id": "cloud-1",
@@ -129,7 +201,7 @@
     {
       "id": "tree",
       "kind": "tree",
-      "layer": "sidewalk",
+      "layer": "furniture",
       "x": 300,
       "y": 420,
       "width": 180,
@@ -139,7 +211,7 @@
     {
       "id": "lamp-post",
       "kind": "lampPost",
-      "layer": "sidewalk",
+      "layer": "furniture",
       "x": 690,
       "y": 380,
       "width": 44,
