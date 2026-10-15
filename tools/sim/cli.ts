@@ -137,7 +137,12 @@ function difficultyOf(text: string | undefined): DifficultyId {
   return known
 }
 
-function wholeNumber(
+/**
+ * Reads `text`, the value of `option`, as a whole number from `min`, or
+ * `fallback` when the option is absent. Throws a RangeError naming the
+ * option on anything else.
+ */
+export function wholeNumber(
   option: string,
   text: string | undefined,
   fallback: number,

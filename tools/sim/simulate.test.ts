@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { DifficultyId } from '../../src/content/schema.ts'
+import { FOOD_TRUCK } from '../../src/engine/day.ts'
+import type { DecisionChange } from '../../src/engine/decisions.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { cents } from '../../src/engine/money.ts'
-import type { PerProduct } from '../../src/engine/types.ts'
+import type { DaySummary, PerProduct } from '../../src/engine/types.ts'
 import { getAccount } from '../../src/finance/accounts.ts'
 import { emptyJournal, postEntry } from '../../src/finance/journal.ts'
-import { journalHash, simulate } from './simulate.ts'
+import { journalHash, simulate, type SimulationResult } from './simulate.ts'
 
 // The headless runner: what it plays, how it splits the run into years, and
 // that every number it sums up agrees with the books and the days played.
@@ -132,6 +134,78 @@ describe('simulate', () => {
 
   it('rejects a difficulty the engine does not know', () => {
     expect(() => simulate(7, 10, 'extreme' as DifficultyId)).toThrow(RangeError)
+  })
+})
+
+describe('simulate with decision changes', () => {
+  const everyDay: DecisionChange = {
+    kind: 'daysOpen',
+    weekdays: [1, 2, 3, 4, 5, 6, 7],
+  }
+  const prices: DecisionChange[] = [
+    { kind: 'price', product: 'cafe', price: cents(400) },
+    { kind: 'price', product: 'chocolat', price: cents(425) },
+    { kind: 'price', product: 'croissant', price: cents(450) },
+  ]
+  const croissants = (quantity: number): DecisionChange => ({
+    kind: 'restock',
+    product: 'croissant',
+    rule: { kind: 'buyDaily', quantity },
+  })
+
+  function played(result: SimulationResult, day: number): DaySummary {
+    const summary = result.daySummaries[day]
+    if (summary === undefined) throw new Error(`Day ${day} was not played`)
+    return summary
+  }
+
+  it('puts them in effect from day 0, a Monday', () => {
+    // The starting days skip Monday, so day 0 has no walk-ins.
+    expect(played(simulate(7, 1), 0).visits).toEqual([])
+    const monday = played(simulate(7, 1, 'moyen', [...prices, everyDay]), 0)
+    expect(monday.visits.length).toBeGreaterThan(0)
+    expect(monday.revenue).toBe(
+      400 * monday.sold.cafe +
+        425 * monday.sold.chocolat +
+        450 * monday.sold.croissant,
+    )
+  })
+
+  it('makes them in order, the last one winning', () => {
+    const run = simulate(7, 2, 'moyen', [croissants(20), croissants(110)])
+    // A croissant keeps for one day, so what was bought on a day the truck
+    // opens is sold or written off by its close.
+    const { sold, spoiled } = played(run, 1)
+    expect(sold.croissant + spoiled.croissant).toBe(110)
+  })
+
+  it('plays the same game with no changes as with the starting decisions', () => {
+    const start = FOOD_TRUCK.startingDecisions
+    const same: DecisionChange[] = [
+      ...PRODUCTS.map((product): DecisionChange => ({
+        kind: 'price',
+        product,
+        price: start.pricesCents[product],
+      })),
+      { kind: 'daysOpen', weekdays: start.daysOpen },
+    ]
+    const hash = simulate(7, 40).journalHash
+    expect(simulate(7, 40, 'moyen', []).journalHash).toBe(hash)
+    expect(simulate(7, 40, 'moyen', same).journalHash).toBe(hash)
+    expect(simulate(7, 40, 'moyen', [croissants(110)]).journalHash).not.toBe(
+      hash,
+    )
+  })
+
+  it('rejects a change applyDecision rejects', () => {
+    expect(() => simulate(7, 1, 'moyen', [croissants(501)])).toThrow(
+      'restock.croissant.quantity',
+    )
+    expect(() =>
+      simulate(7, 1, 'moyen', [
+        { kind: 'price', product: 'cafe', price: cents(327) },
+      ]),
+    ).toThrow(RangeError)
   })
 })
 
