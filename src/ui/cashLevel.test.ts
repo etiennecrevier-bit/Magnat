@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import cashGauge from '../content/cashGauge.json'
+import difficulty from '../content/difficulty.json'
 import foodTruck from '../content/foodtruck.json'
+import { monthsSinceStart, toCalendar } from '../engine/calendar.ts'
 import { cents } from '../engine/money.ts'
-import {
-  LOW_BELOW_MONTHS,
-  MONTHLY_FIXED_COSTS,
-  cashLevel,
-} from './cashLevel.ts'
+import { loanSchedule } from '../finance/loan.ts'
+import { LOW_BELOW_MONTHS, cashLevel, monthlyFixedCosts } from './cashLevel.ts'
 
 describe('cashLevel', () => {
   const monthly = cents(175_000)
@@ -23,18 +22,78 @@ describe('cashLevel', () => {
     expect(cashLevel(cents(cash), monthly, 2)).toBe(level)
   })
 
-  it('reads the shipped content by default', () => {
-    const threshold = MONTHLY_FIXED_COSTS * LOW_BELOW_MONTHS
-    expect(cashLevel(cents(threshold - 1))).toBe('low')
-    expect(cashLevel(cents(threshold))).toBe('healthy')
+  it('reads the shipped number of months by default', () => {
+    expect(LOW_BELOW_MONTHS).toBe(cashGauge.lowBelowMonthsOfFixedCosts)
+    const threshold = 355_000 * LOW_BELOW_MONTHS
+    expect(cashLevel(cents(threshold - 1), cents(355_000))).toBe('low')
+    expect(cashLevel(cents(threshold), cents(355_000))).toBe('healthy')
   })
 })
 
-describe('MONTHLY_FIXED_COSTS', () => {
-  it('adds up the monthly costs in the content', () => {
-    const { permitParkingAndCommissary, insurance } =
-      foodTruck.monthlyCostsCents
-    expect(MONTHLY_FIXED_COSTS).toBe(permitParkingAndCommissary + insurance)
-    expect(LOW_BELOW_MONTHS).toBe(cashGauge.lowBelowMonthsOfFixedCosts)
+describe('monthlyFixedCosts', () => {
+  const { permitParkingAndCommissary, insurance } = foodTruck.monthlyCostsCents
+  const everyTruck = permitParkingAndCommissary + insurance
+
+  it.each([0, 1, 30, 31, 400, 3649])(
+    'charges an owned truck the permit and the insurance on day %i',
+    (day) => {
+      expect(monthlyFixedCosts(day, 'facile')).toBe(everyTruck)
+    },
+  )
+
+  it.each([0, 1, 30, 31, 400, 3649])(
+    'adds the lease to a leased truck on day %i',
+    (day) => {
+      const { monthlyLeaseCents } = difficulty.difficulties.difficile.truck
+      expect(monthlyFixedCosts(day, 'difficile')).toBe(
+        everyTruck + monthlyLeaseCents,
+      )
+    },
+  )
+
+  describe('with a loan', () => {
+    const { loanCents, annualRateBasisPoints, termMonths } =
+      difficulty.difficulties.moyen.truck
+    const { payments } = loanSchedule(
+      cents(loanCents),
+      annualRateBasisPoints,
+      termMonths,
+    )
+    // May 1st of year 6, the 1st of the last payment.
+    const lastPaymentDay = 1825
+
+    it('is taken on May 1st and paid off on May 1st of year 6', () => {
+      expect(toCalendar(0)).toMatchObject({ month: 5, dayOfMonth: 1 })
+      expect(toCalendar(lastPaymentDay)).toMatchObject({
+        year: 6,
+        month: 5,
+        dayOfMonth: 1,
+      })
+      expect(monthsSinceStart(lastPaymentDay)).toBe(termMonths)
+    })
+
+    it.each([
+      { day: 1, when: 'the next day', payment: 1 },
+      { day: 30, when: 'the eve of the first payment', payment: 1 },
+      { day: 31, when: 'the 1st of the first payment', payment: 1 },
+      { day: 32, when: 'the next day', payment: 2 },
+      {
+        day: lastPaymentDay,
+        when: 'the 1st of the last payment',
+        payment: termMonths,
+      },
+    ])('adds payment $payment on day $day, $when', ({ day, payment }) => {
+      expect(monthlyFixedCosts(day, 'moyen')).toBe(
+        everyTruck + (payments[payment - 1]?.payment ?? NaN),
+      )
+    })
+
+    it.each([
+      { day: 0, when: 'the 1st it is taken' },
+      { day: lastPaymentDay + 1, when: 'the day after the last payment' },
+      { day: 3649, when: 'the last day of year 10' },
+    ])('adds no payment on day $day, $when', ({ day }) => {
+      expect(monthlyFixedCosts(day, 'moyen')).toBe(everyTruck)
+    })
   })
 })
