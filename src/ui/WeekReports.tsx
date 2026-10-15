@@ -6,6 +6,7 @@ import { recentWeeks, WEEKS_LISTED } from './weeklyReport.ts'
 import './WeekReports.css'
 
 const LATEST_ID = 'week-reports-latest'
+const TABLE_ID = 'week-reports-table'
 
 /**
  * « Bilans »: the last weeks, newest first, with their ventes, bénéfice
@@ -26,41 +27,50 @@ export function WeekReportsView({
         <p>Aucun bilan pour l'instant.</p>
       ) : (
         <>
-          <table className="data-table">
-            <caption className="visually-hidden">
-              Les {WEEKS_LISTED} dernières semaines, la plus récente en premier
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Semaine du</th>
-                <th scope="col" className="number">
-                  Ventes
-                </th>
-                <th scope="col" className="number">
-                  Bénéfice
-                </th>
-                <th scope="col" className="number">
-                  Encaisse
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {weeks.map((week) => (
-                <tr key={week.firstDay}>
-                  <th scope="row">{formatShortGameDate(week.firstDay)}</th>
-                  <td className="number">
-                    <Amount amount={week.sales} />
-                  </td>
-                  <td className="number">
-                    <Amount amount={week.netIncome} />
-                  </td>
-                  <td className="number">
-                    <Amount amount={week.cashAtEnd} />
-                  </td>
+          {/* Focusable, so a keyboard can scroll the table on a narrow screen. */}
+          <div
+            className="week-reports__scroll"
+            role="region"
+            aria-labelledby={TABLE_ID}
+            tabIndex={0}
+          >
+            <table className="data-table">
+              <caption id={TABLE_ID} className="visually-hidden">
+                Les {WEEKS_LISTED} dernières semaines, la plus récente en
+                premier
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Semaine du</th>
+                  <th scope="col" className="number">
+                    Ventes
+                  </th>
+                  <th scope="col" className="number">
+                    Bénéfice
+                  </th>
+                  <th scope="col" className="number">
+                    Encaisse
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {weeks.map((week) => (
+                  <tr key={week.firstDay}>
+                    <th scope="row">{formatShortGameDate(week.firstDay)}</th>
+                    <td className="number">
+                      <Amount amount={week.sales} />
+                    </td>
+                    <td className="number">
+                      <Amount amount={week.netIncome} />
+                    </td>
+                    <td className="number">
+                      <Amount amount={week.cashAtEnd} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <section className="week-reports__latest" aria-labelledby={LATEST_ID}>
             <h2 id={LATEST_ID}>Bilan de la semaine</h2>
             <LastWeekReport />

@@ -29,7 +29,12 @@ export function WeekSlideInView({
       <p className="week-slide-in__title">Bilan de la semaine</p>
       <WeekFigures report={report} className="week-slide-in__figures" />
       {topFact !== null && <p className="week-slide-in__fact">{topFact}</p>}
-      <button type="button" className="button button--primary" onClick={onOpen}>
+      <button
+        type="button"
+        className="button button--primary"
+        aria-haspopup="dialog"
+        onClick={onOpen}
+      >
         Voir le bilan
       </button>
     </section>

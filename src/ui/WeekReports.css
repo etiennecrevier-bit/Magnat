@@ -13,3 +13,13 @@
 .week-reports__latest h2 {
   margin: 0 0 0.5rem;
 }
+
+/* On a phone the table scrolls sideways rather than widening the page. */
+.week-reports__scroll {
+  overflow-x: auto;
+}
+
+.week-reports__scroll:focus-visible {
+  outline: 3px solid #2186eb;
+  outline-offset: 2px;
+}

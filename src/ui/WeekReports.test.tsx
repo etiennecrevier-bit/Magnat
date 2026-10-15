@@ -77,6 +77,11 @@ describe('WeekReportsView', () => {
     const history = Array.from({ length: 15 }, (_, index) => record(index))
     const html = renderToStaticMarkup(<WeekReportsView history={history} />)
     expect(html).toContain(
+      '<div class="week-reports__scroll" role="region" aria-labelledby="week-reports-table" tabindex="0">' +
+        '<table class="data-table"><caption id="week-reports-table" class="visually-hidden">' +
+        'Les 12 dernières semaines, la plus récente en premier</caption>',
+    )
+    expect(html).toContain(
       '<thead><tr><th scope="col">Semaine du</th><th scope="col" class="number">Ventes</th>' +
         '<th scope="col" class="number">Bénéfice</th><th scope="col" class="number">Encaisse</th></tr></thead>',
     )

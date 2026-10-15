@@ -81,7 +81,16 @@ describe('WeekSlideInView', () => {
     expect(html).toContain(`${formatMoney(cents(950_000))}</span></span></dd>`)
     expect(html).toContain(
       '<p class="week-slide-in__fact">Le loyer du 2 mai n&#x27;a pas été payé.</p>' +
-        '<button type="button" class="button button--primary">Voir le bilan</button></section>',
+        '<button type="button" class="button button--primary" aria-haspopup="dialog">Voir le bilan</button></section>',
+    )
+  })
+
+  it('marks « Voir le bilan » as opening a dialog, so Space opens the report rather than pausing', () => {
+    const html = renderToStaticMarkup(
+      <WeekSlideInView report={WEEK} topFact={null} onOpen={() => {}} />,
+    )
+    expect(html).toContain(
+      '<button type="button" class="button button--primary" aria-haspopup="dialog">Voir le bilan</button>',
     )
   })
 
