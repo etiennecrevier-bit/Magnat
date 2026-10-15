@@ -45,13 +45,21 @@ import {
   playDay,
 } from './day.ts'
 import { applyDecision } from './decisions.ts'
+import { applyEffect } from './effects.ts'
 import { FULL_ENERGY, fatigueOf } from './energy.ts'
 import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
 import { cents, mulRatio, type Cents } from './money.ts'
 import { LABELS } from './personal.ts'
 import { defaultProfile } from './profile.ts'
 import { servers } from './service.ts'
-import type { Day, DaySummary, GameState, PerProduct } from './types.ts'
+import type { EventEffect } from '../content/schema.ts'
+import type {
+  Day,
+  DaySummary,
+  GameState,
+  PerProduct,
+  StreetModifier,
+} from './types.ts'
 
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
@@ -641,6 +649,7 @@ describe('tick', () => {
       longestWaitSeconds: 0,
       energy: FULL_ENERGY,
       botched: 0,
+      modifiers: [],
     })
     expect(visits).toHaveLength(10)
     for (const visit of visits) {
@@ -1759,11 +1768,302 @@ describe('cash', () => {
       longestWaitSeconds: 0,
       energy: FULL_ENERGY,
       botched: 0,
+      modifiers: [],
     })
     expect(visits.map(({ outcome }) => outcome)).toEqual(
       Array.from({ length: 10 }, () => 'soldOut'),
     )
     expect(SEGMENTS.reduce((n, id) => n + segments[id].soldOut, 0)).toBe(10)
+  })
+})
+
+describe('changes to the street', () => {
+  /** Plays the day of `state` with `content`, to its close. */
+  function close(state: GameState, content: Content): GameState {
+    return playDay(
+      state,
+      content.truck,
+      content.customers,
+      content.difficulties,
+      PERSONAL,
+      content.energy,
+    )
+  }
+
+  /** `state` with `effect` of `event` applied on its morning. */
+  function changed(
+    state: GameState,
+    effect: EventEffect,
+    event: string,
+    content: Content,
+  ): GameState {
+    return applyEffect(state, effect, content.truck, event)
+  }
+
+  const events = (state: GameState) =>
+    summary(state).modifiers.map(({ event }) => event)
+
+  it('cuts the walk-ins of construction on its 15 days only, from the same seed', () => {
+    // Open every day, so every day has walk-ins to cut.
+    const content = shipped(deciding({ daysOpen: EVERY_DAY }))
+    const morning = after(10, content)
+    const days = 30
+    const usual = play(days, content, morning)
+    const works = play(
+      days,
+      content,
+      changed(
+        morning,
+        { kind: 'walkIns', factor: 0.65, days: 15 },
+        'chantier',
+        content,
+      ),
+    )
+    usual.forEach((state, index) => {
+      const was = summary(state)
+      const now = summary(works[index] as GameState)
+      expect(now.day).toBe(10 + index)
+      if (now.day <= 24) {
+        expect(now.visits.length).toBeLessThan(was.visits.length)
+        for (const id of SEGMENTS) {
+          expect(now.segments[id].visits).toBe(
+            Math.round(was.segments[id].visits * 0.65),
+          )
+        }
+        expect(events(works[index] as GameState)).toEqual(['chantier'])
+      } else {
+        expect(
+          now.visits.map(({ arrivalMinute, segment }) => [
+            arrivalMinute,
+            segment,
+          ]),
+        ).toEqual(
+          was.visits.map(({ arrivalMinute, segment }) => [
+            arrivalMinute,
+            segment,
+          ]),
+        )
+        expect(now.modifiers).toEqual([])
+      }
+      // The cut never moves the generator.
+      expect(works[index]?.rngState).toBe(state.rngState)
+    })
+    expect(works.at(-1)?.events.modifiers).toEqual([])
+  })
+
+  it('sells no café while it is unavailable: who wanted one found it sold out, and none is bought', () => {
+    // Café topped up to 500 each morning, so some is on hand and some bought.
+    const content = variant(restocking({ cafe: topUp(500, 500) }))
+    const morning = after(5, content)
+    const day = morning.day
+    const usual = close(morning, content)
+    const broken = close(
+      changed(
+        morning,
+        { kind: 'unavailable', product: 'cafe', days: 1 },
+        'machine',
+        content,
+      ),
+      content,
+    )
+    const was = summary(usual)
+    const now = summary(broken)
+    expect(was.sold.cafe).toBeGreaterThan(0)
+    expect(now.sold.cafe).toBe(0)
+    expect(now.lostSales.cafe).toBe(was.sold.cafe + was.lostSales.cafe)
+    expect(now.sold.chocolat).toBe(was.sold.chocolat)
+    expect(now.sold.croissant).toBe(was.sold.croissant)
+    // The same customers, wanting the same things.
+    expect(now.visits).toHaveLength(was.visits.length)
+    let onlyCafe = 0
+    now.visits.forEach((visit, index) => {
+      const before = was.visits[index]
+      expect(visit.bought).toEqual({ ...before?.bought, cafe: 0 })
+      if (
+        before?.bought.cafe === 1 &&
+        before.bought.chocolat + before.bought.croissant === 0
+      ) {
+        onlyCafe += 1
+        expect(visit.outcome).toBe('soldOut')
+      }
+    })
+    expect(onlyCafe).toBeGreaterThan(0)
+    const soldOut = (summed: DaySummary) =>
+      SEGMENTS.reduce((total, id) => total + summed.segments[id].soldOut, 0)
+    expect(soldOut(now)).toBe(soldOut(was) + onlyCafe)
+    // None bought, and the café on hand stays on hand.
+    const boughtToday = (state: GameState) =>
+      state.inventory.filter(
+        ({ product, boughtOnDay }) => product === 'cafe' && boughtOnDay === day,
+      )
+    expect(boughtToday(usual)).not.toEqual([])
+    expect(boughtToday(broken)).toEqual([])
+    expect(onHand(broken.inventory, 'cafe')).toBe(
+      onHand(morning.inventory, 'cafe'),
+    )
+    expect(onHand(morning.inventory, 'cafe')).toBeGreaterThan(0)
+    const purchase = (state: GameState) =>
+      entry(state, day, MEMO.purchases).lines[0]?.debit ?? 0
+    const cafeBought = boughtToday(usual).reduce(
+      (total, { quantity, unitCost }) => total + quantity * unitCost,
+      0,
+    )
+    expect(purchase(broken)).toBe(purchase(usual) - cafeBought)
+  })
+
+  it('closes the truck: no sale, no fuel, no marketing, the energy back, the month and the pay still due', () => {
+    const content = shipped(deciding({ marketingDailyCents: cents(2_000) }))
+    // Day 123, Friday, September 1st: payday and the month's charges.
+    expect(toCalendar(123)).toMatchObject({ weekday: 5, dayOfMonth: 1 })
+    const morning = after(123, content)
+    expect(morning.day).toBe(123)
+    expect(morning.energy).toBeLessThan(FULL_ENERGY)
+    const flooded = changed(
+      morning,
+      { kind: 'closed', days: 1 },
+      'inondation',
+      content,
+    )
+    const shut = close(flooded, content)
+    // As if Friday were not a day open.
+    const dayOff = close(
+      {
+        ...morning,
+        decisions: { ...morning.decisions, daysOpen: [2, 3, 4, 6, 7] },
+      },
+      content,
+    )
+    const memos = entriesOn(shut, 123).map(({ memo }) => memo)
+    for (const memo of [
+      MEMO.sales,
+      MEMO.fuel,
+      MEMO.purchases,
+      MEMO.marketing,
+    ]) {
+      expect(memos).not.toContain(memo)
+    }
+    expect(memos).toEqual(
+      expect.arrayContaining([
+        MEMO.permit,
+        MEMO.insurance,
+        MEMO.depreciation,
+        'Paie du propriétaire',
+      ]),
+    )
+    expect(entriesOn(shut, 123)).toEqual(entriesOn(dayOff, 123))
+    expect(summary(shut)).toEqual({
+      ...summary(dayOff),
+      modifiers: [
+        {
+          event: 'inondation',
+          change: { kind: 'closed' },
+          fromDay: 123,
+          lastDay: 123,
+        },
+      ],
+    })
+    expect(summary(shut).visits).toEqual([])
+    expect(shut.energy).toBe(dayOff.energy)
+    expect(shut.energy).toBeGreaterThan(morning.energy)
+    expect(shut.marketingHistory.at(-1)).toBe(0)
+    expect(shut.rngState).toBe(morning.rngState)
+    expect(shut.events.modifiers).toEqual([])
+    // Saturday opens as the days open say.
+    const saturday = close(step(flooded, content), content)
+    expect(summary(saturday).visits.length).toBeGreaterThan(0)
+    expect(summary(saturday).modifiers).toEqual([])
+  })
+
+  it('multiplies the changes of a day: ×0.5 and ×2 play the very day without them', () => {
+    const content = variant()
+    const morning = after(3, content)
+    const both = changed(
+      changed(
+        morning,
+        { kind: 'walkIns', factor: 0.5, days: 2 },
+        'chantier',
+        content,
+      ),
+      { kind: 'walkIns', factor: 2, days: 2 },
+      'festival',
+      content,
+    )
+    const usual = play(3, content, morning)
+    const changedDays = play(3, content, both)
+    usual.forEach((state, index) => {
+      const now = changedDays[index] as GameState
+      expect({ ...summary(now), modifiers: [] }).toEqual(summary(state))
+      expect(now.journal.entries).toEqual(state.journal.entries)
+    })
+    expect(changedDays.map(events)).toEqual([
+      ['chantier', 'festival'],
+      ['chantier', 'festival'],
+      [],
+    ])
+  })
+
+  it('lists the changes in effect each day with their events, and drops each at the close of its last day', () => {
+    const content = variant()
+    const morning = [
+      { kind: 'appeal', product: 'chocolat', factor: 0.3, days: 1 },
+      { kind: 'walkIns', factor: 1.5, segment: 'chic', days: 3 },
+      { kind: 'willingness', factor: 1.1, days: 10 },
+    ].reduce(
+      (state, effect, index) =>
+        changed(
+          state,
+          effect as EventEffect,
+          ['canicule', 'festival', 'demenagement'][index] ?? '',
+          content,
+        ),
+      after(3, content),
+    )
+    const closes = [morning, ...play(3, content, morning)].map((state) =>
+      close(state, content),
+    )
+    expect(closes.map(events)).toEqual([
+      ['canicule', 'festival', 'demenagement'],
+      ['festival', 'demenagement'],
+      ['festival', 'demenagement'],
+      ['demenagement'],
+    ])
+    const kept = (state: GameState) =>
+      state.events.modifiers.map(({ event }) => event)
+    expect(closes.map(kept)).toEqual([
+      ['festival', 'demenagement'],
+      ['festival', 'demenagement'],
+      ['demenagement'],
+      ['demenagement'],
+    ])
+    const willing: StreetModifier = {
+      event: 'demenagement',
+      change: { kind: 'willingness', factor: 1.1 },
+      fromDay: 3,
+      lastDay: 12,
+    }
+    expect(closes[3]?.events.modifiers).toEqual([willing])
+    expect(summary(closes[3] as GameState).modifiers).toEqual([willing])
+  })
+
+  it('cuts the chocolat a heat wave makes less appealing, that day only', () => {
+    const content = variant()
+    const morning = after(3, content)
+    const hot = close(
+      changed(
+        morning,
+        { kind: 'appeal', product: 'chocolat', factor: 0.3, days: 1 },
+        'canicule',
+        content,
+      ),
+      content,
+    )
+    const usual = close(morning, content)
+    expect(summary(hot).sold.chocolat).toBeLessThan(
+      summary(usual).sold.chocolat,
+    )
+    expect(summary(hot).sold.cafe).toBe(summary(usual).sold.cafe)
+    expect(arrivals(hot)).toEqual(arrivals(usual))
+    expect(hot.rngState).toBe(usual.rngState)
   })
 })
 

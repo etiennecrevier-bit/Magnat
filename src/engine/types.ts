@@ -9,6 +9,7 @@ import type {
   ProductId,
   RestockRule,
   SegmentId,
+  StreetChange,
 } from '../content/schema.ts'
 import type { Journal } from '../finance/journal.ts'
 import type { Cents } from './money.ts'
@@ -65,6 +66,11 @@ export interface DaySummary {
    * ratés »: the visits' `botched`, summed.
    */
   readonly botched: number
+  /**
+   * The changes to the street in effect that day, in the order they were
+   * made, each with the event that made it.
+   */
+  readonly modifiers: readonly StreetModifier[]
 }
 
 /** One customer segment's visits on a business day. */
@@ -264,6 +270,11 @@ export interface EventsState {
   readonly lastDrawnDay: Day | null
   /** The La Presse-Citron headlines events queued, oldest first. */
   readonly headlines: readonly Headline[]
+  /**
+   * The changes to the street the choices made, in the order they were
+   * made, each dropped at the close of its last day.
+   */
+  readonly modifiers: readonly StreetModifier[]
 }
 
 /** The event waiting for the player's choice. */
@@ -312,6 +323,21 @@ export interface Headline {
   readonly day: Day
   /** The headline's id in the content. */
   readonly id: string
+}
+
+/**
+ * A change to the street an event's choice made, in effect from `fromDay`
+ * to `lastDay`, both included.
+ */
+export interface StreetModifier {
+  /** The id of the event whose choice made it. */
+  readonly event: string
+  /** What it changes. */
+  readonly change: StreetChange
+  /** The day it was made, its first day in effect. */
+  readonly fromDay: Day
+  /** Its last day in effect: `fromDay` + its days − 1. */
+  readonly lastDay: Day
 }
 
 /** What one customer owes for one sale on credit. */

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { EventEffect, TimedEventEffect } from '../content/schema.ts'
+import type {
+  EventEffect,
+  StreetChange,
+  TimedEventEffect,
+} from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance, type JournalEntry } from '../finance/journal.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
@@ -35,7 +39,7 @@ function posted(before: GameState, after: GameState): JournalEntry[] {
 }
 
 function apply(effect: EventEffect, state = MORNING): GameState {
-  return applyEffect(state, effect, FOOD_TRUCK)
+  return applyEffect(state, effect, FOOD_TRUCK, 'essai')
 }
 
 function balanceOf(state: GameState, account: AccountCode): number {
@@ -311,16 +315,21 @@ describe('applyEffect', () => {
       { kind: 'buyStock', product: 'croissant', units: 10 },
     ].reduce(
       (state, effect, index) =>
-        applyEffect(state, effect as EventEffect, {
-          ...FOOD_TRUCK,
-          products: {
-            ...FOOD_TRUCK.products,
-            croissant: {
-              ...FOOD_TRUCK.products.croissant,
-              unitCostCents: cents(index === 0 ? 100 : 120),
+        applyEffect(
+          state,
+          effect as EventEffect,
+          {
+            ...FOOD_TRUCK,
+            products: {
+              ...FOOD_TRUCK.products,
+              croissant: {
+                ...FOOD_TRUCK.products.croissant,
+                unitCostCents: cents(index === 0 ? 100 : 120),
+              },
             },
           },
-        }),
+          'essai',
+        ),
       MORNING,
     )
 
@@ -466,6 +475,61 @@ describe('applyEffect', () => {
     ])
   })
 
+  it.each<[EventEffect, StreetChange]>([
+    [
+      { kind: 'walkIns', factor: 0.65, days: 15 },
+      { kind: 'walkIns', factor: 0.65 },
+    ],
+    [
+      { kind: 'walkIns', factor: 1.8, segment: 'chic', days: 3 },
+      { kind: 'walkIns', factor: 1.8, segment: 'chic' },
+    ],
+    [
+      { kind: 'appeal', product: 'chocolat', factor: 0.3, days: 5 },
+      { kind: 'appeal', product: 'chocolat', factor: 0.3 },
+    ],
+    [
+      { kind: 'willingness', factor: 1.1, days: 1 },
+      { kind: 'willingness', factor: 1.1 },
+    ],
+    [
+      { kind: 'unavailable', product: 'cafe', days: 4 },
+      { kind: 'unavailable', product: 'cafe' },
+    ],
+    [{ kind: 'closed', days: 2 }, { kind: 'closed' }],
+  ])(
+    'changes the street with %j, from today, with no entry and no draw',
+    (effect, change) => {
+      const after = apply(effect)
+      const days = 'days' in effect ? effect.days : 0
+      expect(after.events.modifiers).toEqual([
+        { event: 'essai', change, fromDay: 1, lastDay: days },
+      ])
+      expect(after.journal).toBe(MORNING.journal)
+      expect(after.rngState).toBe(MORNING.rngState)
+      expect(after.events.delayed).toEqual(MORNING.events.delayed)
+    },
+  )
+
+  it('keeps the changes to the street in the order they were made, each with its event', () => {
+    const first = apply({ kind: 'closed', days: 1 })
+    const later = applyEffect(
+      { ...first, day: 4 },
+      { kind: 'walkIns', factor: 2, days: 3 },
+      FOOD_TRUCK,
+      'festival',
+    )
+    expect(later.events.modifiers).toEqual([
+      { event: 'essai', change: { kind: 'closed' }, fromDay: 1, lastDay: 1 },
+      {
+        event: 'festival',
+        change: { kind: 'walkIns', factor: 2 },
+        fromDay: 4,
+        lastDay: 6,
+      },
+    ])
+  })
+
   it('never mutates the state', () => {
     const state = Object.freeze({
       ...MORNING,
@@ -570,6 +634,33 @@ describe('startOfDay', () => {
 
   it('changes nothing with nothing due', () => {
     expect(startOfDay(MORNING, FOOD_TRUCK)).toBe(MORNING)
+  })
+
+  it('changes the street from today, as the event that queued it', () => {
+    const state: GameState = {
+      ...MORNING,
+      events: {
+        ...MORNING.events,
+        delayed: [
+          {
+            day: 1,
+            event: 'machine',
+            effect: { kind: 'unavailable', product: 'cafe', days: 2 },
+          },
+        ],
+      },
+    }
+    expect(startOfDay(state, FOOD_TRUCK).events).toEqual({
+      ...MORNING.events,
+      modifiers: [
+        {
+          event: 'machine',
+          change: { kind: 'unavailable', product: 'cafe' },
+          fromDay: 1,
+          lastDay: 2,
+        },
+      ],
+    })
   })
 
   it("runs before the day's restock and sales, in the day's books", () => {

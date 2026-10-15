@@ -225,11 +225,15 @@ function pocketCard(label: string, amount: number, firstDay = 1): EventContent {
 // The morning of day 1, a Tuesday, with the essai card waiting, then once
 // « Tout essayer » is chosen: a credit sale due on day 91, a collection
 // queued for Thursday, day 3, and a charge for day 4, the owner down to 90
-// energy, « Cadeau d'essai » in their pocket and a headline.
+// energy, « Cadeau d'essai » in their pocket, a headline, and the street
+// changed: fewer walk-ins to day 15, more chic ones to day 3, less chocolat
+// to day 5 and no café to day 2, with what customers will pay raised on day
+// 2 alone and the truck closed on day 3, both queued.
 const WAITING = withEvents(createInitialState(SEED))
 const CHOSEN = resolveEvent(WAITING, 'toutEssayer', ESSAI)
 const CHOSEN_SAVE = serialize(CHOSEN)
-// The close of day 2, the credit sale still owed.
+// The close of day 2, the credit sale still owed, and the last day of the
+// café's and of the raised willingness, which only `lastDay` still holds.
 const CLOSE_2 = playDay(resolveEvent(withEvents(CHOSEN), 'rienFaire', ESSAI))
 // The morning of day 0, before it is played, with a card from day 0
 // waiting, then once « Oui » is chosen: the owner down to 95 energy and
@@ -260,8 +264,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(8)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 8 })
+    expect(SAVE_VERSION).toBe(9)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 9 })
   })
 
   it.each<Profile>([
@@ -406,8 +410,22 @@ describe('serialize and deserialize', () => {
     expect(
       CHOSEN.events.delayed.map(({ day, effect }) => [day, effect.kind]),
     ).toEqual([
+      [2, 'willingness'],
       [3, 'collectReceivable'],
+      [3, 'closed'],
       [4, 'charge'],
+    ])
+    expect(
+      CHOSEN.events.modifiers.map(({ change, fromDay, lastDay }) => [
+        change.kind,
+        fromDay,
+        lastDay,
+      ]),
+    ).toEqual([
+      ['walkIns', 1, 15],
+      ['walkIns', 1, 3],
+      ['appeal', 1, 5],
+      ['unavailable', 1, 2],
     ])
     expect(CHOSEN.events.history).toHaveLength(1)
     expect(CHOSEN.events.headlines).toEqual([{ day: 1, id: 'essai' }])
@@ -455,12 +473,73 @@ describe('serialize and deserialize', () => {
     const text = edited('events', (save, key) => {
       delete save[key]
       delete save.receivables
+      delete (save.lastDay as Json).modifiers
       save.saveVersion = 7
     })
     const back = deserialize(text)
     expect(back).toEqual(FORTNIGHT)
     expect(back.events).toEqual(noEvents())
     expect(back.receivables).toEqual([])
+  })
+
+  it('load a version 8 game as one with no change to the street', () => {
+    /** `state`, with no change to the street, saved as version 8. */
+    const v8 = (state: GameState) => {
+      const save = JSON.parse(serialize(state)) as Json
+      const { events, lastDay } = save as { events: Json; lastDay: Json | null }
+      expect(events.modifiers).toEqual([])
+      delete events.modifiers
+      if (lastDay !== null) delete lastDay.modifiers
+      return JSON.stringify({ ...save, saveVersion: 8 })
+    }
+    expect(deserialize(v8(FORTNIGHT))).toEqual(FORTNIGHT)
+    // An event, a receivable and a delayed effect of version 8 come too.
+    const owed = {
+      ...CHOSEN,
+      events: {
+        ...CHOSEN.events,
+        delayed: CHOSEN.events.delayed.filter(
+          ({ effect }) => effect.kind === 'collectReceivable',
+        ),
+        modifiers: [],
+      },
+    }
+    expect(deserialize(v8(owed))).toEqual(owed)
+    expect(deserialize(v8(createInitialState(SEED)))).toEqual(
+      createInitialState(SEED),
+    )
+  })
+
+  it('give back the street each morning and each close, as each change ends', () => {
+    const load = (state: GameState) =>
+      deserialize(serialize(state), FOOD_TRUCK, ESSAI)
+    let state = CHOSEN
+    const ends = new Set<number>()
+    for (let day = 1; day <= 17; day += 1) {
+      expect(load(state)).toEqual(state)
+      const closed = playDay(state)
+      expect(load(closed)).toEqual(closed)
+      const summary = closed.lastDay?.modifiers ?? []
+      for (const modifier of summary) {
+        if (modifier.lastDay === day) {
+          ends.add(day)
+          // Its last close drops it: only the summary of its day holds it.
+          expect(closed.events.modifiers).not.toContainEqual(modifier)
+        }
+      }
+      state = resolveEvent(withEvents(state), 'rienFaire', ESSAI)
+    }
+    // Every change ended, the one of a single day on day 2.
+    expect([...ends].sort((a, b) => a - b)).toEqual([2, 3, 5, 15])
+    expect(state.events.modifiers).toEqual([])
+    expect(CLOSE_2.lastDay?.modifiers.map(({ change }) => change.kind)).toEqual(
+      ['walkIns', 'walkIns', 'appeal', 'unavailable', 'willingness'],
+    )
+    expect(CLOSE_2.events.modifiers.map(({ change }) => change.kind)).toEqual([
+      'walkIns',
+      'walkIns',
+      'appeal',
+    ])
   })
 
   it.each([
@@ -563,7 +642,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 6, 9, '8', '7', null])('saveVersion %j', (version) => {
+  it.each([0, 1, 6, 10, '9', '8', '7', null])('saveVersion %j', (version) => {
     expectInvalid(withValue('saveVersion', version), [
       `unsupported saveVersion ${JSON.stringify(version)}`,
     ])
@@ -630,6 +709,8 @@ describe('deserialize rejects', () => {
     'lastDay.energy',
     'lastDay.botched',
     'lastDay.visits.0.botched',
+    'lastDay.modifiers',
+    'events.modifiers',
   ])('a save missing %s', (path) => {
     const at = path.replace(/\.(\d+)/g, '[$1]')
     expectInvalid(without(path), [`→ at ${at}`])
@@ -1289,6 +1370,7 @@ describe('deserialize rejects', () => {
       edited('events', (save, key) => {
         delete save[key]
         delete save.receivables
+        delete (save.lastDay as Json).modifiers
         save.saveVersion = 7
         change(save)
       })
@@ -1308,6 +1390,50 @@ describe('deserialize rejects', () => {
           save.energy = 101
         }),
         ['→ at energy'],
+      )
+    })
+
+    it('with changes to the street, which came in version 9', () => {
+      expectInvalid(
+        v7((save) => {
+          ;(save.lastDay as Json).modifiers = []
+        }),
+        ['Unrecognized key: "modifiers"\n  → at lastDay'],
+      )
+    })
+  })
+
+  describe('a version 8 game', () => {
+    const v8 = (change: (save: Json) => void = () => undefined) =>
+      edited('events', (save, key) => {
+        delete (save[key] as Json).modifiers
+        delete (save.lastDay as Json).modifiers
+        save.saveVersion = 8
+        change(save)
+      })
+
+    it('which loads', () => {
+      expect(deserialize(v8())).toEqual(FORTNIGHT)
+    })
+
+    it.each(['events', 'lastDay'])(
+      'with changes to the street in %s, which came in version 9',
+      (field) => {
+        expectInvalid(
+          v8((save) => {
+            ;(save[field] as Json).modifiers = []
+          }),
+          [`Unrecognized key: "modifiers"\n  → at ${field}`],
+        )
+      },
+    )
+
+    it('with a field it breaks', () => {
+      expectInvalid(
+        v8((save) => {
+          save.receivables = [{ client: '' }]
+        }),
+        ['→ at receivables[0].client'],
       )
     })
   })
@@ -1449,7 +1575,7 @@ describe('deserialize rejects', () => {
       [
         'delayed.0.day',
         5,
-        'delayed effect 2 comes before the one before it: day 4 < day 5',
+        'delayed effect 2 comes before the one before it: day 3 < day 5',
       ],
       ['delayed.0.event', 'nope', 'delayed effect 1 is an unknown event: nope'],
       [
@@ -1529,6 +1655,114 @@ describe('deserialize rejects', () => {
       expectInvalid(text, [
         'headline 2 comes before the one before it: day 0 < day 1',
       ])
+    })
+
+    describe('changes to the street', () => {
+      const closing = serialize(CLOSE_2)
+      const summaryOnly = (CLOSE_2.lastDay?.modifiers ?? []).findIndex(
+        ({ change }) => change.kind === 'willingness',
+      )
+
+      it.each([
+        [
+          'modifiers.0.event',
+          'nope',
+          'street modifier 1 is an unknown event: nope',
+        ],
+        [
+          'modifiers.0.fromDay',
+          2,
+          'street modifier 1 starts on day 2, after day 1',
+        ],
+        [
+          'modifiers.1.lastDay',
+          0,
+          'street modifier 2 ends on day 0, before it starts on day 1',
+        ],
+      ])('with %s at %j', (path, value, reason) => {
+        expectInvalid(at(path, value), [reason])
+      })
+
+      it('that ended on a day already played', () => {
+        expectInvalid(at('modifiers.0.lastDay', 2, closing), [
+          'street modifier 1 ends on day 2, a day already played',
+        ])
+      })
+
+      it('out of order', () => {
+        const [first, second] = CHOSEN.events.modifiers
+        expectInvalid(at('modifiers', [first, { ...second, fromDay: 0 }]), [
+          'street modifier 2 comes before the one before it: day 0 < day 1',
+        ])
+      })
+
+      it.each([
+        [{ kind: 'walkIns', factor: 0 }, 'change.factor'],
+        [{ kind: 'walkIns', factor: -0.5 }, 'change.factor'],
+        [
+          { kind: 'walkIns', factor: 0.5, segment: 'touriste' },
+          'change.segment',
+        ],
+        [{ kind: 'appeal', product: 'poutine', factor: 2 }, 'change.product'],
+        [{ kind: 'unavailable' }, 'change.product'],
+        [{ kind: 'pluie' }, 'change.kind'],
+      ])('with the change %j', (change, field) => {
+        expectInvalid(at('modifiers.0.change', change), [
+          `→ at events.modifiers[0].${field}`,
+        ])
+      })
+
+      it('with a change that still has its days', () => {
+        expectInvalid(at('modifiers.0.change', { kind: 'closed', days: 2 }), [
+          'Unrecognized key: "days"',
+        ])
+      })
+
+      it('with a key the game does not know', () => {
+        expectInvalid(at('modifiers.0.note', 'x'), ['Unrecognized key: "note"'])
+      })
+
+      it('of lastDay, from an unknown event, even once it ended', () => {
+        expect(summaryOnly).toBeGreaterThan(-1)
+        expect(CLOSE_2.events.modifiers).toHaveLength(3)
+        const text = withValue(
+          `lastDay.modifiers.${summaryOnly}.event`,
+          'nope',
+          closing,
+        )
+        expectInvalid(text, [
+          `lastDay's street modifier ${summaryOnly + 1} is an unknown event: nope`,
+        ])
+      })
+
+      it.each([
+        ['fromDay', 3, 'from day 3 to day 15, not on day 2'],
+        ['lastDay', 1, 'from day 1 to day 1, not on day 2'],
+      ])(
+        'of lastDay, with a %s %j it was not in effect',
+        (field, value, reason) => {
+          const text = withValue(`lastDay.modifiers.0.${field}`, value, closing)
+          expectInvalid(text, [
+            `lastDay's street modifier 1 is in effect ${reason}`,
+          ])
+        },
+      )
+
+      it('of lastDay, out of order', () => {
+        const text = withValue('lastDay.modifiers.0.fromDay', 2, closing)
+        expectInvalid(text, [
+          "lastDay's street modifier 2 comes before the one before it: day 1 < day 2",
+        ])
+      })
+
+      it('of lastDay, with a change it breaks', () => {
+        const text = withValue(
+          'lastDay.modifiers.0.change',
+          { kind: 'appeal', factor: 2 },
+          closing,
+        )
+        expectInvalid(text, ['→ at lastDay.modifiers[0].change.product'])
+      })
     })
 
     it("with the owner's energy below the close before, unless a choice was made that morning", () => {

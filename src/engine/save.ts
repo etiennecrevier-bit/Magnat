@@ -5,6 +5,7 @@ import {
   eventEffectSchema,
   productIdSchema,
   segmentIdSchema,
+  streetChangeSchema,
   type EventContent,
   type FoodTruckContent,
 } from '../content/schema.ts'
@@ -36,9 +37,11 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 8 adds the event
- * cards and the receivables: a version 7 game still loads, as a game with
- * no event yet and nobody owing anything. Version 7 adds the
+ * change can no longer load (rule 8 in CLAUDE.md). Version 9 adds the
+ * changes to the street: a version 8 game still loads, as a game with none.
+ * Version 8 adds the event cards and the receivables: a version 7 game
+ * still loads, as a game with no event yet and nobody owing anything.
+ * Version 7 adds the
  * owner's energy and botched units: a version 6 game has neither. Version 6
  * adds the owner's personal account: a version 5 game has none. Version 5
  * spends the marketing budget: a version 4 game has no marketing history.
@@ -48,10 +51,11 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 8
+export const SAVE_VERSION = 9
 
-/** The older format `deserialize()` still loads: see `SAVE_VERSION`. */
-const UPGRADED_VERSION = 7
+/** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const STREETLESS_VERSION = 8
+const EVENTLESS_VERSION = 7
 
 const RECEIVABLES: AccountCode = '1100'
 const STOCKS: AccountCode = '1200'
@@ -120,6 +124,14 @@ const visitOutcome = z.enum({
 
 const minuteOfDay = z.int().min(0).max(MINUTES_PER_DAY)
 
+// `checkEvents()` checks the days, their order and the event ids.
+const modifierSchema = z.strictObject({
+  event: z.string(),
+  change: streetChangeSchema,
+  fromDay: gameDay,
+  lastDay: gameDay,
+})
+
 const daySummarySchema = z.strictObject({
   day: gameDay,
   sold: unitsPerProduct,
@@ -152,6 +164,7 @@ const daySummarySchema = z.strictObject({
   longestWaitSeconds: count,
   energy: energyLevel,
   botched: count,
+  modifiers: z.array(modifierSchema),
 })
 
 // `validateDecisions()` checks the limits and the days open.
@@ -215,6 +228,7 @@ const eventsSchema = z.strictObject({
   ),
   lastDrawnDay: gameDay.nullable(),
   headlines: z.array(z.strictObject({ day: gameDay, id: z.string() })),
+  modifiers: z.array(modifierSchema),
 })
 
 // `checkReceivables()` checks the days, their order and the total.
@@ -248,10 +262,17 @@ const saveSchema = z.strictObject({
 
 type Save = z.output<typeof saveSchema>
 
-/** A version 7 save: no event and no receivable. */
-const upgradedSchema = saveSchema
-  .omit({ saveVersion: true, events: true, receivables: true })
-  .extend({ saveVersion: z.literal(UPGRADED_VERSION) })
+/** A version 8 save: no change to the street. */
+const streetlessSchema = saveSchema.extend({
+  saveVersion: z.literal(STREETLESS_VERSION),
+  lastDay: daySummarySchema.omit({ modifiers: true }).nullable(),
+  events: eventsSchema.omit({ modifiers: true }),
+})
+
+/** A version 7 save: no event and no receivable either. */
+const eventlessSchema = streetlessSchema
+  .omit({ events: true, receivables: true })
+  .extend({ saveVersion: z.literal(EVENTLESS_VERSION) })
 
 /**
  * Writes the game as the JSON `deserialize()` loads. Throws a TypeError
@@ -282,8 +303,9 @@ export function serialize(state: GameState): string {
  * `emptyJournal()` by posting every saved entry again.
  *
  * Throws an Error that starts with "Invalid save:" and names the problem
- * unless: the text is JSON of the current `SAVE_VERSION`, or of version 7,
- * which loads with no event and no receivable; every field has
+ * unless: the text is JSON of the current `SAVE_VERSION`, or of version 8,
+ * which loads with no change to the street, or of version 7, which also
+ * loads with no event and no receivable; every field has
  * the right type and no other key appears; every entry posts again through
  * `postEntry()` and none is dated after the save's day; the books add up
  * within the safe integer range; the lots are oldest first, none bought
@@ -364,20 +386,29 @@ function parsed(text: string): Save {
   }
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
-  if (saveVersion === UPGRADED_VERSION) {
-    // Strict first, so a key version 7 did not know still fails the load.
-    checked(upgradedSchema, raw)
-    return checked(saveSchema, {
-      ...raw,
-      saveVersion: SAVE_VERSION,
-      events: noEvents(),
-      receivables: [],
-    })
-  }
-  if (saveVersion !== SAVE_VERSION) {
+  if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  // An older version's own schema first, strict, so a key it did not know
+  // still fails the load.
+  if (saveVersion === EVENTLESS_VERSION) {
+    checked(eventlessSchema, raw)
+  } else if (saveVersion === STREETLESS_VERSION) {
+    checked(streetlessSchema, raw)
+  } else {
     invalid(`unsupported saveVersion ${JSON.stringify(saveVersion)}`)
   }
-  return checked(saveSchema, raw)
+  // As that schema checked them: version 7 has no events or receivables.
+  const old = raw as {
+    lastDay: object | null
+    events?: object
+    receivables?: unknown
+  }
+  return checked(saveSchema, {
+    ...raw,
+    saveVersion: SAVE_VERSION,
+    lastDay: old.lastDay === null ? null : { ...old.lastDay, modifiers: [] },
+    events: { ...(old.events ?? noEvents()), modifiers: [] },
+    receivables: old.receivables ?? [],
+  })
 }
 
 function checked<T extends z.ZodType>(schema: T, raw: unknown): z.output<T> {
@@ -536,7 +567,13 @@ function checkEnergy(save: Save): void {
  * - the history, oldest first, holds days no later than the save's, each an
  *   event in `content`, one of its choices and one of that choice's
  *   outcomes;
- * - the headlines, oldest first, are no later than the save's day.
+ * - the headlines, oldest first, are no later than the save's day;
+ * - the changes to the street still in effect, by first day, each from an
+ *   event in `content`, start no later than the save's day, end no earlier
+ *   than they start, and end after `lastDay`'s day, since its close dropped
+ *   those that ended;
+ * - `lastDay`'s changes to the street, by first day, were each in effect on
+ *   its day and each from an event in `content`.
  */
 function checkEvents(
   { day, lastDay, events }: Save,
@@ -554,8 +591,15 @@ function checkEvents(
     }
   }
   const played = lastDay?.day ?? -1
-  const { pending, delayed, followUps, history, lastDrawnDay, headlines } =
-    events
+  const {
+    pending,
+    delayed,
+    followUps,
+    history,
+    lastDrawnDay,
+    headlines,
+    modifiers,
+  } = events
 
   if (pending !== null) {
     if (played !== day - 1) {
@@ -616,6 +660,30 @@ function checkEvents(
       invalid(`${what} is on day ${headline.day}, after day ${day}`)
     }
     checkOrder(what, headline.day, headlines[index - 1]?.day)
+  })
+  modifiers.forEach(({ event, fromDay, lastDay: last }, index) => {
+    const what = `street modifier ${index + 1}`
+    checkEvent(what, event)
+    if (fromDay > day) {
+      invalid(`${what} starts on day ${fromDay}, after day ${day}`)
+    }
+    if (last < fromDay) {
+      invalid(`${what} ends on day ${last}, before it starts on day ${fromDay}`)
+    }
+    if (last <= played) {
+      invalid(`${what} ends on day ${last}, a day already played`)
+    }
+    checkOrder(what, fromDay, modifiers[index - 1]?.fromDay)
+  })
+  lastDay?.modifiers.forEach(({ event, fromDay, lastDay: last }, index) => {
+    const what = `lastDay's street modifier ${index + 1}`
+    checkEvent(what, event)
+    if (fromDay > played || last < played) {
+      invalid(
+        `${what} is in effect from day ${fromDay} to day ${last}, not on day ${played}`,
+      )
+    }
+    checkOrder(what, fromDay, lastDay.modifiers[index - 1]?.fromDay)
   })
 }
 

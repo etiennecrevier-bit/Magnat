@@ -38,6 +38,7 @@ export function noEvents(): EventsState {
     history: [],
     lastDrawnDay: null,
     headlines: [],
+    modifiers: [],
   }
 }
 
@@ -250,7 +251,7 @@ export function resolveEvent(
     const effect = untimed(timed)
     resolved =
       day === state.day
-        ? applyEffect(resolved, effect, foodTruck)
+        ? applyEffect(resolved, effect, foodTruck, event.id)
         : {
             ...resolved,
             events: {

@@ -46,6 +46,7 @@ import { marketingCrowd, rememberSpend } from './marketing.ts'
 import { add, cents, mulInt, mulRatio, sub, type Cents } from './money.ts'
 import { inDebt, livePersonalDay } from './personal.ts'
 import { servers } from './service.ts'
+import { inEffect, streetOn } from './street.ts'
 import type { Day, Decisions, GameState, Lot } from './types.ts'
 
 /** The shipped food truck content, validated once when the engine loads. */
@@ -176,24 +177,29 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * Plays business day `morning.day` with `morning.decisions`. Throws an Error
  * while an event waits for the player's choice. First the start of the day:
  * the delayed effects of the events' choices due that day, then the
- * receivables due (see `startOfDay`). On the 1st of the month, open or
- * closed: the month's charges (see `monthlyCharges`). On a day the truck
- * opens: the morning restock, then the walk-in customers, with those the
- * marketing of the days before brings on top (see `marketingCrowd`), lining
- * up at the counter, where `servers()` serve them from the stock on hand,
- * slower and botching units the more tired the owner is that morning (see
- * `effectsOf`), what the sales cost in packaging and card fees, the fuel
- * and the day's marketing budget. On a day it is closed, nobody comes,
- * nothing is bought and nothing is spent on marketing, so the generator does
- * not move. On payday, open or closed, the owner's weekly pay. Every day:
- * the spoilage at the close. Every entry is dated `morning.day`. Then the
- * owner's own day, outside the books, with `personal` as their living costs
- * (see `livePersonalDay`), and what the day did to their energy, with
- * `energy` as what tires them (see `energyAtClose`). Returns a new state on
- * the same day with the books, the stock, the generator, the marketing
- * history, `lastDay`, the owner's personal account, their energy, the
- * events and the receivables brought up to the close; never mutates
- * `morning`. Cash may go negative.
+ * receivables due (see `startOfDay`). Then the street that day, with the
+ * changes in effect folded together (see `streetOn`). On the 1st of the
+ * month, open or closed: the month's charges (see `monthlyCharges`). On a
+ * day the truck opens, one of the days open the street does not close: the
+ * morning restock of every product the street leaves on sale, then the
+ * walk-in customers, with those the marketing of the days before brings on
+ * top (see `marketingCrowd`) and as the street changes them, lining up at
+ * the counter, where `servers()` serve them from the stock on hand, none of
+ * a product that cannot be sold, slower and botching units the more tired
+ * the owner is that morning (see `effectsOf`), what the sales cost in
+ * packaging and card fees, the fuel and the day's marketing budget. On a
+ * day it is closed, nobody comes, nothing is bought and nothing is spent on
+ * marketing, so the generator does not move. On payday, open or closed, the
+ * owner's weekly pay. Every day: the spoilage at the close. Every entry is
+ * dated `morning.day`. Then the owner's own day, outside the books, with
+ * `personal` as their living costs (see `livePersonalDay`), and what the
+ * day did to their energy, with `energy` as what tires them (see
+ * `energyAtClose`). Returns a new state on the same day with the books, the
+ * stock, the generator, the marketing history, `lastDay`, with the changes
+ * to the street in effect that day, the owner's personal account, their
+ * energy, the events, without the changes whose last day it was, and the
+ * receivables brought up to the close; never mutates `morning`. Cash may go
+ * negative.
  */
 export function playDay(
   morning: GameState,
@@ -212,7 +218,9 @@ export function playDay(
   const state = startOfDay(morning, content)
   const { day, decisions } = state
   const { dayOfMonth, weekday } = toCalendar(day)
-  const open = decisions.daysOpen.includes(weekday)
+  const { modifiers } = state.events
+  const street = streetOn(modifiers, day)
+  const open = decisions.daysOpen.includes(weekday) && !street.closed
   let journal = state.journal
   let lots = state.inventory
   let served = closed(state.rngState)
@@ -225,7 +233,13 @@ export function playDay(
   }
 
   if (open) {
-    const restocked = restock(lots, day, decisions.restock, content)
+    const restocked = restock(
+      lots,
+      day,
+      decisions.restock,
+      content,
+      street.unavailable,
+    )
     journal = post(journal, day, MEMO.purchases, [
       debit(INVENTORY, restocked.cost),
       credit(CASH, restocked.cost),
@@ -238,13 +252,16 @@ export function playDay(
       dayTypeOf(weekday),
       customers,
       price,
-      perProduct((product) => onHand(restocked.lots, product)),
+      perProduct((product) =>
+        street.unavailable[product] ? 0 : onHand(restocked.lots, product),
+      ),
       {
         service: content.service,
         servers: servers(state, energy),
         botchedShare: effectsOf(state.energy, energy).botchedShare,
       },
       marketingCrowd(state.marketingHistory, content.marketing),
+      street,
     )
 
     // The sale, its cost and what it costs to make are separate entries, so
@@ -318,6 +335,7 @@ export function playDay(
     },
     energy,
   )
+  const lasting = modifiers.filter(({ lastDay }) => lastDay > day)
 
   return {
     ...state,
@@ -345,9 +363,14 @@ export function playDay(
         (total, product) => total + served.botched[product],
         0,
       ),
+      modifiers: inEffect(modifiers, day),
     },
     personal: account,
     energy: closingEnergy,
+    events:
+      lasting.length === modifiers.length
+        ? state.events
+        : { ...state.events, modifiers: lasting },
   }
 }
 
@@ -449,17 +472,19 @@ function closed(rngState: number): Served {
 
 /**
  * Buys each product its restock rule calls for, at today's unit cost, as a
- * new lot after the others.
+ * new lot after the others, but none of a product that is `unavailable`.
  */
 function restock(
   lots: readonly Lot[],
   day: Day,
   rules: Decisions['restock'],
   content: FoodTruckContent,
+  unavailable: Readonly<Record<ProductId, boolean>>,
 ): { lots: readonly Lot[]; cost: Cents } {
   const bought: Lot[] = []
   let cost = ZERO
   for (const product of PRODUCTS) {
+    if (unavailable[product]) continue
     const quantity = orderSize(rules[product], onHand(lots, product))
     if (quantity === 0) continue
     const unitCost = content.products[product].unitCostCents

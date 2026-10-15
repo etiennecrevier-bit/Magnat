@@ -473,6 +473,51 @@ export const eventChargeAccountSchema = z.enum([
   '6900',
 ])
 
+/** What a change to the street multiplies by: above 0. */
+const factor = z.number().positive()
+
+/**
+ * The changes to the street, one shape for each kind, without how long they
+ * last: the walk-ins of everyone or of one `segment`, one product's appeal,
+ * what everyone or one `segment` will pay, a product that cannot be sold,
+ * and the truck closed whatever the days open.
+ */
+const STREET_CHANGES = {
+  walkIns: {
+    kind: z.literal('walkIns'),
+    factor,
+    segment: segmentIdSchema.optional(),
+  },
+  appeal: { kind: z.literal('appeal'), product: productIdSchema, factor },
+  willingness: {
+    kind: z.literal('willingness'),
+    factor,
+    segment: segmentIdSchema.optional(),
+  },
+  unavailable: { kind: z.literal('unavailable'), product: productIdSchema },
+  closed: { kind: z.literal('closed') },
+} as const
+
+/**
+ * A change to the street, as the game keeps it while it lasts: an effect of
+ * a street kind without its `days`.
+ */
+export const streetChangeSchema = z.discriminatedUnion('kind', [
+  z.strictObject(STREET_CHANGES.walkIns),
+  z.strictObject(STREET_CHANGES.appeal),
+  z.strictObject(STREET_CHANGES.willingness),
+  z.strictObject(STREET_CHANGES.unavailable),
+  z.strictObject(STREET_CHANGES.closed),
+])
+
+export type StreetChange = z.output<typeof streetChangeSchema>
+
+/** The kinds of change to the street. */
+export type StreetModifierKind = StreetChange['kind']
+
+/** The days a change to the street lasts, its first day included. */
+const streetDays = z.int().positive()
+
 /**
  * One kind of effect for each member, with `extra` added to each: nothing
  * for the effect as the engine applies it, its timing for the content.
@@ -566,6 +611,30 @@ function effectSchemas<Extra extends z.core.$ZodShape>(extra: Extra) {
     }),
     /** Queues the La Presse-Citron headline `id`. */
     z.strictObject({ kind: z.literal('headline'), id: idSchema, ...extra }),
+    /**
+     * For `days` days from the day it starts, multiplies the walk-ins of
+     * everyone, or of `segment`, by `factor`.
+     */
+    z.strictObject({ ...STREET_CHANGES.walkIns, days: streetDays, ...extra }),
+    /** For `days` days, multiplies `product`'s appeal by `factor`. */
+    z.strictObject({ ...STREET_CHANGES.appeal, days: streetDays, ...extra }),
+    /**
+     * For `days` days, multiplies what everyone, or `segment`, will pay,
+     * their reference prices, by `factor`.
+     */
+    z.strictObject({
+      ...STREET_CHANGES.willingness,
+      days: streetDays,
+      ...extra,
+    }),
+    /** For `days` days, `product` cannot be sold. */
+    z.strictObject({
+      ...STREET_CHANGES.unavailable,
+      days: streetDays,
+      ...extra,
+    }),
+    /** For `days` days, the truck stays closed, whatever the days open. */
+    z.strictObject({ ...STREET_CHANGES.closed, days: streetDays, ...extra }),
   ] as const
 }
 

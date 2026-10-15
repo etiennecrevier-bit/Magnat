@@ -12,12 +12,14 @@ import {
   type WalkIns,
 } from '../content/schema.ts'
 import {
+  NO_CHANGES,
   SEGMENTS,
   dayTypeOf,
   perSegment,
   purchaseProbability,
   serveWalkIns,
   type Counter,
+  type CrowdChanges,
   type ExtraCrowd,
   type Served,
 } from './customers.ts'
@@ -25,6 +27,7 @@ import { CUSTOMERS, FOOD_TRUCK } from './day.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
 import { cents, type Cents } from './money.ts'
 import { next, seedRng } from './rng.ts'
+import { streetOn } from './street.ts'
 import type { PerProduct, Visit } from './types.ts'
 
 interface Odds {
@@ -174,6 +177,7 @@ function serve(
     available?: PerProduct
     counter?: Counter
     extra?: ExtraCrowd | null
+    changes?: Partial<CrowdChanges>
   } = {},
 ): Served {
   return serveWalkIns(
@@ -185,6 +189,7 @@ function serve(
     options.available ?? PLENTY,
     options.counter ?? INSTANT,
     options.extra ?? null,
+    { ...NO_CHANGES, ...options.changes },
   )
 }
 
@@ -1044,6 +1049,253 @@ describe('an extra crowd', () => {
     expect(marketed.leftLine).toBe(
       marketed.visits.filter(({ outcome }) => outcome === 'leftLine').length,
     )
+  })
+})
+
+describe('the street', () => {
+  // As for an extra crowd: the base crowd is all aubaine, marketing's all
+  // chic, and every product appeals fully.
+  const AUBAINE = { aubaine: 1, habitue: 0, chic: 0 }
+  const CHIC = { aubaine: 0, habitue: 0, chic: 1 }
+  const base = (customers: number) =>
+    weekday(customers, {
+      segmentShares: AUBAINE,
+      productAppeal: { cafe: 1, chocolat: 1, croissant: 1 },
+    })
+  const marketing = (customers: number): ExtraCrowd => ({
+    customers,
+    segmentShares: CHIC,
+  })
+  const walkIns = (factors: Partial<Record<SegmentId, number>>) => ({
+    walkIns: { ...NO_CHANGES.walkIns, ...factors },
+  })
+  const from = (served: Served, segment: SegmentId) =>
+    served.visits.filter((visit) => visit.segment === segment)
+  /** Whether `all` holds every visit of `some`, in the same order. */
+  const holds = (all: readonly Visit[], some: readonly Visit[]) => {
+    let found = 0
+    for (const visit of all) {
+      if (found < some.length && sameVisit(visit, some[found])) found += 1
+    }
+    return found === some.length
+  }
+
+  it('changes nothing with every factor 1', () => {
+    const walkIns = weekday(150)
+    expect(serve(walkIns, { changes: NO_CHANGES })).toEqual(serve(walkIns))
+    expect(
+      serve(walkIns, {
+        counter: SHIPPED_COUNTER,
+        extra: marketing(20),
+        changes: NO_CHANGES,
+      }),
+    ).toEqual(
+      serve(walkIns, { counter: SHIPPED_COUNTER, extra: marketing(20) }),
+    )
+  })
+
+  it.each([0.65, 0.5, 0.1, 0.99])(
+    'keeps round(n × %d) of a cut segment, the others as they were, with the same draws',
+    (factor) => {
+      const shipped = weekday(300)
+      const alone = serve(shipped)
+      const cut = serve(shipped, { changes: walkIns({ aubaine: factor }) })
+      const before = alone.segments.aubaine.visits
+      expect(before).toBeGreaterThan(50)
+      expect(cut.segments.aubaine.visits).toBe(Math.round(before * factor))
+      expect(from(cut, 'habitue')).toEqual(from(alone, 'habitue'))
+      expect(from(cut, 'chic')).toEqual(from(alone, 'chic'))
+      expect(holds(alone.visits, cut.visits)).toBe(true)
+      expect(cut.rngState).toBe(alone.rngState)
+    },
+  )
+
+  it('keeps every other customer of a segment at 0.5, the first one first', () => {
+    const alone = serve(base(9))
+    const cut = serve(base(9), { changes: walkIns({ aubaine: 0.5 }) })
+    // round(k / 2) goes up at k = 1, 3, 5, 7 and 9.
+    expect(cut.visits).toHaveLength(5)
+    expect(cut.rngState).toBe(alone.rngState)
+  })
+
+  it('cuts the customers marketing brings too, with the same draws', () => {
+    const alone = serve(base(100), { extra: marketing(40) })
+    const cut = serve(base(100), {
+      extra: marketing(40),
+      changes: walkIns({ chic: 0.65 }),
+    })
+    expect(from(cut, 'chic')).toHaveLength(26)
+    expect(from(cut, 'aubaine')).toEqual(from(alone, 'aubaine'))
+    expect(cut.rngState).toBe(alone.rngState)
+  })
+
+  it('brings the same customers first, then more, when it adds walk-ins', () => {
+    const alone = serve(base(120))
+    const surged = serve(base(120), { changes: walkIns({ aubaine: 1.5 }) })
+    expect(surged.visits).toHaveLength(180)
+    expect(holds(surged.visits, alone.visits)).toBe(true)
+    expect(surged.rngState).toBe(
+      advance(alone.rngState, 60 * (2 + PRODUCTS.length)),
+    )
+    const more = serve(base(120), { changes: walkIns({ aubaine: 1.8 }) })
+    expect(more.visits).toHaveLength(216)
+    expect(holds(more.visits, surged.visits)).toBe(true)
+  })
+
+  it('adds walk-ins of the segments that marketing brings too, after its own', () => {
+    const marketed = serve(base(100), { extra: marketing(40) })
+    const surged = serve(base(100), {
+      extra: marketing(40),
+      changes: walkIns({ chic: 1.5 }),
+    })
+    expect(from(surged, 'aubaine')).toEqual(from(marketed, 'aubaine'))
+    expect(from(surged, 'chic')).toHaveLength(60)
+    expect(holds(surged.visits, marketed.visits)).toBe(true)
+    expect(surged.rngState).toBe(
+      advance(marketed.rngState, 20 * (2 + PRODUCTS.length)),
+    )
+  })
+
+  it('cuts one segment and adds to another on the same day, with marketing', () => {
+    const marketed = serve(base(120), { extra: marketing(30) })
+    const changed = serve(base(120), {
+      extra: marketing(30),
+      changes: walkIns({ aubaine: 0.5, chic: 2 }),
+    })
+    // The cut takes nothing off what the other segment adds.
+    expect(from(changed, 'aubaine')).toHaveLength(60)
+    expect(from(changed, 'chic')).toHaveLength(60)
+    expect(from(changed, 'habitue')).toEqual([])
+    expect(changed.rngState).toBe(
+      advance(marketed.rngState, 30 * (2 + PRODUCTS.length)),
+    )
+    // Marketing's own customers come as they would.
+    expect(holds(from(changed, 'chic'), from(marketed, 'chic'))).toBe(true)
+  })
+
+  it('adds walk-ins after the same noise as the base crowd', () => {
+    const noisy = (seed: number, factor: number) =>
+      serve(
+        loadFoodTruckContent({
+          ...FOOD_TRUCK,
+          walkIns: {
+            ...FOOD_TRUCK.walkIns,
+            noiseStdDevRatio: 0.3,
+            dayTypes: {
+              ...FOOD_TRUCK.walkIns.dayTypes,
+              semaine: {
+                ...FOOD_TRUCK.walkIns.dayTypes.semaine,
+                customers: 100,
+                segmentShares: AUBAINE,
+              },
+            },
+          },
+        }).walkIns,
+        { seed, changes: walkIns({ aubaine: factor }) },
+      )
+    for (const seed of [1, 2, 3, 4, 5]) {
+      expect(noisy(seed, 2).visits).toHaveLength(
+        2 * noisy(seed, 1).visits.length,
+      )
+    }
+  })
+
+  it('changes nothing when a cut and an addition multiply to 1', () => {
+    const modifier = (factor: number) => ({
+      event: 'essai',
+      change: { kind: 'walkIns' as const, factor },
+      fromDay: 0,
+      lastDay: 0,
+    })
+    const street = streetOn([modifier(0.5), modifier(2)], 0)
+    const shipped = weekday(200)
+    expect(serve(shipped, { changes: street })).toEqual(serve(shipped))
+  })
+
+  it('draws nothing more for a segment that neither crowd brings', () => {
+    const alone = serve(base(50))
+    const surged = serve(base(50), { changes: walkIns({ habitue: 3 }) })
+    expect(surged).toEqual(alone)
+  })
+
+  it('takes away the appeal of a product, with the same draws', () => {
+    const shipped = weekday(300)
+    const alone = serve(shipped)
+    const none = serve(shipped, {
+      changes: { appeal: { ...NO_CHANGES.appeal, chocolat: 0 } },
+    })
+    const less = serve(shipped, {
+      changes: { appeal: { ...NO_CHANGES.appeal, chocolat: 0.3 } },
+    })
+    expect(alone.sold.chocolat).toBeGreaterThan(10)
+    expect(none.sold.chocolat).toBe(0)
+    expect(less.sold.chocolat).toBeGreaterThan(0)
+    expect(less.sold.chocolat).toBeLessThan(alone.sold.chocolat)
+    for (const served of [none, less]) {
+      expect(served.sold.cafe).toBe(alone.sold.cafe)
+      expect(served.sold.croissant).toBe(alone.sold.croissant)
+      expect(arrivals(served)).toEqual(arrivals(alone))
+      expect(served.rngState).toBe(alone.rngState)
+    }
+  })
+
+  it('raises what customers will pay, so a price above the reference is no longer too expensive', () => {
+    // Every segment's reference is 3 $, and the price 3,20 $; ×1.1 makes it
+    // 3,30 $.
+    const customers = everyone({ base: 0.5, reference: 300, sensitivity: 4 })
+    const price = prices({ cafe: 320, chocolat: 320, croissant: 320 })
+    const shipped = weekday(300)
+    const alone = serve(shipped, { customers, price })
+    const willing = serve(shipped, {
+      customers,
+      price,
+      changes: { willingness: perSegment(() => 1.1) },
+    })
+    const tooExpensive = (served: Served) =>
+      SEGMENTS.reduce(
+        (total, id) => total + served.segments[id].tooExpensive,
+        0,
+      )
+    expect(tooExpensive(alone)).toBeGreaterThan(0)
+    expect(tooExpensive(willing)).toBe(0)
+    for (const product of PRODUCTS) {
+      expect(willing.sold[product]).toBeGreaterThan(alone.sold[product])
+    }
+    expect(arrivals(willing)).toEqual(arrivals(alone))
+    expect(willing.rngState).toBe(alone.rngState)
+  })
+
+  it('raises what one segment will pay, at its new reference to the cent', () => {
+    const customers = everyone({ base: 0.5, reference: 300, sensitivity: 4 })
+    // 3,30 $ is the chic customers' new reference: they want each product
+    // with a chance of one half, and none finds it too expensive.
+    const price = prices({ cafe: 330, chocolat: 330, croissant: 330 })
+    const shipped = weekday(600, { segmentShares: CHIC })
+    const willing = serve(shipped, {
+      customers,
+      price,
+      changes: { willingness: { ...NO_CHANGES.willingness, chic: 1.1 } },
+    })
+    const fair = serve(shipped, {
+      customers,
+      price: prices({ cafe: 300, chocolat: 300, croissant: 300 }),
+    })
+    expect(willing.segments.chic.tooExpensive).toBe(0)
+    expect(willing.sold).toEqual(fair.sold)
+    const others = serve(weekday(600, { segmentShares: AUBAINE }), {
+      customers,
+      price,
+      changes: { willingness: { ...NO_CHANGES.willingness, chic: 1.1 } },
+    })
+    expect(others.segments.aubaine.tooExpensive).toBeGreaterThan(0)
+  })
+
+  it('holds a reference price to 1 cent at the least', () => {
+    const served = serve(weekday(100), {
+      changes: { willingness: perSegment(() => 1e-9) },
+    })
+    expect(served.visits).toHaveLength(100)
+    expect(served.sold).toEqual(stock(0))
   })
 })
 

@@ -105,6 +105,7 @@ describe('noEvents', () => {
       history: [],
       lastDrawnDay: null,
       headlines: [],
+      modifiers: [],
     })
     expect(MORNING.events).toEqual(noEvents())
   })
@@ -552,6 +553,86 @@ describe('resolveEvent', () => {
     expect(once.events.history.length).toBeGreaterThan(20)
     expect(serialize(game(choices))).toBe(serialize(once))
     expect(serialize(game(['rienFaire']))).not.toBe(serialize(once))
+  })
+})
+
+describe('a choice that changes the street', () => {
+  // Day 1 is a Tuesday: the construction starts now, the festival two days
+  // later, on Thursday, and the truck closes on the next Saturday, day 5.
+  const street = content([
+    card('chantier', {
+      choices: [
+        {
+          id: 'subir',
+          label: 'Subir',
+          tags: ['Moins de clients'],
+          outcomes: [
+            {
+              chance: 1,
+              result: 'Les cônes sont là.',
+              effects: [
+                { kind: 'walkIns', factor: 0.65, days: 15 },
+                { kind: 'walkIns', factor: 1.8, days: 2, inDays: 2 },
+                { kind: 'closed', days: 1, onNextWeekday: 6 },
+              ],
+            },
+          ],
+        },
+        {
+          id: 'passer',
+          label: 'Passer',
+          tags: ['Rien ne change'],
+          outcomes: [{ chance: 1, result: 'Rien.', effects: [] }],
+        },
+      ],
+    }),
+  ])
+  const chosen = resolveEvent(drawEvent(MORNING, street), 'subir', street)
+
+  it('changes it from the day of the choice, and queues the later ones, with no draw', () => {
+    expect(chosen.events.modifiers).toEqual([
+      {
+        event: 'chantier',
+        change: { kind: 'walkIns', factor: 0.65 },
+        fromDay: 1,
+        lastDay: 15,
+      },
+    ])
+    expect(chosen.events.delayed).toEqual([
+      {
+        day: 3,
+        event: 'chantier',
+        effect: { kind: 'walkIns', factor: 1.8, days: 2 },
+      },
+      { day: 5, event: 'chantier', effect: { kind: 'closed', days: 1 } },
+    ])
+    expect(chosen.rngState).toBe(drawEvent(MORNING, street).rngState)
+    expect(chosen.journal).toBe(MORNING.journal)
+  })
+
+  it('starts each queued one at the start of its day, from the same event', () => {
+    let state = chosen
+    const summaries = []
+    for (let day = 1; day <= 6; day += 1) {
+      state = play(state, NO_EVENTS)
+      summaries.push(state.lastDay)
+    }
+    const kinds = summaries.map((summary) =>
+      summary?.modifiers.map(
+        ({ event, change, fromDay, lastDay }) =>
+          `${event} ${change.kind} ${fromDay}-${lastDay}`,
+      ),
+    )
+    expect(kinds).toEqual([
+      ['chantier walkIns 1-15'],
+      ['chantier walkIns 1-15'],
+      ['chantier walkIns 1-15', 'chantier walkIns 3-4'],
+      ['chantier walkIns 1-15', 'chantier walkIns 3-4'],
+      ['chantier walkIns 1-15', 'chantier closed 5-5'],
+      ['chantier walkIns 1-15'],
+    ])
+    expect(state.events.delayed).toEqual([])
+    expect(state.events.modifiers).toHaveLength(1)
   })
 })
 
