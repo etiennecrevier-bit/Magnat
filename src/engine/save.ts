@@ -21,6 +21,8 @@ import {
   type Journal,
   type JournalEntry,
 } from '../finance/journal.ts'
+import { incomeStatement } from '../finance/statements.ts'
+import { mondayOf, sundayOf } from './calendar.ts'
 import { DIFFICULTIES, EVENTS, FOOD_TRUCK, openingJournal } from './day.ts'
 import { validateDecisions } from './decisions.ts'
 import { FULL_ENERGY } from './energy.ts'
@@ -30,7 +32,16 @@ import { cents, sum } from './money.ts'
 import { LABELS, isKept } from './personal.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
-import type { Decisions, GameState, VisitOutcome } from './types.ts'
+import type {
+  Day,
+  Decisions,
+  GameState,
+  VisitOutcome,
+  WeekDay,
+  WeekReport,
+  WeekSoFar,
+} from './types.ts'
+import { WEEKS_KEPT, openingWeek } from './week.ts'
 
 // A game saved as JSON and loaded back. A save is untrusted text: loading it
 // checks every field against a strict schema, then rebuilds the books by
@@ -39,7 +50,9 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 9 adds the
+ * change can no longer load (rule 8 in CLAUDE.md). Version 10 adds the week
+ * in numbers: a version 9 game still loads, with no week reported yet and
+ * the week under way counted from its last close. Version 9 adds the
  * changes to the street: a version 8 game still loads, as a game with none.
  * Version 8 adds the event cards and the receivables: a version 7 game
  * still loads, as a game with no event yet and nobody owing anything.
@@ -53,17 +66,21 @@ import type { Decisions, GameState, VisitOutcome } from './types.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 9
+export const SAVE_VERSION = 10
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const WEEKLESS_VERSION = 9
 const STREETLESS_VERSION = 8
 const EVENTLESS_VERSION = 7
 
+const CASH: AccountCode = '1000'
 const RECEIVABLES: AccountCode = '1100'
 const STOCKS: AccountCode = '1200'
 
-// A calendar fact, not a tunable: arrivals are minutes of one day.
+// Calendar facts, not tunables: arrivals are minutes of one day, and the
+// weeks of the history start 7 days apart.
 const MINUTES_PER_DAY = 1440
+const DAYS_PER_WEEK = 7
 
 // Every object is strict, so a key the game does not know fails the load
 // instead of being dropped.
@@ -205,6 +222,14 @@ const personalSchema = z.strictObject({
   unpaidRents: z.array(gameDay),
 })
 
+const eventRecordSchema = z.strictObject({
+  day: gameDay,
+  event: z.string(),
+  followUp: z.boolean(),
+  choice: z.string(),
+  outcome: count,
+})
+
 // `checkEvents()` checks the days, their order and the ids against the
 // event content. The effects still to come have no timing left.
 const eventsSchema = z.strictObject({
@@ -219,15 +244,7 @@ const eventsSchema = z.strictObject({
     }),
   ),
   followUps: z.array(z.strictObject({ day: gameDay, event: z.string() })),
-  history: z.array(
-    z.strictObject({
-      day: gameDay,
-      event: z.string(),
-      followUp: z.boolean(),
-      choice: z.string(),
-      outcome: count,
-    }),
-  ),
+  history: z.array(eventRecordSchema),
   lastDrawnDay: gameDay.nullable(),
   headlines: z.array(z.strictObject({ day: gameDay, id: z.string() })),
   modifiers: z.array(modifierSchema),
@@ -242,6 +259,59 @@ const receivableSchema = z.strictObject({
     .transform((n) => cents(n)),
   soldOnDay: gameDay,
   dueDay: gameDay,
+})
+
+// `checkWeek()` checks the days, the cash, the ventes and the bénéfice
+// against the books, and the events against the history and the content.
+const weekDaySchema = z.strictObject({
+  day: gameDay,
+  open: z.boolean(),
+  sales: signedMoney,
+  cashReceived: money,
+  cashAtClose: signedMoney,
+  customersServed: count,
+  spoiled: unitsPerProduct,
+  spoiledCost: money,
+  lostToLine: count,
+  lostToPrices: count,
+  lostToStockouts: count,
+})
+
+const weekSoFarSchema = z.strictObject({
+  cashAtStart: signedMoney,
+  partial: z.boolean(),
+  days: z.array(weekDaySchema),
+  modifiers: z.array(modifierSchema),
+})
+
+const weekReportSchema = z.strictObject({
+  firstDay: gameDay,
+  partial: z.boolean(),
+  days: z.array(weekDaySchema).min(1),
+  sales: signedMoney,
+  netIncome: signedMoney,
+  cashAtStart: signedMoney,
+  cashAtEnd: signedMoney,
+  lowestCash: signedMoney,
+  spoiled: unitsPerProduct,
+  spoiledCost: money,
+  lostToLine: count,
+  lostToPrices: count,
+  lostToStockouts: count,
+  energy: energyLevel,
+  daysOpenInARow: count,
+  receivables: z.array(receivableSchema),
+  unpaidRents: z.array(gameDay),
+  events: z.array(eventRecordSchema),
+  modifiers: z.array(modifierSchema),
+  previousBest: signedMoney.nullable(),
+})
+
+const weekRecordSchema = z.strictObject({
+  firstDay: gameDay,
+  sales: signedMoney,
+  netIncome: signedMoney,
+  cashAtEnd: signedMoney,
 })
 
 const saveSchema = z.strictObject({
@@ -260,12 +330,31 @@ const saveSchema = z.strictObject({
   energy: energyLevel,
   events: eventsSchema,
   receivables: z.array(receivableSchema),
+  weekSoFar: weekSoFarSchema,
+  lastWeek: weekReportSchema.nullable(),
+  weekHistory: z.array(weekRecordSchema),
 })
 
-type Save = z.output<typeof saveSchema>
+// The week under way may come from the books rather than the save.
+type Save = Omit<z.output<typeof saveSchema>, 'weekSoFar'> & {
+  readonly weekSoFar: WeekSoFar
+}
 
-/** A version 8 save: no change to the street. */
-const streetlessSchema = saveSchema.extend({
+/**
+ * A save as parsed: an older one has no week under way until the books it
+ * holds are rebuilt.
+ */
+type Parsed = Omit<Save, 'weekSoFar'> & {
+  readonly weekSoFar: WeekSoFar | null
+}
+
+/** A version 9 save: no week reported. */
+const weeklessSchema = saveSchema
+  .omit({ weekSoFar: true, lastWeek: true, weekHistory: true })
+  .extend({ saveVersion: z.literal(WEEKLESS_VERSION) })
+
+/** A version 8 save: no change to the street either. */
+const streetlessSchema = weeklessSchema.extend({
   saveVersion: z.literal(STREETLESS_VERSION),
   lastDay: daySummarySchema.omit({ modifiers: true }).nullable(),
   events: eventsSchema.omit({ modifiers: true }),
@@ -297,6 +386,9 @@ export function serialize(state: GameState): string {
     energy: state.energy,
     events: state.events,
     receivables: state.receivables,
+    weekSoFar: state.weekSoFar,
+    lastWeek: state.lastWeek,
+    weekHistory: state.weekHistory,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -305,9 +397,11 @@ export function serialize(state: GameState): string {
  * `emptyJournal()` by posting every saved entry again.
  *
  * Throws an Error that starts with "Invalid save:" and names the problem
- * unless: the text is JSON of the current `SAVE_VERSION`, or of version 8,
- * which loads with no change to the street, or of version 7, which also
- * loads with no event and no receivable; every field has
+ * unless: the text is JSON of the current `SAVE_VERSION`, or of version 9,
+ * which loads with no week reported yet and the week under way counted from
+ * its books (see `weekSince`), or of version 8, which also loads with no
+ * change to the street, or of version 7, which also loads with no event
+ * and no receivable; every field has
  * the right type and no other key appears; every entry posts again through
  * `postEntry()` and none is dated after the save's day; the books add up
  * within the safe integer range; the lots are oldest first, none bought
@@ -330,8 +424,9 @@ export function serialize(state: GameState): string {
  * whose labels may be those of `LABELS` too; the receivables are
  * by due day, each sold no later than the save's day and due after the
  * sale and after `lastDay`'s day, and they add up to Comptes clients; the
- * events pass `checkEvents()`; and the journal opens with the books of the
- * profile's difficulty (see `checkDifficulty`).
+ * events pass `checkEvents()`; the journal opens with the books of the
+ * profile's difficulty (see `checkDifficulty`); and the week under way, the
+ * last week reported and the history pass `checkWeek()`.
  *
  * The products, limits, restock kinds, `awarenessDays` and the truck's
  * price are those of `content` as it is now, the events, choices, outcomes
@@ -346,9 +441,14 @@ export function deserialize(
   events: EventContent = EVENTS,
   difficulties: DifficultyContent = DIFFICULTIES,
 ): GameState {
-  const save = parsed(text)
-  const journal = rebuilt(save.journal)
-  checkBooks(save, journal)
+  const loaded = parsed(text)
+  const journal = rebuilt(loaded.journal)
+  checkBooks(loaded, journal)
+  const save: Save = {
+    ...loaded,
+    weekSoFar:
+      loaded.weekSoFar ?? weekSince(loaded, journal, content, difficulties),
+  }
   checkInventory(save, journal)
   checkReceivables(save, journal)
   checkLastDay(save)
@@ -362,6 +462,7 @@ export function deserialize(
   attempt('profile', () => validateProfile(save.profile))
   checkDifficulty(save, journal, content, difficulties)
   checkPersonal(save, events)
+  checkWeek(save, journal, content, events, difficulties)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -378,10 +479,13 @@ export function deserialize(
     energy: save.energy,
     events: save.events,
     receivables: save.receivables,
+    weekSoFar: save.weekSoFar,
+    lastWeek: save.lastWeek,
+    weekHistory: save.weekHistory,
   }
 }
 
-function parsed(text: string): Save {
+function parsed(text: string): Parsed {
   let raw: unknown
   try {
     raw = JSON.parse(text)
@@ -400,22 +504,28 @@ function parsed(text: string): Save {
     checked(eventlessSchema, raw)
   } else if (saveVersion === STREETLESS_VERSION) {
     checked(streetlessSchema, raw)
+  } else if (saveVersion === WEEKLESS_VERSION) {
+    checked(weeklessSchema, raw)
   } else {
     invalid(`unsupported saveVersion ${JSON.stringify(saveVersion)}`)
   }
-  // As that schema checked them: version 7 has no events or receivables.
+  // As that schema checked them: version 7 has no events or receivables,
+  // and version 8 no change to the street.
   const old = raw as {
     lastDay: object | null
     events?: object
     receivables?: unknown
   }
-  return checked(saveSchema, {
+  const save = checked(saveSchema.omit({ weekSoFar: true }), {
     ...raw,
     saveVersion: SAVE_VERSION,
-    lastDay: old.lastDay === null ? null : { ...old.lastDay, modifiers: [] },
-    events: { ...(old.events ?? noEvents()), modifiers: [] },
+    lastDay: old.lastDay === null ? null : { modifiers: [], ...old.lastDay },
+    events: { modifiers: [], ...(old.events ?? noEvents()) },
     receivables: old.receivables ?? [],
+    lastWeek: null,
+    weekHistory: [],
   })
+  return { ...save, weekSoFar: null }
 }
 
 function checked<T extends z.ZodType>(schema: T, raw: unknown): z.output<T> {
@@ -434,7 +544,10 @@ function rebuilt(entries: readonly JournalEntry[]): Journal {
   )
 }
 
-function checkBooks(save: Save, journal: Journal): void {
+function checkBooks(
+  save: Pick<Save, 'day' | 'journal'>,
+  journal: Journal,
+): void {
   // Days never go down in a journal, so the last entry is the latest.
   const last = save.journal.at(-1)
   if (last !== undefined && last.day > save.day) {
@@ -872,6 +985,211 @@ function checkPersonal(save: Save, content: EventContent): void {
       invalid(`${what} is on day ${at}, with no « Loyer » that day`)
     }
   })
+}
+
+/**
+ * The week under way of a save from before the week in numbers, from its
+ * books: a game not yet played opens its first week as a new one does (see
+ * `openingWeek`); one whose last day played was a Sunday starts the next
+ * week from that close; any other starts a partial week from its last
+ * close, so its report covers only the days played after it.
+ */
+function weekSince(
+  { lastDay, profile }: Parsed,
+  journal: Journal,
+  content: FoodTruckContent,
+  difficulties: DifficultyContent,
+): WeekSoFar {
+  if (lastDay === null) {
+    return openingWeek(
+      openingJournal(profile.difficulty, content, difficulties),
+    )
+  }
+  return {
+    cashAtStart: balance(journal, CASH, { toDay: lastDay.day }),
+    partial: sundayOf(lastDay.day) !== lastDay.day,
+    days: [],
+    modifiers: [],
+  }
+}
+
+/**
+ * What the week in numbers could be at the save's day, with the books
+ * `journal`:
+ * - before day 0 is played, the first week is partial, with no day, and no
+ *   week was reported;
+ * - the week under way holds the days played since its Monday, one after
+ *   the other up to `lastDay`'s, and none once that day is a Sunday, whose
+ *   close starts the next week; a partial week alone may start later;
+ * - `lastWeek`, if any, is the week of the last Sunday played, with its
+ *   days one after the other up to that Sunday, from its Monday unless it
+ *   is partial; its ventes and bénéfice net are those of the état des
+ *   résultats over its days, its events those of `events.history` on its
+ *   days, and it holds the best ventes of an earlier week when the history
+ *   holds an earlier week, never less than theirs;
+ * - each week starts with the Encaisse of the bilan before its first day,
+ *   or, on day 0, with the cash the books of the profile's difficulty open
+ *   with (see `openingWeek`), and the Encaisse of each day's close is the
+ *   bilan's, the end and the lowest of a week those of its days;
+ * - the history holds at most `WEEKS_KEPT` weeks, each 7 days after the one
+ *   before, the last `lastWeek`'s, and none without it;
+ * - the changes to the street of both weeks come from events in `events`.
+ */
+function checkWeek(
+  save: Save,
+  journal: Journal,
+  content: FoodTruckContent,
+  events: EventContent,
+  difficulties: DifficultyContent,
+): void {
+  const { lastDay, weekSoFar, lastWeek, weekHistory } = save
+  const played = lastDay?.day ?? -1
+  const known = new Set(events.events.map(({ id }) => id))
+  const cashOn = (day: Day) => balance(journal, CASH, { toDay: day })
+
+  /**
+   * Checks a week whose days end on `last`, and start on `monday` unless it
+   * is partial; with none, it starts the day after `last`.
+   */
+  const checkDays = (
+    what: string,
+    week: WeekSoFar | WeekReport,
+    monday: Day,
+    last: Day,
+  ) => {
+    const first = week.days[0]?.day ?? last + 1
+    if (first < monday) {
+      invalid(
+        `${what} starts on day ${first}, before its Monday, day ${monday}`,
+      )
+    }
+    if (!week.partial && first !== monday) {
+      invalid(
+        `${what} starts on day ${first}, not on its Monday, day ${monday}, and is not partial`,
+      )
+    }
+    week.days.forEach(({ day }: WeekDay, index) => {
+      if (day !== first + index) {
+        invalid(
+          `${what} day ${index + 1} is day ${day}, not day ${first + index}`,
+        )
+      }
+    })
+    const end = week.days.at(-1)?.day ?? first - 1
+    if (end !== last) invalid(`${what} ends on day ${end}, not day ${last}`)
+    const start =
+      first === 0
+        ? openingWeek(
+            openingJournal(save.profile.difficulty, content, difficulties),
+          ).cashAtStart
+        : cashOn(first - 1)
+    if (week.cashAtStart !== start) {
+      invalid(
+        `${what}.cashAtStart is ${week.cashAtStart}, not the ${start} ${first === 0 ? 'the books open with' : `in Encaisse at the close of day ${first - 1}`}`,
+      )
+    }
+    week.days.forEach(({ cashAtClose }, index) => {
+      const cash = cashOn(first + index)
+      if (cashAtClose !== cash) {
+        invalid(
+          `${what} day ${index + 1} closes with ${cashAtClose} in Encaisse, not the ${cash} of the bilan`,
+        )
+      }
+    })
+    week.modifiers.forEach(({ event }, index) => {
+      if (!known.has(event)) {
+        invalid(
+          `${what}'s street modifier ${index + 1} is an unknown event: ${event}`,
+        )
+      }
+    })
+  }
+
+  if (lastDay === null && !weekSoFar.partial) {
+    invalid('weekSoFar is not partial before day 0 is played')
+  }
+  const next = played + 1
+  checkDays('weekSoFar', weekSoFar, mondayOf(next), played)
+
+  const sunday =
+    played >= 0 && sundayOf(played) === played ? played : mondayOf(next) - 1
+  if (lastWeek !== null) {
+    if (sunday < 0) invalid('lastWeek is reported before a Sunday is played')
+    const monday = mondayOf(sunday)
+    if (lastWeek.firstDay !== monday) {
+      invalid(
+        `lastWeek starts on day ${lastWeek.firstDay}, not on day ${monday}, the Monday of the last Sunday played`,
+      )
+    }
+    checkDays('lastWeek', lastWeek, monday, sunday)
+    const first = lastWeek.days[0]?.day ?? monday
+    const closes = lastWeek.days.map(({ cashAtClose }) => cashAtClose)
+    const lowest = Math.min(...closes)
+    if (
+      lastWeek.cashAtEnd !== closes.at(-1) ||
+      lastWeek.lowestCash !== lowest
+    ) {
+      invalid(
+        `lastWeek ends with ${lastWeek.cashAtEnd} and ${lastWeek.lowestCash} at its lowest, not as its days close`,
+      )
+    }
+    const { sales, netIncome } = incomeStatement(journal, first, sunday)
+    if (
+      lastWeek.sales !== sales.amount ||
+      lastWeek.netIncome !== netIncome.amount
+    ) {
+      invalid(
+        `lastWeek has ${lastWeek.sales} of ventes and ${lastWeek.netIncome} of bénéfice net, not the ${sales.amount} and ${netIncome.amount} of the état des résultats`,
+      )
+    }
+    // Both read with the same schema, so their keys come in the same order.
+    const chosen = save.events.history.filter(
+      ({ day }) => day >= first && day <= sunday,
+    )
+    if (JSON.stringify(lastWeek.events) !== JSON.stringify(chosen)) {
+      invalid("lastWeek's events are not those of the history on its days")
+    }
+    const earlier = weekHistory.slice(0, -1)
+    const { previousBest } = lastWeek
+    if ((previousBest === null) !== (earlier.length === 0)) {
+      invalid(
+        `lastWeek.previousBest is ${previousBest} with ${earlier.length} earlier weeks in the history`,
+      )
+    }
+    if (
+      previousBest !== null &&
+      earlier.some(({ sales: before }) => before > previousBest)
+    ) {
+      invalid(
+        `lastWeek.previousBest is ${previousBest}, below an earlier week's ventes`,
+      )
+    }
+  }
+
+  if (weekHistory.length > WEEKS_KEPT) {
+    invalid(
+      `weekHistory holds ${weekHistory.length} weeks, more than ${WEEKS_KEPT}`,
+    )
+  }
+  weekHistory.forEach(({ firstDay }, index) => {
+    const before = weekHistory[index - 1]
+    if (before !== undefined && firstDay !== before.firstDay + DAYS_PER_WEEK) {
+      invalid(
+        `week ${index + 1} of weekHistory starts on day ${firstDay}, not ${DAYS_PER_WEEK} days after the one before`,
+      )
+    }
+  })
+  const recorded = weekHistory.at(-1)
+  if (
+    lastWeek === null
+      ? recorded !== undefined
+      : recorded?.firstDay !== lastWeek.firstDay ||
+        recorded.sales !== lastWeek.sales ||
+        recorded.netIncome !== lastWeek.netIncome ||
+        recorded.cashAtEnd !== lastWeek.cashAtEnd
+  ) {
+    invalid("the last week of weekHistory is not lastWeek's")
+  }
 }
 
 /** Runs `step`, turning what it throws into an invalid save about `what`. */

@@ -6,7 +6,7 @@ How the game is put together at the end of phase 1: the folders and who may impo
 
 | Folder | Holds | Imports from other folders |
 | --- | --- | --- |
-| `src/engine/` | Game rules: the clock, a day of business, walk-in customers, the marketing budget, the player's decisions, the owner's personal account and energy, the event cards and what their choices do, the changes they make to the street for a while, the customers who pay later, lots and FIFO, money, the seeded generator, the shared types | `src/finance/` (journal, accounts, loan, receivables) and `src/content/schema.ts` |
+| `src/engine/` | Game rules: the clock, a day of business, walk-in customers, the marketing budget, the player's decisions, the owner's personal account and energy, the event cards and what their choices do, the changes they make to the street for a while, the customers who pay later, the week in numbers, lots and FIFO, money, the seeded generator, the shared types | `src/finance/` (journal, accounts, loan, receivables, statements) and `src/content/schema.ts` |
 | `src/finance/` | The journal, the chart of accounts, the three statements | `src/engine/money.ts` and `src/engine/types.ts` only |
 | `src/content/` | Tunable numbers as JSON, and the zod schema that validates them | `src/engine/money.ts` only, to type money as `Cents` |
 | `src/ui/` | React screens, the Zustand store and the real-time loop | engine, finance and content |
@@ -30,7 +30,7 @@ Randomness and the browser are allowed in the world, since nothing it does reach
 
 ## The contract
 
-`src/engine/types.ts` holds the types the engine, the books, the UI and the tools share. It is frozen at the end of phase 1: changing it needs a dedicated card. It holds types only, with no code. P2-02 (#45) was such a card: it added `segments` and `visits` to `DaySummary`, with `SegmentSummary`, `Visit` and `VisitOutcome`. So was P2-04 (#46): it added `decisions` and `pendingDecisions` to `GameState`, with `Decisions`. And P2-11 (#53): it added `profile` to `GameState`, with `Profile`. And P2-03 (#62): it added `leftLine`, `averageWaitSeconds` and `longestWaitSeconds` to `DaySummary`, `servedMinute` and `leftMinute` to `Visit`, and `'leftLine'` to `VisitOutcome`. And P2-05 (#63): it added `marketingHistory` to `GameState`. And P2-17 (#83): it added `personal` to `GameState`, with `PersonalAccount` and `PersonalMovement`. And P2-16 (#82): it added `energy` to `GameState`, `energy` and `botched` to `DaySummary`, and `botched` to `Visit`. And P3-03 (#91): it added `events` and `receivables` to `GameState`, with `EventsState`, `PendingEvent`, `DelayedEffect`, `FollowUp`, `EventRecord`, `Headline` and `Receivable`; a version 7 save, from before it, loads as a game with no event yet and nobody owing anything. And P3-04 (#92): it added `modifiers` to `EventsState` and to `DaySummary`, with `StreetModifier`. A version 8 save, from before it, loads as a game with no change to the street (`SAVE_VERSION`, 9, in `src/engine/save.ts`).
+`src/engine/types.ts` holds the types the engine, the books, the UI and the tools share. It is frozen at the end of phase 1: changing it needs a dedicated card. It holds types only, with no code. P2-02 (#45) was such a card: it added `segments` and `visits` to `DaySummary`, with `SegmentSummary`, `Visit` and `VisitOutcome`. So was P2-04 (#46): it added `decisions` and `pendingDecisions` to `GameState`, with `Decisions`. And P2-11 (#53): it added `profile` to `GameState`, with `Profile`. And P2-03 (#62): it added `leftLine`, `averageWaitSeconds` and `longestWaitSeconds` to `DaySummary`, `servedMinute` and `leftMinute` to `Visit`, and `'leftLine'` to `VisitOutcome`. And P2-05 (#63): it added `marketingHistory` to `GameState`. And P2-17 (#83): it added `personal` to `GameState`, with `PersonalAccount` and `PersonalMovement`. And P2-16 (#82): it added `energy` to `GameState`, `energy` and `botched` to `DaySummary`, and `botched` to `Visit`. And P3-03 (#91): it added `events` and `receivables` to `GameState`, with `EventsState`, `PendingEvent`, `DelayedEffect`, `FollowUp`, `EventRecord`, `Headline` and `Receivable`; a version 7 save, from before it, loads as a game with no event yet and nobody owing anything. And P3-04 (#92): it added `modifiers` to `EventsState` and to `DaySummary`, with `StreetModifier`; a version 8 save, from before it, loads as a game with no change to the street. And P3-09 (#97): it added `weekSoFar`, `lastWeek` and `weekHistory` to `GameState`, with `WeekSoFar`, `WeekDay`, `WeekReport` and `WeekRecord`. A version 9 save, from before it, loads with no week reported yet and the week under way counted from its last close (`SAVE_VERSION`, 10, in `src/engine/save.ts`).
 
 The engine is deterministic: the same seed, played with the same code, the same content and the same decisions on the same days, always posts the same journal, so it always gives the same `journalHash`. A replay is only guaranteed within one version of the code and content, though. Changing the order of the generator draws, the order of a day's entries or a number in `src/content/` can change the journal a seed produces without touching `types.ts`.
 
@@ -58,6 +58,9 @@ Every function that takes a state returns a new one and never mutates it. The fi
 | `energy` | `number` | The owner's energy, from 0 to 100 (`FULL_ENERGY` in `src/engine/energy.ts`): on the morning of `day`, or at its close in what `playDay()` returns. A tired owner serves slower and botches units (steps 2 and 8 below). An event's choice may change it, on the morning it is made or at the start of a later day. |
 | `events` | `EventsState` | The event cards: the one waiting for the player's choice, what the choices made still have to do, and every event that came up with what the player chose. |
 | `receivables` | `readonly Receivable[]` | What customers who pay later owe the business, by due day, then in the order they were sold. Their amounts add up to the balance of Comptes clients (1100). |
+| `weekSoFar` | `WeekSoFar` | The days of the week under way played so far (step 10 below). |
+| `lastWeek` | `WeekReport \| null` | The last week whose Sunday was played, for the « Bilan de la semaine » of the next morning. Null until one is. |
+| `weekHistory` | `readonly WeekRecord[]` | The last 52 weeks whose Sunday was played, oldest first, the last one `lastWeek`'s: for the best week ever and a longer chart. |
 
 A decision never changes the day under way. The UI shows `day` as today and plays it once its real time is over, so the player's changes land in `pendingDecisions`, and `tick()` makes them the next day's `decisions`. `latestDecisions(state)` in `src/engine/decisions.ts` gives what the player last left: `pendingDecisions`, or else `decisions`.
 
@@ -182,6 +185,69 @@ What one customer owes for one sale on credit, an event's `creditSale` effect. `
 | `soldOnDay` | `Day` | The day of the sale. |
 | `dueDay` | `Day` | The day it is collected, at the start of the day; after `soldOnDay`. |
 
+### `WeekSoFar` and `WeekDay`
+
+The week under way, Monday to Sunday, as its days are played. `src/engine/week.ts` keeps it: the close of each day adds the day, and the close of each Sunday sums the week up as a `WeekReport` and starts the next week (step 10 below). Day 0 is a Monday, so weeks run from day 7k to day 7k + 6; `mondayOf()` and `sundayOf()` in `src/engine/calendar.ts` find them.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `cashAtStart` | `Cents` | Encaisse when the week started: the bilan's at the close of the Sunday before, or, for a partial week, before its first day. On day 0, that is the cash the books open with, its opening entries included (`openingWeek()` in `src/engine/week.ts`). |
+| `partial` | `boolean` | Whether the week started without the close of the Sunday before: the first week of a game, or the week under way when a version 9 save loaded, which only covers the days played after it. |
+| `days` | `readonly WeekDay[]` | The days played so far, one after the other; never a Sunday, whose close starts the next week. |
+| `modifiers` | `readonly StreetModifier[]` | The changes to the street in effect on any of those days, from `lastDay.modifiers`, so those that ended are kept, in the order they were made. |
+
+A `WeekDay` is one day of a week, as of its close:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `day` | `Day` | The business day. |
+| `open` | `boolean` | Whether the truck opened: one of the days open that the street did not close. |
+| `sales` | `Cents` | Ventes posted that day, paid in cash or on credit: what the day's entries credit 4000 Ventes, as the état des résultats of that day has it. |
+| `cashReceived` | `Cents` | Cash received from customers: what the day's entries that credit 4000 Ventes or 1100 Comptes clients debit to 1000 Encaisse, so the *Ventes au comptant*, an event's cash sale and each « Encaissement », not a sale on credit. It equals « Encaissements des clients » on the état des flux de trésorerie of that day. |
+| `cashAtClose` | `Cents` | Encaisse at the close, as the bilan has it; it may be negative. |
+| `customersServed` | `number` | Visits that reached the counter, those with a `servedMinute`. |
+| `spoiled` | `PerProduct` | Units written off at the close, `lastDay.spoiled`. |
+| `spoiledCost` | `Cents` | What they cost: the day's *Marchandises périmées*. |
+| `lostToLine` | `number` | Visits that left the line, `lastDay.leftLine`. |
+| `lostToPrices` | `number` | Visits that bought nothing because a price was too high: the segments' `tooExpensive`, summed. |
+| `lostToStockouts` | `number` | Visits that bought nothing because what they wanted had sold out: the segments' `soldOut`, summed. |
+
+### `WeekReport` and `WeekRecord`
+
+A week whose Sunday was played, as `GameState.lastWeek` keeps it for the « Bilan de la semaine ». The engine computes every number; the UI only words and formats them. `weekFacts(report, content)` in `src/engine/week.ts` picks the facts worth telling (see "Where content is loaded" below).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `firstDay` | `Day` | The week's Monday. |
+| `partial` | `boolean` | As in `WeekSoFar`: the first week of a game, or the first after a version 9 save loaded. |
+| `days` | `readonly WeekDay[]` | The days played, one after the other up to the Sunday: all 7 unless the week is partial and started after its Monday. |
+| `sales` | `Cents` | Ventes over those days, from `incomeStatement()` in `src/finance/statements.ts`. |
+| `netIncome` | `Cents` | Bénéfice net over those days, from the same état des résultats; negative for a loss. |
+| `cashAtStart` | `Cents` | Encaisse when the week started, as `WeekSoFar` has it. |
+| `cashAtEnd` | `Cents` | Encaisse at the close of the Sunday. |
+| `lowestCash` | `Cents` | The lowest Encaisse at the close of any of the days. |
+| `spoiled` | `PerProduct` | Units written off over the week. |
+| `spoiledCost` | `Cents` | What they cost. |
+| `lostToLine` | `number` | Visits that left the line, over the week. |
+| `lostToPrices` | `number` | Visits that bought nothing because a price was too high. |
+| `lostToStockouts` | `number` | Visits that bought nothing because what they wanted had sold out. |
+| `energy` | `number` | The owner's energy at the close of the Sunday, before the night. |
+| `daysOpenInARow` | `number` | The days in a row the truck opened up to the Sunday: back into the weeks before when every day of this one opened. |
+| `receivables` | `readonly Receivable[]` | What customers still owed at the close of the Sunday, by due day. |
+| `unpaidRents` | `readonly Day[]` | The days of the week the owner's rent went unpaid. |
+| `events` | `readonly EventRecord[]` | The events that came up on the mornings of the week, and the choices made. |
+| `modifiers` | `readonly StreetModifier[]` | The changes to the street in effect on any day of the week, in the order they were made. |
+| `previousBest` | `Cents \| null` | The highest ventes of any earlier week of the game, carried from week to week so it outlives `weekHistory`; null for the first week reported, a version 9 save's included. |
+
+A `WeekRecord` is what `weekHistory` keeps of a week:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `firstDay` | `Day` | The week's Monday; each record's is 7 days after the one before. |
+| `sales` | `Cents` | Ventes over the week. |
+| `netIncome` | `Cents` | Bénéfice net over the week. |
+| `cashAtEnd` | `Cents` | Encaisse at the close of the Sunday. |
+
 ### `Lot`
 
 Units of one product bought together, carried at what they cost.
@@ -259,7 +325,8 @@ One walk-in customer at the truck.
 - `personal` from `openingAccount()` in `src/engine/personal.ts`: the difficulty's `startingPersonalCashCents` as its cash, no movement and no unpaid rent. Day 0's rent is charged when day 0 is played;
 - `energy` at 100, `FULL_ENERGY`;
 - `events` from `noEvents()` in `src/engine/events.ts`: no event waiting, nothing to come, no history, no headline and a null `lastDrawnDay`;
-- no `receivables`.
+- no `receivables`;
+- `weekSoFar` from `openingWeek()` in `src/engine/week.ts`: partial, with no day, starting from the Encaisse of the opening books, a null `lastWeek` and an empty `weekHistory`.
 
 ## Order of operations in `tick()`
 
@@ -273,7 +340,7 @@ entries of the event cards are in « » instead. -->
 
 Before step 0, every day, open or closed, comes the start of the day, by `startOfDay()` in `src/engine/effects.ts`. First the delayed effects due that day, in the order they were queued, each applied as "Event cards" below says, with the entries listed there. Then each receivable due that day, in the order they were sold, collected in full in an entry of its own, « Encaissement · » followed by the client: Dr 1000 Encaisse / Cr 1100 Comptes clients. A game with no event has neither, so its days start with step 0. Then `streetOn()` in `src/engine/street.ts` folds the changes to the street in effect that day together, those of `events.modifiers` from their `fromDay` to their `lastDay`: each segment's walk-ins, each product's appeal and what each segment will pay are 1 unless a change multiplies them, several changes multiply each other, and a change with no segment multiplies every one's. A product one change takes off sale is, and one `closed` change closes the truck.
 
-Step 0 happens on the 1st of the month, open or closed. Steps 1 to 4 happen only on a day the truck opens, when `decisions.daysOpen` holds the weekday and no change to the street closes it. On a closed day, by the days open or by the street, nobody comes, nothing is bought and nothing is spent on marketing: no purchase, no sale, no fuel, no marketing, no walk-in drawn from the generator, and a `lastDay` with no visit and nothing sold. Step 5 happens on payday, open or closed, and steps 6 to 9 every day.
+Step 0 happens on the 1st of the month, open or closed. Steps 1 to 4 happen only on a day the truck opens, when `decisions.daysOpen` holds the weekday and no change to the street closes it. On a closed day, by the days open or by the street, nobody comes, nothing is bought and nothing is spent on marketing: no purchase, no sale, no fuel, no marketing, no walk-in drawn from the generator, and a `lastDay` with no visit and nothing sold. Step 5 happens on payday, open or closed, and steps 6 to 10 every day.
 
 0. **The month's charges**, from `monthlyCostsCents` in the content and the difficulty in `state.profile`. Day 0 is May 1st, so the first month is charged on day 0. Entry *Permis, stationnement et cuisine*: Dr 6100 Loyer et permis / Cr 1000 Encaisse for `permitParkingAndCommissary`. Entry *Assurances*: Dr 6150 Assurances / Cr 1000 for `insurance`. Then the truck's, by how it came:
    - Moyen pays its loan from the month after the loan: the 1st of month `k` from `monthsSinceStart()`, for `k` from 1 to `termMonths`, pays payment `k` of `loanSchedule(loanCents, annualRateBasisPoints, termMonths)` in `src/finance/loan.ts`. Entry *Intérêts sur l'emprunt*: Dr 7000 Intérêts / Cr 1000 for its interest, which a loan without interest never posts. Entry *Remboursement de l'emprunt*: Dr 2500 Emprunts bancaires / Cr 1000 for its principal.
@@ -296,6 +363,7 @@ Step 0 happens on the 1st of the month, open or closed. Steps 1 to 4 happen only
 7. **The owner's personal account**, after the business's day, by `livePersonalDay()` in `src/engine/personal.ts`, with the owner's living costs from `src/content/personal.json`. It posts nothing and draws nothing. On payday, « Salaire » brings in `decisions.ownerWeeklyPay`, the amount the business paid in step 5. On the 1st of the month, day 0 included, « Loyer » takes out `rentCents`; when that leaves the cash below zero, the rent is unpaid and the day goes into `unpaidRents`. On payday again, « Dépenses de la semaine » takes out `weeklyExpensesCents`. So a Friday the 1st is paid, then charged its rent, then its week. A movement of 0 is not recorded. Then the movements and unpaid rents older than the months kept are dropped.
 8. **The owner's energy**, by `energyAtClose()` in `src/engine/energy.ts`, with `src/content/energy.json`. It posts nothing and draws nothing. A day the truck opens costs `openDayCost`, plus `costPerCustomerServed` for each customer who reached the counter, the visits with a `servedMinute`, so a busy day tires more. A closed day gives `closedDayRecovery` back. Then, on payday, when step 7 leaves the owner's cash below zero (`inDebt()`), the stress takes `debtStress`. Each change stops at 0 and at 100. The night's `nightRecovery` comes in `tick()`, after the close.
 9. **The new state.** `playDay` returns the state with the new `rngState`, `journal`, `inventory`, a `marketingHistory` with the day's spend added last (0 on a closed day) and only the last `awarenessDays` kept, a `lastDay` for `state.day`, with the day's visits, how the line went, the units botched, the energy at the close and the changes to the street in effect that day, the owner's `personal` account, their `energy` at the close, the `events` the start of the day left without the changes to the street whose last day it was, and the `receivables` the start of the day left.
+10. **The week**, by `recordDay()` in `src/engine/week.ts`, on the state of step 9. It posts nothing and draws nothing. The day joins `weekSoFar.days` as a `WeekDay`: its ventes, the cash customers paid and the change in Encaisse come from the day's entries, the last of the journal, so its Encaisse at the close is the close before plus that change; the close before the first day of a week is `cashAtStart`, or nothing before day 0, whose entries open the books. The changes to the street in effect on the first day the week covers join `weekSoFar.modifiers`, then on each later day those that start on it. On a Sunday, the week is summed up as `lastWeek`, with its ventes and bénéfice net from `incomeStatement()` over its days and its best earlier ventes from the `lastWeek` before; it joins `weekHistory`, which keeps the last 52 weeks, and `weekSoFar` starts the next week, not partial, from the Sunday's close.
 
 What every step shares:
 - A line with a zero amount is dropped, and an entry left with no line is not posted. A day with nothing bought, nothing sold or nothing spoiled has no entry for that step, and a pay or a marketing budget of 0 posts nothing.
@@ -335,7 +403,7 @@ An event card is a dilemma from `src/content/events.json`: a character, a situat
 
 So the event cards draw from the game's generator at three points: the morning draw in `drawEvent()`, the outcome in `resolveEvent()`, and a `followUp` effect with a chance below 1, in `resolveEvent()` or, delayed, at the start of its day. The choices a player makes change the draws of the days after.
 
-A save holds the events, the changes to the street and the receivables. `deserialize()` in `src/engine/save.ts` checks them against the event content, as its doc comment and `checkEvents()`'s say, so dropping an event or a choice from the content can stop an older save from loading.
+A save holds the events, the changes to the street, the receivables and the week in numbers. `deserialize()` in `src/engine/save.ts` checks them against the event content, as its doc comment and `checkEvents()`'s say, so dropping an event or a choice from the content can stop an older save from loading.
 
 ## How journal entries are created
 
@@ -368,6 +436,7 @@ Money is `Cents` from `src/engine/money.ts`: a branded number that only `cents()
 - `src/content/personal.json` holds what the owner's own life costs: the rent on the 1st of each month (`rentCents`) and the week's other expenses on payday (`weeklyExpensesCents`). The savings the owner starts with are each difficulty's `startingPersonalCashCents` in `src/content/difficulty.json`. `loadPersonalContent()` in `src/content/schema.ts` validates it.
 - `src/content/energy.json` holds what tires the owner and what fatigue does, on the energy scale of 0 to 100: the cost of an open day (`openDayCost`) and of each customer served (`costPerCustomerServed`), what a night (`nightRecovery`) and a closed day (`closedDayRecovery`) give back, the stress of a payday in debt (`debtStress`), and for `tired` (« Fatigué ») and `exhausted` (« Épuisé ») the energy they start below, how much longer serving takes and the share of units botched. `loadEnergyContent()` in `src/content/schema.ts` validates it, with `exhausted.below` under `tired.below`.
 - `src/content/events.json` holds the event cards and how often they come. The `pacing` is the first day one may be drawn (`firstDay`), the fewest days from one drawn event to the next (`minDaysBetween`) and the chance of one on a morning one may be (`dailyChance`). Each of the `events` has its weight, character, French text, conditions and choices, and each choice its outcomes, their chances and their effects. `loadEventContent()` in `src/content/schema.ts` validates it: besides each field, the event ids are unique, the choice ids unique within their event, each choice's chances sum to 1 and every follow-up names an event of the file.
+- `src/content/report.json` holds what the « Bilan de la semaine » tells of a week: the most facts it tells (`maxFacts`), and for each fact its weight and when it holds. `profitUpCashDown`: a bénéfice net above 0 while the encaisse went down, or went up at least `minGapCents` less than the bénéfice, as the week of « La grosse commande » accepted does; it comes first whenever it holds. `unpaidRent`: the owner's rent went unpaid. `receivableDue`: a customer owes something due within `withinDays` of the Sunday. `spoilage`: the stock written off cost more than `aboveCents`. `bestWeek`: ventes above `previousBest`. `lostToLine`: more than `aboveVisits` visits left the line. `daysOpenInARow`: the truck opened at least `atLeast` days in a row. The others come by weight, the highest first, a tie in that order. `loadReportContent()` in `src/content/schema.ts` validates it, and `src/engine/week.ts` loads it once as `REPORT`, the default content of `weekFacts()`.
 - `src/content/segments.json` holds the customer segments: how long each waits in line (`patienceMinutes`), for each segment and product a reference price, a base purchase probability and a sensitivity, and for the chic segment how a price far below its reference puts it off (`tooCheap`). `loadCustomerContent()` in `src/content/schema.ts` validates it the same way.
 - `src/engine/day.ts` calls the six loaders once, when the module loads, and exports the results as `FOOD_TRUCK`, `CUSTOMERS`, `DIFFICULTIES`, `PERSONAL`, `ENERGY` and `EVENTS`. An invalid file throws as soon as the engine is imported.
 - `createInitialState()`, `tick()`, `playDay()`, `openingJournal()`, `startingDecisions()` and `applyDecision()` take a `content` argument that defaults to `FOOD_TRUCK`. `tick()` and `playDay()` take a `customers` argument after it that defaults to `CUSTOMERS`, `createInitialState()`, `tick()`, `playDay()` and `openingJournal()` a `difficulties` argument that defaults to `DIFFICULTIES`, and `tick()` and `playDay()` a `personal` argument that defaults to `PERSONAL`, then an `energy` argument that defaults to `ENERGY`, so a test can play with other numbers. `tick()` takes a last `events` argument that defaults to `NO_EVENTS` in `src/engine/events.ts`, not `EVENTS`, so a game turns the event cards on by passing them. `playDay()` takes none: the start of a day only runs effects already queued. `resolveEvent()` takes the event content after the choice, defaulting to `EVENTS`, then the food truck's for the unit costs, defaulting to `FOOD_TRUCK`; `deserialize()` in `src/engine/save.ts` takes the food truck's content, then the event content, defaulting to `FOOD_TRUCK` and `EVENTS`. `drawEvent()` and `applyEffect()` take theirs with no default. `servers()` takes the energy content it reads as its second argument. The UI store passes `EVENTS` to `tick()` and `resolveEvent()`, and the defaults otherwise. The simulation passes the shipped content, with `NO_EVENTS` under its `none` policy.
@@ -376,11 +445,11 @@ Money is `Cents` from `src/engine/money.ts`: a branded number that only `cents()
 
 Some numbers stay in code on purpose, because they are facts rather than tunables:
 - the calendar, in `src/engine/calendar.ts`, with the month lengths repeated in `src/content/schema.ts` to check an event's date;
-- the 12 months the owner's personal account keeps, in `src/engine/personal.ts`;
+- the 12 months the owner's personal account keeps, in `src/engine/personal.ts`, and the 52 weeks `weekHistory` keeps, in `src/engine/week.ts`;
 - the owner's energy scale, 0 to 100, in `src/engine/energy.ts` and `src/content/schema.ts`;
 - the first weekend day, and the lowest reference price, 1 cent, in `src/engine/customers.ts`;
 - the ISO weekdays, 1 = Monday to 7 = Sunday, in `src/engine/decisions.ts` and `src/content/schema.ts`;
-- the days of a week, in `src/engine/effects.ts`, to find an effect's next weekday;
+- the days of a week: in `src/engine/calendar.ts`, for the weekdays and the Sunday of a week; in `src/engine/effects.ts`, to find an effect's next weekday; and in `src/engine/save.ts`, to check the weeks of the history;
 - the minutes in a day, in `src/content/schema.ts`;
 - what fits on an event card: a situation of at most 280 characters, a choice's label of at most 45 and an outcome's result of at most 200, in `src/content/schema.ts`;
 - the mulberry32 constants, in `src/engine/rng.ts`;

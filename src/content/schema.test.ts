@@ -4,6 +4,7 @@ import energyJson from './energy.json'
 import foodTruckJson from './foodtruck.json'
 import personalJson from './personal.json'
 import profileJson from './profile.json'
+import reportJson from './report.json'
 import {
   dayTypeIdSchema,
   difficultyIdSchema,
@@ -13,8 +14,10 @@ import {
   loadFoodTruckContent,
   loadPersonalContent,
   loadProfileContent,
+  loadReportContent,
   productIdSchema,
   segmentIdSchema,
+  weekFactIdSchema,
 } from './schema.ts'
 import segmentsJson from './segments.json'
 
@@ -810,5 +813,66 @@ describe('loadEnergyContent', () => {
     const raw = withEnergyValue('tired.slower', 0.2)
     reject(raw, 'tired')
     expect(() => loadEnergyContent(raw)).toThrow('Unrecognized key: "slower"')
+  })
+})
+
+describe('loadReportContent', () => {
+  const loadReport: Load = loadReportContent
+  const reject = (raw: unknown, path: string) =>
+    expectRejected(raw, path, loadReport)
+  const withReportValue = (path: string, value: unknown) =>
+    withValue(path, value, reportJson)
+
+  it('loads the shipped report.json with every fact', () => {
+    const { maxFacts, facts } = loadReportContent()
+    expect(maxFacts).toBeGreaterThan(0)
+    expect(Object.keys(facts).sort()).toEqual(
+      [...weekFactIdSchema.options].sort(),
+    )
+  })
+
+  it('names report.json in its error', () => {
+    expect(() => loadReportContent({})).toThrow(/^report\.json is invalid/)
+  })
+
+  it('accepts weights and thresholds of 0', () => {
+    const raw = withReportValue('facts.profitUpCashDown', {
+      weight: 0,
+      minGapCents: 0,
+    })
+    expect(loadReportContent(raw).facts.profitUpCashDown).toEqual({
+      weight: 0,
+      minGapCents: 0,
+    })
+  })
+
+  it.each([
+    ['maxFacts', 0],
+    ['maxFacts', 2.5],
+    ['facts.unpaidRent.weight', -1],
+    ['facts.bestWeek.weight', 1.5],
+    ['facts.profitUpCashDown.minGapCents', -1],
+    ['facts.profitUpCashDown.minGapCents', 400.5],
+    ['facts.receivableDue.withinDays', -1],
+    ['facts.spoilage.aboveCents', '5000'],
+    ['facts.lostToLine.aboveVisits', 20.5],
+    ['facts.daysOpenInARow.atLeast', 0],
+  ])('rejects %s = %j', (path, value) => {
+    reject(withReportValue(path, value), path)
+  })
+
+  it.each([
+    'maxFacts',
+    'facts.spoilage',
+    'facts.receivableDue.withinDays',
+    'facts.lostToLine.weight',
+  ])('rejects a missing %s', (path) => {
+    reject(without(path, reportJson), path)
+  })
+
+  it('rejects a fact it does not know', () => {
+    const raw = withReportValue('facts.weather', { weight: 10 })
+    reject(raw, 'facts')
+    expect(() => loadReportContent(raw)).toThrow('Unrecognized key: "weather"')
   })
 })

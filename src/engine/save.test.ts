@@ -13,7 +13,8 @@ import {
   postEntry,
   type Journal,
 } from '../finance/journal.ts'
-import { createInitialState, tick } from './clock.ts'
+import { incomeStatement } from '../finance/statements.ts'
+import { createInitialState, tick, toCalendar } from './clock.ts'
 import {
   CUSTOMERS,
   DIFFICULTIES,
@@ -261,6 +262,52 @@ const DAY_0_WAITING = drawEvent(createInitialState(SEED), DAY_0_CARD)
 const DAY_0_CHOSEN = resolveEvent(DAY_0_WAITING, 'oui', DAY_0_CARD)
 const DAY_0_SAVE = serialize(DAY_0_CHOSEN)
 
+// The morning of day 3, before a Sunday is played; the morning of day 7,
+// after the first; the morning of Thursday, day 17, with three days of the
+// week under way; and the close of Sunday, day 20.
+const DAY_3 = played(3)
+const WEEK_1 = played(7)
+const THURSDAY = played(17)
+const SUNDAY_CLOSE = playDay(played(20))
+const THURSDAY_SAVE = serialize(THURSDAY)
+
+/** `state`, saved as version 9, before the week in numbers. */
+function v9(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutWeek(save)
+  return JSON.stringify({ ...save, saveVersion: 9 })
+}
+
+/** Takes the week in numbers out of `save`, as version 9 wrote it. */
+function withoutWeek(save: Json): void {
+  delete save.weekSoFar
+  delete save.lastWeek
+  delete save.weekHistory
+}
+
+/**
+ * `state` as a save written before the week in numbers loads it: no week
+ * reported, and the week under way counted from the last close, partial
+ * unless that close was a Sunday's.
+ */
+function sinceLoaded(state: GameState): GameState {
+  const { lastDay, journal } = state
+  return {
+    ...state,
+    weekSoFar:
+      lastDay === null
+        ? state.weekSoFar
+        : {
+            cashAtStart: balance(journal, '1000', { toDay: lastDay.day }),
+            partial: toCalendar(lastDay.day).weekday !== 7,
+            days: [],
+            modifiers: [],
+          },
+    lastWeek: null,
+    weekHistory: [],
+  }
+}
+
 /** Expects the load to fail, its message naming each of `reasons`. */
 function expectInvalid(
   text: string,
@@ -283,8 +330,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(9)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 9 })
+    expect(SAVE_VERSION).toBe(10)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 10 })
   })
 
   it.each<Profile>([
@@ -493,10 +540,11 @@ describe('serialize and deserialize', () => {
       delete save[key]
       delete save.receivables
       delete (save.lastDay as Json).modifiers
+      withoutWeek(save)
       save.saveVersion = 7
     })
     const back = deserialize(text)
-    expect(back).toEqual(FORTNIGHT)
+    expect(back).toEqual(sinceLoaded(FORTNIGHT))
     expect(back.events).toEqual(noEvents())
     expect(back.receivables).toEqual([])
   })
@@ -509,9 +557,10 @@ describe('serialize and deserialize', () => {
       expect(events.modifiers).toEqual([])
       delete events.modifiers
       if (lastDay !== null) delete lastDay.modifiers
+      withoutWeek(save)
       return JSON.stringify({ ...save, saveVersion: 8 })
     }
-    expect(deserialize(v8(FORTNIGHT))).toEqual(FORTNIGHT)
+    expect(deserialize(v8(FORTNIGHT))).toEqual(sinceLoaded(FORTNIGHT))
     // An event, a receivable and a delayed effect of version 8 come too.
     const owed = {
       ...CHOSEN,
@@ -523,9 +572,89 @@ describe('serialize and deserialize', () => {
         modifiers: [],
       },
     }
-    expect(deserialize(v8(owed))).toEqual(owed)
+    expect(deserialize(v8(owed))).toEqual(sinceLoaded(owed))
     expect(deserialize(v8(createInitialState(SEED)))).toEqual(
       createInitialState(SEED),
+    )
+  })
+
+  it('give back the week under way and the weeks reported, on a Monday morning, mid-week and at the close of a Sunday', () => {
+    expect(FORTNIGHT.weekSoFar.days).toEqual([])
+    expect(FORTNIGHT.weekHistory).toHaveLength(2)
+    expect(THURSDAY.weekSoFar.days.map(({ day }) => day)).toEqual([14, 15, 16])
+    expect(SUNDAY_CLOSE.lastWeek?.firstDay).toBe(14)
+    for (const state of [
+      DAY_3,
+      WEEK_1,
+      FORTNIGHT,
+      THURSDAY,
+      SUNDAY_CLOSE,
+      playDay(THURSDAY),
+      DAY_400,
+    ]) {
+      expect(reloaded(state)).toStrictEqual(state)
+    }
+  })
+
+  it('load a game mid-week that reports the week as if it had never stopped', () => {
+    const straight = played(4, THURSDAY)
+    expect(played(4, reloaded(THURSDAY))).toEqual(straight)
+    expect(straight.lastWeek?.days.map(({ day }) => day)).toEqual([
+      14, 15, 16, 17, 18, 19, 20,
+    ])
+  })
+
+  it('load a version 9 game mid-week, whose first week reported covers the days played after it', () => {
+    const back = deserialize(v9(THURSDAY))
+    const cash = balance(THURSDAY.journal, '1000', { toDay: 16 })
+    expect(back).toEqual(sinceLoaded(THURSDAY))
+    expect(back.weekSoFar).toEqual({
+      cashAtStart: cash,
+      partial: true,
+      days: [],
+      modifiers: [],
+    })
+    expect(reloaded(played(2, back))).toStrictEqual(played(2, back))
+    const after = played(4, back)
+    const report = after.lastWeek
+    expect(report).toMatchObject({
+      firstDay: 14,
+      partial: true,
+      cashAtStart: cash,
+      sales: incomeStatement(after.journal, 17, 20).sales.amount,
+      previousBest: null,
+    })
+    expect(report?.days.map(({ day }) => day)).toEqual([17, 18, 19, 20])
+    expect(after.weekHistory).toHaveLength(1)
+    expect(reloaded(after)).toStrictEqual(after)
+    // The next week is whole, and has a week to beat.
+    expect(played(7, after).lastWeek).toMatchObject({
+      firstDay: 21,
+      partial: false,
+      previousBest: report?.sales,
+    })
+  })
+
+  it('load a version 9 game after a Sunday, whose next week is reported whole', () => {
+    const back = deserialize(v9(FORTNIGHT))
+    expect(back.weekSoFar).toEqual(FORTNIGHT.weekSoFar)
+    const straight = played(7, FORTNIGHT).lastWeek
+    expect(straight?.previousBest).not.toBeNull()
+    expect(played(7, back).lastWeek).toEqual({
+      ...straight,
+      previousBest: null,
+    })
+  })
+
+  it('load a version 9 game at the close of a day, or before day 0 is played', () => {
+    for (const state of [SUNDAY_CLOSE, playDay(THURSDAY)]) {
+      expect(deserialize(v9(state))).toEqual(sinceLoaded(state))
+    }
+    expect(deserialize(v9(createInitialState(SEED)))).toEqual(
+      createInitialState(SEED),
+    )
+    expect(deserialize(v9(DAY_0_CHOSEN), FOOD_TRUCK, DAY_0_CARD)).toEqual(
+      DAY_0_CHOSEN,
     )
   })
 
@@ -661,11 +790,14 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 6, 10, '9', '8', '7', null])('saveVersion %j', (version) => {
-    expectInvalid(withValue('saveVersion', version), [
-      `unsupported saveVersion ${JSON.stringify(version)}`,
-    ])
-  })
+  it.each([0, 1, 6, 11, '10', '9', '8', '7', null])(
+    'saveVersion %j',
+    (version) => {
+      expectInvalid(withValue('saveVersion', version), [
+        `unsupported saveVersion ${JSON.stringify(version)}`,
+      ])
+    },
+  )
 
   describe('a key the game does not know', () => {
     it('in the save', () => {
@@ -682,6 +814,10 @@ describe('deserialize rejects', () => {
       ['the prices', 'decisions.prices.poutine', 'decisions.prices'],
       ['the profile', 'profile.level', 'profile'],
       ['the personal account', 'personal.bonus', 'personal'],
+      ['the week under way', 'weekSoFar.bonus', 'weekSoFar'],
+      ['the last week', 'lastWeek.bonus', 'lastWeek'],
+      ['a day of the last week', 'lastWeek.days.0.tip', 'lastWeek.days[0]'],
+      ['a week of the history', 'weekHistory.0.bonus', 'weekHistory[0]'],
       [
         'a personal movement',
         'personal.movements.0.note',
@@ -730,6 +866,13 @@ describe('deserialize rejects', () => {
     'lastDay.visits.0.botched',
     'lastDay.modifiers',
     'events.modifiers',
+    'weekSoFar',
+    'weekSoFar.cashAtStart',
+    'lastWeek',
+    'lastWeek.previousBest',
+    'lastWeek.days.0.cashReceived',
+    'weekHistory',
+    'weekHistory.0.netIncome',
   ])('a save missing %s', (path) => {
     const at = path.replace(/\.(\d+)/g, '[$1]')
     expectInvalid(without(path), [`→ at ${at}`])
@@ -1453,6 +1596,7 @@ describe('deserialize rejects', () => {
         delete save[key]
         delete save.receivables
         delete (save.lastDay as Json).modifiers
+        withoutWeek(save)
         save.saveVersion = 7
         change(save)
       })
@@ -1490,12 +1634,22 @@ describe('deserialize rejects', () => {
       edited('events', (save, key) => {
         delete (save[key] as Json).modifiers
         delete (save.lastDay as Json).modifiers
+        withoutWeek(save)
         save.saveVersion = 8
         change(save)
       })
 
     it('which loads', () => {
-      expect(deserialize(v8())).toEqual(FORTNIGHT)
+      expect(deserialize(v8())).toEqual(sinceLoaded(FORTNIGHT))
+    })
+
+    it('with the week in numbers, which came in version 10', () => {
+      expectInvalid(
+        v8((save) => {
+          save.weekHistory = []
+        }),
+        ['Unrecognized key: "weekHistory"'],
+      )
     })
 
     it.each(['events', 'lastDay'])(
@@ -1517,6 +1671,242 @@ describe('deserialize rejects', () => {
         }),
         ['→ at receivables[0].client'],
       )
+    })
+  })
+
+  describe('a version 9 game', () => {
+    it('which loads', () => {
+      expect(deserialize(v9(FORTNIGHT))).toEqual(sinceLoaded(FORTNIGHT))
+    })
+
+    it.each(['weekSoFar', 'lastWeek', 'weekHistory'])(
+      'with %s, which came in version 10',
+      (key) => {
+        const save = JSON.parse(v9(FORTNIGHT)) as Json
+        save[key] = (JSON.parse(SAVED) as Json)[key]
+        expectInvalid(JSON.stringify(save), [`Unrecognized key: "${key}"`])
+      },
+    )
+  })
+
+  describe('the week in numbers', () => {
+    const START = serialize(createInitialState(SEED))
+    const WEEK_1_SAVE = serialize(WEEK_1)
+    const DAY_3_SAVE = serialize(DAY_3)
+    const saved = JSON.parse(SAVED) as {
+      lastWeek: { days: Json[]; previousBest: number }
+      weekHistory: Json[]
+    }
+    const thursday = JSON.parse(THURSDAY_SAVE) as {
+      weekSoFar: { days: Json[]; cashAtStart: number }
+    }
+    const unknown = {
+      event: 'inconnu',
+      change: { kind: 'closed' },
+      fromDay: 14,
+      lastDay: 14,
+    }
+
+    it.each<[string, string, string]>([
+      [
+        'a first week that is not partial before day 0 is played',
+        withValue('weekSoFar.partial', false, START),
+        'weekSoFar is not partial before day 0 is played',
+      ],
+      [
+        'a day of the week under way before day 0 is played',
+        withValue('weekSoFar.days', thursday.weekSoFar.days.slice(2), START),
+        'weekSoFar ends on day 16, not day -1',
+      ],
+      [
+        'the days of the week under way out of order',
+        withValue('weekSoFar.days.1.day', 16, THURSDAY_SAVE),
+        'weekSoFar day 2 is day 16, not day 15',
+      ],
+      [
+        'the week under way without the last day played',
+        withValue(
+          'weekSoFar.days',
+          thursday.weekSoFar.days.slice(0, 2),
+          THURSDAY_SAVE,
+        ),
+        'weekSoFar ends on day 15, not day 16',
+      ],
+      [
+        'the week under way without its Monday',
+        withValue(
+          'weekSoFar.days',
+          thursday.weekSoFar.days.slice(1),
+          THURSDAY_SAVE,
+        ),
+        'weekSoFar starts on day 15, not on its Monday, day 14, and is not partial',
+      ],
+      [
+        'the week under way with no day, mid-week',
+        withValue('weekSoFar.days', [], THURSDAY_SAVE),
+        'weekSoFar starts on day 17, not on its Monday, day 14, and is not partial',
+      ],
+      [
+        "the week under way holding the Sunday's close",
+        withValue('weekSoFar.days', saved.lastWeek.days.slice(6)),
+        'weekSoFar starts on day 13, before its Monday, day 14',
+      ],
+      [
+        'a close of the week under way the bilan does not have',
+        withValue(
+          'weekSoFar.days.0.cashAtClose',
+          Number(thursday.weekSoFar.days[0]?.cashAtClose) + 1,
+          THURSDAY_SAVE,
+        ),
+        'weekSoFar day 1 closes with',
+      ],
+      [
+        'the week under way starting with cash the bilan does not have',
+        withValue(
+          'weekSoFar.cashAtStart',
+          thursday.weekSoFar.cashAtStart + 1,
+          THURSDAY_SAVE,
+        ),
+        'in Encaisse at the close of day 13',
+      ],
+      [
+        'the first week starting with cash the books do not open with',
+        withValue('weekSoFar.cashAtStart', 1, START),
+        'weekSoFar.cashAtStart is 1, not the',
+      ],
+      [
+        'the week under way with a change to the street of an unknown event',
+        withValue('weekSoFar.modifiers', [unknown], THURSDAY_SAVE),
+        "weekSoFar's street modifier 1 is an unknown event: inconnu",
+      ],
+      [
+        'a week reported before a Sunday is played',
+        withValue('lastWeek', saved.lastWeek, DAY_3_SAVE),
+        'lastWeek is reported before a Sunday is played',
+      ],
+      [
+        'a week reported other than the last',
+        withValue('lastWeek.firstDay', 0),
+        'lastWeek starts on day 0, not on day 7, the Monday of the last Sunday played',
+      ],
+      [
+        'a week reported without its Sunday',
+        withValue('lastWeek.days', saved.lastWeek.days.slice(0, 6)),
+        'lastWeek ends on day 12, not day 13',
+      ],
+      [
+        'a week reported without its Monday',
+        withValue('lastWeek.days', saved.lastWeek.days.slice(1)),
+        'lastWeek starts on day 8, not on its Monday, day 7, and is not partial',
+      ],
+      [
+        'a week reported with a close the bilan does not have',
+        withValue(
+          'lastWeek.days.3.cashAtClose',
+          Number(saved.lastWeek.days[3]?.cashAtClose) + 1,
+        ),
+        'lastWeek day 4 closes with',
+      ],
+      [
+        'a week reported starting with cash the bilan does not have',
+        withValue('lastWeek.cashAtStart', 1),
+        'lastWeek.cashAtStart is 1, not the',
+      ],
+      [
+        'a week reported ending other than its Sunday',
+        withValue('lastWeek.cashAtEnd', 1),
+        'lastWeek ends with 1',
+      ],
+      [
+        'a week reported whose lowest close is not',
+        withValue('lastWeek.lowestCash', 1),
+        'at its lowest, not as its days close',
+      ],
+      [
+        'a week reported with ventes the état des résultats does not have',
+        withValue('lastWeek.sales', 1),
+        'lastWeek has 1 of ventes',
+      ],
+      [
+        'a week reported with a bénéfice the état des résultats does not have',
+        withValue('lastWeek.netIncome', 1),
+        'of bénéfice net, not the',
+      ],
+      [
+        'a week reported with an event that did not come up',
+        withValue('lastWeek.events', [
+          {
+            day: 8,
+            event: 'essai',
+            followUp: false,
+            choice: 'rienFaire',
+            outcome: 0,
+          },
+        ]),
+        "lastWeek's events are not those of the history on its days",
+      ],
+      [
+        'a week reported with a change to the street of an unknown event',
+        withValue('lastWeek.modifiers', [unknown]),
+        "lastWeek's street modifier 1 is an unknown event: inconnu",
+      ],
+      [
+        'a week reported with no best ventes, after an earlier week',
+        withValue('lastWeek.previousBest', null),
+        'lastWeek.previousBest is null with 1 earlier weeks in the history',
+      ],
+      [
+        'a week reported with best ventes, as the first',
+        withValue('lastWeek.previousBest', 5, WEEK_1_SAVE),
+        'lastWeek.previousBest is 5 with 0 earlier weeks in the history',
+      ],
+      [
+        'a week reported with best ventes below an earlier week',
+        withValue('lastWeek.previousBest', saved.lastWeek.previousBest - 1),
+        "below an earlier week's ventes",
+      ],
+      [
+        'a history of more than 52 weeks',
+        edited(
+          'weekHistory',
+          (save, key) => {
+            const history = save[key] as { firstDay: number }[]
+            const first = history[0]?.firstDay ?? 0
+            save[key] = [{ ...history[0], firstDay: first - 7 }, ...history]
+          },
+          serialize(DAY_400),
+        ),
+        'weekHistory holds 53 weeks, more than 52',
+      ],
+      [
+        'a history whose weeks are not 7 days apart',
+        withValue('weekHistory.0.firstDay', 1),
+        'week 2 of weekHistory starts on day 7, not 7 days after the one before',
+      ],
+      [
+        "a history whose last week is not the week reported's",
+        withValue(
+          'weekHistory.1.sales',
+          Number(saved.weekHistory[1]?.sales) + 1,
+        ),
+        "the last week of weekHistory is not lastWeek's",
+      ],
+      [
+        'a week reported missing from the history',
+        withValue('weekHistory', [], WEEK_1_SAVE),
+        "the last week of weekHistory is not lastWeek's",
+      ],
+      [
+        'a history with no week reported',
+        withValue('weekHistory', saved.weekHistory.slice(0, 1), DAY_3_SAVE),
+        "the last week of weekHistory is not lastWeek's",
+      ],
+    ])('%s', (_, text, reason) => {
+      expectInvalid(text, [reason])
+    })
+
+    it('a week reported with no day', () => {
+      expectInvalid(withValue('lastWeek.days', []), ['→ at lastWeek.days'])
     })
   })
 

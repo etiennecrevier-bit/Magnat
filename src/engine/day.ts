@@ -48,6 +48,7 @@ import { inDebt, livePersonalDay } from './personal.ts'
 import { servers } from './service.ts'
 import { inEffect, streetOn } from './street.ts'
 import type { Day, Decisions, GameState, Lot } from './types.ts'
+import { recordDay } from './week.ts'
 
 /** The shipped food truck content, validated once when the engine loads. */
 export const FOOD_TRUCK: FoodTruckContent = loadFoodTruckContent()
@@ -197,9 +198,10 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * `energyAtClose`). Returns a new state on the same day with the books, the
  * stock, the generator, the marketing history, `lastDay`, with the changes
  * to the street in effect that day, the owner's personal account, their
- * energy, the events, without the changes whose last day it was, and the
- * receivables brought up to the close; never mutates `morning`. Cash may go
- * negative.
+ * energy, the events, without the changes whose last day it was, the
+ * receivables brought up to the close, and the day added to the week under
+ * way, summed up on a Sunday (see `recordDay`); never mutates `morning`.
+ * Cash may go negative.
  */
 export function playDay(
   morning: GameState,
@@ -337,7 +339,7 @@ export function playDay(
   )
   const lasting = modifiers.filter(({ lastDay }) => lastDay > day)
 
-  return {
+  const closing: GameState = {
     ...state,
     rngState: served.rngState,
     journal,
@@ -372,6 +374,7 @@ export function playDay(
         ? state.events
         : { ...state.events, modifiers: lasting },
   }
+  return { ...closing, ...recordDay(closing, open, expired.cost) }
 }
 
 /**

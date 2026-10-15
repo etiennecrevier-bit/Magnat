@@ -241,6 +241,133 @@ export interface GameState {
    * order they were sold. Their amounts add up to Comptes clients (1100).
    */
   readonly receivables: readonly Receivable[]
+  /** The days of the week under way played so far. */
+  readonly weekSoFar: WeekSoFar
+  /** The last week whose Sunday was played; null until one is. */
+  readonly lastWeek: WeekReport | null
+  /**
+   * The last 52 weeks whose Sunday was played, oldest first; the last one is
+   * `lastWeek`.
+   */
+  readonly weekHistory: readonly WeekRecord[]
+}
+
+/** One business day of a week, as of its close. */
+export interface WeekDay {
+  /** The business day. */
+  readonly day: Day
+  /** Whether the truck opened. */
+  readonly open: boolean
+  /** Ventes posted that day, paid in cash or on credit. */
+  readonly sales: Cents
+  /**
+   * Cash received from customers that day: cash sales, those of the events
+   * included, and what customers who pay later paid.
+   */
+  readonly cashReceived: Cents
+  /** Encaisse at the close; may be negative. */
+  readonly cashAtClose: Cents
+  /** Visits that reached the counter. */
+  readonly customersServed: number
+  /** Units written off at the close because their shelf life was over. */
+  readonly spoiled: PerProduct
+  /** What those units cost. */
+  readonly spoiledCost: Cents
+  /** Visits that left the line without being served. */
+  readonly lostToLine: number
+  /** Visits that bought nothing because a price was above what they pay. */
+  readonly lostToPrices: number
+  /** Visits that bought nothing because what they wanted had sold out. */
+  readonly lostToStockouts: number
+}
+
+/** The week under way, Monday to Sunday, as its days are played. */
+export interface WeekSoFar {
+  /**
+   * Encaisse when the week started: at the close of the Sunday before, or,
+   * for a partial week, before its first day.
+   */
+  readonly cashAtStart: Cents
+  /**
+   * Whether the week started without the close of the Sunday before: the
+   * first week of a game, or the one under way when an older save loaded.
+   */
+  readonly partial: boolean
+  /** The days played so far, in order; never a Sunday. */
+  readonly days: readonly WeekDay[]
+  /**
+   * The changes to the street in effect on any of those days, in the order
+   * they were made.
+   */
+  readonly modifiers: readonly StreetModifier[]
+}
+
+/** A week whose Sunday was played, Monday to Sunday. */
+export interface WeekReport {
+  /** The week's Monday. */
+  readonly firstDay: Day
+  /** Whether the week started without the close of the Sunday before. */
+  readonly partial: boolean
+  /**
+   * The days played, in order, up to the Sunday: all 7 unless the week is
+   * partial and started after its Monday.
+   */
+  readonly days: readonly WeekDay[]
+  /** Ventes over those days, as the état des résultats has them. */
+  readonly sales: Cents
+  /** Bénéfice net over those days; negative for a loss. */
+  readonly netIncome: Cents
+  /** Encaisse when the week started, as `WeekSoFar` has it. */
+  readonly cashAtStart: Cents
+  /** Encaisse at the close of the Sunday. */
+  readonly cashAtEnd: Cents
+  /** The lowest Encaisse at the close of any of the days. */
+  readonly lowestCash: Cents
+  /** Units written off over the week. */
+  readonly spoiled: PerProduct
+  /** What those units cost. */
+  readonly spoiledCost: Cents
+  /** Visits that left the line without being served, over the week. */
+  readonly lostToLine: number
+  /** Visits that bought nothing because a price was too high. */
+  readonly lostToPrices: number
+  /** Visits that bought nothing because what they wanted had sold out. */
+  readonly lostToStockouts: number
+  /** The owner's energy at the close of the Sunday, before the night. */
+  readonly energy: number
+  /**
+   * The days in a row the truck opened, up to the Sunday, the weeks before
+   * included.
+   */
+  readonly daysOpenInARow: number
+  /** What customers still owed at the close of the Sunday. */
+  readonly receivables: readonly Receivable[]
+  /** The days of the week the owner's rent went unpaid. */
+  readonly unpaidRents: readonly Day[]
+  /** The events that came up during the week, and the choices made. */
+  readonly events: readonly EventRecord[]
+  /**
+   * The changes to the street in effect on any day of the week, in the
+   * order they were made.
+   */
+  readonly modifiers: readonly StreetModifier[]
+  /**
+   * The highest ventes of any earlier week of the game, kept even once that
+   * week has left `weekHistory`; null when no earlier week was reported.
+   */
+  readonly previousBest: Cents | null
+}
+
+/** What `weekHistory` keeps of a week. */
+export interface WeekRecord {
+  /** The week's Monday. */
+  readonly firstDay: Day
+  /** Ventes over the week. */
+  readonly sales: Cents
+  /** Bénéfice net over the week; negative for a loss. */
+  readonly netIncome: Cents
+  /** Encaisse at the close of the Sunday. */
+  readonly cashAtEnd: Cents
 }
 
 /** The event cards of a game. */

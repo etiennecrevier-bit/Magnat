@@ -4,6 +4,7 @@ import {
   loadDifficultyContent,
   loadEnergyContent,
 } from '../content/schema.ts'
+import { balance } from '../finance/journal.ts'
 import * as calendar from './calendar.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
 import {
@@ -37,7 +38,7 @@ const DEFAULT_ACCOUNT = openingAccount(
 )
 
 describe('createInitialState', () => {
-  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile, the owner at full energy, no event and nobody owing anything", () => {
+  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile, the owner at full energy, no event, nobody owing anything and a first week to come, partial, from the opening cash", () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
@@ -53,6 +54,20 @@ describe('createInitialState', () => {
       energy: 100,
       events: noEvents(),
       receivables: [],
+      weekSoFar: {
+        cashAtStart: balance(
+          openingJournal(defaultProfile().difficulty),
+          '1000',
+          {
+            toDay: 0,
+          },
+        ),
+        partial: true,
+        days: [],
+        modifiers: [],
+      },
+      lastWeek: null,
+      weekHistory: [],
     })
     expect(FULL_ENERGY).toBe(100)
   })
@@ -61,7 +76,7 @@ describe('createInitialState', () => {
     expect(() => createInitialState(seed)).toThrow(RangeError)
   })
 
-  it("keeps the player's profile, as a copy, and opens its difficulty's books and savings", () => {
+  it("keeps the player's profile, as a copy, and opens its difficulty's books, savings and first week", () => {
     const profile = { ...CUSTOM }
     const state = createInitialState(42, FOOD_TRUCK, profile)
     expect(state.profile).toEqual(CUSTOM)
@@ -74,11 +89,16 @@ describe('createInitialState', () => {
       ),
     )
     expect(state.personal).not.toEqual(DEFAULT_ACCOUNT)
+    expect(state.weekSoFar.cashAtStart).toBe(
+      balance(openingJournal(CUSTOM.difficulty), '1000', { toDay: 0 }),
+    )
+    expect(state.weekSoFar).not.toEqual(createInitialState(42).weekSoFar)
     expect({
       ...state,
       profile: defaultProfile(),
       journal: openingJournal(defaultProfile().difficulty),
       personal: DEFAULT_ACCOUNT,
+      weekSoFar: createInitialState(42).weekSoFar,
     }).toEqual(createInitialState(42))
   })
 
