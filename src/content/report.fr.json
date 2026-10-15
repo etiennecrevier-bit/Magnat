@@ -1,0 +1,75 @@
+{
+  "_note": "The « Bilan de la semaine » (src/ui/weeklyReport.ts). facts: the text of each fact of a week (report.json), at least 2 variants each, the weeks taking them in turn; each variant uses every number of its fact: profitUpCashDown {netIncome} {cashChange} (with its sign), unpaidRent {day}, receivableDue {client} {amount} {dueDay}, spoilage {cost} {units}, bestWeek {sales} {previousBest}, lostToLine {visits}, daysOpenInARow {days}. The counts are always 2 or more, so write them in the plural. headlines: La Presse-Citron's headline for a week whose first fact is that one, at least 2 each; they may use the fact's numbers. quietHeadlines: for a week with no fact. creditSaleNote: the chart's note on the day of a sale on credit, with {amount} {client} {dueDay}. Describe the week; never explain a term.",
+  "facts": {
+    "profitUpCashDown": [
+      "Bénéfice de {netIncome} cette semaine. Encaisse : {cashChange}.",
+      "La semaine laisse {netIncome} de bénéfice, et l'encaisse bouge de {cashChange}.",
+      "{netIncome} de bénéfice sur la semaine. Pendant ce temps, l'encaisse : {cashChange}."
+    ],
+    "unpaidRent": [
+      "Le loyer du {day} n'a pas été payé.",
+      "Le {day}, il manquait de quoi payer votre loyer.",
+      "Votre propriétaire attend encore le loyer du {day}."
+    ],
+    "receivableDue": [
+      "{client} vous doit {amount}, à recevoir le {dueDay}.",
+      "Le {dueDay}, {client} doit vous verser {amount}.",
+      "À recevoir le {dueDay} : {amount} de {client}."
+    ],
+    "spoilage": [
+      "{units} unités jetées cette semaine, pour {cost} de marchandise.",
+      "{cost} de marchandise à la poubelle : {units} unités périmées.",
+      "La poubelle a reçu {units} unités cette semaine. Coût : {cost}."
+    ],
+    "bestWeek": [
+      "Meilleure semaine à date : {sales} de ventes, contre {previousBest} au mieux avant.",
+      "Record battu : {sales} de ventes. L'ancien record était de {previousBest}.",
+      "{sales} de ventes, du jamais vu. La meilleure semaine d'avant : {previousBest}."
+    ],
+    "lostToLine": [
+      "{visits} clients ont quitté la file sans être servis.",
+      "La file a découragé {visits} clients, repartis les mains vides.",
+      "{visits} clients ont trouvé l'attente trop longue et sont partis."
+    ],
+    "daysOpenInARow": [
+      "{days} jours d'affilée sans fermer le camion.",
+      "Le camion a ouvert {days} jours de suite.",
+      "{days} jours de suite derrière le comptoir."
+    ]
+  },
+  "headlines": {
+    "profitUpCashDown": [
+      "Un camion de rue fait des profits. Son encaisse n'a pas reçu le mémo.",
+      "Profits en hausse sur la rue : un propriétaire cherche quand même son argent sous le comptoir."
+    ],
+    "unpaidRent": [
+      "Un propriétaire de camion de rue découvre que le loyer revient chaque mois.",
+      "Loyer en retard : un propriétaire d'immeuble ajoute un troisième point d'exclamation à sa lettre."
+    ],
+    "receivableDue": [
+      "« Je vous paie la semaine prochaine » : enquête sur la phrase préférée du commerce.",
+      "Un client promet de payer bientôt. La Presse-Citron a noté la date dans son agenda."
+    ],
+    "spoilage": [
+      "De la marchandise finit à la poubelle. Les goélands du Vieux-Port applaudissent.",
+      "Inventaire : un camion de rue jette plus qu'il ne voudrait l'admettre."
+    ],
+    "bestWeek": [
+      "Semaine record pour un camion de rue. Le camion d'à côté fait semblant de ne pas avoir vu.",
+      "Un camion de rue bat son propre record. Il refuse de commenter : il a des clients."
+    ],
+    "lostToLine": [
+      "La file devant un camion de rue s'allonge. Des clients repartent le ventre vide.",
+      "Une file d'attente bat un record de longueur. Plusieurs abandonnent avant la fin."
+    ],
+    "daysOpenInARow": [
+      "Un camion de rue ouvert tous les jours. Ses voisins se demandent s'il dort dedans.",
+      "Ouvert beau temps, mauvais temps : un camion de rue oublie ce qu'est un congé."
+    ]
+  },
+  "quietHeadlines": [
+    "Semaine tranquille sur la rue. La Presse-Citron cherche encore une nouvelle à mettre en une.",
+    "Rien à signaler cette semaine, à part les cônes orange qui tiennent bon."
+  ],
+  "creditSaleNote": "{amount} de {client} : à recevoir le {dueDay}"
+}
