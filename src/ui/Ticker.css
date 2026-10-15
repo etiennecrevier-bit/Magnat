@@ -1,5 +1,6 @@
 /* A newspaper's band along the bottom of the window, over the street, in
-   the panels' ink and cream. The page keeps room for it under the screens. */
+   the panels' ink and cream. The page keeps room for all of it under the
+   screens, however many lines the headline takes (see tickerRoom.ts). */
 .ticker {
   position: fixed;
   right: 0;
@@ -17,7 +18,7 @@
 }
 
 body:has(.ticker) {
-  padding-bottom: 2.75rem;
+  padding-bottom: var(--ticker-height, 2.75rem);
 }
 
 .ticker p {
@@ -37,4 +38,14 @@ body:has(.ticker) {
 
 .ticker__text {
   min-width: 0;
+}
+
+/* On a phone the paper's name sits above the headline, which then takes the
+   whole width and fewer lines. */
+@media (max-width: 559px) {
+  .ticker {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.125rem;
+  }
 }

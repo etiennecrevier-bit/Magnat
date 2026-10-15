@@ -33,3 +33,20 @@ export function choiceForKey(
   const index = CHOICE_KEYS.findIndex((key) => key === event.key)
   return index === -1 || index >= count ? null : index
 }
+
+/**
+ * Escape on an event card, which is never the browser's own (closing the
+ * dialog): before the choice it does nothing, as the card has no way out;
+ * once the result shows it does what « Continuer » does, with
+ * `onContinue`, since nothing can be skipped by then. A key held down
+ * does not continue, so an Escape held from the choice is not taken.
+ */
+export function handleCardEscape(
+  event: Pick<KeyEventLike, 'key' | 'repeat' | 'preventDefault'>,
+  showsResult: boolean,
+  onContinue: () => void,
+): void {
+  if (event.key !== 'Escape') return
+  event.preventDefault()
+  if (showsResult && !event.repeat) onContinue()
+}

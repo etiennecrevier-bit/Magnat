@@ -1,11 +1,7 @@
 import type { Day, Headline } from '../engine/types.ts'
 import type { Headlines } from './headlines.ts'
 
-/**
- * How long each La Presse-Citron headline shows, in real milliseconds: the
- * 20 s of #94. It sits with the UI, as src/content/ belongs to P3-05 (#93)
- * for now; the content may take it over.
- */
+/** How long each headline shows, in real ms: display timing, not a game number. */
 export const MS_PER_HEADLINE = 20_000
 
 /** Where the ticker is. */

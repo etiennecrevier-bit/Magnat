@@ -2,7 +2,7 @@ import { useEffect, useRef, type Ref } from 'react'
 import type { EventCard as Card } from '../content/schema.ts'
 import { EVENTS } from '../engine/day.ts'
 import type { EventRecord, GameState } from '../engine/types.ts'
-import { choiceForKey, choiceKey } from './choiceKeys.ts'
+import { choiceForKey, choiceKey, handleCardEscape } from './choiceKeys.ts'
 import { choiceChanges, formatChangeLine } from './eventChanges.ts'
 import { portraitUrl } from './portraits.ts'
 import { gameStore, useGame } from './store.ts'
@@ -190,9 +190,10 @@ function eventResult(
 /**
  * The event card wired to the app store, in a modal dialog over the street
  * while the store's panel is `event`. The keys 1, 2 and 3 pick the choices.
- * Escape does nothing, and if the browser closes the dialog anyway, it
- * opens again while the event waits. « Continuer » closes it, and the game
- * resumes at the speed from before the card.
+ * Escape does nothing before the choice, and if the browser closes the
+ * dialog anyway, it opens again while the event waits. « Continuer », or
+ * Escape once the result shows, closes it, and the game resumes at the
+ * speed from before the card.
  */
 export default function EventCard() {
   const game = useGame((state) => state.game)
@@ -241,15 +242,17 @@ export default function EventCard() {
   }, [choosing, chooseEvent])
 
   if (card === undefined) return null
+  const onContinue = () => dialogRef.current?.close()
   return (
     <dialog
       ref={dialogRef}
       className="panel event-card"
       aria-labelledby={TITLE_ID}
-      onCancel={(event) => event.preventDefault()}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') event.preventDefault()
+      onCancel={(event) => {
+        event.preventDefault()
+        if (showsResult) onContinue()
       }}
+      onKeyDown={(event) => handleCardEscape(event, showsResult, onContinue)}
       onClose={() => {
         closePanel()
         if (gameStore.getState().panel === 'event') {
@@ -262,7 +265,7 @@ export default function EventCard() {
         portrait={portraitUrl(card.character.id)}
         result={result}
         onChoose={chooseEvent}
-        onContinue={() => dialogRef.current?.close()}
+        onContinue={onContinue}
         titleRef={titleRef}
         resultRef={resultRef}
       />

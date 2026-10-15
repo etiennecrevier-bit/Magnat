@@ -298,6 +298,59 @@ describe('choiceChanges', () => {
     expect(earlier.events.delayed).toHaveLength(1)
     expect(linesOf(waiting(earlier, 'test'), 'non', events)).toEqual([])
   })
+
+  describe('with what earlier choices queued for a client', () => {
+    const sale = {
+      kind: 'creditSale',
+      amountCents: 75_000,
+      client: GILLES,
+      dueInDays: 60,
+    }
+    /** The lines of a sale, once an earlier choice queued `effect`. */
+    const afterEarlier = (effect: unknown, later: unknown = sale) => {
+      const earlier = resolveEvent(
+        waiting(createInitialState(1), 'test'),
+        'oui',
+        content([effect]),
+      )
+      expect(earlier.events.delayed).toHaveLength(1)
+      return linesOf(waiting(earlier, 'test'), 'oui', content([later]))
+    }
+
+    it('gives no due day when they collect or delay the debt before it', () => {
+      // Gilles pays on Thursday, not on June 30th.
+      expect(
+        afterEarlier({ kind: 'collectReceivable', client: GILLES, inDays: 3 }),
+      ).toEqual([`Comptes clients +750${S}$`])
+      expect(
+        afterEarlier(
+          { kind: 'delayReceivable', client: GILLES, days: 30, inDays: 10 },
+          { ...sale, inDays: 2 },
+        ),
+      ).toEqual([`Comptes clients +750${S}$ mercredi`])
+      expect(
+        afterEarlier(
+          { kind: 'writeOff', client: GILLES, inDays: 62 },
+          { ...sale, inDays: 2 },
+        ),
+      ).toEqual([`Comptes clients +750${S}$ mercredi`])
+    })
+
+    it('keeps the due day when they come before the sale or after it is due', () => {
+      expect(
+        afterEarlier(
+          { kind: 'collectReceivable', client: GILLES, inDays: 3 },
+          { ...sale, inDays: 5 },
+        ),
+      ).toEqual([`Comptes clients +750${S}$ samedi (5 juillet)`])
+      expect(
+        afterEarlier(
+          { kind: 'writeOff', client: GILLES, inDays: 30 },
+          { ...sale, dueInDays: 20 },
+        ),
+      ).toEqual([`Comptes clients +750${S}$ (21 mai)`])
+    })
+  })
 })
 
 describe('formatChangeLine', () => {

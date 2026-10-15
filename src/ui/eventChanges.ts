@@ -1,4 +1,4 @@
-import type { EventEffect, FoodTruckContent } from '../content/schema.ts'
+import type { FoodTruckContent } from '../content/schema.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
 import { add, cents, mulInt, sub, type Cents } from '../engine/money.ts'
 import type { Day, DelayedEffect, GameState } from '../engine/types.ts'
@@ -19,8 +19,9 @@ import { formatSignedMoney } from './formatMoney.ts'
 //   purchase's cash or the owner's own. What is collected, written off or
 //   moved later shows without one, and the stock taken later, at a cost
 //   only known on its day, shows nothing, nor does the stock it buys.
-// - A sale on credit shows the day it is collected, unless an effect the
-//   choice queued collects, writes off or delays what that client owes.
+// - A sale on credit shows the day it is collected, unless an effect still
+//   to come, queued by this choice or an earlier one, collects, writes off
+//   or delays what that client owes between the sale and that day.
 // Follow-ups, headlines and the changes to the street never show: the
 // first two would give away what the player is not meant to know, and the
 // tags already say the last.
@@ -56,8 +57,8 @@ export interface ChangeLine {
   /** The day it happens: the day of the choice for what changed at once. */
   readonly day: Day
   /**
-   * For what is sold on credit, the days it is collected, when nothing the
-   * choice queued changes them; empty otherwise.
+   * For what is sold on credit, the days it is collected, when nothing
+   * still to come changes them; empty otherwise.
    */
   readonly collectedOn: readonly Day[]
 }
@@ -76,10 +77,11 @@ export function choiceChanges(
   const queued = after.events.delayed.filter(
     (delayed) => !before.events.delayed.includes(delayed),
   )
-  const unsettled = new Set(queued.flatMap(({ effect }) => settled(effect)))
+  // Earlier choices' effects can settle this choice's sales too.
+  const settlements = after.events.delayed.flatMap(settlement)
   return [
-    ...nowLines(before, after, unsettled),
-    ...queued.flatMap((delayed) => laterLine(delayed, unsettled, foodTruck)),
+    ...nowLines(before, after, settlements),
+    ...queued.flatMap((delayed) => laterLine(delayed, settlements, foodTruck)),
   ]
 }
 
@@ -117,7 +119,7 @@ function whenText(day: Day, today: Day): string {
 function nowLines(
   before: GameState,
   after: GameState,
-  unsettled: ReadonlySet<string>,
+  settlements: readonly Settlement[],
 ): ChangeLine[] {
   const { day } = before
   const moved = new Map<AccountCode, Cents>()
@@ -143,7 +145,7 @@ function nowLines(
       day,
       collectedOn:
         account === RECEIVABLES && money > 0
-          ? collectionDays(before, after, unsettled)
+          ? collectionDays(before, after, settlements)
           : [],
     })
   }
@@ -165,38 +167,67 @@ function nowLines(
 
 /**
  * The due days, ascending, of what was sold on credit at once and is still
- * owed; none at all if any of it is owed by a client in `unsettled`.
+ * owed; none at all if any of it may be collected another day.
  */
 function collectionDays(
   before: GameState,
   after: GameState,
-  unsettled: ReadonlySet<string>,
+  settlements: readonly Settlement[],
 ): Day[] {
   const sold = after.receivables.filter(
     (receivable) =>
       receivable.soldOnDay === before.day &&
       !before.receivables.includes(receivable),
   )
-  if (sold.some(({ client }) => unsettled.has(client))) return []
+  const asDue = sold.every(({ client, soldOnDay, dueDay }) =>
+    collectedAsDue(client, soldOnDay, dueDay, settlements),
+  )
+  if (!asDue) return []
   return [...new Set(sold.map(({ dueDay }) => dueDay))].sort((a, b) => a - b)
 }
 
-/** The client whose debts `effect` settles or moves, if it does. */
-function settled(effect: EventEffect): string[] {
+/** An effect still to come that settles or moves a client's debts. */
+interface Settlement {
+  readonly client: string
+  readonly day: Day
+}
+
+/** `delayed` as a settlement, if it collects, writes off or delays. */
+function settlement({ day, effect }: DelayedEffect): Settlement[] {
   switch (effect.kind) {
     case 'collectReceivable':
     case 'writeOff':
     case 'delayReceivable':
-      return [effect.client]
+      return [{ client: effect.client, day }]
     default:
       return []
   }
 }
 
+/**
+ * Whether what `client` owes for a sale on `soldOn` is collected on
+ * `dueDay`: no settlement of theirs falls between the two, both included,
+ * since a day's effects come before what falls due that day. A debt that
+ * nothing touches by then cannot move after.
+ */
+function collectedAsDue(
+  client: string,
+  soldOn: Day,
+  dueDay: Day,
+  settlements: readonly Settlement[],
+): boolean {
+  return !settlements.some(
+    (settled) =>
+      settled.client === client &&
+      settled.day >= soldOn &&
+      settled.day <= dueDay,
+  )
+}
+
 /** The line of an effect queued for a later day, if it gets one. */
 function laterLine(
   { day, effect }: DelayedEffect,
-  unsettled: ReadonlySet<string>,
+  settlements: readonly Settlement[],
   foodTruck: FoodTruckContent,
 ): ChangeLine[] {
   const money = (label: string, amount: Cents, collectedOn: Day[] = []) => [
@@ -211,12 +242,15 @@ function laterLine(
       return money(cash, cents(-effect.amountCents))
     case 'cashSale':
       return money(cash, effect.amountCents)
-    case 'creditSale':
+    case 'creditSale': {
+      const { client, amountCents, dueInDays } = effect
+      const dueDay = day + dueInDays
       return money(
         getAccount(RECEIVABLES).name,
-        effect.amountCents,
-        unsettled.has(effect.client) ? [] : [day + effect.dueInDays],
+        amountCents,
+        collectedAsDue(client, day, dueDay, settlements) ? [dueDay] : [],
       )
+    }
     case 'buyStock': {
       const { unitCostCents } = foodTruck.products[effect.product]
       return money(cash, cents(-mulInt(unitCostCents, effect.units)))
