@@ -40,6 +40,7 @@ describe('difficultyLine', () => {
       difficultyLine({
         name: 'Test',
         startingCashCents: cents(123_456),
+        startingPersonalCashCents: cents(0),
         truck: {
           kind: 'loan',
           loanCents: cents(100),

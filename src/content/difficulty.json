@@ -1,14 +1,16 @@
 {
-  "_note": "The three ways to start a game (#44): the cash in the bank once the truck is settled, and how the truck comes. The truck's price and useful life are in foodtruck.json.",
+  "_note": "The three ways to start a game (#44): the cash in the bank once the truck is settled, how the truck comes, and the owner's own savings (#83). The truck's price and useful life are in foodtruck.json.",
   "difficulties": {
     "facile": {
       "name": "Facile",
       "startingCashCents": 1500000,
+      "startingPersonalCashCents": 400000,
       "truck": { "kind": "owned" }
     },
     "moyen": {
       "name": "Moyen",
       "startingCashCents": 1000000,
+      "startingPersonalCashCents": 250000,
       "truck": {
         "kind": "loan",
         "loanCents": 7000000,
@@ -19,6 +21,7 @@
     "difficile": {
       "name": "Difficile",
       "startingCashCents": 500000,
+      "startingPersonalCashCents": 100000,
       "truck": { "kind": "lease", "monthlyLeaseCents": 180000 }
     }
   }

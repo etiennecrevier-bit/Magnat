@@ -8,6 +8,8 @@ Every tunable number (prices, costs, pacing, demand) lives here as JSON; no magi
 
 `segments.json` holds the customer segments: how long each will wait in line (`patienceMinutes`, before the day type's multiplier), and for each product a reference price, a base purchase probability and a sensitivity.
 
-`difficulty.json` holds the three ways to start a game (Facile, Moyen, Difficile): the cash in the bank once the truck is settled, and how the truck comes to the business. Facile owns it; Moyen buys it with a startup loan, whose yearly rate is in basis points (800 is 8 %) and whose term is in months; Difficile leases it by the month. The engine opens the books and charges the truck from these. `profile.json` holds the new game screen's defaults (business name, avatar, difficulty) and the longest business name. `schema.ts` validates all three.
+`difficulty.json` holds the three ways to start a game (Facile, Moyen, Difficile): the cash in the bank once the truck is settled, how the truck comes to the business, and the owner's own savings (`startingPersonalCashCents`). Facile owns the truck; Moyen buys it with a startup loan, whose yearly rate is in basis points (800 is 8 %) and whose term is in months; Difficile leases it by the month. The engine opens the books and charges the truck from these. `profile.json` holds the new game screen's defaults (business name, avatar, difficulty) and the longest business name. `schema.ts` validates all three.
+
+`personal.json` holds what the owner's own life costs, paid from their personal account and never by the business: `rentCents` on the 1st of each month, and `weeklyExpensesCents` (groceries, phone, transit) on payday. `schema.ts` validates it.
 
 `cashGauge.json` sets when the top bar's cash reads low: below this many months of what every truck pays monthly.

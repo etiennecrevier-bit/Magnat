@@ -4,6 +4,7 @@ import {
   loadCustomerContent,
   loadDifficultyContent,
   loadFoodTruckContent,
+  loadPersonalContent,
   type CustomerContent,
   type Difficulty,
   type DifficultyContent,
@@ -11,6 +12,7 @@ import {
   type DayType,
   type DayTypeId,
   type FoodTruckContent,
+  type PersonalContent,
   type ProductId,
   type RestockRule,
   type Segment,
@@ -18,7 +20,12 @@ import {
   type Service,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
-import { balance, trialBalance, type JournalEntry } from '../finance/journal.ts'
+import {
+  balance,
+  entriesOf,
+  trialBalance,
+  type JournalEntry,
+} from '../finance/journal.ts'
 import {
   cashFlowStatement,
   incomeStatement,
@@ -30,12 +37,14 @@ import {
   CUSTOMERS,
   DIFFICULTIES,
   FOOD_TRUCK,
+  PERSONAL,
   currentPrice,
   playDay,
 } from './day.ts'
 import { applyDecision } from './decisions.ts'
 import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
 import { cents, mulRatio, type Cents } from './money.ts'
+import { LABELS } from './personal.ts'
 import { defaultProfile } from './profile.ts'
 import { servers } from './service.ts'
 import type { Day, DaySummary, GameState, PerProduct } from './types.ts'
@@ -1005,6 +1014,151 @@ describe('marketing', () => {
     const first = play(30, content)
     expect(play(30, content)).toEqual(first)
     expect(first.at(-1)?.journal.entries).not.toEqual(after(30).journal.entries)
+  })
+})
+
+describe("the owner's personal account", () => {
+  const OWNER_PAY = 'Paie du propriétaire'
+  const YEAR = 365
+
+  /**
+   * The state after `days` ticks of `content`, with `personal` as the
+   * owner's living costs.
+   */
+  function lived(
+    days: number,
+    personal: PersonalContent = PERSONAL,
+    content: Content = SHIPPED,
+    from: GameState = start(content),
+  ): GameState {
+    let state = from
+    for (let i = 0; i < days; i += 1) {
+      state = tick(
+        state,
+        content.truck,
+        content.customers,
+        content.difficulties,
+        personal,
+      )
+    }
+    return state
+  }
+
+  /** Everything of the game but the owner's own money. */
+  function business(state: GameState) {
+    const { journal, rngState, inventory, lastDay, marketingHistory } = state
+    return {
+      entries: entriesOf(journal),
+      rngState,
+      inventory,
+      lastDay,
+      marketingHistory,
+    }
+  }
+
+  /** The shipped content, with the owner paid `pay` a week from day 0. */
+  function paying(pay: number): Content {
+    return shipped(deciding({ ownerWeeklyPayCents: cents(pay) }))
+  }
+
+  it("never changes the company's books, whatever the living costs", () => {
+    const shippedCosts = lived(400)
+    const free = lived(
+      400,
+      loadPersonalContent({ rentCents: 0, weeklyExpensesCents: 0 }),
+    )
+    const crushing = lived(
+      400,
+      loadPersonalContent({
+        rentCents: 100_000_000,
+        weeklyExpensesCents: 10_000_000,
+      }),
+    )
+    expect(free.personal.cash).toBeGreaterThan(shippedCosts.personal.cash)
+    expect(crushing.personal.cash).toBeLessThan(-1_000_000_000)
+    expect(crushing.personal.unpaidRents.length).toBeGreaterThan(0)
+    expect(business(free)).toEqual(business(shippedCosts))
+    expect(business(crushing)).toEqual(business(shippedCosts))
+  })
+
+  it("never changes the company's books, whatever the savings", () => {
+    const shippedSavings = lived(400)
+    const broke = lived(
+      400,
+      PERSONAL,
+      shipped(difficulty('moyen', { startingPersonalCashCents: cents(0) })),
+    )
+    const rich = lived(
+      400,
+      PERSONAL,
+      shipped(
+        difficulty('moyen', { startingPersonalCashCents: cents(100_000_000) }),
+      ),
+    )
+    const { startingPersonalCashCents } = DIFFICULTIES.difficulties.moyen
+    expect(rich.personal.cash - shippedSavings.personal.cash).toBe(
+      100_000_000 - startingPersonalCashCents,
+    )
+    expect(broke.personal.cash).toBeLessThan(shippedSavings.personal.cash)
+    expect(business(broke)).toEqual(business(shippedSavings))
+    expect(business(rich)).toEqual(business(shippedSavings))
+  })
+
+  it('charges the rent of May on day 0, open or closed', () => {
+    const { startingPersonalCashCents } = DIFFICULTIES.difficulties.moyen
+    expect(playDay(start()).personal).toEqual({
+      cash: startingPersonalCashCents - PERSONAL.rentCents,
+      movements: [{ day: 0, label: LABELS.rent, amount: -PERSONAL.rentCents }],
+      unpaidRents: startingPersonalCashCents < PERSONAL.rentCents ? [0] : [],
+    })
+  })
+
+  it('leaves the rent unpaid within the first year at 400 $ a week in Moyen', () => {
+    const year = play(YEAR, paying(40_000))
+    const { unpaidRents } = (year.at(-1) as GameState).personal
+    expect(unpaidRents.length).toBeGreaterThan(0)
+    for (const day of unpaidRents) {
+      expect(day).toBeLessThan(YEAR)
+      expect(toCalendar(day).dayOfMonth).toBe(1)
+    }
+    expect(year.some((state) => state.personal.cash < 0)).toBe(true)
+  })
+
+  it('pays every rent of the first year at 700 $ a week in Moyen, and saves', () => {
+    const year = play(YEAR, paying(70_000))
+    for (const state of year) {
+      expect(state.personal.cash).toBeGreaterThanOrEqual(0)
+      expect(state.personal.unpaidRents).toEqual([])
+    }
+    const { startingPersonalCashCents } = DIFFICULTIES.difficulties.moyen
+    expect((year.at(-1) as GameState).personal.cash).toBeGreaterThan(
+      startingPersonalCashCents,
+    )
+  })
+
+  it('brings in each « Salaire » the day the business pays the owner, for the same amount', () => {
+    const lowered = applyDecision(lived(100), {
+      kind: 'ownerWeeklyPay',
+      pay: cents(40_000),
+    })
+    const state = lived(100, PERSONAL, SHIPPED, lowered)
+    const salaries = state.personal.movements
+      .filter(({ label }) => label === LABELS.salary)
+      .map(({ day, amount }) => ({ day, amount }))
+    const paid = entriesOf(state.journal)
+      .filter(({ memo }) => memo === OWNER_PAY)
+      .map(({ day, lines }) => ({ day, amount: lines[0]?.debit }))
+    expect(salaries).toEqual(paid)
+    expect(new Set(salaries.map(({ amount }) => amount))).toEqual(
+      new Set([FOOD_TRUCK.startingDecisions.ownerWeeklyPayCents, 40_000]),
+    )
+  })
+
+  it('lives the same year from the same seed', () => {
+    const first = lived(YEAR, PERSONAL, paying(40_000))
+    expect(lived(YEAR, PERSONAL, paying(40_000)).personal).toEqual(
+      first.personal,
+    )
   })
 })
 
