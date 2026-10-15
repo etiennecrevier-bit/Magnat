@@ -3,6 +3,7 @@ import { cents } from '../engine/money.ts'
 import {
   formatAmount,
   formatMoney,
+  formatSignedMoney,
   formatStatementAmount,
 } from './formatMoney.ts'
 
@@ -66,5 +67,17 @@ describe('formatAmount', () => {
     { amount: -123_456, text: `1${S}234,56` },
   ])('writes $amount cents as $text, without a sign', ({ amount, text }) => {
     expect(formatAmount(cents(amount))).toBe(text)
+  })
+})
+
+describe('formatSignedMoney', () => {
+  it.each([
+    { amount: 75_000, text: `+750${S}$` },
+    { amount: -22_000, text: `\u2212220${S}$` },
+    { amount: -250, text: `\u22122,50${S}$` },
+    { amount: 5, text: `+0,05${S}$` },
+    { amount: 123_456_700, text: `+1${S}234${S}567${S}$` },
+  ])('writes $amount cents as $text', ({ amount, text }) => {
+    expect(formatSignedMoney(cents(amount))).toBe(text)
   })
 })

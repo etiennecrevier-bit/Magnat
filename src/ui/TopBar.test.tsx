@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createInitialState } from '../engine/clock.ts'
 import { cents } from '../engine/money.ts'
 import { gameStore, type GameStoreState } from './store.ts'
 import TopBar, { TopBarView } from './TopBar.tsx'
@@ -160,5 +161,21 @@ describe('TopBar', () => {
     const closed = renderToStaticMarkup(<TopBar />)
     expect(closed).not.toContain('<dialog')
     expect(closed).toContain('aria-label="Vitesse ×10" aria-pressed="true"')
+  })
+
+  it('shows the event card while an event waits, paused', () => {
+    const game = createInitialState(1)
+    gameStore.getState().startGame({
+      ...game,
+      events: { ...game.events, pending: { event: 'essai', followUp: false } },
+    })
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toMatch(
+      /^<header class="top-bar">.*<\/header><dialog class="panel event-card" aria-labelledby="event-title">.*<\/dialog>$/,
+    )
+    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+      label: 'Pause',
+      pressed: 'true',
+    })
   })
 })

@@ -5,6 +5,9 @@ import type { Cents } from '../engine/money.ts'
 // Intl.NumberFormat, so the output is exact for every safe integer and does
 // not depend on the browser's locale data.
 const NO_BREAK_SPACE = '\u00a0'
+// The minus sign (U+2212), as the event cards' tags write a loss.
+const MINUS_SIGN = '\u2212'
+const NO_CENTS = ',00'
 const CENTS_PER_DOLLAR = 100
 const DIGITS_PER_GROUP = /\B(?=(\d{3})+(?!\d))/g
 
@@ -37,4 +40,15 @@ export function formatMoney(amount: Cents): string {
 export function formatStatementAmount(amount: Cents): string {
   const text = formatMagnitude(amount)
   return amount < 0 ? `(${text})` : text
+}
+
+/**
+ * A change of money as the event cards write it, with its sign and the
+ * cents only when there are some: `+750 $`, `−2,50 $` (U+2212).
+ */
+export function formatSignedMoney(amount: Cents): string {
+  const text = formatAmount(amount)
+  const size = text.endsWith(NO_CENTS) ? text.slice(0, -NO_CENTS.length) : text
+  const sign = amount < 0 ? MINUS_SIGN : '+'
+  return `${sign}${size}${NO_BREAK_SPACE}$`
 }

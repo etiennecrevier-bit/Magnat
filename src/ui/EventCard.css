@@ -1,0 +1,160 @@
+/* The card itself is the shared .panel (panel.css). Text colours keep at
+   least 4.5:1 against its cream #fff7e8 and against the white of the
+   choices. */
+.event-card {
+  --panel-width: 38rem;
+}
+
+.event-card__who {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.event-card__portrait {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  border: 2px solid #2b2622;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+/* A cream figure on a warm brown, for a character with no portrait yet. */
+.event-card__silhouette {
+  background: #8c6d52;
+  fill: #fff7e8;
+}
+
+.event-card__name {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.event-card__role {
+  margin: 0;
+  color: #5c5149;
+}
+
+.event-card__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+}
+
+.event-card__title:focus {
+  outline: none;
+}
+
+.event-card__situation {
+  margin: 0 0 0.75rem;
+}
+
+.event-card__quote {
+  margin: 0 0 1rem;
+  padding: 0.25rem 0 0.25rem 0.75rem;
+  border-left: 4px solid #8c6d52;
+  font-style: italic;
+}
+
+.event-card__quote p {
+  margin: 0;
+}
+
+.event-card__choices {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A large button: the key on the left, the label, then the tags. */
+.event-card__choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'key label'
+    'key tags';
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  width: 100%;
+  min-height: 64px;
+  padding: 0.75rem 1rem;
+  border: 2px solid #2b2622;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #2b2622;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.event-card__choice:hover {
+  background: #fbe7c2;
+}
+
+.event-card__choice:focus-visible,
+.event-card__continue:focus-visible {
+  outline: 3px solid #2186eb;
+  outline-offset: 2px;
+}
+
+.event-card__key {
+  grid-area: key;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 6px;
+  background: #2b2622;
+  color: #fff7e8;
+  font-weight: 700;
+}
+
+.event-card__label {
+  grid-area: label;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.event-card__tags {
+  grid-area: tags;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.event-card__tag {
+  display: inline-block;
+  padding: 0 0.5rem;
+  border: 1px solid #c9b48f;
+  border-radius: 999px;
+  background: #fff7e8;
+  color: #4a3f37;
+  font-size: 0.875rem;
+}
+
+.event-card__result:focus {
+  outline: none;
+}
+
+.event-card__chosen {
+  margin: 0 0 0.25rem;
+  color: #5c5149;
+}
+
+.event-card__outcome {
+  margin: 0 0 0.75rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.event-card__changes {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem 0.5rem 1.75rem;
+  border-radius: 8px;
+  background: #fbe7c2;
+  font-variant-numeric: tabular-nums;
+}

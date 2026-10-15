@@ -38,9 +38,11 @@ describe('GameScreensView', () => {
     expect(screenButtons(html)).toEqual([
       { label: 'Aujourd&#x27;hui', pressed: 'true' },
       { label: 'États financiers', pressed: 'false' },
+      { label: 'Journal des événements', pressed: 'false' },
     ])
     expect(html).toContain('<h1>Aujourd&#x27;hui</h1>')
     expect(html).not.toContain('<h1>États financiers</h1>')
+    expect(html).not.toContain('<h1>Journal des événements</h1>')
   })
 
   it('shows the États financiers screen', () => {
@@ -48,8 +50,22 @@ describe('GameScreensView', () => {
     expect(screenButtons(html)).toEqual([
       { label: 'Aujourd&#x27;hui', pressed: 'false' },
       { label: 'États financiers', pressed: 'true' },
+      { label: 'Journal des événements', pressed: 'false' },
     ])
     expect(html).toContain('<h1>États financiers</h1>')
+    expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
+  })
+
+  it('shows the Journal des événements screen', () => {
+    const html = render('events')
+    expect(screenButtons(html)).toEqual([
+      { label: 'Aujourd&#x27;hui', pressed: 'false' },
+      { label: 'États financiers', pressed: 'false' },
+      { label: 'Journal des événements', pressed: 'true' },
+    ])
+    expect(html).toContain(
+      '<section class="event-log"><h1>Journal des événements</h1><p>Aucun événement depuis un an.</p></section>',
+    )
     expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
   })
 
@@ -68,8 +84,13 @@ describe('GameScreensView', () => {
 })
 
 describe('GameScreens', () => {
-  it("opens on Aujourd'hui", () => {
-    expect(renderToStaticMarkup(<GameScreens />)).toBe(render('today'))
+  it("opens on Aujourd'hui, the ticker after the screens", () => {
+    const html = renderToStaticMarkup(<GameScreens />)
+    expect(html.startsWith(render('today'))).toBe(true)
+    // The ticker shows only once there are headlines (see headlines.ts).
+    expect(html.slice(render('today').length)).toMatch(
+      /^(<aside class="ticker" aria-label="La Presse-Citron">.*<\/aside>)?$/,
+    )
   })
 
   it('passes on a failed autosave', () => {

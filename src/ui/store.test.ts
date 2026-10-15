@@ -1,9 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import eventsJson from '../content/events.json'
+import { loadEventContent } from '../content/schema.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
-import { FOOD_TRUCK } from '../engine/day.ts'
+import {
+  CUSTOMERS,
+  DIFFICULTIES,
+  ENERGY,
+  EVENTS,
+  FOOD_TRUCK,
+  PERSONAL,
+} from '../engine/day.ts'
+import { resolveEvent } from '../engine/events.ts'
 import { cents } from '../engine/money.ts'
 import { defaultProfile } from '../engine/profile.ts'
-import type { Profile } from '../engine/types.ts'
+import type { GameState, Profile } from '../engine/types.ts'
 import {
   NORMAL_SPEED,
   PAUSED,
@@ -34,6 +44,7 @@ describe('createGameStore', () => {
     expect(lastSpeed).toBe(NORMAL_SPEED)
     expect(createGameStore().getState().resumeSpeed).toBeNull()
     expect(createGameStore().getState().panel).toBeNull()
+    expect(createGameStore().getState().eventBefore).toBeNull()
   })
 
   it('can start from a given state', () => {
@@ -196,7 +207,17 @@ describe('advance', () => {
     store.getState().advance(5)
 
     let expected = start
-    for (let i = 0; i < 5; i += 1) expected = tick(expected)
+    for (let i = 0; i < 5; i += 1) {
+      expected = tick(
+        expected,
+        FOOD_TRUCK,
+        CUSTOMERS,
+        DIFFICULTIES,
+        PERSONAL,
+        ENERGY,
+        EVENTS,
+      )
+    }
     expect(store.getState().game).toEqual(expected)
     expect(store.getState().game.day).toBe(5)
     expect(listener).toHaveBeenCalledTimes(1)
@@ -213,6 +234,188 @@ describe('advance', () => {
 
     expect(store.getState().game).toBe(before)
     expect(listener).not.toHaveBeenCalled()
+  })
+})
+
+// The essai card on every morning from day 0: the shipped pacing and weight
+// keep it out of a real game.
+const ESSAI_EVERY_DAY = loadEventContent({
+  ...eventsJson,
+  pacing: { firstDay: 0, minDaysBetween: 0, dailyChance: 1 },
+  events: eventsJson.events.map((event) => ({ ...event, weight: 1 })),
+})
+
+function tickWithEssai(state: GameState): GameState {
+  return tick(
+    state,
+    FOOD_TRUCK,
+    CUSTOMERS,
+    DIFFICULTIES,
+    PERSONAL,
+    ENERGY,
+    ESSAI_EVERY_DAY,
+  )
+}
+
+/** Day 0 with the essai card waiting for the player's choice. */
+function essaiWaiting(): GameState {
+  const game = createInitialState(1)
+  return {
+    ...game,
+    events: { ...game.events, pending: { event: 'essai', followUp: false } },
+  }
+}
+
+describe('the event card', () => {
+  it('opens on the morning an event comes up, pausing the game', () => {
+    const start = createInitialState(1)
+    const store = createGameStore(start, ESSAI_EVERY_DAY)
+    store.getState().setSpeed(3)
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    store.getState().advance(5)
+
+    expect(store.getState().game).toEqual(tickWithEssai(start))
+    expect(store.getState()).toMatchObject({
+      game: { day: 1, events: { pending: { event: 'essai' } } },
+      panel: 'event',
+      speed: PAUSED,
+      resumeSpeed: 3,
+      lastSpeed: 3,
+      eventBefore: null,
+    })
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the game from advancing before a choice', () => {
+    const store = createGameStore(createInitialState(1), ESSAI_EVERY_DAY)
+    store.getState().advance(1)
+    const waiting = store.getState().game
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    expect(() => store.getState().advance(3)).not.toThrow()
+    store.getState().setSpeed(10)
+    store.getState().togglePause()
+    store.getState().openPanel('manage')
+    store.getState().closePanel()
+
+    expect(store.getState()).toMatchObject({
+      game: waiting,
+      panel: 'event',
+      speed: PAUSED,
+      resumeSpeed: NORMAL_SPEED,
+    })
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('plays the choice through the engine, showing it until Continuer', () => {
+    const store = createGameStore(createInitialState(1), ESSAI_EVERY_DAY)
+    store.getState().setSpeed(10)
+    store.getState().advance(1)
+    const waiting = store.getState().game
+
+    store.getState().chooseEvent('toutEssayer')
+
+    expect(store.getState()).toMatchObject({
+      game: resolveEvent(waiting, 'toutEssayer', ESSAI_EVERY_DAY),
+      eventBefore: waiting,
+      panel: 'event',
+      speed: PAUSED,
+      resumeSpeed: 10,
+    })
+    expect(store.getState().game.events.pending).toBeNull()
+    store.getState().advance(1)
+    store.getState().setSpeed(3)
+    expect(store.getState().game.day).toBe(1)
+    expect(store.getState().speed).toBe(PAUSED)
+
+    store.getState().closePanel()
+
+    expect(store.getState()).toMatchObject({
+      speed: 10,
+      lastSpeed: 10,
+      resumeSpeed: null,
+      panel: null,
+      eventBefore: null,
+    })
+    store.getState().advance(1)
+    expect(store.getState().game.day).toBe(2)
+  })
+
+  it('ignores a second choice', () => {
+    const store = createGameStore(essaiWaiting(), ESSAI_EVERY_DAY)
+    store.getState().chooseEvent('rienFaire')
+    const chosen = store.getState()
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    store.getState().chooseEvent('toutEssayer')
+
+    expect(store.getState().game).toBe(chosen.game)
+    expect(store.getState().eventBefore).toBe(chosen.eventBefore)
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it("throws the engine's error for a choice the event does not have", () => {
+    const store = createGameStore(essaiWaiting(), ESSAI_EVERY_DAY)
+    expect(() => store.getState().chooseEvent('inconnu')).toThrow(RangeError)
+    expect(store.getState().game.events.pending).not.toBeNull()
+  })
+
+  it('opens, paused, for a game loaded with an event waiting', () => {
+    const waiting = essaiWaiting()
+    const expected = {
+      game: waiting,
+      panel: 'event',
+      speed: PAUSED,
+      resumeSpeed: NORMAL_SPEED,
+      lastSpeed: NORMAL_SPEED,
+      eventBefore: null,
+    }
+    expect(createGameStore(waiting).getState()).toMatchObject(expected)
+
+    const store = createGameStore(createInitialState(1))
+    store.getState().setSpeed(10)
+    store.getState().startGame(waiting)
+    expect(store.getState()).toMatchObject(expected)
+    store.getState().chooseEvent('rienFaire')
+    store.getState().closePanel()
+    expect(store.getState().speed).toBe(NORMAL_SPEED)
+  })
+
+  it('waits for a panel already open to close, then opens', () => {
+    const store = createGameStore(createInitialState(1), ESSAI_EVERY_DAY)
+    store.getState().setSpeed(10)
+    store.getState().openPanel('finances')
+
+    store.getState().advance(1)
+
+    expect(store.getState()).toMatchObject({
+      game: { day: 1, events: { pending: { event: 'essai' } } },
+      panel: 'finances',
+      speed: PAUSED,
+      resumeSpeed: 10,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: 'event',
+      speed: PAUSED,
+      resumeSpeed: 10,
+    })
+    store.getState().chooseEvent('rienFaire')
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ panel: null, speed: 10 })
+  })
+
+  it('never comes up with the shipped events, whose only card never draws', () => {
+    const store = createGameStore(createInitialState(1))
+    store.getState().advance(60)
+    expect(store.getState()).toMatchObject({
+      game: { day: 60, events: { pending: null, history: [] } },
+      panel: null,
+    })
   })
 })
 
