@@ -8,8 +8,8 @@ import { startAutosave, type AutosaveHost } from './autosave.ts'
 import {
   INVALID_SAVE_FILE,
   SAVE_KEY,
+  createSaveWriter,
   readStoredSave,
-  writeStoredSave,
   type ImportedSave,
   type SaveStorage,
   type StoredSave,
@@ -183,7 +183,7 @@ describe('startMenuActions', () => {
     const store = createGameStore(OTHER)
     const onStart = vi.fn((game: GameState) => {
       store.getState().startGame(game)
-      startAutosave(store, (saved) => writeStoredSave(storage, saved), host)
+      startAutosave(store, createSaveWriter(storage), host)
     })
     const actions = startMenuActions({
       stored: readStoredSave(storage),

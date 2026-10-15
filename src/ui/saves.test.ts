@@ -8,6 +8,7 @@ import {
   SAVE_KEY,
   UNREADABLE_SAVE_FILE,
   browserStorage,
+  createSaveWriter,
   downloadSave,
   importSaveFile,
   readImportedSave,
@@ -125,6 +126,41 @@ describe('writeStoredSave', () => {
 
   it('says so without storage', () => {
     expect(writeStoredSave(null, GAME)).toBe(false)
+  })
+})
+
+describe('createSaveWriter', () => {
+  const LATER = played(5, GAME)
+
+  it('saves over the game storage held, then keeps saving its own', () => {
+    const storage = memoryStorage({ [SAVE_KEY]: 'ancienne partie' })
+    const save = createSaveWriter(storage)
+    expect(save(GAME)).toBe(true)
+    expect(save(LATER)).toBe(true)
+    expect(storage.items).toEqual({ [SAVE_KEY]: serialize(LATER) })
+  })
+
+  it('stops, and warns, once another tab saved', () => {
+    const storage = memoryStorage()
+    const behind = createSaveWriter(storage)
+    const ahead = createSaveWriter(storage)
+    expect(behind(GAME)).toBe(true)
+    expect(ahead(LATER)).toBe(true)
+    expect(behind(GAME)).toBe(false)
+    expect(behind(played(10, GAME))).toBe(false)
+    expect(storage.items).toEqual({ [SAVE_KEY]: serialize(LATER) })
+    expect(warn).toHaveBeenCalledWith(
+      'Another tab saved the game since this one did',
+    )
+  })
+
+  it('saves again over storage cleared since', () => {
+    const storage = memoryStorage()
+    const save = createSaveWriter(storage)
+    save(GAME)
+    delete storage.items[SAVE_KEY]
+    expect(save(LATER)).toBe(true)
+    expect(storage.items).toEqual({ [SAVE_KEY]: serialize(LATER) })
   })
 })
 

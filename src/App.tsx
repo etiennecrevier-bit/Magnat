@@ -3,7 +3,7 @@ import type { GameState } from './engine/types.ts'
 import { startAutosave } from './ui/autosave.ts'
 import { startGameLoop } from './ui/gameLoop.ts'
 import GameScreens from './ui/GameScreens.tsx'
-import { browserStorage, writeStoredSave } from './ui/saves.ts'
+import { browserStorage, createSaveWriter } from './ui/saves.ts'
 import StartScreen from './ui/StartScreen.tsx'
 import { gameStore } from './ui/store.ts'
 import TopBar from './ui/TopBar.tsx'
@@ -24,10 +24,8 @@ export default function App() {
 
   useEffect(() => {
     if (!playing) return
-    const storage = browserStorage()
-    return startAutosave(gameStore, (game) =>
-      setAutosaveFailed(!writeStoredSave(storage, game)),
-    )
+    const save = createSaveWriter(browserStorage())
+    return startAutosave(gameStore, (game) => setAutosaveFailed(!save(game)))
   }, [playing])
 
   const start = (game: GameState) => {

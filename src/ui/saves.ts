@@ -68,13 +68,37 @@ export function writeStoredSave(
   storage: SaveStorage | null,
   game: GameState,
 ): boolean {
-  if (storage === null) return false
-  try {
-    storage.setItem(SAVE_KEY, serialize(game))
-    return true
-  } catch (error) {
-    console.warn('Could not save the game', error)
-    return false
+  return createSaveWriter(storage)(game)
+}
+
+/**
+ * What one tab saves its game with. The first call saves as
+ * `writeStoredSave` does, and each later one only while `storage` still
+ * holds what this tab last saved. Once another tab saves, such as one
+ * playing the same game further, this one stops rather than write its older
+ * game over the newer one. Each call returns whether it saved; never throws.
+ */
+export function createSaveWriter(
+  storage: SaveStorage | null,
+): (game: GameState) => boolean {
+  let saved: string | null = null
+  return (game) => {
+    if (storage === null) return false
+    try {
+      // Storage cleared since holds no game to keep.
+      const stored = saved === null ? null : storage.getItem(SAVE_KEY)
+      if (stored !== null && stored !== saved) {
+        console.warn('Another tab saved the game since this one did')
+        return false
+      }
+      const text = serialize(game)
+      storage.setItem(SAVE_KEY, text)
+      saved = text
+      return true
+    } catch (error) {
+      console.warn('Could not save the game', error)
+      return false
+    }
   }
 }
 

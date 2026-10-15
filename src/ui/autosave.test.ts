@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, toCalendar } from '../engine/clock.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import type { Day, GameState } from '../engine/types.ts'
 import { startAutosave, type AutosaveHost } from './autosave.ts'
-import { readStoredSave, writeStoredSave, type SaveStorage } from './saves.ts'
+import { createSaveWriter, readStoredSave, type SaveStorage } from './saves.ts'
 import { createGameStore } from './store.ts'
 
 // Day 0 is May 1st: May has 31 days, so day 30 is May 31st and day 31 is
@@ -122,11 +122,7 @@ function sharedStorage(): SaveStorage {
 function openTab(storage: SaveStorage, game: GameState) {
   const store = createGameStore(game, NO_EVENTS)
   const page = createFakeHost()
-  const stop = startAutosave(
-    store,
-    (saved) => writeStoredSave(storage, saved),
-    page.host,
-  )
+  const stop = startAutosave(store, createSaveWriter(storage), page.host)
   return { store, page, stop }
 }
 
@@ -136,6 +132,14 @@ function storedDay(storage: SaveStorage): Day | null {
 }
 
 describe('startAutosave in two tabs on the same game', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('keeps the newer days when the tab behind is hidden last', () => {
     const storage = sharedStorage()
     const tabA = openTab(storage, createInitialState(5))
