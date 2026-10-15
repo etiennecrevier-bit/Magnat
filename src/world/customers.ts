@@ -245,7 +245,11 @@ export function startCustomers(setup: CustomersSetup): Customers {
       if (!clock.follow(game)) return
       replay = replayOf(game)
       sampler.start(replay?.visits ?? [])
-      if (replay !== null) {
+      if (replay === null) {
+        // Hidden now rather than at the next frame, which a paused street
+        // doesn't draw: it would keep the numbers of the day before.
+        tally.root.visible = false
+      } else {
         tally.served.text = countText(
           replay.served,
           'client servi',
