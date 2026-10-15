@@ -1,13 +1,19 @@
 import {
+  BlendModePipe,
   Container,
+  DOMAdapter,
   Graphics,
   RendererType,
   Sprite,
   Texture,
   TilingSprite,
   type Filter,
+  type FilterInstruction,
+  type InstructionSet,
+  type Renderer,
   type Text,
   type Ticker,
+  type ViewContainer,
 } from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState } from '../engine/clock.ts'
@@ -1204,6 +1210,24 @@ describe('startStreet: the light over the street', () => {
     expect(backBuffer.useBackBuffer).toBe(true)
   })
 
+  it("blends the unevenness and the grain at the screen's pixels, the ones Pixi copies the street behind them at", async () => {
+    // Pixi draws a sprite in an advanced blend mode through a filter: it
+    // copies the street behind the sprite at the screen's pixels, draws the
+    // sprite at the filter's, then reads both at the same place. Where the
+    // two differ, as on a screen of two pixels per logical pixel, each blend
+    // zooms the street from its top-left corner and the truck leaves the
+    // screen (#110).
+    const app = createFakeApp()
+    await startStreet(app, mondayStore(), createLoaders())
+    const { unevenness, grain } = atmosphereOf(app)
+    for (const sprite of [unevenness, grain]) {
+      const { resolution } = blendFilterOf(sprite)
+      for (const screen of [1, 1.25, 2]) {
+        expect(resolution === 'inherit' ? screen : resolution).toBe(screen)
+      }
+    }
+  })
+
   it("shows the cast shadows through one texture, redrawn each frame at the screen's pixels, where Pixi's renderer cannot filter", async () => {
     // Its Canvas 2D renderer, where WebGL and WebGPU are missing, skips
     // filters; it never gets any. The scene is drawn at twice its design
@@ -1263,6 +1287,39 @@ describe('startStreet: the light over the street', () => {
     expect(loaders.asked.at(-1)?.blur).toBe(0)
   })
 })
+
+/**
+ * The filter Pixi blends `sprite` through, made as its renderer makes it.
+ * A filter's shaders read the screen's precision off a canvas, which Node
+ * has none of: this one has no WebGL, so it reads the default.
+ */
+function blendFilterOf(sprite: ViewContainer): Filter {
+  const renderer = {
+    runners: { prerender: { add: () => {} } },
+    renderPipes: { batch: { break: () => {} } },
+  }
+  const pipe = new BlendModePipe(renderer as unknown as Renderer)
+  const instructions: FilterInstruction[] = []
+  const adapter = DOMAdapter.get()
+  DOMAdapter.set({
+    ...adapter,
+    createCanvas: () =>
+      ({ getContext: () => null }) as unknown as HTMLCanvasElement,
+  })
+  try {
+    pipe.prerender()
+    pipe.pushBlendMode(sprite, sprite.blendMode, {
+      add: (instruction: FilterInstruction) => instructions.push(instruction),
+    } as unknown as InstructionSet)
+  } finally {
+    DOMAdapter.set(adapter)
+  }
+  const filter = instructions[0]?.filterEffect.filters[0]
+  if (filter === undefined) {
+    throw new Error(`Pixi does not blend ${sprite.blendMode} with a filter`)
+  }
+  return filter
+}
 
 /** The contact or cast shadows customers throw, on the ground. */
 function customerShadows(
