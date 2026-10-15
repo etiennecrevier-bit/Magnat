@@ -1,4 +1,5 @@
 import { Container, Graphics, type StrokeStyle } from 'pixi.js'
+import type { AvatarFatigue } from '../content/avatarFatigue.ts'
 import type { Avatar, DayTypeId, SegmentId } from '../content/schema.ts'
 import type { CrowdSettings, Range } from './crowdSettings.ts'
 import type { PlaceholderStyle } from './placeholders.ts'
@@ -402,23 +403,34 @@ export function drawPickMark(
     .stroke({ width: style.outline * 1.5, color: style.palette.playerBlue })
 }
 
-/** The avatar's drawing and the arm that serves. */
+/** The avatar's drawing and the parts that move. */
 export interface AvatarArt {
   readonly root: Container
+  /** Everything above the waist, which sinks when the avatar slumps. */
+  readonly upper: Container
+  /** The head with its hair and face, which turns at the chin. */
+  readonly face: Container
   /** Turns at the shoulder: 0 hangs down, a quarter turn reaches left. */
   readonly arm: Container
+  readonly eyes: Container
+  /** The dark circles under the eyes, hidden at first. */
+  readonly circles: Container
+  /** The open mouth of a yawn, hidden at first. */
+  readonly yawn: Container
 }
 
 /**
  * Draws the player's avatar behind the counter, feet at 0, 0: a blue shirt,
- * a cream apron, and the hair of `avatar`. Its left arm can reach across
- * the counter.
+ * a cream apron, the hair of `avatar` and two eyes. Its left arm can reach
+ * across the counter. Dark circles under the eyes, in `circles`, and the
+ * open mouth of a yawn are drawn hidden, for fatigue to show.
  */
 export function drawAvatar(
   avatar: Avatar,
   style: PlaceholderStyle,
   settings: CrowdSettings['avatar'],
   trousers: string,
+  circles: string,
 ): AvatarArt {
   const h = settings.height
   const { palette } = style
@@ -436,7 +448,8 @@ export function drawAvatar(
       .fill(trousers)
       .stroke(line(style)),
   )
-  root.addChild(
+  const upper = root.addChild(new Container({ label: 'upper' }))
+  upper.addChild(
     new Graphics({ label: 'otherArm' })
       .roundRect(
         torso / 2 - armWidth * 0.2,
@@ -448,13 +461,13 @@ export function drawAvatar(
       .fill(shirt)
       .stroke(line(style)),
   )
-  root.addChild(
+  upper.addChild(
     new Graphics({ label: 'shirt' })
       .roundRect(-torso / 2, neck, torso, h * 0.36, torso * 0.35)
       .fill(shirt)
       .stroke(line(style)),
   )
-  root.addChild(
+  upper.addChild(
     new Graphics({ label: 'apron' })
       .moveTo(-h * 0.07, neck + h * 0.02)
       .lineTo(-h * 0.06, neck - h * 0.02)
@@ -467,20 +480,49 @@ export function drawAvatar(
       .stroke(line(style)),
   )
 
-  const hair = new Graphics({ label: 'hair' })
+  // The head turns at the chin, so it can droop without leaving the neck.
   const cy = -h + head
+  const chin = cy + head
+  const face = upper.addChild(new Container({ label: 'face' }))
+  face.pivot.set(0, chin)
+  face.position.set(0, chin)
+  const hair = new Graphics({ label: 'hair' })
   if (avatar === 'femme') {
     hair
       .circle(head * 0.95, cy - head * 0.7, head * 0.5)
       .fill(settings.hair)
       .stroke(line(style))
   }
-  root.addChild(hair)
-  root.addChild(
+  face.addChild(hair)
+  face.addChild(
     new Graphics({ label: 'head' })
       .circle(0, cy, head)
       .fill(settings.skin)
       .stroke(line(style)),
+  )
+  // Below the hairline, which runs across the middle of the head.
+  const eyeX = head * 0.38
+  const eyeY = cy + head * 0.25
+  // Drawn around their own middle, so they can squint in place.
+  const eyes = face.addChild(
+    new Graphics({ label: 'eyes', y: eyeY })
+      .circle(-eyeX, 0, head * 0.11)
+      .circle(eyeX, 0, head * 0.11)
+      .fill(palette.ink),
+  )
+  const under: StrokeStyle = { width: head * 0.1, color: circles, cap: 'round' }
+  const ring = head * 0.2
+  const darkCircles = face.addChild(
+    new Graphics({ label: 'circles', visible: false })
+      .arc(-eyeX, eyeY + head * 0.08, ring, Math.PI * 0.15, Math.PI * 0.85)
+      .stroke(under)
+      .arc(eyeX, eyeY + head * 0.08, ring, Math.PI * 0.15, Math.PI * 0.85)
+      .stroke(under),
+  )
+  const yawn = face.addChild(
+    new Graphics({ label: 'yawn', visible: false })
+      .ellipse(0, cy + head * 0.66, head * 0.18, head * 0.22)
+      .fill(palette.ink),
   )
   const cap = new Graphics({ label: 'hairTop' })
     .arc(0, cy, head, Math.PI, Math.PI * 2)
@@ -489,9 +531,9 @@ export function drawAvatar(
     .closePath()
     .fill(settings.hair)
     .stroke(line(style))
-  root.addChild(cap)
+  face.addChild(cap)
 
-  const arm = root.addChild(
+  const arm = upper.addChild(
     new Container({
       label: 'arm',
       x: -torso / 2 + armWidth * 0.3,
@@ -507,7 +549,26 @@ export function drawAvatar(
       .fill(settings.skin)
       .stroke(line(style, style.outline * 0.7)),
   )
-  return { root, arm }
+  return { root, upper, face, arm, eyes, circles: darkCircles, yawn }
+}
+
+/**
+ * Draws the spill a botched unit leaves on the counter, `spill.width` wide,
+ * at `spill.x`, `spill.y`: a flat puddle centred there, and a drop running
+ * down from it over the counter's front edge.
+ */
+export function drawSpill(
+  spill: AvatarFatigue['spill'],
+  style: PlaceholderStyle,
+): Graphics {
+  const w = spill.width
+  return new Graphics({ label: 'spill', x: spill.x, y: spill.y })
+    .roundRect(w * 0.1, 0, w * 0.12, w * 0.42, w * 0.06)
+    .circle(w * 0.16, w * 0.46, w * 0.09)
+    .fill(spill.color)
+    .ellipse(0, 0, w / 2, w * 0.13)
+    .fill(spill.color)
+    .stroke(line(style, style.outline * 0.6))
 }
 
 /** A dark outline, `width` wide. */

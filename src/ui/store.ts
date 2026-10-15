@@ -9,6 +9,9 @@ export const PAUSED = 0
 /** A multiplier of 1 is, by definition, the pace pacing.json calls normal. */
 export const NORMAL_SPEED = 1
 
+/** The panels the top bar opens: « Gérer le camion » and « Vos finances ». */
+export type Panel = 'manage' | 'finances'
+
 export interface GameStoreState {
   game: GameState
   /** Game speed multiplier; `PAUSED` stops time. */
@@ -20,6 +23,8 @@ export interface GameStoreState {
    * panel is open. A panel pauses the game for as long as it is open.
    */
   resumeSpeed: number | null
+  /** The open panel; null while none is. */
+  panel: Panel | null
   /** Ignored while a panel is open: the game stays paused. */
   setSpeed: (speed: number) => void
   /** Ignored while a panel is open: the game stays paused. */
@@ -27,10 +32,11 @@ export interface GameStoreState {
   /** Runs the engine's `tick()` `days` times, then notifies once. */
   advance: (days: number) => void
   /**
-   * Opens a panel: remembers the speed, even `PAUSED`, and pauses. Does
-   * nothing if a panel is already open, so the speed it remembered stays.
+   * Opens `panel`: remembers the speed, even `PAUSED`, and pauses. Does
+   * nothing if a panel is already open, so that panel and the speed it
+   * remembered stay.
    */
-  openPanel: () => void
+  openPanel: (panel: Panel) => void
   /** Closes the panel and resumes at the speed it remembered. */
   closePanel: () => void
   /**
@@ -92,6 +98,7 @@ export function createGameStore(
     speed: NORMAL_SPEED,
     lastSpeed: NORMAL_SPEED,
     resumeSpeed: null,
+    panel: null,
     setSpeed: (speed) => {
       if (get().resumeSpeed !== null) return
       set(speed > PAUSED ? { speed, lastSpeed: speed } : { speed })
@@ -107,15 +114,15 @@ export function createGameStore(
       for (let i = 0; i < days; i += 1) next = tick(next)
       set({ game: next })
     },
-    openPanel: () => {
+    openPanel: (panel) => {
       const { speed, resumeSpeed } = get()
       if (resumeSpeed !== null) return
-      set({ resumeSpeed: speed, speed: PAUSED })
+      set({ resumeSpeed: speed, speed: PAUSED, panel })
     },
     closePanel: () => {
       const { resumeSpeed } = get()
       if (resumeSpeed === null) return
-      set({ speed: resumeSpeed, resumeSpeed: null })
+      set({ speed: resumeSpeed, resumeSpeed: null, panel: null })
     },
     decide: (change) => set({ game: applyDecision(get().game, change) }),
     startGame: (next) =>
@@ -124,6 +131,7 @@ export function createGameStore(
         speed: NORMAL_SPEED,
         lastSpeed: NORMAL_SPEED,
         resumeSpeed: null,
+        panel: null,
       }),
   }))
 }

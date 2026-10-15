@@ -13,6 +13,9 @@ function render(screen: Screen, autosaveFailed = false) {
   )
 }
 
+const MESSAGES =
+  '<section class="messages" role="log" aria-label="Messages"></section>'
+
 const AUTOSAVE_FAILED =
   '<p class="notice" role="status">La sauvegarde automatique a échoué. Exportez la sauvegarde pour ne pas perdre votre partie.</p>'
 
@@ -27,7 +30,11 @@ function screenButtons(html: string) {
 describe('GameScreensView', () => {
   it("shows the Aujourd'hui panel under a labelled screen menu", () => {
     const html = render('today')
-    expect(html).toMatch(/^<main><nav class="screen-nav" aria-label="Écrans">/)
+    expect(html).toMatch(
+      new RegExp(
+        `^<main>${MESSAGES}<nav class="screen-nav" aria-label="Écrans">`,
+      ),
+    )
     expect(screenButtons(html)).toEqual([
       { label: 'Aujourd&#x27;hui', pressed: 'true' },
       { label: 'États financiers', pressed: 'false' },
@@ -54,7 +61,7 @@ describe('GameScreensView', () => {
 
   it('tells the player to export when the autosave fails', () => {
     expect(render('today', true)).toMatch(
-      new RegExp(`^<main>${AUTOSAVE_FAILED}<nav`),
+      new RegExp(`^<main>${AUTOSAVE_FAILED}${MESSAGES}<nav`),
     )
     expect(render('today', false)).not.toContain('La sauvegarde automatique')
   })

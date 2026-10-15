@@ -3,9 +3,9 @@ import type { Visit, VisitOutcome } from '../engine/types.ts'
 import {
   bobOf,
   createCrowd,
+  type AtCounter,
   type Crowd,
   type Customer,
-  type Served,
   type Span,
 } from './crowd.ts'
 import { CROWD } from './crowdSettings.ts'
@@ -17,7 +17,11 @@ const LEFT = () => 0.1
 /** Everyone comes from the right and leaves by the right. */
 const RIGHT = () => 0.9
 
-function visit(outcome: VisitOutcome = 'bought', minute = 450): Visit {
+function visit(
+  outcome: VisitOutcome = 'bought',
+  minute = 450,
+  botched = 0,
+): Visit {
   return {
     arrivalMinute: minute,
     segment: 'habitue',
@@ -25,25 +29,28 @@ function visit(outcome: VisitOutcome = 'bought', minute = 450): Visit {
     bought: { cafe: outcome === 'bought' ? 1 : 0, chocolat: 0, croissant: 0 },
     servedMinute: outcome === 'bought' || outcome === 'soldOut' ? minute : null,
     leftMinute: outcome === 'leftLine' ? minute : null,
-    botched: 0,
+    botched,
   }
 }
 
-/** Runs `crowd` for `ms` in frames of 16 ms; returns the sales. */
-function run(crowd: Crowd, ms: number, pace = 1, span = SPAN): Served[] {
-  const served: Served[] = []
-  for (let t = 0; t < ms; t += 16) served.push(...crowd.update(16, pace, span))
-  return served
+/**
+ * Runs `crowd` for `ms` in frames of 16 ms; returns the customers who
+ * reached the counter.
+ */
+function run(crowd: Crowd, ms: number, pace = 1, span = SPAN): AtCounter[] {
+  const arrived: AtCounter[] = []
+  for (let t = 0; t < ms; t += 16) arrived.push(...crowd.update(16, pace, span))
+  return arrived
 }
 
 /** Runs `crowd` until `done` holds, at most a minute. */
-function runUntil(crowd: Crowd, done: () => boolean, pace = 1): Served[] {
-  const served: Served[] = []
+function runUntil(crowd: Crowd, done: () => boolean, pace = 1): AtCounter[] {
+  const arrived: AtCounter[] = []
   for (let t = 0; t < 60_000 && !done(); t += 16) {
-    served.push(...crowd.update(16, pace, SPAN))
+    arrived.push(...crowd.update(16, pace, SPAN))
   }
   expect(done()).toBe(true)
-  return served
+  return arrived
 }
 
 function snapshot(customers: readonly Customer[]) {
@@ -119,7 +126,7 @@ describe('createCrowd', () => {
     })
   })
 
-  it('serves only the customers who bought, once each, at the counter', () => {
+  it('brings each customer to the counter once, served only if they bought', () => {
     const crowd = createCrowd(CROWD, LEFT)
     const outcomes: VisitOutcome[] = [
       'tooExpensive',
@@ -129,15 +136,23 @@ describe('createCrowd', () => {
       'bought',
     ]
     const spawned = outcomes.map((o) => crowd.spawn(visit(o), SPAN))
-    const served = runUntil(crowd, () => crowd.customers.length === 0)
+    const arrived = runUntil(crowd, () => crowd.customers.length === 0)
 
-    expect(served.map((s) => s.customer.id)).toEqual([
-      spawned[1]!.id,
-      spawned[4]!.id,
+    expect(arrived.map((a) => [a.customer.id, a.kind])).toEqual([
+      [spawned[0]!.id, 'looked'],
+      [spawned[1]!.id, 'served'],
+      [spawned[2]!.id, 'looked'],
+      [spawned[3]!.id, 'looked'],
+      [spawned[4]!.id, 'served'],
     ])
-    for (const { customer } of served) {
-      expect(customer.visit.outcome).toBe('bought')
-    }
+  })
+
+  it('reports a sold-out customer whose last unit was botched', () => {
+    const crowd = createCrowd(CROWD, LEFT)
+    crowd.spawn(visit('soldOut', 450, 1), SPAN)
+    const [arrived] = runUntil(crowd, () => crowd.customers.length === 0)
+    expect(arrived?.kind).toBe('looked')
+    expect(arrived?.customer.visit.botched).toBe(1)
   })
 
   it('shows each mood bubble as the customer leaves, then takes them off past the edge', () => {

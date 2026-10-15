@@ -1,9 +1,10 @@
 import { Container, Texture, type Text, type Ticker } from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState } from '../engine/clock.ts'
-import { FOOD_TRUCK } from '../engine/day.ts'
+import { ENERGY, FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { next, seedRng } from '../engine/rng.ts'
+import type { Visit } from '../engine/types.ts'
 import { createGameStore, type GameStore } from '../ui/store.ts'
 import type { SegmentId } from '../content/schema.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
@@ -467,6 +468,297 @@ describe('startStreet: the customers', () => {
     expect(layer.destroyed).toBe(true)
     expect(avatar.destroyed).toBe(true)
     expect(app.frames.size).toBe(0)
+  })
+})
+
+/** The game in `store`, its owner waking up with `energy` this morning. */
+function withEnergy(store: GameStore, energy: number): GameStore {
+  store.setState({ game: { ...store.getState().game, energy } })
+  return store
+}
+
+/**
+ * `wednesdayStore(everyDay)` with the visits it replays changed by `change`,
+ * as a day played by a worn-out owner would leave them.
+ */
+function visitsStore(
+  change: (visit: Visit, index: number) => Visit,
+  everyDay = true,
+): GameStore {
+  const store = wednesdayStore(everyDay)
+  const { game } = store.getState()
+  const lastDay = game.lastDay!
+  store.setState({
+    game: {
+      ...game,
+      lastDay: { ...lastDay, visits: lastDay.visits.map(change) },
+    },
+  })
+  return store
+}
+
+/** A visit that ended `outcome`, with `botched` units thrown out. */
+function ended(
+  visit: Visit,
+  outcome: Visit['outcome'],
+  botched: number,
+): Visit {
+  const bought = {
+    cafe: outcome === 'bought' ? 1 : 0,
+    chocolat: 0,
+    croissant: 0,
+  }
+  return { ...visit, outcome, bought, botched }
+}
+
+/** Plays frames of 16 ms, without moving the game on, until `found` holds. */
+function frameUntil(
+  app: ReturnType<typeof createFakeApp>,
+  found: () => boolean,
+  ms = 60_000,
+): number {
+  for (let t = 16; t <= ms; t += 16) {
+    app.frame(16)
+    if (found()) return t
+  }
+  throw new Error('Never found')
+}
+
+const { showMs, fadeMs } = CROWD.fatigue.spill
+const SPILL_MS = showMs + fadeMs
+
+describe("startStreet: the owner's fatigue", () => {
+  it.each([
+    { energy: 80, circles: false, slumped: false },
+    { energy: 40, circles: false, slumped: false },
+    { energy: 10, circles: true, slumped: true },
+  ])(
+    'shows an owner at $energy with circles $circles, slumped $slumped',
+    async ({ energy, circles, slumped }) => {
+      const app = createFakeApp()
+      const store = withEnergy(wednesdayStore(true), energy)
+      await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+      expect(piece(app, 'circles').visible).toBe(circles)
+      expect(piece(app, 'upper').y > 0).toBe(slumped)
+      expect(piece(app, 'face').rotation > 0).toBe(slumped)
+      expect(piece(app, 'yawn').visible).toBe(false)
+    },
+  )
+
+  it('follows the energy of each morning: rested again, the slump and circles go', async () => {
+    const app = createFakeApp()
+    const store = withEnergy(wednesdayStore(true), 10)
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    frameUntil(app, () => piece(app, 'yawn').visible)
+
+    withEnergy(store, 90)
+
+    expect(piece(app, 'circles').visible).toBe(false)
+    expect(piece(app, 'upper').y).toBe(0)
+    expect(piece(app, 'face').rotation).toBe(0)
+    expect(piece(app, 'yawn').visible).toBe(false)
+    play(app, store, 20_000)
+    expect(piece(app, 'yawn').visible).toBe(false)
+  })
+
+  it('yawns now and then when tired, never when rested', async () => {
+    const tiredApp = createFakeApp()
+    const tired = withEnergy(wednesdayStore(true), 40)
+    await startStreet(tiredApp, tired, createLoaders(), ASSETS, busyCrowd())
+    const { everyMs, jitterMs, lengthMs } = CROWD.fatigue.yawn
+    const start = frameUntil(tiredApp, () => piece(tiredApp, 'yawn').visible)
+    expect(start).toBeLessThanOrEqual(everyMs + jitterMs + 16)
+    expect(piece(tiredApp, 'eyes').scale.y).toBeLessThan(1)
+    const stop = frameUntil(tiredApp, () => !piece(tiredApp, 'yawn').visible)
+    expect(stop).toBeCloseTo(lengthMs, -2)
+    expect(piece(tiredApp, 'eyes').scale.y).toBe(1)
+
+    const restedApp = createFakeApp()
+    const rested = withEnergy(wednesdayStore(true), 80)
+    await startStreet(restedApp, rested, createLoaders(), ASSETS, busyCrowd())
+    play(restedApp, rested, 20_000, Number.POSITIVE_INFINITY, () => {
+      expect(piece(restedApp, 'yawn').visible).toBe(false)
+    })
+  })
+
+  it.each([
+    { energy: 80, reach: CROWD.reachMs },
+    { energy: 40, reach: CROWD.reachMs * CROWD.fatigue.reachMultiplier.tired },
+    {
+      energy: 10,
+      reach: CROWD.reachMs * CROWD.fatigue.reachMultiplier.exhausted,
+    },
+  ])(
+    'reaches across the counter in $reach ms at energy $energy',
+    async ({ energy, reach }) => {
+      const app = createFakeApp()
+      const store = withEnergy(wednesdayStore(true), energy)
+      await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+      frameUntil(app, () => arm(app).rotation > 0)
+      // Each customer stays at the counter longer than any reach, so no new
+      // reach starts before this one ends.
+      let held = 16
+      while (arm(app).rotation > 0) {
+        app.frame(16)
+        held += 16
+      }
+      expect(held).toBeGreaterThanOrEqual(reach)
+      expect(held).toBeLessThan(reach + 32)
+    },
+  )
+
+  it('freezes a yawn while paused, and keeps yawning at ×10 where no one walks', async () => {
+    const app = createFakeApp()
+    const store = withEnergy(wednesdayStore(true), 10)
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    frameUntil(app, () => piece(app, 'yawn').visible)
+
+    store.getState().setSpeed(0)
+    play(app, store, 10_000, Number.POSITIVE_INFINITY, () => {
+      expect(piece(app, 'yawn').visible).toBe(true)
+    })
+
+    store.getState().setSpeed(10)
+    frameUntil(app, () => !piece(app, 'yawn').visible)
+    frameUntil(app, () => piece(app, 'yawn').visible)
+    expect(walkers(app)).toHaveLength(0)
+    expect(arm(app).rotation).toBe(0)
+  })
+})
+
+describe('startStreet: the spill', () => {
+  it('stays off the counter while no unit is botched', async () => {
+    const app = createFakeApp()
+    const store = visitsStore((visit) => ({ ...visit, botched: 0 }))
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    const spill = piece(app, 'spill')
+    expect(spill.parent).toBe(piece(app, 'layer:truck'))
+    play(app, store, 30_000, 4000, () => {
+      expect(spill.visible).toBe(false)
+    })
+  })
+
+  it('spills on the day after an exhausted owner botched units', async () => {
+    const store = mondayStore()
+    store.setState({
+      game: applyDecision(store.getState().game, {
+        kind: 'daysOpen',
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+      }),
+    })
+    store.getState().advance(1)
+    // Tuesday, played by an owner who woke up exhausted.
+    withEnergy(store, 10).getState().advance(1)
+    const { lastDay } = store.getState().game
+    expect(lastDay?.botched).toBeGreaterThan(0)
+
+    // The owner stays exhausted from day to day, so each day replayed has
+    // botched units, among the few customers who walk on.
+    const app = createFakeApp()
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    playUntil(app, store, () => (piece(app, 'spill').visible ? true : null))
+    expect(store.getState().game.energy).toBeLessThan(ENERGY.exhausted.below)
+  })
+
+  it.each([
+    { outcome: 'bought', botched: 1, spills: true },
+    { outcome: 'soldOut', botched: 1, spills: true },
+    { outcome: 'soldOut', botched: 0, spills: false },
+  ] as const)(
+    'spills for a customer who ended $outcome with $botched botched: $spills',
+    async ({ outcome, botched, spills }) => {
+      const app = createFakeApp()
+      const store = visitsStore((visit) => ended(visit, outcome, botched))
+      await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+      const spill = piece(app, 'spill')
+      let reached = false
+      let shown = false
+      for (let t = 0; t < 30_000; t += 16) {
+        app.frame(16)
+        reached ||= walkers(app).length > 0 && arm(app).rotation > 0
+        shown ||= spill.visible
+      }
+      expect(shown).toBe(spills)
+      // The avatar reaches for every unit made, a botched one included.
+      expect(reached).toBe(spills)
+    },
+  )
+
+  it('sits on the counter, in front of it, and fades out after its time', async () => {
+    const app = createFakeApp()
+    // Only the first customer had a unit botched.
+    const store = visitsStore((visit, i) =>
+      ended(visit, 'bought', i === 0 ? 1 : 0),
+    )
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    const spill = piece(app, 'spill')
+    const truck = piece(app, 'layer:truck')
+    expect(truck.getChildIndex(spill)).toBeGreaterThan(
+      truck.getChildIndex(piece(app, 'counter')),
+    )
+
+    frameUntil(app, () => spill.visible)
+    expect(spill.alpha).toBe(1)
+    let t = 16
+    while (t < showMs) {
+      app.frame(16)
+      t += 16
+      expect(spill.alpha).toBe(1)
+    }
+    while (spill.visible) {
+      app.frame(16)
+      t += 16
+      expect(spill.alpha).toBeLessThanOrEqual(1)
+    }
+    expect(t).toBeGreaterThanOrEqual(SPILL_MS)
+    expect(t).toBeLessThan(SPILL_MS + 32)
+  })
+
+  it('freezes while paused, clears on a closed day, and goes with the street', async () => {
+    const app = createFakeApp()
+    const store = visitsStore((visit) => ended(visit, 'bought', 1), false)
+    const stop = await startStreet(
+      app,
+      store,
+      createLoaders(),
+      ASSETS,
+      busyCrowd(),
+    )
+    const spill = piece(app, 'spill')
+
+    // Paused mid-fade: it stays as it is.
+    frameUntil(app, () => spill.visible && spill.alpha < 1)
+    store.getState().setSpeed(0)
+    const alpha = spill.alpha
+    play(app, store, 10_000, Number.POSITIVE_INFINITY, () => {
+      expect(spill.visible).toBe(true)
+      expect(spill.alpha).toBe(alpha)
+    })
+
+    // On to day 7, a Monday, when the truck is closed: it goes at once.
+    store.getState().setSpeed(1)
+    store.getState().advance(7 - store.getState().game.day)
+    expect(piece(app, 'closed-sign').visible).toBe(true)
+    expect(spill.visible).toBe(false)
+    play(app, store, 10_000, Number.POSITIVE_INFINITY, () => {
+      expect(spill.visible).toBe(false)
+    })
+
+    stop()
+    expect(spill.destroyed).toBe(true)
+  })
+
+  it('clears at ×10, where no one walks', async () => {
+    const app = createFakeApp()
+    const store = visitsStore((visit) => ended(visit, 'bought', 1))
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    const spill = piece(app, 'spill')
+    frameUntil(app, () => spill.visible)
+
+    store.getState().setSpeed(10)
+    app.frame(16)
+    expect(spill.visible).toBe(false)
+    expect(walkers(app)).toHaveLength(0)
   })
 })
 

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatDayAndMonth,
   formatGameDate,
+  formatGameMonth,
   formatGamePeriod,
   formatShortGameDate,
 } from './formatGameDate.ts'
@@ -37,6 +39,34 @@ describe('formatShortGameDate', () => {
 
   it('rejects days the calendar rejects', () => {
     expect(() => formatShortGameDate(-1)).toThrow(RangeError)
+  })
+})
+
+describe('formatDayAndMonth', () => {
+  it.each([
+    { day: 0, text: '1er mai' },
+    { day: 4, text: '5 mai' },
+    { day: 31, text: '1er juin' },
+    { day: 92, text: '1er août' },
+    { day: 244, text: '31 décembre' },
+  ])('formats day $day as $text', ({ day, text }) => {
+    expect(formatDayAndMonth(day)).toBe(text)
+  })
+})
+
+describe('formatGameMonth', () => {
+  it.each([
+    { day: 0, text: 'Mai, an 1' },
+    { day: 30, text: 'Mai, an 1' },
+    { day: 31, text: 'Juin, an 1' },
+    { day: 92, text: 'Août, an 1' },
+    { day: 245, text: 'Janvier, an 2' },
+  ])('formats day $day as $text', ({ day, text }) => {
+    expect(formatGameMonth(day)).toBe(text)
+  })
+
+  it('rejects days the calendar rejects', () => {
+    expect(() => formatGameMonth(-1)).toThrow(RangeError)
   })
 })
 

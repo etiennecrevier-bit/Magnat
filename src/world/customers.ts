@@ -1,9 +1,10 @@
 import { Container, Graphics, Text } from 'pixi.js'
 import type { AssetManifest } from '../content/assets.ts'
 import type { CustomerLines } from '../content/lines.ts'
-import type { Avatar, WalkIns } from '../content/schema.ts'
+import type { Avatar, EnergyContent, WalkIns } from '../content/schema.ts'
+import { fatigueOf, type Fatigue } from '../engine/energy.ts'
 import type { GameState } from '../engine/types.ts'
-import { bobOf, createCrowd, type Span } from './crowd.ts'
+import { bobOf, createCrowd, type Customer, type Span } from './crowd.ts'
 import type { CrowdSettings } from './crowdSettings.ts'
 import {
   cardOf,
@@ -14,12 +15,19 @@ import {
   type Point,
   type Target,
 } from './customerCard.ts'
+import {
+  avatarPose,
+  createSpillClock,
+  createYawns,
+  type AvatarPose,
+} from './fatigue.ts'
 import { TITLE_FONT, TITLE_FONT_FAMILY } from './fonts.ts'
 import {
   drawAvatar,
   drawBubble,
   drawCustomer,
   drawPickMark,
+  drawSpill,
   pickLook,
 } from './people.ts'
 import type { PlaceholderStyle } from './placeholders.ts'
@@ -81,6 +89,8 @@ export interface CustomersSetup {
   readonly msPerDay: number
   /** What customers say when the player picks them. */
   readonly lines: CustomerLines
+  /** Where the owner's fatigue starts, which the avatar shows. */
+  readonly energy: EnergyContent
   readonly random: () => number
 }
 
@@ -92,6 +102,12 @@ export interface CustomersSetup {
  * Pausing freezes everyone, the bubbles and the avatar's arm. On a day the
  * truck is closed, the avatar is gone and everyone still waiting walks off
  * without buying.
+ *
+ * The avatar shows the owner's fatigue on the morning of `game.day` (see
+ * `avatarPose`): a tired one reaches slower and yawns, an exhausted one
+ * also slumps, with dark circles under the eyes. A customer with a botched
+ * unit leaves a spill on the counter, which fades out. Yawns go on at ×10,
+ * where no one walks; the spill goes with the customers.
  *
  * The player can pick one customer at a time, which rings their feet and
  * opens their card (see `cardOf`), with a line picked the first time. The
@@ -113,19 +129,35 @@ export function startCustomers(setup: CustomersSetup): Customers {
 
   const truckLayer = street.getChildByLabel('layer:truck')
   const counter = truckLayer?.getChildByLabel('counter') ?? null
+  let fatigue: Fatigue = 'rested'
   let avatar: ReturnType<typeof startAvatar> | null = null
   const showAvatar = (kind: Avatar, open: boolean) => {
     if (avatar?.kind !== kind) {
       avatar?.destroy()
-      avatar = startAvatar(kind, style, settings)
+      avatar = startAvatar(kind, style, settings, random)
       if (truckLayer !== null) {
         const at = counter === null ? -1 : truckLayer.getChildIndex(counter)
         if (at < 0) truckLayer.addChild(avatar.root)
         else truckLayer.addChildAt(avatar.root, at)
       }
     }
+    avatar.setFatigue(fatigue)
     avatar.root.visible = open
     if (!open) avatar.rest()
+  }
+
+  // The spill sits on the counter, in front of it and of the avatar.
+  const spill = drawSpill(settings.fatigue.spill, style)
+  spill.visible = false
+  truckLayer?.addChild(spill)
+  const spillClock = createSpillClock(settings.fatigue.spill)
+  const showSpill = (opacity: number) => {
+    spill.alpha = opacity
+    spill.visible = opacity > 0
+  }
+  const dropSpill = () => {
+    spillClock.hide()
+    showSpill(0)
   }
 
   let replay: Replay | null = null
@@ -187,8 +219,12 @@ export function startCustomers(setup: CustomersSetup): Customers {
     root,
     onGame: (game) => {
       open = opensToday(game)
+      fatigue = fatigueOf(game.energy, setup.energy)
       showAvatar(game.profile.avatar, open)
-      if (!open) crowd.dismiss()
+      if (!open) {
+        crowd.dismiss()
+        dropSpill()
+      }
       if (!clock.follow(game)) return
       replay = replayOf(game)
       sampler.start(replay?.visits ?? [])
@@ -213,6 +249,8 @@ export function startCustomers(setup: CustomersSetup): Customers {
         sampler.step(progress, deltaMs, crowd.customers.length, speed)
         crowd.clear()
         avatar?.rest()
+        avatar?.idle(deltaMs)
+        dropSpill()
         tally.root.visible = replay !== null
         sync(span)
         return
@@ -241,9 +279,19 @@ export function startCustomers(setup: CustomersSetup): Customers {
         views.set(c.id, view)
         root.addChild(view.root)
       }
-      const served = crowd.update(deltaMs, walking.pace, span)
-      if (served.length > 0 && open) avatar?.serve()
+      const arrived = crowd.update(deltaMs, walking.pace, span)
+      showSpill(spillClock.update(deltaMs * walking.pace))
+      if (open) {
+        // The avatar reaches for every unit made, botched ones included.
+        if (arrived.some((a) => a.kind === 'served' || botched(a.customer)))
+          avatar?.serve()
+        if (arrived.some((a) => botched(a.customer))) {
+          spillClock.show()
+          showSpill(1)
+        }
+      }
       avatar?.update(deltaMs * walking.pace)
+      avatar?.idle(deltaMs)
       sync(span)
     },
     pickAt: (point) => {
@@ -266,6 +314,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
     destroy: () => {
       avatar?.destroy()
       avatar = null
+      spill.destroy()
       pickedId = null
       views.clear()
       root.destroy({ children: true })
@@ -301,33 +350,56 @@ function createCustomerView(
   return { root, figure, bubble, mark, card: null }
 }
 
+/** Whether the owner botched a unit for `customer`. */
+function botched({ visit }: Customer): boolean {
+  return visit.botched > 0
+}
+
 /** Where `node` is drawn on the page: the stage's pixels are the page's. */
 function boxOf(node: Container): Box {
   const { minX, minY, maxX, maxY } = node.getBounds()
   return { left: minX, top: minY, right: maxX, bottom: maxY }
 }
 
-/** The avatar behind the counter, and the arm that reaches for each sale. */
+/**
+ * The avatar behind the counter: the arm that reaches for each sale, and
+ * the owner's fatigue, which `setFatigue` shows.
+ */
 function startAvatar(
   kind: Avatar,
   style: PlaceholderStyle,
   settings: CrowdSettings,
+  random: () => number,
 ) {
-  const art = drawAvatar(kind, style, settings.avatar, settings.looks.trousers)
+  const look = settings.fatigue
+  const art = drawAvatar(
+    kind,
+    style,
+    settings.avatar,
+    settings.looks.trousers,
+    look.circlesColor,
+  )
   art.root.position.set(settings.avatar.x, settings.avatar.feetY)
-  const { reachMs } = settings
+  const yawns = createYawns(look.yawn, random)
+  let fatigue: Fatigue | null = null
+  let current: AvatarPose = avatarPose('rested', settings.reachMs, look)
   // Time left in the current reach; 0 when the arm hangs down.
   let reachLeftMs = 0
   const pose = () => {
-    const t = reachLeftMs > 0 ? 1 - reachLeftMs / reachMs : 0
+    const t = reachLeftMs > 0 ? 1 - reachLeftMs / current.reachMs : 0
     art.arm.rotation = Math.sin(Math.PI * t) * REACH_ANGLE
+  }
+  const yawn = (yawning: boolean) => {
+    art.yawn.visible = yawning
+    // The eyes all but close while the mouth is open.
+    art.eyes.scale.y = yawning ? YAWN_EYES : 1
   }
   return {
     kind,
     root: art.root,
     arm: art.arm,
     serve: () => {
-      reachLeftMs = reachMs
+      reachLeftMs = current.reachMs
       pose()
     },
     update: (deltaMs: number) => {
@@ -335,13 +407,35 @@ function startAvatar(
       reachLeftMs = Math.max(0, reachLeftMs - deltaMs)
       pose()
     },
+    /** Moves the yawns on by `deltaMs`, whether or not anyone walks. */
+    idle: (deltaMs: number) => {
+      if (current.yawns) yawn(yawns.update(deltaMs))
+    },
     rest: () => {
       reachLeftMs = 0
       pose()
     },
+    setFatigue: (next: Fatigue) => {
+      if (next === fatigue) return
+      fatigue = next
+      // A reach under way finishes in the same share of the new time.
+      const share = reachLeftMs > 0 ? reachLeftMs / current.reachMs : 0
+      current = avatarPose(next, settings.reachMs, look)
+      reachLeftMs = share * current.reachMs
+      const { slump } = look
+      art.upper.y = current.slumped ? slump.bodyDrop : 0
+      art.face.y = art.face.pivot.y + (current.slumped ? slump.headDrop : 0)
+      art.face.rotation = current.slumped ? slump.tiltRadians : 0
+      art.circles.visible = current.circles
+      yawns.reset()
+      yawn(false)
+    },
     destroy: () => art.root.destroy({ children: true }),
   }
 }
+
+/** How open the eyes stay during a yawn, as a share of their height. */
+const YAWN_EYES = 0.3
 
 /** How far the arm turns at the height of a reach: across the counter. */
 const REACH_ANGLE = Math.PI * 0.45

@@ -6,7 +6,7 @@ import {
 } from 'pixi.js'
 import type { AssetManifest } from '../content/assets.ts'
 import pacing from '../content/pacing.json'
-import { FOOD_TRUCK } from '../engine/day.ts'
+import { ENERGY, FOOD_TRUCK } from '../engine/day.ts'
 import { gameStore, type GameStore } from '../ui/store.ts'
 import { loadArt, type LoadTexture } from './art.ts'
 import type { Span } from './crowd.ts'
@@ -76,6 +76,7 @@ export async function startStreet(
     walkIns: FOOD_TRUCK.walkIns,
     msPerDay: pacing.msPerDayAtNormalSpeed,
     lines: LINES,
+    energy: ENERGY,
     random: people.random,
   })
   scene.root.addChild(customers.root)

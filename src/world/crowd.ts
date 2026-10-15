@@ -39,9 +39,14 @@ export interface Customer {
   readonly bubble: boolean
 }
 
-/** Something the avatar answers: a customer who buys at the counter. */
-export interface Served {
-  readonly kind: 'served'
+/**
+ * A customer reaching the counter, which the avatar answers: `served` when
+ * they buy, `looked` when they buy nothing. Either may have had units
+ * botched (`visit.botched`): a customer whose last unit was botched ends up
+ * with none, sold out.
+ */
+export interface AtCounter {
+  readonly kind: 'served' | 'looked'
   readonly customer: Customer
 }
 
@@ -53,10 +58,9 @@ export interface Crowd {
   spawn: (visit: Visit, span: Span) => Customer
   /**
    * Moves everyone on by `deltaMs` at `pace` (1 is normal, 0 freezes them),
-   * with `span` on screen. Returns a `served` for each customer who buys at
-   * the counter now.
+   * with `span` on screen. Returns each customer who reaches the counter now.
    */
-  update: (deltaMs: number, pace: number, span: Span) => Served[]
+  update: (deltaMs: number, pace: number, span: Span) => AtCounter[]
   /** Sends everyone not yet gone away without buying and without a bubble. */
   dismiss: () => void
   /** Takes everyone off the street at once. */
@@ -166,7 +170,7 @@ export function createCrowd(
       if (pace <= 0 || deltaMs <= 0) return []
       const dt = deltaMs * pace
       const step = (walkSpeed * dt) / 1000
-      const served: Served[] = []
+      const arrived: AtCounter[] = []
 
       reslot()
       for (const c of all) {
@@ -190,9 +194,10 @@ export function createCrowd(
         c.facing = 1
         if (c.visit.outcome === 'bought') {
           c.counterMs = serveMs
-          served.push({ kind: 'served', customer: c })
+          arrived.push({ kind: 'served', customer: c })
         } else {
           c.counterMs = lookMs
+          arrived.push({ kind: 'looked', customer: c })
         }
       }
 
@@ -204,7 +209,7 @@ export function createCrowd(
         return !walk(c, exit, lane, step)
       })
       reslot()
-      return served
+      return arrived
     },
     dismiss: () => {
       for (const c of all) if (c.phase !== 'leaving') leave(c, false)

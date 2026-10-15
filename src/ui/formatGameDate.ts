@@ -56,6 +56,18 @@ export function formatShortGameDate(day: Day): string {
   return shortDate(toCalendar(day))
 }
 
+/** French (Quebec) day of the month and month, e.g. `1er mai`. */
+export function formatDayAndMonth(day: Day): string {
+  return dayAndMonth(toCalendar(day))
+}
+
+/** French (Quebec) month and year of a game day, e.g. `Mai, an 1`. */
+export function formatGameMonth(day: Day): string {
+  const { month, year } = toCalendar(day)
+  const name = nameAt(MONTHS, month)
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)}, an ${year}`
+}
+
 /**
  * A period from `fromDay` to `toDay`, both included, e.g. `Du 1er mai au
  * 31 mai, an 1`, or `Le 1er juin, an 1` for a single day. The year shows
