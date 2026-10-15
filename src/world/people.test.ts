@@ -558,6 +558,33 @@ describe('drawAvatar', () => {
     expect(arm.x).toBeLessThan(0)
   })
 
+  it.each(['femme', 'homme'] as const)(
+    'has two hands, one at the end of each sleeve: %s',
+    (kind) => {
+      const { root, arm } = avatar(kind)
+      const found = hands(root, CROWD.avatar.skin)
+      expect(found).toHaveLength(2)
+      const reaching = (hand: Hand) => drawOrder(arm).includes(hand.part)
+      expect(found.filter(reaching)).toHaveLength(1)
+      // The other hand ends the sleeve that hangs on the screen's right.
+      const other = found.find((hand) => !reaching(hand))!
+      const sleeve = find(root, 'otherArm') as Graphics
+      const steps = 4
+      let touching = false
+      for (let i = -steps; i <= steps; i += 1) {
+        for (let j = -steps; j <= steps; j += 1) {
+          if (i * i + j * j > steps * steps) continue
+          const point = {
+            x: other.x + (other.r * i) / steps,
+            y: other.y + (other.r * j) / steps,
+          }
+          touching ||= sleeve.containsPoint(sleeve.toLocal(point))
+        }
+      }
+      expect(touching).toBe(true)
+    },
+  )
+
   it('wears the hair of the avatar the player picked', () => {
     const femme = avatar('femme').root
     const homme = avatar('homme').root
