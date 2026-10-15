@@ -14,19 +14,46 @@ import { simulate, type SimulationResult } from './simulate.ts'
 const root = fileURLToPath(new URL('../..', import.meta.url))
 
 describe('parseSimArgs', () => {
-  it('defaults to ten years of seed 42, written to out/', () => {
+  it("defaults to ten years of seed 42 at the new game screen's difficulty, written to out/", () => {
     expect(parseSimArgs([])).toEqual({
       days: 3650,
       seed: 42,
+      difficulty: 'moyen',
       out: join(root, 'out'),
     })
   })
 
   it('reads every option, the out folder from the current one', () => {
     expect(
-      parseSimArgs(['--days', '40', '--seed=0', '--out', 'tmp/sims']),
-    ).toEqual({ days: 40, seed: 0, out: resolve('tmp/sims') })
+      parseSimArgs([
+        '--days',
+        '40',
+        '--seed=0',
+        '--difficulty',
+        'difficile',
+        '--out',
+        'tmp/sims',
+      ]),
+    ).toEqual({
+      days: 40,
+      seed: 0,
+      difficulty: 'difficile',
+      out: resolve('tmp/sims'),
+    })
   })
+
+  it.each(['facile', 'moyen', 'difficile'])('reads the difficulty %s', (id) => {
+    expect(parseSimArgs([`--difficulty=${id}`]).difficulty).toBe(id)
+  })
+
+  it.each(['', 'Moyen', 'extreme', ' facile'])(
+    'rejects the difficulty %j',
+    (text) => {
+      expect(() => parseSimArgs(['--difficulty', text])).toThrow(
+        `--difficulty must be one of facile, moyen, difficile: ${text}`,
+      )
+    },
+  )
 
   it.each(
     [
@@ -81,6 +108,7 @@ describe('formatReport', () => {
   it('prints a header, one aligned row per year and the hash', () => {
     const result: SimulationResult = {
       seed: 7,
+      difficulty: 'facile',
       days: 400,
       journalHash: 'ab'.repeat(32),
       years: [
@@ -109,7 +137,7 @@ describe('formatReport', () => {
       journal: [],
     }
     expect(formatReport(result)).toEqual([
-      'Seed 7, 400 days',
+      'Seed 7, 400 days, difficulty facile',
       'Year     Days      Revenue  Net income  Cash at year end  Units spoiled  Lost sales',
       '   1    0-364  $143,357.50      -$0.05     $1,000,000.00           5940         299',
       '   2  365-399        $0.00  -$1,234.56             $0.99              0          12',
@@ -140,11 +168,13 @@ describe('npm run sim', () => {
       '40',
       '--seed',
       '7',
+      '--difficulty',
+      'facile',
       '--out',
       out,
     )
-    const file = join(out, 'sim-7.json')
-    const expected = simulate(7, 40)
+    const file = join(out, 'sim-7-facile.json')
+    const expected = simulate(7, 40, 'facile')
     expect(stderr).toBe('')
     expect(status).toBe(0)
     expect(stdout.trimEnd().split('\n')).toEqual([
@@ -171,6 +201,6 @@ describe('npm run sim', () => {
       '--days must be a whole number from 1: abc',
       USAGE,
     ])
-    expect(existsSync(join(out, 'sim-8.json'))).toBe(false)
+    expect(existsSync(join(out, 'sim-8-moyen.json'))).toBe(false)
   }, 30_000)
 })

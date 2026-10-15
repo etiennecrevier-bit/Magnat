@@ -6,7 +6,7 @@ import {
   postEntry,
   type Journal,
 } from '../finance/journal.ts'
-import { createInitialState, tick, toCalendar } from './clock.ts'
+import { createInitialState, tick } from './clock.ts'
 import { FOOD_TRUCK, playDay } from './day.ts'
 import { applyDecision } from './decisions.ts'
 import { inventoryValue } from './inventory.ts'
@@ -97,8 +97,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(2)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 2 })
+    expect(SAVE_VERSION).toBe(3)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 3 })
   })
 
   it.each<Profile>([
@@ -128,7 +128,7 @@ describe('serialize and deserialize', () => {
   })
 
   it('give back a state at the close of its day', () => {
-    const closed = playDay(DAY_400, toCalendar(DAY_400.day).weekday)
+    const closed = playDay(DAY_400)
     expect(closed.lastDay?.day).toBe(closed.day)
     expect(reloaded(closed)).toStrictEqual(closed)
   })
@@ -200,7 +200,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 3, '2', null])('saveVersion %j', (version) => {
+  it.each([0, 1, 4, '3', null])('saveVersion %j', (version) => {
     expectInvalid(withValue('saveVersion', version), [
       `unsupported saveVersion ${JSON.stringify(version)}`,
     ])
@@ -530,6 +530,12 @@ describe('deserialize rejects', () => {
         narrowed,
       )
     })
+  })
+
+  it('a game saved before the real costs, as version 2', () => {
+    // Its books hold no truck and no loan, so it cannot play on under the
+    // rules of version 3.
+    expectInvalid(withValue('saveVersion', 2), ['unsupported saveVersion 2'])
   })
 
   describe('a profile', () => {

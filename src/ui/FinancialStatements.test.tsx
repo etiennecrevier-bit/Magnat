@@ -98,7 +98,9 @@ describe('FinancialStatementsView', () => {
     expect(rows.get('Encaisse')).toBe(
       formatStatementAmount(cashAt(game, game.day)),
     )
-    expect(rows.get('Capital-actions')).toBe(`10${S}000,00${S}$`)
+    // Moyen's Mise de fonds: 10 000 $ in the bank and the 15 000 $ down on
+    // the truck.
+    expect(rows.get('Capital-actions')).toBe(`25${S}000,00${S}$`)
     expect(html).toContain('<h2 id="')
     expect(html).toContain('>Bilan</h2>')
     expect(html).toContain('<p class="statements__dates">Au 15 juin, an 1</p>')
@@ -168,7 +170,7 @@ describe('FinancialStatementsView', () => {
   it('shows every line of a statement, zeros included', () => {
     const rows = amounts(render('balanceSheet', statements))
     expect(rows.get('Comptes clients')).toBe(`0,00${S}$`)
-    expect(rows.get('Emprunts bancaires')).toBe(`0,00${S}$`)
+    expect(rows.get('Comptes fournisseurs')).toBe(`0,00${S}$`)
   })
 
   it.each([
@@ -240,10 +242,11 @@ describe('FinancialStatements', () => {
     expect(html).toContain('>Bilan</h2>')
     expect(html).toContain('<p class="statements__dates">Au 1er mai, an 1</p>')
     const rows = amounts(html)
+    // A Moyen game: 10 000 $ in the bank and the 85 000 $ truck.
     expect(rows.get('Encaisse')).toBe(`10${S}000,00${S}$`)
-    expect(rows.get('Total des actifs')).toBe(`10${S}000,00${S}$`)
+    expect(rows.get('Total des actifs')).toBe(`95${S}000,00${S}$`)
     expect(rows.get('Total des passifs et des capitaux propres')).toBe(
-      `10${S}000,00${S}$`,
+      `95${S}000,00${S}$`,
     )
   })
 })

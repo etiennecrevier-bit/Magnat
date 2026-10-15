@@ -14,6 +14,12 @@ const money = z
   .nonnegative()
   .transform((n) => cents(n))
 
+/** Whole cents above zero, typed as the engine's `Cents`. */
+const positiveMoney = z
+  .int()
+  .positive()
+  .transform((n) => cents(n))
+
 const count = z.int().nonnegative()
 
 /** A share of a whole, such as a probability. */
@@ -58,7 +64,33 @@ export type Avatar = z.infer<typeof avatarSchema>
 const productSchema = z.strictObject({
   name: z.string().min(1),
   unitCostCents: money,
+  /** The cup, lid or bag that goes with each unit sold. */
+  packagingCents: money,
   shelfLifeDays: z.int().positive(),
+})
+
+/** The truck the business runs, whoever paid for it. */
+const truckSchema = z.strictObject({
+  /**
+   * What the truck is worth when a game starts. The books carry it unless
+   * it is leased.
+   */
+  priceCents: money,
+  /** Months the truck is depreciated over, straight line. */
+  usefulLifeMonths: z.int().positive(),
+})
+
+/** What every truck pays on the 1st of each month. */
+const monthlyCostsSchema = z.strictObject({
+  permitParkingAndCommissary: money,
+  insurance: money,
+})
+
+/** How customers pay: the share of sales paid by card and its fee. */
+const cardPaymentsSchema = z.strictObject({
+  share,
+  /** The bank's fee, as a share of the card sales. */
+  feeRate: share,
 })
 
 /**
@@ -188,12 +220,13 @@ export type DecisionLimits = z.output<typeof decisionLimitsSchema>
 // A record keyed by the enum needs every product and rejects any other key.
 export const foodTruckSchema = z.strictObject({
   _note: z.string().optional(),
-  startingCapitalCents: money,
   products: z.record(productIdSchema, productSchema),
-  dailyFixedCostsCents: z.strictObject({
-    rentAndPermit: money,
-    fuelAndMaintenance: money,
-  }),
+  truck: truckSchema,
+  monthlyCostsCents: monthlyCostsSchema,
+  fuelAndMaintenancePerOpenDayCents: money,
+  cardPayments: cardPaymentsSchema,
+  /** The weekday the owner is paid, whether the truck opens or not. */
+  ownerPayWeekday: weekday,
   walkIns: walkInsSchema,
   startingDecisions: startingDecisionsSchema,
   decisionLimits: decisionLimitsSchema,
@@ -243,7 +276,14 @@ export type CustomerContent = z.output<typeof customerSchema>
  */
 const startingTruckSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('owned') }),
-  z.strictObject({ kind: z.literal('loan'), loanCents: money }),
+  z.strictObject({
+    kind: z.literal('loan'),
+    loanCents: positiveMoney,
+    /** The yearly rate in basis points: 800 is 8 %. */
+    annualRateBasisPoints: z.int().nonnegative(),
+    /** Monthly payments, the first a month after the loan. */
+    termMonths: z.int().positive(),
+  }),
   z.strictObject({ kind: z.literal('lease'), monthlyLeaseCents: money }),
 ])
 

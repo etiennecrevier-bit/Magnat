@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { DifficultyId } from '../../src/content/schema.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { cents } from '../../src/engine/money.ts'
 import type { PerProduct } from '../../src/engine/types.ts'
@@ -23,12 +24,15 @@ function spans(result: {
 }
 
 describe('simulate', () => {
-  it('plays every day from day 0', () => {
-    expect(run).toMatchObject({ seed: 7, days: 400 })
+  it("plays every day from day 0, at the new game screen's difficulty", () => {
+    expect(run).toMatchObject({ seed: 7, difficulty: 'moyen', days: 400 })
     expect(run.daySummaries.map(({ day }) => day)).toEqual(
       Array.from({ length: 400 }, (_, day) => day),
     )
-    expect(run.journal.at(-1)?.day).toBe(399)
+    // Nothing is owed on a closed day that is no 1st of the month nor
+    // payday, so the last entry may come before the last day played.
+    expect(run.journal.at(-1)?.day).toBeLessThanOrEqual(399)
+    expect(run.journal.some(({ day }) => day >= 398)).toBe(true)
   })
 
   it('counts years from the first day of play, the last one cut short', () => {
@@ -108,6 +112,26 @@ describe('simulate', () => {
 
   it('rejects a seed the engine rejects', () => {
     expect(() => simulate(-1, 10)).toThrow(RangeError)
+  })
+
+  it('plays the difficulty it is given, from its own opening books', () => {
+    const books = (difficulty: DifficultyId) =>
+      simulate(7, 1, difficulty).journal.filter(({ day }) => day === 0)
+    const memos = (difficulty: DifficultyId) =>
+      books(difficulty).map(({ memo }) => memo)
+    expect(simulate(7, 40, 'difficile')).toMatchObject({
+      difficulty: 'difficile',
+    })
+    expect(memos('facile')).toContain('Camion apporté par le propriétaire')
+    expect(memos('moyen')).toContain('Emprunt de démarrage')
+    expect(memos('difficile')).toContain('Location du camion')
+    expect(simulate(7, 40, 'moyen').journalHash).toBe(
+      simulate(7, 40).journalHash,
+    )
+  })
+
+  it('rejects a difficulty the engine does not know', () => {
+    expect(() => simulate(7, 10, 'extreme' as DifficultyId)).toThrow(RangeError)
   })
 })
 

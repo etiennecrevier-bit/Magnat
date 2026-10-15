@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest'
 import cashGauge from '../content/cashGauge.json'
 import foodTruck from '../content/foodtruck.json'
 import { cents } from '../engine/money.ts'
-import { DAILY_FIXED_COSTS, LOW_BELOW_DAYS, cashLevel } from './cashLevel.ts'
+import {
+  LOW_BELOW_MONTHS,
+  MONTHLY_FIXED_COSTS,
+  cashLevel,
+} from './cashLevel.ts'
 
 describe('cashLevel', () => {
-  const daily = cents(6_500)
-  const threshold = 7 * 6_500
+  const monthly = cents(175_000)
+  const threshold = 2 * 175_000
 
   it.each([
     { cash: -1, level: 'negative' },
@@ -16,20 +20,21 @@ describe('cashLevel', () => {
     { cash: threshold, level: 'healthy' },
     { cash: 1_000_000, level: 'healthy' },
   ])('reads $cash cents as $level', ({ cash, level }) => {
-    expect(cashLevel(cents(cash), daily, 7)).toBe(level)
+    expect(cashLevel(cents(cash), monthly, 2)).toBe(level)
   })
 
   it('reads the shipped content by default', () => {
-    const threshold = DAILY_FIXED_COSTS * LOW_BELOW_DAYS
+    const threshold = MONTHLY_FIXED_COSTS * LOW_BELOW_MONTHS
     expect(cashLevel(cents(threshold - 1))).toBe('low')
     expect(cashLevel(cents(threshold))).toBe('healthy')
   })
 })
 
-describe('DAILY_FIXED_COSTS', () => {
-  it('adds up the fixed costs in the content', () => {
-    const { rentAndPermit, fuelAndMaintenance } = foodTruck.dailyFixedCostsCents
-    expect(DAILY_FIXED_COSTS).toBe(rentAndPermit + fuelAndMaintenance)
-    expect(LOW_BELOW_DAYS).toBe(cashGauge.lowBelowDaysOfFixedCosts)
+describe('MONTHLY_FIXED_COSTS', () => {
+  it('adds up the monthly costs in the content', () => {
+    const { permitParkingAndCommissary, insurance } =
+      foodTruck.monthlyCostsCents
+    expect(MONTHLY_FIXED_COSTS).toBe(permitParkingAndCommissary + insurance)
+    expect(LOW_BELOW_MONTHS).toBe(cashGauge.lowBelowMonthsOfFixedCosts)
   })
 })

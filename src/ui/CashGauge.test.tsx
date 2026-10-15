@@ -2,11 +2,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { cents } from '../engine/money.ts'
 import { CashGaugeView } from './CashGauge.tsx'
-import { DAILY_FIXED_COSTS, LOW_BELOW_DAYS } from './cashLevel.ts'
+import { LOW_BELOW_MONTHS, MONTHLY_FIXED_COSTS } from './cashLevel.ts'
 
 // Every space in an amount is a no-break space (U+00A0).
 const S = '\u00a0'
-const LOW_THRESHOLD = DAILY_FIXED_COSTS * LOW_BELOW_DAYS
+const LOW_THRESHOLD = MONTHLY_FIXED_COSTS * LOW_BELOW_MONTHS
 
 function render(cash: number) {
   return renderToStaticMarkup(<CashGaugeView cash={cents(cash)} />)

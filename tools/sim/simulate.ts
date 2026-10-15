@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto'
+import type { DifficultyId } from '../../src/content/schema.ts'
 import { createInitialState, tick, toCalendar } from '../../src/engine/clock.ts'
+import { FOOD_TRUCK } from '../../src/engine/day.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import type { Cents } from '../../src/engine/money.ts'
+import { defaultProfile } from '../../src/engine/profile.ts'
 import type { Day, DaySummary, PerProduct } from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import {
@@ -41,6 +44,8 @@ export interface YearSummary {
 
 export interface SimulationResult {
   readonly seed: number
+  /** How the game started: the opening books and the truck's charges. */
+  readonly difficulty: DifficultyId
   /** Days played, from day 0. */
   readonly days: number
   /** See `journalHash`. */
@@ -53,16 +58,24 @@ export interface SimulationResult {
 }
 
 /**
- * Starts a game from `seed` and plays `days` business days, from day 0.
- * Throws a RangeError unless `days` is a safe integer of at least 1 and
- * `seed` is one `createInitialState` accepts.
+ * Starts a game from `seed` at `difficulty`, by default the new game
+ * screen's, and plays `days` business days, from day 0. Throws a RangeError
+ * unless `days` is a safe integer of at least 1, and `seed` and `difficulty`
+ * are ones `createInitialState` accepts.
  */
-export function simulate(seed: number, days: number): SimulationResult {
+export function simulate(
+  seed: number,
+  days: number,
+  difficulty: DifficultyId = defaultProfile().difficulty,
+): SimulationResult {
   if (!Number.isSafeInteger(days) || days < 1) {
     throw new RangeError(`Days to play must be a whole number from 1: ${days}`)
   }
 
-  let state = createInitialState(seed)
+  let state = createInitialState(seed, FOOD_TRUCK, {
+    ...defaultProfile(),
+    difficulty,
+  })
   const daySummaries: DaySummary[] = []
   for (let day = 0; day < days; day += 1) {
     state = tick(state)
@@ -72,6 +85,7 @@ export function simulate(seed: number, days: number): SimulationResult {
 
   return {
     seed,
+    difficulty,
     days,
     journalHash: journalHash(state.journal),
     years: summarizeYears(state.journal, daySummaries),

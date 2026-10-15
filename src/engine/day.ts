@@ -1,7 +1,11 @@
 import {
   loadCustomerContent,
+  loadDifficultyContent,
   loadFoodTruckContent,
   type CustomerContent,
+  type Difficulty,
+  type DifficultyContent,
+  type DifficultyId,
   type FoodTruckContent,
   type ProductId,
   type RestockRule,
@@ -13,6 +17,8 @@ import {
   type Journal,
   type JournalLine,
 } from '../finance/journal.ts'
+import { loanSchedule } from '../finance/loan.ts'
+import { monthsSinceStart, toCalendar } from './calendar.ts'
 import {
   dayTypeOf,
   perSegment,
@@ -26,7 +32,7 @@ import {
   removeExpired,
   takeFifo,
 } from './inventory.ts'
-import { add, cents, mulInt, type Cents } from './money.ts'
+import { add, cents, mulInt, mulRatio, sub, type Cents } from './money.ts'
 import type { Day, Decisions, GameState, Lot, PerProduct } from './types.ts'
 
 /** The shipped food truck content, validated once when the engine loads. */
@@ -35,32 +41,95 @@ export const FOOD_TRUCK: FoodTruckContent = loadFoodTruckContent()
 /** The shipped customer segments, validated once when the engine loads. */
 export const CUSTOMERS: CustomerContent = loadCustomerContent()
 
+/** The shipped difficulties, validated once when the engine loads. */
+export const DIFFICULTIES: DifficultyContent = loadDifficultyContent()
+
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
+const EQUIPMENT: AccountCode = '1500'
+const ACCUMULATED_DEPRECIATION: AccountCode = '1510'
+const BANK_LOANS: AccountCode = '2500'
 const SHARE_CAPITAL: AccountCode = '3000'
 const SALES: AccountCode = '4000'
 const COST_OF_GOODS_SOLD: AccountCode = '5000'
 const INVENTORY_LOSSES: AccountCode = '5100'
+const PACKAGING: AccountCode = '5200'
+const WAGES: AccountCode = '6000'
 const RENT_AND_PERMIT: AccountCode = '6100'
+const TRUCK_LEASE: AccountCode = '6120'
+const INSURANCE: AccountCode = '6150'
 const FUEL_AND_MAINTENANCE: AccountCode = '6200'
+const DEPRECIATION: AccountCode = '6400'
+const CARD_FEES: AccountCode = '6500'
+const INTEREST: AccountCode = '7000'
 
 // Memos the player reads in the journal.
 const MEMO = {
   capital: 'Mise de fonds',
+  truckContributed: 'Camion apporté par le propriétaire',
+  loan: 'Emprunt de démarrage',
+  truckBought: 'Achat du camion',
+  permit: 'Permis, stationnement et cuisine',
+  insurance: 'Assurances',
+  interest: "Intérêts sur l'emprunt",
+  principal: "Remboursement de l'emprunt",
+  depreciation: 'Amortissement du camion',
+  lease: 'Location du camion',
   purchases: 'Achat de marchandises',
   sales: 'Ventes au comptant',
   costOfSales: 'Coût des marchandises vendues',
-  fixedCosts: 'Loyer, permis, carburant et entretien',
+  packaging: 'Emballages',
+  cardFees: 'Frais de cartes',
+  fuel: 'Carburant et entretien',
+  ownerPay: 'Paie du propriétaire',
   spoilage: 'Marchandises périmées',
 } as const
 
 const ZERO = cents(0)
 
-/** The books a game opens with: the owner's capital, paid in on day 0. */
+/**
+ * The books a game of `difficulty` opens with, all on day 0. The owner pays
+ * in the Mise de fonds: the starting cash, plus what the truck costs beyond
+ * the loan when the business borrows to buy it. Facile's owner also brings
+ * the truck, at its price, as more capital. Moyen then takes the loan and
+ * buys the truck with it. Difficile leases the truck, so the books never
+ * carry it. Throws a RangeError if the loan is more than the truck and the
+ * starting cash together, which would make the Mise de fonds negative.
+ */
 export function openingJournal(
+  difficulty: DifficultyId,
   content: FoodTruckContent = FOOD_TRUCK,
+  difficulties: DifficultyContent = DIFFICULTIES,
 ): Journal {
-  const capital = content.startingCapitalCents
+  const { startingCashCents, truck } = difficulties.difficulties[difficulty]
+  const price = content.truck.priceCents
+  switch (truck.kind) {
+    case 'owned':
+      return post(paidIn(startingCashCents), 0, MEMO.truckContributed, [
+        debit(EQUIPMENT, price),
+        credit(SHARE_CAPITAL, price),
+      ])
+    case 'loan': {
+      const { loanCents } = truck
+      const capital = sub(add(startingCashCents, price), loanCents)
+      if (capital < 0) {
+        throw new RangeError(
+          `The ${difficulty} loan of ${loanCents} is more than the truck of ${price} and the starting cash of ${startingCashCents}`,
+        )
+      }
+      const journal = post(paidIn(capital), 0, MEMO.loan, [
+        debit(CASH, loanCents),
+        credit(BANK_LOANS, loanCents),
+      ])
+      return pay(journal, 0, MEMO.truckBought, EQUIPMENT, price)
+    }
+    case 'lease':
+      return paidIn(startingCashCents)
+  }
+}
+
+/** The owner's Mise de fonds, the first entry of the books. */
+function paidIn(capital: Cents): Journal {
   return post(emptyJournal(), 0, MEMO.capital, [
     debit(CASH, capital),
     credit(SHARE_CAPITAL, capital),
@@ -73,26 +142,34 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
 }
 
 /**
- * Plays business day `state.day`, which falls on ISO `weekday` (1 = Monday),
- * with `state.decisions`. On a day the truck opens: the morning restock,
- * then the walk-in customers buying from the stock on hand as they arrive.
- * On a day it is closed, nobody comes and nothing is bought, so the
- * generator does not move. Every day: the fixed costs, and the spoilage at
- * the close. Every entry is dated `state.day`. Returns a new state on the
- * same day with the books, the stock, the generator and `lastDay` brought up
- * to the close; never mutates `state`. Cash may go negative.
+ * Plays business day `state.day` with `state.decisions`. On the 1st of the
+ * month, open or closed: the month's charges (see `monthlyCharges`). On a
+ * day the truck opens: the morning restock, then the walk-in customers
+ * buying from the stock on hand as they arrive, what the sales cost in
+ * packaging and card fees, and the fuel. On a day it is closed, nobody comes
+ * and nothing is bought, so the generator does not move. On payday, open or
+ * closed, the owner's weekly pay. Every day: the spoilage at the close.
+ * Every entry is dated `state.day`. Returns a new state on the same day with
+ * the books, the stock, the generator and `lastDay` brought up to the close;
+ * never mutates `state`. Cash may go negative.
  */
 export function playDay(
   state: GameState,
-  weekday: number,
   content: FoodTruckContent = FOOD_TRUCK,
   customers: CustomerContent = CUSTOMERS,
+  difficulties: DifficultyContent = DIFFICULTIES,
 ): GameState {
   const { day, decisions } = state
+  const { dayOfMonth, weekday } = toCalendar(day)
   let journal = state.journal
   let lots = state.inventory
   let served = closed(state.rngState)
   let revenue = ZERO
+
+  if (dayOfMonth === 1) {
+    const { truck } = difficulties.difficulties[state.profile.difficulty]
+    journal = monthlyCharges(journal, day, content, truck)
+  }
 
   if (decisions.daysOpen.includes(weekday)) {
     const restocked = restock(lots, day, decisions.restock, content)
@@ -111,9 +188,10 @@ export function playDay(
       perProduct((product) => onHand(restocked.lots, product)),
     )
 
-    // The sale and its cost are separate entries, so each cash entry's other
-    // lines stay on one row of the état des flux de trésorerie.
-    const sales = sell(restocked.lots, served.sold, price)
+    // The sale, its cost and what it costs to make are separate entries, so
+    // each cash entry's other lines stay on one row of the état des flux de
+    // trésorerie.
+    const sales = sell(restocked.lots, served.sold, price, content.products)
     journal = post(journal, day, MEMO.sales, [
       debit(CASH, sales.revenue),
       credit(SALES, sales.revenue),
@@ -122,16 +200,25 @@ export function playDay(
       debit(COST_OF_GOODS_SOLD, sales.cost),
       credit(INVENTORY, sales.cost),
     ])
+    journal = pay(journal, day, MEMO.packaging, PACKAGING, sales.packaging)
+    const { share, feeRate } = content.cardPayments
+    const cardFees = mulRatio(mulRatio(sales.revenue, share), feeRate)
+    journal = pay(journal, day, MEMO.cardFees, CARD_FEES, cardFees)
     lots = sales.lots
     revenue = sales.revenue
+
+    journal = pay(
+      journal,
+      day,
+      MEMO.fuel,
+      FUEL_AND_MAINTENANCE,
+      content.fuelAndMaintenancePerOpenDayCents,
+    )
   }
 
-  const { rentAndPermit, fuelAndMaintenance } = content.dailyFixedCostsCents
-  journal = post(journal, day, MEMO.fixedCosts, [
-    debit(RENT_AND_PERMIT, rentAndPermit),
-    debit(FUEL_AND_MAINTENANCE, fuelAndMaintenance),
-    credit(CASH, add(rentAndPermit, fuelAndMaintenance)),
-  ])
+  if (weekday === content.ownerPayWeekday) {
+    journal = pay(journal, day, MEMO.ownerPay, WAGES, decisions.ownerWeeklyPay)
+  }
 
   const expired = removeExpired(
     lots,
@@ -158,6 +245,80 @@ export function playDay(
       visits: served.visits,
     },
   }
+}
+
+/**
+ * What the 1st of the month costs, open or closed: the permit, parking and
+ * commissary, the insurance, then the truck's own charges, which depend on
+ * how it came to the business. Month 0 is the month of day 0.
+ */
+function monthlyCharges(
+  journal: Journal,
+  day: Day,
+  content: FoodTruckContent,
+  truck: Difficulty['truck'],
+): Journal {
+  const { permitParkingAndCommissary, insurance } = content.monthlyCostsCents
+  let books = pay(
+    journal,
+    day,
+    MEMO.permit,
+    RENT_AND_PERMIT,
+    permitParkingAndCommissary,
+  )
+  books = pay(books, day, MEMO.insurance, INSURANCE, insurance)
+  const month = monthsSinceStart(day)
+  switch (truck.kind) {
+    case 'owned':
+      return depreciate(books, day, month, content.truck)
+    case 'loan':
+      books = repay(books, day, month, truck)
+      return depreciate(books, day, month, content.truck)
+    case 'lease':
+      return pay(books, day, MEMO.lease, TRUCK_LEASE, truck.monthlyLeaseCents)
+  }
+}
+
+type Loan = Extract<Difficulty['truck'], { kind: 'loan' }>
+
+/**
+ * Pays loan payment number `month` of `loanSchedule()`, the first a month
+ * after the loan: its interest, then its principal, as two entries. Nothing
+ * before the first payment or after the last.
+ */
+function repay(journal: Journal, day: Day, month: number, loan: Loan): Journal {
+  if (month < 1 || month > loan.termMonths) return journal
+  const { payments } = loanSchedule(
+    loan.loanCents,
+    loan.annualRateBasisPoints,
+    loan.termMonths,
+  )
+  const payment = payments[month - 1]
+  if (payment === undefined) return journal
+  const books = pay(journal, day, MEMO.interest, INTEREST, payment.interest)
+  return pay(books, day, MEMO.principal, BANK_LOANS, payment.principal)
+}
+
+/**
+ * Month `month`'s straight-line depreciation of the truck: its price over
+ * its useful life, rounded down to the cent, with the last month taking what
+ * the rounding left, so the months add up to the price. Nothing after.
+ */
+function depreciate(
+  journal: Journal,
+  day: Day,
+  month: number,
+  { priceCents, usefulLifeMonths }: FoodTruckContent['truck'],
+): Journal {
+  if (month >= usefulLifeMonths) return journal
+  const remainder = priceCents % usefulLifeMonths
+  const monthly = cents((priceCents - remainder) / usefulLifeMonths)
+  const amount =
+    month === usefulLifeMonths - 1 ? add(monthly, cents(remainder)) : monthly
+  return post(journal, day, MEMO.depreciation, [
+    debit(DEPRECIATION, amount),
+    credit(ACCUMULATED_DEPRECIATION, amount),
+  ])
 }
 
 /** A closed day's walk-ins: nobody, with no draw from `rngState`. */
@@ -213,6 +374,8 @@ interface Sales {
   revenue: Cents
   /** What the units sold cost, first in, first out. */
   cost: Cents
+  /** What the units sold went out in. */
+  packaging: Cents
 }
 
 /**
@@ -224,17 +387,23 @@ function sell(
   lots: readonly Lot[],
   sold: PerProduct,
   price: (product: ProductId) => Cents,
+  products: FoodTruckContent['products'],
 ): Sales {
   let left = lots
   let revenue = ZERO
   let cost = ZERO
+  let packaging = ZERO
   for (const product of PRODUCTS) {
     const taken = takeFifo(left, product, sold[product])
     left = taken.lots
     revenue = add(revenue, mulInt(price(product), taken.taken))
     cost = add(cost, taken.cost)
+    packaging = add(
+      packaging,
+      mulInt(products[product].packagingCents, taken.taken),
+    )
   }
-  return { lots: left, revenue, cost }
+  return { lots: left, revenue, cost, packaging }
 }
 
 /**
@@ -251,6 +420,20 @@ function post(
   return moved.length === 0
     ? journal
     : postEntry(journal, { day, memo, lines: moved })
+}
+
+/** An entry paying `amount` out of Encaisse, charged to `account`. */
+function pay(
+  journal: Journal,
+  day: Day,
+  memo: string,
+  account: AccountCode,
+  amount: Cents,
+): Journal {
+  return post(journal, day, memo, [
+    debit(account, amount),
+    credit(CASH, amount),
+  ])
 }
 
 function debit(account: AccountCode, amount: Cents): JournalLine {

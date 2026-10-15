@@ -40,7 +40,12 @@ describe('difficultyLine', () => {
       difficultyLine({
         name: 'Test',
         startingCashCents: cents(123_456),
-        truck: { kind: 'loan', loanCents: cents(100) },
+        truck: {
+          kind: 'loan',
+          loanCents: cents(100),
+          annualRateBasisPoints: 800,
+          termMonths: 60,
+        },
       }),
     ).toBe(
       `Prêt de démarrage de 1,00${S}$ à la Caisse, 1${S}234,56${S}$ en banque`,
