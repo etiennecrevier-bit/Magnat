@@ -1,18 +1,95 @@
-import { useEffect, useRef } from 'react'
+import {
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+  type CSSProperties,
+} from 'react'
+import { MOOD_COLORS, MOOD_WORDS, quoted } from './customerCard.ts'
+import { ASSETS } from './manifest.ts'
 import { mountWorld, worldOptions } from './mountWorld.ts'
+import { listenForPicks, PICKER, type OpenCard } from './picker.ts'
 import { startStreet } from './street.ts'
 import './WorldCanvas.css'
 
-/** The street, drawn behind the panels. Screen readers skip it. */
+/**
+ * The street, drawn behind the panels, which screen readers skip; while it
+ * runs, the button that picks a customer from the keyboard, hidden until it
+ * has focus; and the card of the customer the player picked, over the
+ * panels.
+ */
 export default function WorldCanvas() {
   const ref = useRef<HTMLDivElement>(null)
+  const { live, open, said } = useSyncExternalStore(
+    PICKER.subscribe,
+    PICKER.view,
+    PICKER.view,
+  )
 
   useEffect(() => {
-    if (ref.current === null) return
-    return mountWorld(ref.current, worldOptions(window), (app) =>
+    const world = ref.current
+    if (world === null) return
+    const stopListening = listenForPicks(window, world, PICKER, (pointing) =>
+      world.classList.toggle('world--pointing', pointing),
+    )
+    const unmount = mountWorld(world, worldOptions(window), (app) =>
       startStreet(app),
     )
+    return () => {
+      stopListening()
+      unmount()
+    }
   }, [])
 
-  return <div className="world" aria-hidden="true" ref={ref} />
+  // The status line reads every card out; it only shows, beside the button,
+  // when no card does: on an empty street.
+  const status =
+    open === null && said !== ''
+      ? 'world-picker__status world-picker__status--shown'
+      : 'world-picker__status'
+  return (
+    <>
+      <div className="world" aria-hidden="true" ref={ref} />
+      {live && (
+        <div className="world-picker" data-world-control="">
+          <button
+            type="button"
+            className="world-picker__button"
+            onClick={() => PICKER.next()}
+          >
+            Écouter un client
+          </button>
+          <p className={status} role="status">
+            {said}
+          </p>
+        </div>
+      )}
+      {open !== null && <CustomerCardView open={open} />}
+    </>
+  )
+}
+
+/**
+ * The open card, beside its customer and over the panels. Screen readers
+ * skip it: the status line reads out the same words.
+ */
+function CustomerCardView({ open }: { open: OpenCard }) {
+  const { card, place } = open
+  const style = {
+    left: place.left,
+    bottom: place.bottom,
+    width: place.width,
+    '--mood-color': ASSETS.palette[MOOD_COLORS[card.mood]],
+  } as CSSProperties
+  return (
+    <div
+      className="customer-card"
+      data-world-control=""
+      aria-hidden="true"
+      style={style}
+    >
+      <p className="customer-card__name">{card.name}</p>
+      <p className="customer-card__mood">{MOOD_WORDS[card.mood]}</p>
+      <p className="customer-card__line">{quoted(card.line)}</p>
+    </div>
+  )
 }

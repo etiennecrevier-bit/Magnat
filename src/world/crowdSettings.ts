@@ -3,7 +3,8 @@
 // than in src/content/: the card that added them was held to src/world/, an
 // exception to CLAUDE.md rule 5 that a content card may undo by moving them
 // into assets.json. Positions and lengths are logical pixels of the
-// 1440 × 900 design; times are milliseconds.
+// 1440 × 900 design, except the card's and the pick's, which are CSS pixels
+// of the page; times are milliseconds.
 
 /** How the crowd replays yesterday's visits at one game speed. */
 export interface SpeedCrowd {
@@ -74,6 +75,20 @@ export interface CrowdSettings {
     readonly height: number
     readonly fontSize: number
   }
+  /** The card beside a customer the player picks, in CSS pixels. */
+  readonly card: {
+    /** Its width, unless the page is narrower. */
+    readonly width: number
+    /** The room between it and its customer. */
+    readonly gap: number
+    /** The least room between it and the page's edges. */
+    readonly margin: number
+  }
+  /**
+   * How far outside a customer's drawing a press still picks them, in CSS
+   * pixels: they keep walking while the player aims.
+   */
+  readonly pickMargin: number
   /** What customers look like; each one draws from these at random. */
   readonly looks: {
     /** A customer's height from their feet to the top of their head. */
@@ -129,6 +144,8 @@ export const CROWD: CrowdSettings = {
   bob: { height: 3, stride: 28 },
   avatar: { x: 982, feetY: 694, height: 150, skin: '#C98E62', hair: '#3B2A20' },
   tally: { x: 420, y: 724, width: 330, height: 96, fontSize: 30 },
+  card: { width: 260, gap: 10, margin: 8 },
+  pickMargin: 8,
   looks: {
     height: { min: 132, max: 166 },
     childHeight: { min: 78, max: 96 },

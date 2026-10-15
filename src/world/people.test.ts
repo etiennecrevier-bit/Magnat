@@ -4,10 +4,12 @@ import type { SegmentId } from '../content/schema.ts'
 import { next, seedRng } from '../engine/rng.ts'
 import { CROWD } from './crowdSettings.ts'
 import { ASSETS } from './manifest.ts'
+import { MOOD_COLORS } from './customerCard.ts'
 import {
   drawAvatar,
   drawBubble,
   drawCustomer,
+  drawPickMark,
   pickLook,
   SEGMENT_ACCESSORY,
   type Look,
@@ -225,6 +227,31 @@ describe('drawBubble', () => {
       (mood) => labels(find(drawBubble(mood, STYLE), `face:${mood}`)).join(),
     )
     expect(new Set(faces).size).toBe(4)
+  })
+
+  it("draws each face in the colour the customer's card gives its mood", () => {
+    for (const mood of ['happy', 'annoyed', 'sad', 'neutral'] as const) {
+      const face = find(drawBubble(mood, STYLE), `face:${mood}`)
+      const drawn = face.children.flatMap((g) => [
+        ...colours(g, 'fill'),
+        ...colours(g, 'stroke'),
+      ])
+      expect(new Set(drawn)).toEqual(
+        new Set([hex(STYLE.palette[MOOD_COLORS[mood]])]),
+      )
+    }
+  })
+})
+
+describe('drawPickMark', () => {
+  it('rings the feet in player blue, wider than it is deep', () => {
+    const mark = drawPickMark(150, STYLE)
+    expect(mark.label).toBe('pickMark')
+    expect(colours(mark, 'stroke')).toEqual([hex(STYLE.palette.playerBlue)])
+    const { minX, maxX, minY, maxY } = mark.getLocalBounds()
+    expect((minX + maxX) / 2).toBeCloseTo(0)
+    expect((minY + maxY) / 2).toBeCloseTo(0)
+    expect(maxX - minX).toBeGreaterThan(maxY - minY)
   })
 })
 

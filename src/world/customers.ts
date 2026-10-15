@@ -1,11 +1,27 @@
 import { Container, Graphics, Text } from 'pixi.js'
 import type { AssetManifest } from '../content/assets.ts'
+import type { CustomerLines } from '../content/lines.ts'
 import type { Avatar, WalkIns } from '../content/schema.ts'
 import type { GameState } from '../engine/types.ts'
 import { bobOf, createCrowd, type Span } from './crowd.ts'
 import type { CrowdSettings } from './crowdSettings.ts'
+import {
+  cardOf,
+  customerAt,
+  nextOnScreen,
+  type Box,
+  type CustomerCard,
+  type Point,
+  type Target,
+} from './customerCard.ts'
 import { TITLE_FONT, TITLE_FONT_FAMILY } from './fonts.ts'
-import { drawAvatar, drawBubble, drawCustomer, pickLook } from './people.ts'
+import {
+  drawAvatar,
+  drawBubble,
+  drawCustomer,
+  drawPickMark,
+  pickLook,
+} from './people.ts'
 import type { PlaceholderStyle } from './placeholders.ts'
 import {
   createDayClock,
@@ -26,8 +42,31 @@ export interface Customers {
    * `span` of the street on screen.
    */
   frame: (deltaMs: number, speed: number, span: Span) => void
+  /**
+   * Opens the card of the customer drawn at `point` on the page, or closes
+   * the card when no one is there. Returns whether a card is open.
+   */
+  pickAt: (point: Point) => boolean
+  /** Whether a customer is drawn at `point` on the page. */
+  isOver: (point: Point) => boolean
+  /**
+   * Opens the card of the next customer standing within `span`, in the order
+   * they came, back to the first after the last. Returns false, with the
+   * card closed, when no one stands within it.
+   */
+  pickNext: (span: Span) => boolean
+  /** Closes the card. */
+  unpick: () => void
+  /** The open card, and where its customer is drawn; null when none is. */
+  picked: () => Picked | null
   /** Takes everything down. */
   destroy: () => void
+}
+
+/** The card the player opened, and where its customer is drawn on the page. */
+export interface Picked {
+  readonly card: CustomerCard
+  readonly box: Box
 }
 
 /** What the customers need from the street and the game. */
@@ -40,6 +79,8 @@ export interface CustomersSetup {
   readonly walkIns: WalkIns
   /** A day's length at speed 1, in real milliseconds. */
   readonly msPerDay: number
+  /** What customers say when the player picks them. */
+  readonly lines: CustomerLines
   readonly random: () => number
 }
 
@@ -51,6 +92,10 @@ export interface CustomersSetup {
  * Pausing freezes everyone, the bubbles and the avatar's arm. On a day the
  * truck is closed, the avatar is gone and everyone still waiting walks off
  * without buying.
+ *
+ * The player can pick one customer at a time, which rings their feet and
+ * opens their card (see `cardOf`), with a line picked the first time. The
+ * card closes once they walk off the screen or the street clears.
  */
 export function startCustomers(setup: CustomersSetup): Customers {
   const { street, manifest, crowd: settings, random } = setup
@@ -87,8 +132,37 @@ export function startCustomers(setup: CustomersSetup): Customers {
   let open = false
   const views = new Map<number, CustomerView>()
 
-  /** Moves each customer's drawing to where they are; drops those gone. */
-  const sync = () => {
+  // The customer whose card is open.
+  let pickedId: number | null = null
+  const pick = (id: number | null) => {
+    if (pickedId !== null) {
+      const before = views.get(pickedId)
+      if (before !== undefined) before.mark.visible = false
+    }
+    pickedId = id
+    if (id === null) return
+    const view = views.get(id)
+    const customer = crowd.customers.find((c) => c.id === id)
+    if (view === undefined || customer === undefined) {
+      pickedId = null
+      return
+    }
+    view.mark.visible = true
+    view.card ??= cardOf(customer.visit, setup.lines, random)
+  }
+  /** Everyone drawn on the street, where they are drawn on the page. */
+  const targets = (): Target[] =>
+    crowd.customers.flatMap((c) => {
+      const view = views.get(c.id)
+      if (view === undefined) return []
+      return [{ id: c.id, box: boxOf(view.figure), depth: c.y }]
+    })
+
+  /**
+   * Moves each customer's drawing to where they are; drops those gone, and
+   * closes the card of a customer who has walked off `span`.
+   */
+  const sync = (span: Span) => {
     const present = new Set<number>()
     for (const c of crowd.customers) {
       const view = views.get(c.id)
@@ -98,9 +172,12 @@ export function startCustomers(setup: CustomersSetup): Customers {
       view.root.zIndex = c.y
       view.figure.scale.x = c.facing
       view.bubble.visible = c.bubble
+      const offScreen = c.x < span.left || c.x > span.right
+      if (c.id === pickedId && c.phase === 'leaving' && offScreen) pick(null)
     }
     for (const [id, view] of views) {
       if (present.has(id)) continue
+      if (id === pickedId) pick(null)
       view.root.destroy({ children: true })
       views.delete(id)
     }
@@ -137,7 +214,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
         crowd.clear()
         avatar?.rest()
         tally.root.visible = replay !== null
-        sync()
+        sync(span)
         return
       }
       tally.root.visible = false
@@ -158,6 +235,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
         const view = createCustomerView(
           drawCustomer(look, style, settings.looks),
           drawBubble(c.mood, style),
+          drawPickMark(look.height, style),
           look.height,
         )
         views.set(c.id, view)
@@ -166,11 +244,29 @@ export function startCustomers(setup: CustomersSetup): Customers {
       const served = crowd.update(deltaMs, walking.pace, span)
       if (served.length > 0 && open) avatar?.serve()
       avatar?.update(deltaMs * walking.pace)
-      sync()
+      sync(span)
+    },
+    pickAt: (point) => {
+      pick(customerAt(point, targets(), settings.pickMargin))
+      return pickedId !== null
+    },
+    isOver: (point) =>
+      customerAt(point, targets(), settings.pickMargin) !== null,
+    pickNext: (span) => {
+      const shown = crowd.customers.filter((c) => views.has(c.id))
+      pick(nextOnScreen(shown, pickedId, span))
+      return pickedId !== null
+    },
+    unpick: () => pick(null),
+    picked: () => {
+      const view = pickedId === null ? undefined : views.get(pickedId)
+      if (view === undefined || view.card === null) return null
+      return { card: view.card, box: boxOf(view.figure) }
     },
     destroy: () => {
       avatar?.destroy()
       avatar = null
+      pickedId = null
       views.clear()
       root.destroy({ children: true })
     },
@@ -182,18 +278,33 @@ interface CustomerView {
   /** The person, turned to face where they walk. */
   readonly figure: Container
   readonly bubble: Container
+  /** The ring at their feet while their card is open. */
+  readonly mark: Container
+  /** Their card, from the first time the player picks them. */
+  card: CustomerCard | null
 }
 
 function createCustomerView(
   figure: Container,
   bubble: Container,
+  mark: Container,
   height: number,
 ): CustomerView {
   figure.label = 'figure'
   bubble.y = -height - 6
   bubble.visible = false
-  const root = new Container({ label: 'customer', children: [figure, bubble] })
-  return { root, figure, bubble }
+  mark.visible = false
+  const root = new Container({
+    label: 'customer',
+    children: [mark, figure, bubble],
+  })
+  return { root, figure, bubble, mark, card: null }
+}
+
+/** Where `node` is drawn on the page: the stage's pixels are the page's. */
+function boxOf(node: Container): Box {
+  const { minX, minY, maxX, maxY } = node.getBounds()
+  return { left: minX, top: minY, right: maxX, bottom: maxY }
 }
 
 /** The avatar behind the counter, and the arm that reaches for each sale. */
