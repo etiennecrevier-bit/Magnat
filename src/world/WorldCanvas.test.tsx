@@ -173,6 +173,20 @@ describe('the picker', () => {
 describe('the panels over the street', () => {
   const card = declarations(worldCss, '.world ~ main')
 
+  it('hide the world and everything drawn over it, its grain and vignette included', () => {
+    // The atmosphere is drawn on the world's own canvas (see street.ts), in
+    // the fixed layer stacked under the page; the panels' card, not
+    // positioned, paints over it, and its background lets none through.
+    const world = declarations(worldCss, '.world')
+    expect(world.position).toBe('fixed')
+    expect(Number(world['z-index'])).toBeLessThan(0)
+    expect(card['z-index']).toBeUndefined()
+    expect(card.background).toMatch(/^#[0-9a-f]{6}$/)
+    expect(renderToStaticMarkup(<WorldCanvas />)).toBe(
+      '<div class="world" aria-hidden="true"></div>',
+    )
+  })
+
   it('sit on an opaque card in the palette cream, outlined in ink', () => {
     expect(card.background).toMatch(/^#[0-9a-f]{6}$/)
     expect(card.background).toBe(ASSETS.palette.cream.toLowerCase())

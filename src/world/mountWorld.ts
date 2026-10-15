@@ -15,6 +15,15 @@ export const SKY_COLOR = ASSETS.palette.sky
 export interface WorldApp {
   readonly canvas: HTMLCanvasElement
   readonly stage: Container
+  /**
+   * Which renderer Pixi picked: WebGL, WebGPU or Canvas 2D (`RendererType`),
+   * and WebGL's back buffer, which the world turns off when nothing blends
+   * with it.
+   */
+  readonly renderer?: {
+    readonly type: number
+    readonly backBuffer?: { useBackBuffer: boolean }
+  }
   /** The canvas size, in the logical pixels the stage is drawn in. */
   readonly screen: { readonly width: number; readonly height: number }
   readonly ticker: {
@@ -36,7 +45,9 @@ export type StartWorld = (app: WorldApp) => Promise<() => void>
 
 /**
  * The options the world starts Pixi with: the sky, on a canvas that fills
- * `view` and follows its resizes at the screen's pixel density.
+ * `view` and follows its resizes at the screen's pixel density. WebGL draws
+ * to a back buffer, which the overlay and soft light of the atmosphere
+ * blend with (see atmosphere.ts).
  */
 export function worldOptions(view: Window): Partial<ApplicationOptions> {
   return {
@@ -45,6 +56,7 @@ export function worldOptions(view: Window): Partial<ApplicationOptions> {
     resolution: view.devicePixelRatio,
     autoDensity: true,
     antialias: true,
+    useBackBuffer: true,
   }
 }
 

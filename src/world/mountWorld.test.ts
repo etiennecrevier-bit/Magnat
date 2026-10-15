@@ -174,6 +174,13 @@ describe('worldOptions', () => {
       resolution: 2,
       autoDensity: true,
       antialias: true,
+      useBackBuffer: true,
     })
+  })
+
+  it('draws to a back buffer, which overlay and soft light blend with', () => {
+    expect(worldOptions({ devicePixelRatio: 1 } as Window).useBackBuffer).toBe(
+      true,
+    )
   })
 })

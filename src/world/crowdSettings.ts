@@ -171,7 +171,7 @@ export const CROWD: CrowdSettings = {
     clothes: [
       '#5B8C47',
       '#C06A43',
-      '#8C6B9E',
+      '#7A7436',
       '#6E7F8C',
       '#D9A441',
       '#A34E5C',

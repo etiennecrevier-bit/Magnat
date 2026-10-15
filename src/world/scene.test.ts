@@ -1,10 +1,20 @@
-import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js'
+import {
+  Container,
+  Graphics,
+  Sprite,
+  Text,
+  Texture,
+  TilingSprite,
+  type Filter,
+} from 'pixi.js'
 import { describe, expect, it, vi } from 'vitest'
 import type { AssetManifest } from '../content/assets.ts'
 import { ART_URLS, loadArt } from './art.ts'
+import { tonesOf } from './light.ts'
 import { ASSETS } from './manifest.ts'
 import { SKY_COLOR } from './mountWorld.ts'
 import { buildScene, type Scene } from './scene.ts'
+import type { MakeFilters, ShadowFilters } from './shadows.ts'
 import type { TruckView } from './truckView.ts'
 
 const OPEN: TruckView = {
@@ -24,12 +34,62 @@ function withImages(images: Record<string, string>): AssetManifest {
   }
 }
 
+/**
+ * Filters that only say what they were asked for: Pixi's need a canvas,
+ * which Node has none of.
+ */
+function fakeFilters(): MakeFilters & { asked: ShadowFilters[] } {
+  const asked: ShadowFilters[] = []
+  const make = (wanted: ShadowFilters) => {
+    asked.push(wanted)
+    return [{ ...wanted, destroy: () => {} }] as unknown as Filter[]
+  }
+  return Object.assign(make, { asked })
+}
+
 /** Builds the scene with text measured as 100 wide: node has no canvas. */
 function build(
   manifest: AssetManifest,
   textures: ReadonlyMap<string, Texture> = new Map(),
+  makeFilters: MakeFilters | null = fakeFilters(),
 ): Scene {
-  return buildScene(manifest, textures, () => 100)
+  return buildScene(manifest, textures, () => 100, makeFilters)
+}
+
+const hex = (colour: string) => Number.parseInt(colour.slice(1), 16)
+
+/** `root` and every node under it, depth first. */
+function everything(root: Container): Container[] {
+  return [root, ...root.children.flatMap((child) => everything(child))]
+}
+
+/** The colours every Graphics under `root` strokes or fills with. */
+function colours(root: Container, action: 'fill' | 'stroke'): number[] {
+  return everything(root).flatMap((node) =>
+    node instanceof Graphics
+      ? node.context.instructions
+          .filter((i) => i.action === action)
+          .map((i) => (i.data.style as { color: number }).color)
+      : [],
+  )
+}
+
+/** The shadow layer's cast and contact shadows. */
+function ground(scene: Scene) {
+  const layer = scene.root.getChildByLabel(`layer:${ASSETS.light.shadowLayer}`)!
+  return {
+    layer,
+    cast: layer.getChildByLabel('cast')!,
+    contact: layer.getChildByLabel('contact')!,
+  }
+}
+
+/** The labels of the shadows `owner` throws. */
+function shadowsOf(scene: Scene, owner: string): Container[] {
+  const { cast, contact } = ground(scene)
+  return [...cast.children, ...contact.children].filter((s) =>
+    s.label.endsWith(`:${owner}`),
+  )
 }
 
 function node(scene: Scene, id: string): Container {
@@ -53,7 +113,9 @@ describe('buildScene', () => {
 
   it('draws every piece in its layer, in order, at its position, with its placeholder', () => {
     const scene = build(ASSETS)
+    const shadows = `layer:${ASSETS.light.shadowLayer}`
     for (const layer of scene.root.children) {
+      if (layer.label === shadows) continue
       expect(layer.children.map((piece) => piece.label)).toEqual(
         ASSETS.pieces
           .filter((p) => `layer:${p.layer}` === layer.label)
@@ -96,6 +158,182 @@ describe('buildScene', () => {
 
   it('paints the sky the canvas is cleared to', () => {
     expect(ASSETS.palette.sky).toBe(SKY_COLOR)
+  })
+})
+
+describe('the light on the placeholders', () => {
+  it('draws no outlines', () => {
+    const scene = build(ASSETS)
+    for (const piece of ASSETS.pieces) {
+      expect(colours(art(scene, piece.id), 'stroke'), piece.id).not.toContain(
+        hex(ASSETS.palette.ink),
+      )
+    }
+  })
+
+  it('lights each surface in the tones of its colour', () => {
+    const scene = build(ASSETS)
+    const { palette, light } = ASSETS
+    // The street is a top face: asphalt mixed with the sun, as the rule
+    // sheet gives it.
+    expect(colours(art(scene, 'street'), 'fill')).toContain(hex('#80796E'))
+    const truck = tonesOf(palette.mustard, light)
+    expect(colours(art(scene, 'truck'), 'fill')).toEqual(
+      expect.arrayContaining([truck.top, truck.lit, truck.shade].map(hex)),
+    )
+    const leaves = tonesOf(palette.foliage, light)
+    expect(colours(art(scene, 'tree'), 'fill')).toEqual(
+      expect.arrayContaining([leaves.top, leaves.lit, leaves.shade].map(hex)),
+    )
+  })
+
+  it('grades each facade from light at the top to slate at the foot, and lays bricks on it', () => {
+    const scene = build(ASSETS)
+    const facade = (id: string) =>
+      art(scene, id).getChildByLabel('facade') as Sprite
+    const bricks = (id: string) =>
+      art(scene, id).getChildByLabel('bricks') as TilingSprite
+    const triplexes = ASSETS.pieces.filter((p) => p.kind === 'triplex')
+    for (const piece of triplexes) {
+      expect(facade(piece.id).width).toBeCloseTo(piece.width)
+      expect(facade(piece.id).height).toBeCloseTo(piece.height)
+      expect(facade(piece.id).texture.label).toBe(
+        `facade:${ASSETS.palette[piece.color]}`,
+      )
+      expect(bricks(piece.id)).toBeInstanceOf(TilingSprite)
+    }
+    // Each texture is made once and shared: one per facade colour, one for
+    // all the bricks.
+    expect(facade('triplex-1').texture).toBe(facade('triplex-4').texture)
+    expect(facade('triplex-1').texture).not.toBe(facade('triplex-2').texture)
+    expect(
+      new Set(triplexes.map((piece) => bricks(piece.id).texture)).size,
+    ).toBe(1)
+  })
+
+  it('tiles the sidewalk and speckles the street', () => {
+    const scene = build(ASSETS)
+    expect(art(scene, 'sidewalk').getChildByLabel('tiles')).toBeInstanceOf(
+      TilingSprite,
+    )
+    expect(art(scene, 'street').getChildByLabel('speckle')).toBeInstanceOf(
+      TilingSprite,
+    )
+  })
+
+  it('throws short shadows under cornices, balconies, sills and the awning', () => {
+    const scene = build(ASSETS)
+    const { opacity, depth } = ASSETS.light.ledgeShadow
+    const ledges = (id: string, kind: string) =>
+      art(scene, id).children.filter((c) => c.label === `ledgeShadow:${kind}`)
+    expect(ledges('triplex-1', 'cornice')).toHaveLength(1)
+    expect(ledges('triplex-1', 'balcony')).toHaveLength(2)
+    // A hood over each of the six windows, and a sill under each.
+    expect(ledges('triplex-1', 'sill')).toHaveLength(12)
+    expect(ledges('awning', 'awning')).toHaveLength(1)
+    for (const [id, kind] of [
+      ['triplex-1', 'cornice'],
+      ['triplex-1', 'balcony'],
+      ['triplex-1', 'sill'],
+      ['awning', 'awning'],
+    ] as const) {
+      for (const shadow of ledges(id, kind)) {
+        expect(shadow.alpha).toBe(opacity)
+        expect(shadow.height).toBeCloseTo(depth[kind])
+      }
+    }
+  })
+})
+
+describe('the shadows on the ground', () => {
+  it('fill the shadow layer, the contact shadows over the cast ones', () => {
+    const { layer, cast, contact } = ground(build(ASSETS))
+    expect(layer.children).toEqual([cast, contact])
+  })
+
+  it.each([
+    ['tree', 'tree', 1],
+    ['lamp-post', 'lampPost', 1],
+    ['truck', 'wheel', 2],
+  ] as const)(
+    "throws the %s's shadows from its foot to the lower right",
+    (id, kind, contacts) => {
+      const scene = build(ASSETS)
+      const piece = ASSETS.pieces.find((p) => p.id === id)!
+      const foot = { x: piece.x + piece.width / 2, y: piece.y + piece.height }
+      const cast = shadowsOf(scene, id).filter((s) =>
+        s.label.startsWith('cast:'),
+      )
+      const contact = shadowsOf(scene, id).filter((s) =>
+        s.label.startsWith('contact:'),
+      )
+      expect(cast.length).toBeGreaterThan(0)
+      for (const shadow of cast) {
+        const { minX, maxX, maxY } = shadow.getBounds()
+        // Further right than the foot is wide, and down onto the ground.
+        expect(maxX - foot.x).toBeGreaterThan(foot.x - minX)
+        expect(maxY).toBeGreaterThan(foot.y)
+      }
+      expect(contact).toHaveLength(contacts)
+      for (const shadow of contact) {
+        expect(shadow.y).toBeCloseTo(foot.y)
+        expect(shadow.alpha).toBe(ASSETS.light.contactShadow.opacity[kind])
+        expect(shadow.width).toBeGreaterThan(shadow.height)
+      }
+    },
+  )
+
+  it('leaves the shading and the shadows of a piece with an image to its art', async () => {
+    const manifest = withImages({ tree: 'dummy.png', truck: 'dummy.png' })
+    const textures = new Map([['dummy.png', new Texture()]])
+    const scene = build(manifest, textures)
+    expect(art(scene, 'tree')).toBeInstanceOf(Sprite)
+    expect(shadowsOf(scene, 'tree')).toEqual([])
+    expect(shadowsOf(scene, 'truck')).toEqual([])
+    expect(shadowsOf(scene, 'lamp-post').length).toBeGreaterThan(0)
+  })
+
+  it('blurs the cast shadows and fades them as one, without the blur when simple', () => {
+    const filters = fakeFilters()
+    const scene = build(ASSETS, new Map(), filters)
+    const { cast } = ground(scene)
+    const { blur, opacity } = ASSETS.light.castShadow
+    expect(filters.asked).toEqual([{ blur, opacity }])
+    expect(cast.filters).toEqual([expect.objectContaining({ blur, opacity })])
+    expect(cast.alpha).toBe(1)
+
+    scene.setEffects('simple')
+    expect(filters.asked).toEqual([
+      { blur, opacity },
+      { blur: 0, opacity },
+    ])
+    expect(cast.filters).toEqual([
+      expect.objectContaining({ blur: 0, opacity }),
+    ])
+
+    scene.setEffects('full')
+    expect(filters.asked).toHaveLength(2)
+    expect(cast.filters).toEqual([expect.objectContaining({ blur, opacity })])
+  })
+
+  it('fades each cast shadow on its own where the renderer cannot filter', () => {
+    const scene = build(ASSETS, new Map(), null)
+    const { cast } = ground(scene)
+    expect(cast.alpha).toBe(ASSETS.light.castShadow.opacity)
+    expect(cast.filters ?? []).toEqual([])
+    scene.setEffects('simple')
+    expect(cast.filters ?? []).toEqual([])
+    expect(() => scene.destroy()).not.toThrow()
+  })
+
+  it('frees the textures it made when it is taken down', () => {
+    const scene = build(ASSETS)
+    const bricks = (
+      art(scene, 'triplex-1').getChildByLabel('bricks') as TilingSprite
+    ).texture
+    scene.destroy()
+    expect(scene.root.destroyed).toBe(true)
+    expect(bricks.destroyed).toBe(true)
   })
 })
 
@@ -177,7 +415,7 @@ describe('Scene.update', () => {
       node(scene, 'truck-sign').getChildByLabel('name') as Text
 
     it('writes the business name in Fredoka, centred on the sign', () => {
-      const scene = buildScene(ASSETS, new Map(), () => 100)
+      const scene = buildScene(ASSETS, new Map(), () => 100, fakeFilters())
       scene.update(OPEN)
 
       const name = nameOf(scene)
@@ -194,7 +432,7 @@ describe('Scene.update', () => {
     })
 
     it("writes the player's business name, and a new one when it changes", () => {
-      const scene = buildScene(ASSETS, new Map(), () => 100)
+      const scene = buildScene(ASSETS, new Map(), () => 100, fakeFilters())
       scene.update({ ...OPEN, businessName: 'Chez Mimi' })
       expect(nameOf(scene).text).toBe('Chez Mimi')
       scene.update(OPEN)
@@ -202,7 +440,7 @@ describe('Scene.update', () => {
     })
 
     it('shrinks a name too wide for the sign to fit', () => {
-      const scene = buildScene(ASSETS, new Map(), () => 600)
+      const scene = buildScene(ASSETS, new Map(), () => 600, fakeFilters())
       scene.update(OPEN)
       const room = sign.width - 2 * ASSETS.signText.paddingX
       expect(nameOf(scene).scale.x).toBeCloseTo(room / 600)
@@ -211,7 +449,7 @@ describe('Scene.update', () => {
 
     it('measures the name only when it changes', () => {
       const measure = vi.fn(() => 100)
-      const scene = buildScene(ASSETS, new Map(), measure)
+      const scene = buildScene(ASSETS, new Map(), measure, fakeFilters())
       scene.update(OPEN)
       scene.update(CLOSED)
       expect(measure).toHaveBeenCalledOnce()

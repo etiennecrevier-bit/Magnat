@@ -6,6 +6,7 @@ import { CROWD } from './crowdSettings.ts'
 import { ASSETS } from './manifest.ts'
 import { MOOD_COLORS } from './customerCard.ts'
 import {
+  CHILD_OFFSET,
   drawAvatar,
   drawBubble,
   drawCustomer,
@@ -16,11 +17,13 @@ import {
   type ChildLook,
   type Look,
 } from './people.ts'
-import type { PlaceholderStyle } from './placeholders.ts'
+import { tonesOf } from './light.ts'
+import type { DrawStyle } from './placeholders.ts'
 
-const STYLE: PlaceholderStyle = {
+const STYLE: DrawStyle = {
   palette: ASSETS.palette,
   outline: ASSETS.outlineWidth,
+  light: ASSETS.light,
 }
 const LOOKS = CROWD.looks
 const CIRCLES = CROWD.fatigue.circlesColor
@@ -76,6 +79,61 @@ function fills(root: Container): number[] {
 }
 
 const hex = (colour: string) => Number.parseInt(colour.slice(1), 16)
+
+/** A colour in shade, as the light mixes it. */
+const shade = (colour: string) => tonesOf(colour, ASSETS.light).shade
+
+/**
+ * Each shade fill of `g` and the lit fill drawn over it, as where their
+ * shapes' centres are drawn on the stage.
+ */
+function shading(g: Graphics): { shade: Point; lit: Point }[] {
+  const centres = g.context.instructions
+    .flatMap((i) => (i.action === 'fill' ? [i.data] : []))
+    .map((data) => {
+      const { shape, transform } = data.path.shapePath.shapePrimitives[0]!
+      const box = shape.getBounds()
+      const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+      return g.toGlobal(transform ? transform.apply(centre) : centre)
+    })
+  const pairs: { shade: Point; lit: Point }[] = []
+  for (let i = 0; i + 1 < centres.length; i += 2) {
+    pairs.push({ shade: centres[i]!, lit: centres[i + 1]! })
+  }
+  return pairs
+}
+
+interface Point {
+  readonly x: number
+  readonly y: number
+}
+
+/** `look` drawn to face `facing`, turned as the street turns it. */
+function turned(look: Look, facing: 1 | -1): Container {
+  const drawn = drawCustomer(look, STYLE, LOOKS, facing)
+  drawn.scale.x = facing
+  return drawn
+}
+
+/** Hue (0 to 360) and saturation (0 to 1) of `#RRGGBB`, as HSL has them. */
+function hueOf(colour: string): { hue: number; saturation: number } {
+  const [r, g, b] = [1, 3, 5].map(
+    (i) => Number.parseInt(colour.slice(i, i + 2), 16) / 255,
+  ) as [number, number, number]
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const chroma = max - min
+  const lightness = (max + min) / 2
+  const saturation =
+    chroma === 0 ? 0 : chroma / (1 - Math.abs(2 * lightness - 1))
+  let hue = 0
+  if (chroma > 0) {
+    if (max === r) hue = ((g - b) / chroma) % 6
+    else if (max === g) hue = (b - r) / chroma + 2
+    else hue = (r - g) / chroma + 4
+  }
+  return { hue: (hue * 60 + 360) % 360, saturation }
+}
 
 /** A hand: its centre under the root and half its size. */
 interface Hand {
@@ -154,6 +212,23 @@ describe('pickLook', () => {
     expect(cues).toEqual(new Set(['lanyard', 'laptopBag']))
   })
 
+  it('dresses everyone in the warm palette, never in purple', () => {
+    const worn = [
+      ...LOOKS.clothes,
+      LOOKS.coat,
+      LOOKS.tote,
+      LOOKS.laptopBag,
+      LOOKS.trousers,
+      CROWD.avatar.hair,
+    ]
+    for (const colour of worn) {
+      const { hue, saturation } = hueOf(colour)
+      const purple = hue >= 250 && hue <= 330 && saturation > 0.08
+      expect(purple, colour).toBe(false)
+    }
+    expect(LOOKS.clothes).not.toContain('#8C6B9E')
+  })
+
   it('gives neither when their chance is 0', () => {
     const never = { ...LOOKS, officeChance: 0, familyChance: 0 }
     const random = seeded(12)
@@ -199,6 +274,10 @@ describe('drawCustomer', () => {
 
   it('changes only the skin when the skin tone changes', () => {
     const [light, dark] = [LOOKS.skinTones[0]!, LOOKS.skinTones[5]!]
+    const swap = new Map([
+      [hex(light), hex(dark)],
+      [hex(shade(light)), hex(shade(dark))],
+    ])
     for (const segment of SEGMENTS) {
       const a = fills(
         drawCustomer({ ...LOOK, segment, skin: light }, STYLE, LOOKS),
@@ -207,7 +286,68 @@ describe('drawCustomer', () => {
         drawCustomer({ ...LOOK, segment, skin: dark }, STYLE, LOOKS),
       )
       expect(a).toContain(hex(light))
-      expect(a.map((c) => (c === hex(light) ? hex(dark) : c))).toEqual(b)
+      expect(a.map((c) => swap.get(c) ?? c)).toEqual(b)
+    }
+  })
+
+  it('fills each part in its colour in shade, then lit, both outlined', () => {
+    const drawn = drawCustomer(LOOK, STYLE, LOOKS)
+    expect(colours(find(drawn, 'torso'), 'fill')).toEqual([
+      hex(shade(LOOK.clothes)),
+      hex(LOOK.clothes),
+    ])
+    expect(colours(find(drawn, 'head'), 'fill')).toEqual([
+      hex(shade(LOOK.skin)),
+      hex(LOOK.skin),
+    ])
+    // Slate, never black.
+    expect(shade(LOOK.clothes)).toBe(tonesOf(LOOK.clothes, ASSETS.light).shade)
+    expect(colours(find(drawn, 'head'), 'stroke')).toEqual([
+      hex(STYLE.palette.ink),
+    ])
+  })
+
+  const FAMILY: Look = {
+    ...LOOK,
+    office: 'laptopBag',
+    child: {
+      skin: LOOKS.skinTones[3]!,
+      clothes: LOOKS.clothes[2]!,
+      height: 90,
+    },
+  }
+
+  it.each([1, -1] as const)(
+    'lights every part on the left of the screen, facing %i',
+    (facing) => {
+      for (const segment of SEGMENTS) {
+        const drawn = turned({ ...FAMILY, segment }, facing)
+        const parts = ['torso', 'head', 'legs', 'arms', 'laptopBag']
+        if (segment === 'chic') parts.push('coat')
+        if (segment === 'habitue') parts.push('forearm')
+        for (const part of parts) {
+          const pairs = shading(find(drawn, part) as Graphics)
+          expect(pairs.length, `${segment} ${part}`).toBeGreaterThan(0)
+          for (const { shade, lit } of pairs) {
+            expect(lit.x, `${segment} ${part}`).toBeLessThan(shade.x)
+          }
+        }
+        const child = find(drawn, 'child')
+        for (const part of ['torso', 'head', 'legs']) {
+          for (const { shade, lit } of shading(find(child, part) as Graphics)) {
+            expect(lit.x, `child ${part}`).toBeLessThan(shade.x)
+          }
+        }
+      }
+    },
+  )
+
+  it('stands the child on the side the customer faces away from', () => {
+    for (const facing of [1, -1] as const) {
+      const drawn = turned(FAMILY, facing)
+      const child = find(drawn, 'child').getGlobalPosition()
+      expect(Math.sign(child.x)).toBe(-facing)
+      expect(Math.abs(child.x)).toBeCloseTo(FAMILY.height * CHILD_OFFSET)
     }
   })
 
@@ -235,7 +375,10 @@ describe('drawCustomer', () => {
     )
     const child = find(drawn, 'child')
     expect(child.x).toBeLessThan(0)
-    expect(colours(find(child, 'head'), 'fill')).toEqual([hex(childSkin)])
+    expect(colours(find(child, 'head'), 'fill')).toEqual([
+      hex(shade(childSkin)),
+      hex(childSkin),
+    ])
     expect(labels(child)).not.toContain('mug')
     expect(labels(drawCustomer(LOOK, STYLE, LOOKS))).not.toContain('child')
   })
@@ -255,10 +398,12 @@ describe('drawCustomer', () => {
   )
 
   it.each(PEOPLE)('draws exactly two hands per person: $name', ({ look }) => {
-    const drawn = drawCustomer(look, STYLE, LOOKS)
-    expect(hands(drawn, look.skin)).toHaveLength(2)
-    if (look.child !== null) {
-      expect(hands(drawn, look.child.skin)).toHaveLength(2)
+    for (const facing of [1, -1] as const) {
+      const drawn = turned(look, facing)
+      expect(hands(drawn, look.skin)).toHaveLength(2)
+      if (look.child !== null) {
+        expect(hands(drawn, look.child.skin)).toHaveLength(2)
+      }
     }
   })
 
@@ -328,17 +473,24 @@ describe('drawPickMark', () => {
 })
 
 describe('drawAvatar', () => {
-  it('wears a blue shirt and a cream apron', () => {
+  it('wears a blue shirt and a cream apron, lit on the left', () => {
     const { root } = avatar()
     expect(colours(find(root, 'shirt'), 'fill')).toEqual([
+      hex(shade(STYLE.palette.playerBlue)),
       hex(STYLE.palette.playerBlue),
     ])
     expect(colours(find(root, 'apron'), 'fill')).toContain(
       hex(STYLE.palette.cream),
     )
     expect(colours(find(root, 'head'), 'fill')).toEqual([
+      hex(shade(CROWD.avatar.skin)),
       hex(CROWD.avatar.skin),
     ])
+    for (const part of ['shirt', 'head', 'legs', 'otherArm']) {
+      for (const { shade, lit } of shading(find(root, part) as Graphics)) {
+        expect(lit.x, part).toBeLessThan(shade.x)
+      }
+    }
   })
 
   it('has an arm that turns at the shoulder, hanging down at rest', () => {
@@ -354,6 +506,7 @@ describe('drawAvatar', () => {
     expect(femme.label).toBe('avatar:femme')
     expect(homme.label).toBe('avatar:homme')
     expect(colours(find(femme, 'hair'), 'fill')).toEqual([
+      hex(shade(CROWD.avatar.hair)),
       hex(CROWD.avatar.hair),
     ])
     expect(colours(find(homme, 'hair'), 'fill')).toEqual([])
