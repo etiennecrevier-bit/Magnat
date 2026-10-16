@@ -568,7 +568,9 @@ describe('Scene.update: the events on the street', () => {
     EVENT_PIECES.filter((id) => node(scene, id).visible)
 
   it('lists every piece an event shows', () => {
-    const switched = ASSETS.pieces.filter((p) => typeof p.shows === 'object')
+    const switched = ASSETS.pieces.filter(
+      ({ shows }) => typeof shows === 'object' && !('sells' in shows),
+    )
     expect(switched.map((p) => p.id).sort()).toEqual([...EVENT_PIECES].sort())
   })
 

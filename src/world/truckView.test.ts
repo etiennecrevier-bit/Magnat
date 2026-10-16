@@ -517,6 +517,14 @@ describe('showsOn', () => {
     const essai = modifier('essai', NO_CAFE, 1, 1)
     expect(showsOn({ unavailable: 'cafe' }, view(false, essai))).toBe(true)
   })
+
+  it("shows a product's piece on open days while it can be sold", () => {
+    expect(showsOn({ sells: 'cafe' }, view(true))).toBe(true)
+    expect(showsOn({ sells: 'cafe' }, view(true, cones))).toBe(true)
+    expect(showsOn({ sells: 'cafe' }, view(false))).toBe(false)
+    expect(showsOn({ sells: 'cafe' }, view(true, broken))).toBe(false)
+    expect(showsOn({ sells: 'croissant' }, view(true, broken))).toBe(true)
+  })
 })
 
 describe('the construction of « Les cônes orange »', () => {

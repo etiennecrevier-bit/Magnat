@@ -208,8 +208,8 @@ export type Light = z.output<typeof lightSchema>
 /**
  * When a piece shows: only on days the truck is open, or only on closed
  * ones; while a change to the street that an event card made is in effect,
- * unless one of the card's choices in `except` made it; or while a product
- * cannot be sold.
+ * unless one of the card's choices in `except` made it; while a product
+ * cannot be sold; or on open days while a product can be sold.
  */
 const showsSchema = z.union([
   z.enum(['open', 'closed']),
@@ -220,6 +220,7 @@ const showsSchema = z.union([
     except: z.array(z.string().min(1)).min(1).optional(),
   }),
   z.strictObject({ unavailable: productIdSchema }),
+  z.strictObject({ sells: productIdSchema }),
 ])
 
 export type Shows = z.output<typeof showsSchema>
