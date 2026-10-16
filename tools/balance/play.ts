@@ -6,10 +6,16 @@ import {
 import { SEGMENTS } from '../../src/engine/customers.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
-import type { Day, DaySummary, PerProduct } from '../../src/engine/types.ts'
+import type {
+  Day,
+  DaySummary,
+  PerProduct,
+  ShareSale,
+} from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import type { JournalEntry } from '../../src/finance/journal.ts'
 import { DIFFICULTIES, ENERGY, EVENTS } from '../../src/engine/day.ts'
+import { isFinancingMemo } from '../../src/engine/financing.ts'
 import {
   simulate,
   type ContractPolicy,
@@ -22,6 +28,7 @@ import { STRATEGIES, strategyChanges, type Strategy } from './strategies.ts'
 // turns the games into the report and cli.ts writes it.
 
 const CASH: AccountCode = '1000'
+const BANK_LOANS: AccountCode = '2500'
 
 /** A business year, in days, as `--years` counts them. */
 export const DAYS_PER_YEAR = 365
@@ -68,6 +75,11 @@ export interface GameResult {
   readonly lostToStockouts: number
   /** Visits that bought nothing because a price was above what they pay. */
   readonly lostToPrices: number
+  /**
+   * What the Encaisse at the end holds that is not the owner's (#159): what
+   * the emergency loans still owe, and what the shares sold brought in.
+   */
+  readonly financedAtEnd: Cents
   /** Emergency loans taken (#159). */
   readonly emergencyLoans: number
   /** Rounds of shares sold (#159). */
@@ -186,6 +198,7 @@ export function playStrategy(
     unitsSpoiled: totalUnits(daySummaries.map(({ spoiled }) => spoiled)),
     lostToStockouts: totalVisits(daySummaries, 'soldOut'),
     lostToPrices: totalVisits(daySummaries, 'tooExpensive'),
+    financedAtEnd: financedAtEnd(result.journal, result.shareSales),
     emergencyLoans: result.loans.length,
     shareSales: result.shareSales.length,
     journalHash: result.journalHash,
@@ -248,6 +261,25 @@ export function runBalance({
       return run
     }),
   }
+}
+
+/**
+ * What `entries`, the books at the end of a game, owe on its emergency
+ * loans, their Emprunts bancaires lent less those paid back, plus what
+ * `shareSales` brought in: cash in the Encaisse that is not the owner's.
+ */
+export function financedAtEnd(
+  entries: readonly JournalEntry[],
+  shareSales: readonly ShareSale[],
+): Cents {
+  let owed = 0
+  for (const { memo, lines } of entries) {
+    if (!isFinancingMemo(memo)) continue
+    for (const { account, debit, credit } of lines) {
+      if (account === BANK_LOANS) owed += credit - debit
+    }
+  }
+  return cents(shareSales.reduce((total, { amount }) => total + amount, owed))
 }
 
 /**

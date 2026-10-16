@@ -2333,8 +2333,8 @@ function checkFinancing(
     }
     return entries
   })
-  // Within a day the order may differ: a loan taken on a 1st comes before
-  // that day's payments, and an older one's after.
+  // Compared as a multiset: on a 1st, the journal holds the morning's loan
+  // or sale before the payments and dividends, which this builds after.
   const key = ({ day: on, memo, lines }: JournalEntry) =>
     JSON.stringify([
       on,

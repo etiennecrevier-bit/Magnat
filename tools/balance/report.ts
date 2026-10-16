@@ -227,13 +227,13 @@ function header(run: BalanceRun): string[] {
     ...(run.financing === undefined
       ? []
       : [
-          `When the encaisse closes below zero, the engine brings Mme Prudhomme's emergency loan or Max Duvent's offer for shares (#159), whatever the other cards, and the player ${FINANCING_ANSWERS[run.financing]}.${run.financing === 'accept' ? ' The cash they bring in counts in the wealth at the end, less the fee, the interest and the dividends they cost: the last two columns show the strategies that needed them.' : ''}`,
+          `When the encaisse closes below zero, the engine brings Mme Prudhomme's emergency loan or Max Duvent's offer for shares (#159), whatever the other cards, and the player ${FINANCING_ANSWERS[run.financing]}.${run.financing === 'accept' ? " The wealth at the end leaves out the cash they bring in, which is not the owner's, and counts what they cost: the fee, the interest and the dividends. The last two columns show the strategies that needed them." : ''}`,
           '',
         ]),
     '## Columns',
     '',
     '- **#**: the rank by median wealth at the end, highest first; ties go to the fewer median unpaid rents, then to the higher median net income, then to the strategy listed first in the grid.',
-    "- **Median wealth at end**: the Encaisse plus the owner's personal cash at the close of the last day, median over the seeds. The owner's pay moves money from one to the other, so it counts only through what it does to the owner.",
+    "- **Median wealth at end**: the Encaisse plus the owner's personal cash at the close of the last day, less what the emergency loans still owe and what the shares sold brought in, which are not the owner's, median over the seeds. The owner's pay moves money from one to the other, so it counts only through what it does to the owner.",
     '- **Median cash at end**, **Worst cash at end**: the Encaisse at the close of the last day, median and lowest over the seeds.',
     "- **Median net income**: the Bénéfice net over every day played, after the owner's pay, median over the seeds; negative is a Perte nette.",
     "- **Personal cash at end**: the owner's own cash, outside the books, at the close of the last day, median over the seeds.",

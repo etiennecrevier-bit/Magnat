@@ -200,11 +200,12 @@ export function startChallenge(
  * `percentiles`). By default no event ever does: a game turns them on by
  * passing the content, such as `EVENTS`. In a Défi of `defis`, the morning
  * brings the event the Défi forces that day, if any, in place of the draw;
- * otherwise the draw, with no chance of a new event unless the Défi lets random
- * events come, though a follow-up still comes, and never the financing's
- * cards, since a Défi's medals read the books as they are; and nothing once the Défi is
- * over. Returns a new state; never mutates `state`. Throws an Error while an
- * event waits for the player's choice, and once the Défi is over.
+ * otherwise the draw, with no chance of a new event unless the Défi lets
+ * random events come, though a follow-up still comes, and never the
+ * financing's cards, since a Défi's medals read the books as they are; and
+ * nothing once the Défi is over. Returns a new state; never mutates
+ * `state`. Throws an Error while an event waits for the player's choice,
+ * and once the Défi is over.
  */
 export function tick(
   state: GameState,

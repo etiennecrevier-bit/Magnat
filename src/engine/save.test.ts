@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import eventsJson from '../content/events.json'
 import financingJson from '../content/financing.json'
 import grocersJson from '../content/grocers.json'
 import {
@@ -4035,6 +4036,31 @@ describe('the emergency loans and the share sales', () => {
     ]) {
       expect(deserialize(v14(state))).toStrictEqual(state)
     }
+  })
+
+  it('load a game with a loan on its own terms, whatever the cards hold now', () => {
+    // The fee, the rate and the term tuned since the loan was taken.
+    const raw = JSON.parse(JSON.stringify(eventsJson)) as {
+      events: { id: string; choices: { outcomes: { effects: object[] }[] }[] }[]
+    }
+    for (const { choices } of raw.events.filter(
+      ({ id }) => id === 'pretUrgence',
+    )) {
+      choices[0]?.outcomes[0]?.effects.splice(0, 1, {
+        kind: 'emergencyLoan',
+        lender: LENDER,
+        monthsOfFixedCosts: 2,
+        maxCents: 1_000_000,
+        annualRateBasisPoints: 2400,
+        termMonths: 6,
+        feeShare: 0.05,
+        name: 'pret',
+      })
+    }
+    const tuned = loadEventContent(raw)
+    expect(deserialize(FINANCED_SAVE, FOOD_TRUCK, tuned)).toStrictEqual(
+      FINANCED,
+    )
   })
 
   /** The load of `text` fails, naming `reason`. */

@@ -346,6 +346,10 @@ describe('npm run balance', () => {
     // 10 best, 10 worst and all 324 at each difficulty.
     const rows = report.split('\n').filter((line) => /^\| \d+ \|/.test(line))
     expect(rows).toHaveLength(3 * (10 + 10 + 324))
+    // The financing came through to the worker threads: some strategy runs
+    // out of cash and takes the emergency loan.
+    const loans = rows.map((line) => Number(line.split(' | ').at(-2)))
+    expect(Math.max(...loans)).toBeGreaterThan(0)
     // The difficulties in their own order, whichever ended first.
     expect(report.indexOf('### Facile')).toBeLessThan(
       report.indexOf('### Moyen'),

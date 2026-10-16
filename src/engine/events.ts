@@ -313,8 +313,8 @@ export function conditionsHold(
  * that start now applied at once (see `applyEffect`, with `foodTruck`'s
  * unit costs and `financing`'s rules) and the others queued for their day
  * (see `whenDue`), as they will run, a contract with one of `grocers`. The
- * event goes into the
- * history and no longer waits. Returns a new state; never mutates `state`.
+ * event goes into the history and no longer waits. Returns a new state;
+ * never mutates `state`.
  * Throws an Error when no event waits, and a RangeError when `content` does
  * not hold the event, the event has no such choice, or the game's Défi, one
  * of `defis`, forces the event that morning without allowing the choice

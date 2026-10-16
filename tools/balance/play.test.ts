@@ -15,6 +15,7 @@ import { incomeStatement } from '../../src/finance/statements.ts'
 import { simulate } from '../sim/simulate.ts'
 import {
   DAYS_PER_YEAR,
+  financedAtEnd,
   firstDayBelowZero,
   lowestCash,
   playStrategy,
@@ -319,6 +320,74 @@ describe('firstDayBelowZero', () => {
         ]),
       ]),
     ).toBeNull()
+  })
+})
+
+describe('financedAtEnd', () => {
+  const LENDER = 'Caisse populaire Saint-Prudent'
+
+  it('adds what the emergency loans still owe to what the shares sold brought in', () => {
+    const books = [
+      entry(0, "Remboursement de l'emprunt", [
+        ['2500', 9_000, 0],
+        ['1000', 0, 9_000],
+      ]),
+      entry(60, `Emprunt d'urgence · ${LENDER}`, [
+        ['1000', 500_000, 0],
+        ['2500', 0, 500_000],
+      ]),
+      entry(61, `Remboursement · ${LENDER}`, [
+        ['2500', 38_000, 0],
+        ['1000', 0, 38_000],
+      ]),
+      entry(61, `Intérêts · ${LENDER}`, [
+        ['7000', 7_500, 0],
+        ['1000', 0, 7_500],
+      ]),
+    ]
+    const sale = {
+      day: 61,
+      investor: 'Duvent Capital',
+      amount: cents(2_000_000),
+      share: 0.2,
+    }
+    // The startup loan's payment is no emergency loan's.
+    expect(financedAtEnd(books, [])).toBe(500_000 - 38_000)
+    expect(financedAtEnd(books, [sale, sale])).toBe(462_000 + 4_000_000)
+    expect(financedAtEnd([], [])).toBe(0)
+  })
+
+  it('is 0 for a game that took no financing, and what is still owed for one that did', () => {
+    expect(playStrategy(BASE, 'facile', 1, 30).financedAtEnd).toBe(0)
+    const broke: Strategy = {
+      ...BASE,
+      priceChange: -20,
+      daysOpen: 5,
+      ownerWeeklyPay: cents(100_000),
+    }
+    const run = simulate(
+      1,
+      DAYS_PER_YEAR,
+      'difficile',
+      strategyChanges(broke),
+      'none',
+      undefined,
+      undefined,
+      null,
+      'accept',
+    )
+    expect(run.loans.length).toBeGreaterThan(0)
+    const game = playStrategy(
+      broke,
+      'difficile',
+      1,
+      DAYS_PER_YEAR,
+      'none',
+      null,
+      'accept',
+    )
+    expect(game.financedAtEnd).toBeGreaterThan(0)
+    expect(game.financedAtEnd).toBe(financedAtEnd(run.journal, run.shareSales))
   })
 })
 

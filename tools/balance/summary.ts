@@ -1,4 +1,10 @@
-import { add, cents, mulRatio, type Cents } from '../../src/engine/money.ts'
+import {
+  add,
+  cents,
+  mulRatio,
+  sub,
+  type Cents,
+} from '../../src/engine/money.ts'
 import type { DifficultyRun, GameResult } from './play.ts'
 import type { Strategy } from './strategies.ts'
 
@@ -13,8 +19,9 @@ export interface StrategySummary {
   readonly games: number
   /**
    * The owner's wealth at the end: Encaisse and their personal cash, as if
-   * the business were theirs alone. Their pay only moves money from one to
-   * the other.
+   * the business were theirs alone, less the cash in it that is not theirs,
+   * what the emergency loans still owe and what the shares sold brought in.
+   * Their pay only moves money from one to the other.
    */
   readonly medianWealth: Cents
   readonly medianCashAtEnd: Cents
@@ -75,7 +82,9 @@ export function summarize(
     index,
     games: games.length,
     medianWealth: medianCents(
-      games.map(({ cashAtEnd, personalCash }) => add(cashAtEnd, personalCash)),
+      games.map(({ cashAtEnd, personalCash, financedAtEnd }) =>
+        sub(add(cashAtEnd, personalCash), financedAtEnd),
+      ),
     ),
     medianCashAtEnd: medianCents(cashAtEnd),
     worstCashAtEnd: cents(Math.min(...cashAtEnd)),
