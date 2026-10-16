@@ -130,6 +130,37 @@ export function chipLabel(
   return `Défi · semaine ${week} de ${weeks}`
 }
 
+/**
+ * The owner's `energy` against the floor the Défi sets, both rounded down
+ * as the floor reads them: « 52 (plancher : 33) »; null for a Défi with no
+ * floor. The energy gauge shows only « Fatigué » and « Épuisé », so a floor
+ * between them needs its number.
+ */
+export function energyFloorText(
+  energy: number,
+  defi: Pick<Defi, 'conditions'>,
+): string | null {
+  const floor = defi.conditions.find(
+    (condition): condition is Extract<DefiCondition, { kind: 'minEnergy' }> =>
+      condition.kind === 'minEnergy',
+  )
+  if (floor === undefined) return null
+  return `${formatMetric('lowestEnergy', energy)} (plancher${COLON} ${formatMetric('lowestEnergy', floor.amount)})`
+}
+
+/**
+ * The line for the owner's energy against the floor, in the Défi's chip
+ * and panel: « Énergie : 52 (plancher : 33) »; null for a Défi with no
+ * floor.
+ */
+export function energyFloorLine(
+  energy: number,
+  defi: Pick<Defi, 'conditions'>,
+): string | null {
+  const text = energyFloorText(energy, defi)
+  return text === null ? null : `Énergie${COLON} ${text}`
+}
+
 /** A count with its thousands apart: « 1 150 ». */
 function formatCount(count: number): string {
   return String(count).replace(DIGITS_PER_GROUP, NO_BREAK_SPACE)
@@ -187,10 +218,28 @@ export function goalLine(goal: DefiGoal): string {
   return GOAL_LINES[goal.metric]
 }
 
-/** A medal's threshold: « 1 000 $ ou plus », or « 3 % ou moins ». */
-function thresholdText(goal: DefiGoal, medal: Medal): string {
+/**
+ * A medal's threshold: « 1 000 $ ou plus », « 3 % ou moins », and for a
+ * bénéfice net of 0 or below, « aucune perte » and « perte limitée à
+ * 1 450 $ », since limiting the loss is then the goal. `afterVerb` words
+ * these after « Le bronze demandait »: « de terminer sans perte », « une
+ * perte limitée à 1 450 $ ».
+ */
+function thresholdText(
+  goal: DefiGoal,
+  medal: Medal,
+  afterVerb = false,
+): string {
+  const threshold = goal.medals[medal]
+  if (goal.metric === 'netIncome' && threshold <= 0) {
+    if (threshold === 0) {
+      return afterVerb ? 'de terminer sans perte' : 'aucune perte'
+    }
+    const loss = `perte limitée à ${formatBriefMoney(cents(-threshold))}`
+    return afterVerb ? `une ${loss}` : loss
+  }
   const more = goal.metric === 'spoilageRate' ? 'ou moins' : 'ou plus'
-  return `${formatMetric(goal.metric, goal.medals[medal])} ${more}`
+  return `${formatMetric(goal.metric, threshold)} ${more}`
 }
 
 /** What each medal needs, the best first: « Or : 1 000 $ ou plus ». */
@@ -234,7 +283,7 @@ export function failureLine(progress: ChallengeProgress, defi: Defi): string {
   const { goal } = defi
   return (
     `${METRIC_LABELS[goal.metric]}${COLON} ${progressValue(progress, goal.metric)}. ` +
-    `Le bronze demandait ${thresholdText(goal, 'bronze')}.`
+    `Le bronze demandait ${thresholdText(goal, 'bronze', true)}.`
   )
 }
 

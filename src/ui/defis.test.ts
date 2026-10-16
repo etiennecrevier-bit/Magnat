@@ -14,6 +14,8 @@ import {
   conditionLine,
   defiWeek,
   endFigures,
+  energyFloorLine,
+  energyFloorText,
   failureLine,
   formatMetric,
   goalLine,
@@ -26,6 +28,7 @@ import {
   progressValue,
   thresholdLines,
 } from './defis.ts'
+import { formatBriefMoney } from './formatMoney.ts'
 import { createGameStore } from './store.ts'
 
 // French puts a no-break space (U+00A0) in amounts, before a colon and a
@@ -37,6 +40,34 @@ const milleDollars = defiById(DEFIS, 'semaineDesMilleDollars')
 const zeroGaspillage = defiById(DEFIS, 'zeroGaspillage')
 const payeDans60Jours = defiById(DEFIS, 'payeDans60Jours')
 const moisSansConge = defiById(DEFIS, 'moisSansConge')
+
+/**
+ * A Défi made up for the tests, which no tuning moves: the one place here
+ * that writes its amounts and shares by hand, to pin how they read. The
+ * other tests read the shipped Défis' values from the content.
+ */
+const FIXED: Defi = {
+  ...milleDollars,
+  id: 'fixe',
+  goal: {
+    metric: 'netIncome',
+    medals: {
+      or: cents(100_000),
+      argent: cents(70_000),
+      bronze: cents(40_000),
+    },
+  },
+  conditions: [
+    { kind: 'minCash', amountCents: cents(0) },
+    { kind: 'minEnergy', amount: 25 },
+    { kind: 'maxSpoilageRate', rate: 0.03 },
+  ],
+}
+
+/** `amount` cents as a threshold to reach. */
+function atLeast(amount: number): string {
+  return `${formatBriefMoney(cents(amount))} ou plus`
+}
 
 const PROGRESS: ChallengeProgress = {
   daysPlayed: 12,
@@ -98,6 +129,25 @@ describe('defiWeek and chipLabel', () => {
   })
 })
 
+describe('energyFloorText and energyFloorLine', () => {
+  it('read the energy against the floor, both rounded down', () => {
+    expect(energyFloorText(52.7, FIXED)).toBe(`52 (plancher${S}: 25)`)
+    expect(
+      energyFloorText(24.6, {
+        conditions: [{ kind: 'minEnergy', amount: 33.5 }],
+      }),
+    ).toBe(`24 (plancher${S}: 33)`)
+    expect(energyFloorLine(52.7, FIXED)).toBe(
+      `Énergie${S}: 52 (plancher${S}: 25)`,
+    )
+  })
+
+  it('are null in a Défi with no floor', () => {
+    expect(energyFloorText(52.7, travaux)).toBeNull()
+    expect(energyFloorLine(52.7, travaux)).toBeNull()
+  })
+})
+
 describe('formatMetric', () => {
   it.each([
     ['lowestCash', 187_000, `1${S}870${S}$`],
@@ -146,10 +196,35 @@ describe('the goal', () => {
   })
 
   it('lists the thresholds, the best first', () => {
-    expect(thresholdLines(milleDollars.goal)).toEqual([
+    expect(thresholdLines(FIXED.goal)).toEqual([
       `Or${S}: 1${S}000${S}$ ou plus`,
       `Argent${S}: 700${S}$ ou plus`,
       `Bronze${S}: 400${S}$ ou plus`,
+    ])
+  })
+
+  it("lists a shipped Défi's thresholds from the content", () => {
+    const { medals } = milleDollars.goal
+    expect(thresholdLines(milleDollars.goal)).toEqual([
+      `Or${S}: ${atLeast(medals.or)}`,
+      `Argent${S}: ${atLeast(medals.argent)}`,
+      `Bronze${S}: ${atLeast(medals.bronze)}`,
+    ])
+  })
+
+  it('reads a bénéfice net of 0 or below as a loss to limit', () => {
+    const goal: DefiGoal = {
+      metric: 'netIncome',
+      medals: {
+        or: cents(0),
+        argent: cents(-145_000),
+        bronze: cents(-300_050),
+      },
+    }
+    expect(thresholdLines(goal)).toEqual([
+      `Or${S}: aucune perte`,
+      `Argent${S}: perte limitée à 1${S}450${S}$`,
+      `Bronze${S}: perte limitée à 3${S}000,50${S}$`,
     ])
   })
 
@@ -164,40 +239,73 @@ describe('the goal', () => {
       `Bronze${S}: 5${S}% ou moins`,
     ])
   })
+
+  it('leaves the encaisse at 0 as it was: a threshold to reach', () => {
+    const goal: DefiGoal = {
+      metric: 'lowestCash',
+      medals: { or: cents(250_000), argent: cents(100_000), bronze: cents(0) },
+    }
+    expect(thresholdLines(goal)).toEqual([
+      `Or${S}: 2${S}500${S}$ ou plus`,
+      `Argent${S}: 1${S}000${S}$ ou plus`,
+      `Bronze${S}: 0${S}$ ou plus`,
+    ])
+  })
 })
 
 describe('conditionLine', () => {
   it('states each kind of condition', () => {
-    expect(conditionLine(travaux.conditions[0]!)).toBe(
+    expect(FIXED.conditions.map(conditionLine)).toEqual([
       `L'encaisse ne doit jamais passer sous 0${S}$.`,
-    )
-    expect(conditionLine(moisSansConge.conditions[0]!)).toBe(
       'Votre énergie ne doit jamais tomber sous 25.',
-    )
-    expect(conditionLine(zeroGaspillage.conditions[0]!)).toBe(
       `Pas plus de 3${S}% de la marchandise ne doit finir aux poubelles.`,
-    )
+    ])
   })
 })
 
 describe('failureLine', () => {
   it('names the condition broken', () => {
-    expect(failureLine(progress({ lowestCash: cents(-1) }), travaux)).toBe(
+    expect(failureLine(progress({ lowestCash: cents(-1) }), FIXED)).toBe(
       `L'encaisse est passée sous 0${S}$.`,
     )
-    expect(failureLine(progress({ lowestEnergy: 24.6 }), moisSansConge)).toBe(
+    expect(failureLine(progress({ lowestEnergy: 24.6 }), FIXED)).toBe(
       'Votre énergie est tombée sous 25.',
     )
     expect(
-      failureLine(progress({ unitsSold: 96, unitsSpoiled: 4 }), zeroGaspillage),
+      failureLine(progress({ unitsSold: 96, unitsSpoiled: 4 }), FIXED),
     ).toBe(`Plus de 3${S}% de la marchandise a fini aux poubelles.`)
   })
 
   it('tells how short of bronze the goal fell, with no condition broken', () => {
+    const none = { unitsSold: 1_000, unitsSpoiled: 0 }
     expect(
-      failureLine(progress({ netIncome: cents(31_250) }), milleDollars),
+      failureLine(progress({ ...none, netIncome: cents(31_250) }), FIXED),
     ).toBe(
       `Bénéfice net${S}: 312,50${S}$. Le bronze demandait 400${S}$ ou plus.`,
+    )
+    // A shipped Défi, 12,50 $ short of its bronze.
+    const { bronze } = milleDollars.goal.medals
+    const netIncome = cents(bronze - 1_250)
+    expect(failureLine(progress({ netIncome }), milleDollars)).toBe(
+      `Bénéfice net${S}: ${formatBriefMoney(netIncome)}. Le bronze demandait ${atLeast(bronze)}.`,
+    )
+  })
+
+  it('tells how short of a loss to limit the goal fell', () => {
+    const none = { unitsSold: 1_000, unitsSpoiled: 0 }
+    const losing = (bronze: number): Defi => ({
+      ...FIXED,
+      goal: {
+        metric: 'netIncome',
+        medals: { or: cents(0), argent: cents(bronze), bronze: cents(bronze) },
+      },
+    })
+    const lost = progress({ ...none, netIncome: cents(-200_000) })
+    expect(failureLine(lost, losing(-145_000))).toBe(
+      `Bénéfice net${S}: -2${S}000${S}$. Le bronze demandait une perte limitée à 1${S}450${S}$.`,
+    )
+    expect(failureLine(lost, losing(0))).toBe(
+      `Bénéfice net${S}: -2${S}000${S}$. Le bronze demandait de terminer sans perte.`,
     )
   })
 })
@@ -252,7 +360,7 @@ describe('endFigures', () => {
       `Ventes${S}: 4${S}123,50${S}$`,
       `Encaisse la plus basse${S}: 1${S}870${S}$`,
       `Clients servis${S}: 1${S}150`,
-      `Jours joués${S}: 12 sur 28`,
+      `Jours joués${S}: 12 sur ${moisSansConge.lengthDays}`,
     ])
   })
 })

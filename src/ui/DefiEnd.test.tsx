@@ -6,6 +6,8 @@ import { DEFIS } from '../engine/day.ts'
 import { cents } from '../engine/money.ts'
 import type { ChallengeState, GameState } from '../engine/types.ts'
 import DefiEnd, { DefiEndView } from './DefiEnd.tsx'
+import { formatMetric } from './defis.ts'
+import { formatBriefMoney } from './formatMoney.ts'
 import { gameStore, type GameStoreState } from './store.ts'
 
 // A static render reads a Zustand store's initial state, so the connected
@@ -105,19 +107,24 @@ describe('DefiEndView', () => {
       over(moisSansConge.id, { status: 'echoue' }, { lowestEnergy: 19.4 }),
     )
     expect(html).toContain('>Défi échoué</h2>')
+    const [floor] = moisSansConge.conditions
+    if (floor?.kind !== 'minEnergy') throw new Error('It watches the energy')
     expect(html).toContain(
-      '<p class="defi-end__why">Votre énergie est tombée sous 25.</p>',
+      `<p class="defi-end__why">Votre énergie est tombée sous ${formatMetric('lowestEnergy', floor.amount)}.</p>`,
     )
     expect(html).not.toContain('Médaille')
   })
 
   it('tells why a Défi failed: short of bronze', () => {
+    // 12,50 $ short of the content's bronze.
+    const { bronze } = milleDollars.goal.medals
+    const netIncome = cents(bronze - 1_250)
     const html = render(
       milleDollars,
-      over(milleDollars.id, { status: 'echoue' }, { netIncome: cents(31_250) }),
+      over(milleDollars.id, { status: 'echoue' }, { netIncome }),
     )
     expect(html).toContain(
-      `<p class="defi-end__why">Bénéfice net${S}: 312,50${S}$. Le bronze demandait 400${S}$ ou plus.</p>`,
+      `<p class="defi-end__why">Bénéfice net${S}: ${formatBriefMoney(netIncome)}. Le bronze demandait ${formatBriefMoney(cents(bronze))} ou plus.</p>`,
     )
   })
 
