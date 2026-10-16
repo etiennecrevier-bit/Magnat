@@ -1,0 +1,111 @@
+/* The card is the shared .panel (panel.css). Text colours keep at least
+   4.5:1 against its cream #fff7e8: ink #2b2622, brown #5c5048 and the
+   error's red #a61b1b. */
+.settings-panel {
+  --panel-width: 32rem;
+}
+
+/* One group per setting, its name in bold. */
+.settings-panel__setting {
+  margin: 0 0 1.25rem;
+  padding: 0;
+  border: 0;
+}
+
+.settings-panel__setting:last-child {
+  margin-bottom: 0;
+}
+
+.settings-panel__setting > legend {
+  margin: 0 0 0.25rem;
+  padding: 0;
+  font-weight: 700;
+}
+
+.settings-panel__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.5rem;
+}
+
+.settings-panel__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.settings-panel__hint {
+  margin: 0;
+  color: #5c5048;
+  font-size: 0.875rem;
+}
+
+/* A checkbox drawn as a switch: the knob on the right when it is on. */
+.settings-panel__switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.settings-panel__switch input {
+  flex: none;
+  position: relative;
+  width: 2.75rem;
+  height: 1.5rem;
+  margin: 0;
+  border: 2px solid #2b2622;
+  border-radius: 999px;
+  background: #ffffff;
+  appearance: none;
+  cursor: pointer;
+}
+
+.settings-panel__switch input::before {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #2b2622;
+  content: '';
+  transition: transform 120ms ease-out;
+}
+
+.settings-panel__switch input:checked {
+  background: #2b2622;
+}
+
+.settings-panel__switch input:checked::before {
+  background: #fff7e8;
+  transform: translateX(1.25rem);
+}
+
+.settings-panel__switch input:focus-visible {
+  outline: 3px solid #2186eb;
+  outline-offset: 2px;
+}
+
+/* Export and import side by side as long as they fit. */
+.settings-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.settings-panel__error {
+  margin: 0.5rem 0 0;
+  color: #a61b1b;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-panel__switch input::before {
+    transition: none;
+  }
+}

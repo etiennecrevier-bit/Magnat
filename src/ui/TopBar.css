@@ -3,8 +3,8 @@
   top: 0;
   z-index: 1;
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  grid-template-areas: 'date gauges panels speeds';
+  grid-template-columns: auto 1fr auto auto auto;
+  grid-template-areas: 'date gauges panels speeds settings';
   align-items: center;
   gap: 0.5rem 1.5rem;
   padding: 0.5rem 1rem;
@@ -141,44 +141,76 @@
   outline-offset: 2px;
 }
 
+/* The gear of « Réglages », at the right end, the size of a speed button. */
+.top-bar__settings {
+  grid-area: settings;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid #52606d;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1.375rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.top-bar__settings:hover {
+  background: #323f4b;
+}
+
+.top-bar__settings:focus-visible {
+  outline: 3px solid #7cc4fa;
+  outline-offset: 2px;
+}
+
 /* Measured with the longest texts: the date (about 275 px), the cash gauge
    with a large negative amount (about 335 px), the energy gauge (about
-   260 px), the two panel buttons (about 320 px) and the four speed buttons
-   (about 200 px). All on one row need about 1510 px; below that the energy
-   gauge wraps under the encaisse in its cell. The row itself holds down to
-   about 1220 px, where the cell still fits the cash gauge. Below that the
-   gauges get a row of their own under the date and the buttons. */
-@media (max-width: 1219px) {
+   260 px), the two panel buttons (about 320 px), the four speed buttons
+   (about 200 px) and the gear (44 px). All on one row need about 1565 px;
+   below that the energy gauge wraps under the encaisse in its cell. The row
+   itself holds down to about 1290 px, where the cell still fits the cash
+   gauge. Below that the gauges get a row of their own under the date and
+   the buttons. */
+@media (max-width: 1287px) {
+  .top-bar {
+    grid-template-columns: 1fr auto auto auto;
+    grid-template-areas:
+      'date panels speeds settings'
+      'gauges gauges gauges gauges';
+  }
+}
+
+/* The date and all the buttons (about 920 px) no longer fit on one row, so
+   the panel buttons move down under the gauges. */
+@media (max-width: 937px) {
   .top-bar {
     grid-template-columns: 1fr auto auto;
     grid-template-areas:
-      'date panels speeds'
-      'gauges gauges gauges';
+      'date speeds settings'
+      'gauges gauges gauges'
+      'panels panels panels';
   }
 }
 
-/* The date and both kinds of buttons (about 870 px) no longer fit on one
-   row, so the panel buttons move down under the gauges. */
-@media (max-width: 869px) {
+/* The date, the speed buttons and the gear (about 580 px) no longer fit on
+   one row. So, as on a phone, each part sits on its own row, the gear beside
+   the date, with the buttons sharing the full width; the panel buttons stack
+   when both no longer fit. */
+@media (max-width: 599px) {
   .top-bar {
     grid-template-columns: 1fr auto;
     grid-template-areas:
-      'date speeds'
+      'date settings'
       'gauges gauges'
-      'panels panels';
+      'panels panels'
+      'speeds speeds';
   }
-}
 
-/* On a phone each part sits on its own row, with the buttons sharing the
-   full width; the panel buttons stack when both no longer fit. */
-@media (max-width: 559px) {
-  .top-bar {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      'date'
-      'gauges'
-      'panels'
-      'speeds';
+  .top-bar__settings {
+    align-self: start;
   }
 
   .top-bar__panels {

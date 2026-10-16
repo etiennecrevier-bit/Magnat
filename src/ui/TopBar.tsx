@@ -17,6 +17,7 @@ import FinancesPanel from './FinancesPanel.tsx'
 import { formatGameDate } from './formatGameDate.ts'
 import ManagePanel from './ManagePanel.tsx'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
+import SettingsPanel from './SettingsPanel.tsx'
 import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
 import WeeklyReportPanel from './WeeklyReport.tsx'
 import './TopBar.css'
@@ -31,6 +32,9 @@ function speedLabel(speed: number): string {
 function speedText(speed: number): string {
   return speed === PAUSED ? '⏸︎' : `×${speed}`
 }
+
+// The gear of « Réglages », in its text form too.
+const GEAR = '⚙︎'
 
 const CASH = '1000' satisfies AccountCode
 
@@ -61,6 +65,8 @@ interface TopBarViewProps {
   defiEnergy: string | null
   /** Opens the Défi's panel. */
   onDefi: () => void
+  /** Opens « Réglages ». */
+  onSettings: () => void
 }
 
 export function TopBarView({
@@ -77,6 +83,7 @@ export function TopBarView({
   defiLabel,
   defiEnergy,
   onDefi,
+  onSettings,
 }: TopBarViewProps) {
   return (
     <header className="top-bar">
@@ -140,14 +147,25 @@ export function TopBarView({
           </button>
         ))}
       </div>
+      <button
+        type="button"
+        className="top-bar__settings"
+        aria-label="Réglages"
+        aria-haspopup="dialog"
+        title="Réglages"
+        onClick={onSettings}
+      >
+        {GEAR}
+      </button>
     </header>
   )
 }
 
 /**
  * The top bar wired to the app store, with the Space shortcut, and the
- * panel open: one it opened, the event card or the weekly report. In a
- * Défi, the chip under the date opens the Défi's panel.
+ * panel open: one it opened, « Réglages » from the gear at its right end
+ * included, the event card or the weekly report. In a Défi, the chip under
+ * the date opens the Défi's panel.
  */
 export default function TopBar() {
   const businessName = useGame((state) => state.game.profile.businessName)
@@ -206,10 +224,12 @@ export default function TopBar() {
         defiLabel={defiLabel}
         defiEnergy={defiEnergy}
         onDefi={() => openPanel('defi')}
+        onSettings={() => openPanel('settings')}
       />
       {panel === 'manage' && <ManagePanel />}
       {panel === 'finances' && <FinancesPanel />}
       {panel === 'defi' && <DefiPanel />}
+      {panel === 'settings' && <SettingsPanel />}
       {panel === 'event' && <EventCard />}
       {panel === 'report' && <WeeklyReportPanel />}
     </>

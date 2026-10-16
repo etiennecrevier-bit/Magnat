@@ -72,23 +72,31 @@ export function writeStoredSave(
 }
 
 /**
- * What one tab saves its game with. The first call saves as
- * `writeStoredSave` does: starting, continuing or importing a game replaces
- * the browser's save. Each later one saves over what another tab saved
- * since only when that is the same game, played no further. So of two tabs
- * on one game, the one that played it furthest keeps the save, whichever
- * closes last, and a tab never writes over a game another tab started. Each
- * call returns whether it saved; never throws.
+ * What one tab saves its game with: a call saves `game` and returns whether
+ * it did; never throws. Pass `replaces` when the player started that game in
+ * place of the one saved, as an import mid-game does.
  */
-export function createSaveWriter(
-  storage: SaveStorage | null,
-): (game: GameState) => boolean {
+export type SaveWriter = (game: GameState, replaces?: boolean) => boolean
+
+/**
+ * The `SaveWriter` of one tab. Its first save, and the first after a call
+ * that `replaces`, saves as `writeStoredSave` does: starting, continuing or
+ * importing a game replaces the browser's save, whatever another tab saved.
+ * Each other one saves over what another tab saved since only when that is
+ * the same game, played no further. So of two tabs on one game, the one that
+ * played it furthest keeps the save, whichever closes last, and a tab never
+ * writes over a game another tab started, unless the player starts one in
+ * it. A save that fails leaves the replacement to the next one.
+ */
+export function createSaveWriter(storage: SaveStorage | null): SaveWriter {
   let saved: string | null = null
-  return (game) => {
+  let replacing = true
+  return (game, replaces = false) => {
     if (storage === null) return false
+    replacing ||= replaces
     try {
       // Storage cleared since holds no game to keep.
-      const stored = saved === null ? null : storage.getItem(SAVE_KEY)
+      const stored = replacing ? null : storage.getItem(SAVE_KEY)
       if (stored !== null && stored !== saved && !isBehind(stored, game)) {
         console.warn('Another tab saved a game this one would set back')
         return false
@@ -96,6 +104,7 @@ export function createSaveWriter(
       const text = serialize(game)
       storage.setItem(SAVE_KEY, text)
       saved = text
+      replacing = false
       return true
     } catch (error) {
       console.warn('Could not save the game', error)
@@ -128,7 +137,7 @@ function isBehind(text: string, game: GameState): boolean {
 
 /**
  * Loads the game an exported file holds. A file `deserialize()` rejects
- * gives the French message the start screen shows; the reason goes to the
+ * gives the French message « Réglages » shows; the reason goes to the
  * console.
  */
 export function readImportedSave(text: string): ImportedSave {
@@ -170,7 +179,7 @@ export function saveFileName(game: GameState): string {
   return `magnat-${slug === '' ? 'partie' : slug}-jour-${game.day}.json`
 }
 
-/** Downloads `game` as a save file the start screen can import. */
+/** Downloads `game` as a save file « Importer une partie » loads. */
 export function downloadSave(game: GameState, doc: Document = document): void {
   const url = URL.createObjectURL(
     new Blob([serialize(game)], { type: 'application/json' }),

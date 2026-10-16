@@ -186,20 +186,36 @@ describe('startGame', () => {
     expect(store.getState().speed).toBe(NORMAL_SPEED)
   })
 
-  it('closes a panel left open, so the new game is not stuck paused', () => {
+  it('counts the games it starts, from none', () => {
     const store = createGameStore(createInitialState(1))
+    expect(store.getState().gamesStarted).toBe(0)
+    store.getState().advance(3)
     store.getState().openPanel('manage')
-
+    store.getState().closePanel()
+    expect(store.getState().gamesStarted).toBe(0)
     store.getState().startGame(createInitialState(7))
-
-    expect(store.getState()).toMatchObject({
-      speed: NORMAL_SPEED,
-      resumeSpeed: null,
-      panel: null,
-    })
-    store.getState().setSpeed(10)
-    expect(store.getState().speed).toBe(10)
+    store.getState().startGame(store.getState().game)
+    expect(store.getState().gamesStarted).toBe(2)
   })
+
+  it.each(['manage', 'settings'] as const)(
+    'closes the %s panel left open, so the new game is not stuck paused',
+    (panel) => {
+      const store = createGameStore(createInitialState(1))
+      store.getState().setSpeed(3)
+      store.getState().openPanel(panel)
+
+      store.getState().startGame(createInitialState(7))
+
+      expect(store.getState()).toMatchObject({
+        speed: NORMAL_SPEED,
+        resumeSpeed: null,
+        panel: null,
+      })
+      store.getState().setSpeed(10)
+      expect(store.getState().speed).toBe(10)
+    },
+  )
 })
 
 describe('advance', () => {
@@ -430,7 +446,7 @@ describe('the event card', () => {
 })
 
 describe('openPanel and closePanel', () => {
-  it.each(['manage', 'finances'] as const)(
+  it.each(['manage', 'finances', 'settings'] as const)(
     'pause the game while the %s panel is open, then resume at its speed',
     (panel) => {
       const store = createGameStore()
@@ -456,10 +472,21 @@ describe('openPanel and closePanel', () => {
     store.getState().setSpeed(10)
     store.getState().openPanel('finances')
     store.getState().openPanel('manage')
+    store.getState().openPanel('settings')
     expect(store.getState()).toMatchObject({
       panel: 'finances',
       resumeSpeed: 10,
     })
+  })
+
+  it('open no « Réglages » over the event card', () => {
+    const game = createInitialState(1)
+    const store = createGameStore({
+      ...game,
+      events: { ...game.events, pending: { event: 'essai', followUp: false } },
+    })
+    store.getState().openPanel('settings')
+    expect(store.getState().panel).toBe('event')
   })
 
   it('leave a paused game paused', () => {

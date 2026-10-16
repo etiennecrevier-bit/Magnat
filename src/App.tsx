@@ -25,7 +25,9 @@ export default function App() {
   useEffect(() => {
     if (!playing) return
     const save = createSaveWriter(browserStorage())
-    return startAutosave(gameStore, (game) => setAutosaveFailed(!save(game)))
+    return startAutosave(gameStore, (game, replaces) =>
+      setAutosaveFailed(!save(game, replaces)),
+    )
   }, [playing])
 
   const start = (game: GameState) => {

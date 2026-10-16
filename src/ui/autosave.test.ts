@@ -40,7 +40,7 @@ function createFakeHost() {
 /** A store with no event card to stop the days, and autosave started. */
 function start() {
   const store = createGameStore(createInitialState(42), NO_EVENTS)
-  const write = vi.fn<(game: GameState) => void>()
+  const write = vi.fn<(game: GameState, replaces: boolean) => void>()
   const page = createFakeHost()
   const stop = startAutosave(store, write, page.host)
   const days = () => write.mock.calls.map(([game]) => game.day)
@@ -50,7 +50,7 @@ function start() {
 describe('startAutosave', () => {
   it('saves the game as soon as it starts', () => {
     const { store, write } = start()
-    expect(write).toHaveBeenCalledExactlyOnceWith(store.getState().game)
+    expect(write).toHaveBeenCalledExactlyOnceWith(store.getState().game, false)
   })
 
   it('does not save again within the same month', () => {
@@ -81,6 +81,38 @@ describe('startAutosave', () => {
     const { store, days } = start()
     store.getState().startGame({ ...createInitialState(7), day: 100 })
     expect(days()).toEqual([0, 100])
+  })
+
+  it('saves a game started in place at once, though it is of the same month', () => {
+    const { store, write } = start()
+    store.getState().advance(10)
+    const imported = createInitialState(7)
+    store.getState().startGame(imported)
+    expect(write).toHaveBeenCalledTimes(2)
+    expect(write).toHaveBeenLastCalledWith(imported, true)
+    // The month it saved in is that game's.
+    store.getState().advance(LAST_OF_MAY)
+    expect(write).toHaveBeenCalledTimes(2)
+  })
+
+  it('tells the writer only a game started in place replaces the saved one', () => {
+    const { store, write, page } = start()
+    store.getState().advance(LAST_OF_MAY + 1)
+    page.setHidden(true)
+    store.getState().startGame(createInitialState(7))
+    page.setHidden(false)
+    page.setHidden(true)
+    store.getState().advance(LAST_OF_MAY + 1)
+    expect(
+      write.mock.calls.map(([game, replaces]) => [game.day, replaces]),
+    ).toEqual([
+      [0, false],
+      [31, false],
+      [31, false],
+      [0, true],
+      [0, false],
+      [31, false],
+    ])
   })
 
   it('ignores store changes that leave the game alone', () => {
@@ -116,7 +148,7 @@ describe('startAutosave', () => {
       startChallenge('travauxSaintDenis', 42),
       NO_EVENTS,
     )
-    const write = vi.fn<(game: GameState) => void>()
+    const write = vi.fn<(game: GameState, replaces: boolean) => void>()
     const page = createFakeHost()
     startAutosave(store, write, page.host)
     store.getState().advance(LAST_OF_MAY)
@@ -130,11 +162,15 @@ describe('startAutosave', () => {
       startChallenge('travauxSaintDenis', 42),
       NO_EVENTS,
     )
-    const write = vi.fn<(game: GameState) => void>()
+    const write = vi.fn<(game: GameState, replaces: boolean) => void>()
     startAutosave(store, write, createFakeHost().host)
-    store.getState().startGame(createInitialState(42))
+    const long = createInitialState(42)
+    store.getState().startGame(long)
     store.getState().advance(LAST_OF_MAY + 1)
-    expect(write).toHaveBeenCalledExactlyOnceWith(store.getState().game)
+    expect(write.mock.calls).toEqual([
+      [long, true],
+      [store.getState().game, false],
+    ])
   })
 })
 
@@ -160,8 +196,8 @@ function openTab(storage: SaveStorage, game: GameState) {
   let failed = false
   const stop = startAutosave(
     store,
-    (saved) => {
-      failed = !save(saved)
+    (saved, replaces) => {
+      failed = !save(saved, replaces)
     },
     page.host,
   )

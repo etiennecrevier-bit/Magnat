@@ -11,7 +11,6 @@
   font-size: 0.875rem;
 }
 
-.start-screen__error,
 .new-game__error {
   margin: 0.5rem 0 0;
   color: #ab091e;
@@ -114,37 +113,4 @@
   gap: 0.5rem;
   min-height: 44px;
   cursor: pointer;
-}
-
-/* The visual effects, under the menu's buttons. */
-.start-screen__setting {
-  margin: 1.5rem 0 0;
-  padding: 0;
-  border: 0;
-}
-
-.start-screen__setting > legend {
-  margin: 0 0 0.25rem;
-  padding: 0;
-  font-weight: 700;
-}
-
-.start-screen__options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 1.5rem;
-}
-
-.start-screen__option {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  cursor: pointer;
-}
-
-.start-screen__hint {
-  margin: 0;
-  color: #52606d;
-  font-size: 0.875rem;
 }

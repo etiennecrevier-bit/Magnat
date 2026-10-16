@@ -4,7 +4,6 @@ import { keepBestMedals } from './defis.ts'
 import EventLog from './EventLog.tsx'
 import FinancialStatements from './FinancialStatements.tsx'
 import Messages from './Messages.tsx'
-import { downloadSave } from './saves.ts'
 import { settingsStore, type SettingsStore } from './settings.ts'
 import { gameStore, useGame } from './store.ts'
 import Ticker from './Ticker.tsx'
@@ -24,27 +23,25 @@ const SCREENS: Record<Screen, string> = {
 interface GameScreensViewProps {
   screen: Screen
   onScreenChange: (screen: Screen) => void
-  onExport: () => void
   /** Whether the last autosave failed, so the player should export. */
   autosaveFailed: boolean
 }
 
 /**
  * The page under the top bar: the messages the game sends, a button per
- * screen and the export button, then that screen.
+ * screen, then that screen.
  */
 export function GameScreensView({
   screen,
   onScreenChange,
-  onExport,
   autosaveFailed,
 }: GameScreensViewProps) {
   return (
     <main>
       {autosaveFailed && (
         <p className="notice" role="status">
-          La sauvegarde automatique a échoué. Exportez la sauvegarde pour ne pas
-          perdre votre partie.
+          La sauvegarde automatique a échoué. Exportez la partie dans les
+          Réglages pour ne pas la perdre.
         </p>
       )}
       <Messages />
@@ -62,9 +59,6 @@ export function GameScreensView({
             </button>
           ))}
         </div>
-        <button type="button" className="button" onClick={onExport}>
-          Exporter la sauvegarde
-        </button>
       </nav>
       {screen === 'today' && <TodayPanel />}
       {screen === 'statements' && <FinancialStatements />}
@@ -75,11 +69,13 @@ export function GameScreensView({
 }
 
 /**
- * The screens, opening on Aujourd'hui, exporting the app store's game, with
- * the La Presse-Citron ticker along the bottom and the week's card sliding
- * in above it. Once a Défi is over, its end shows over them, whose « Retour
- * au menu » calls `onMenu`. Every medal the game wins is kept in `settings`,
- * a Défi won and then loaded included.
+ * The screens, opening on Aujourd'hui, with the La Presse-Citron ticker along
+ * the bottom and the week's card sliding in above it. Once a Défi is over,
+ * its end shows over them, whose « Retour au menu » calls `onMenu`. Every
+ * medal the game wins is kept in `settings`, a Défi won and then loaded
+ * included. A game started in their place, such as one imported, gets new
+ * screens and a new ticker, so nothing of the last game's messages or
+ * headlines stays.
  */
 export default function GameScreens({
   autosaveFailed = false,
@@ -92,6 +88,7 @@ export default function GameScreens({
 }) {
   const [screen, setScreen] = useState<Screen>('today')
   const panel = useGame((state) => state.panel)
+  const gamesStarted = useGame((state) => state.gamesStarted)
 
   useEffect(
     () => keepBestMedals(gameStore, settings.getState().recordMedal),
@@ -101,13 +98,13 @@ export default function GameScreens({
   return (
     <>
       <GameScreensView
+        key={`screens-${gamesStarted}`}
         screen={screen}
         onScreenChange={setScreen}
-        onExport={() => downloadSave(gameStore.getState().game)}
         autosaveFailed={autosaveFailed}
       />
       <WeekSlideIn />
-      <Ticker />
+      <Ticker key={`ticker-${gamesStarted}`} />
       {panel === 'defiEnd' && <DefiEnd onMenu={onMenu} />}
     </>
   )

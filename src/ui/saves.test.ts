@@ -199,6 +199,80 @@ describe('createSaveWriter', () => {
     },
   )
 
+  describe('told the player started a game in place, as an import mid-game', () => {
+    // This tab saved GAME, then played on to LATER without saving again;
+    // another tab saved the same game further still.
+    const AHEAD = played(3, LATER)
+    function behindAnotherTab() {
+      const storage = memoryStorage()
+      const save = createSaveWriter(storage)
+      save(GAME)
+      createSaveWriter(storage)(AHEAD)
+      return { storage, save }
+    }
+
+    it.each([
+      ['another game', createInitialState(8, FOOD_TRUCK, GAME.profile)],
+      ['its game as it last saved it', GAME],
+      [
+        'its game further than it last saved, behind where it plays',
+        played(2, GAME),
+      ],
+      ['its game where it plays', LATER],
+      ['its game further than the other tab saved', played(1, AHEAD)],
+    ])('replaces what another tab saved since with %s', (_, imported) => {
+      const { storage, save } = behindAnotherTab()
+      expect(save(imported, true)).toBe(true)
+      expect(storage.items).toEqual({ [SAVE_KEY]: serialize(imported) })
+    })
+
+    it('would not have saved it otherwise', () => {
+      const { storage, save } = behindAnotherTab()
+      expect(save(played(2, GAME))).toBe(false)
+      expect(storage.items).toEqual({ [SAVE_KEY]: serialize(AHEAD) })
+    })
+
+    it('then saves that game as it would a game it started', () => {
+      const { storage, save } = behindAnotherTab()
+      const imported = createInitialState(8, FOOD_TRUCK, GAME.profile)
+      save(imported, true)
+      const further = played(1, imported)
+      expect(save(further)).toBe(true)
+      expect(storage.items).toEqual({ [SAVE_KEY]: serialize(further) })
+      // Another tab that plays it further keeps the save again.
+      createSaveWriter(storage)(played(3, imported))
+      expect(save(played(2, imported))).toBe(false)
+      createSaveWriter(storage)(LATER)
+      expect(save(played(4, imported))).toBe(false)
+    })
+
+    it('replaces it with the next save when that one fails', () => {
+      const { storage, save } = behindAnotherTab()
+      const imported = played(2, GAME)
+      const setItem = vi
+        .spyOn(storage, 'setItem')
+        .mockImplementationOnce(() => {
+          throw new DOMException(
+            'The quota has been exceeded.',
+            'QuotaExceededError',
+          )
+        })
+      expect(save(imported, true)).toBe(false)
+      expect(storage.items).toEqual({ [SAVE_KEY]: serialize(AHEAD) })
+      setItem.mockRestore()
+      const further = played(1, imported)
+      expect(save(further)).toBe(true)
+      expect(storage.items).toEqual({ [SAVE_KEY]: serialize(further) })
+      // Only that one.
+      createSaveWriter(storage)(AHEAD)
+      expect(save(played(1, further))).toBe(false)
+    })
+
+    it('does not save without storage', () => {
+      expect(createSaveWriter(null)(GAME, true)).toBe(false)
+    })
+  })
+
   it("does not save over a save it cannot load, such as a newer version's", () => {
     const storage = memoryStorage()
     const save = createSaveWriter(storage)

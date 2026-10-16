@@ -1,130 +1,35 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Avatar } from '../content/schema.ts'
 import { createInitialState } from '../engine/clock.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import { deserialize, serialize } from '../engine/save.ts'
 import type { GameState } from '../engine/types.ts'
 import { startAutosave, type AutosaveHost } from './autosave.ts'
+import { isChallengeOver } from './defis.ts'
 import {
-  INVALID_SAVE_FILE,
   SAVE_KEY,
   createSaveWriter,
   readStoredSave,
-  type ImportedSave,
   type SaveStorage,
   type StoredSave,
 } from './saves.ts'
-import { isChallengeOver } from './defis.ts'
-import { createSaveImports, startMenuActions } from './startMenu.ts'
-import { createGameStore, newChallenge, NORMAL_SPEED, PAUSED } from './store.ts'
+import { continueStoredGame } from './startMenu.ts'
+import { createGameStore, newChallenge } from './store.ts'
 
 afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function game(
-  businessName: string,
-  seed = 7,
-  avatar: Avatar = 'femme',
-): GameState {
+function game(businessName: string, seed = 7): GameState {
   return createInitialState(seed, FOOD_TRUCK, {
     businessName,
-    avatar,
+    avatar: 'femme',
     difficulty: 'moyen',
   })
 }
 
 const CONTINUED = game('Continued', 7)
-const IMPORTED = game('Imported', 8, 'homme')
 const OTHER = game('Other', 9)
-
-/** A file whose read finishes only when the test calls `finish`. */
-function slowFile(text: string) {
-  let finish!: () => void
-  const read = new Promise<string>((resolve) => {
-    finish = () => resolve(text)
-  })
-  return { file: { text: () => read }, finish }
-}
-
-/** A read that finishes only when the test calls `finish`. */
-function slowRead() {
-  let finish!: (result: ImportedSave) => void
-  const read = new Promise<ImportedSave>((resolve) => {
-    finish = resolve
-  })
-  return { read, finish }
-}
-
-const FILE = { text: () => Promise.resolve('') }
-
-describe('createSaveImports', () => {
-  it('gives the result of a read nothing superseded', async () => {
-    const imports = createSaveImports(() => Promise.resolve({ game: IMPORTED }))
-    await expect(imports.read(FILE)).resolves.toEqual({ game: IMPORTED })
-  })
-
-  it('reads the file as importSaveFile does by default', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const imports = createSaveImports()
-    await expect(
-      imports.read({ text: () => Promise.resolve(serialize(IMPORTED)) }),
-    ).resolves.toEqual({ game: IMPORTED })
-    await expect(
-      imports.read({ text: () => Promise.resolve('{}') }),
-    ).resolves.toEqual({ error: INVALID_SAVE_FILE })
-  })
-
-  it('drops a read cancelled before it finished', async () => {
-    const slow = slowRead()
-    const imports = createSaveImports(() => slow.read)
-    const reading = imports.read(FILE)
-    imports.cancel()
-    slow.finish({ game: IMPORTED })
-    await expect(reading).resolves.toBeNull()
-  })
-
-  it.each(['first', 'last'])(
-    'drops a read a later one superseded, when the earlier finishes %s',
-    async (order) => {
-      const earlier = slowRead()
-      const later = slowRead()
-      const reads = [earlier.read, later.read]
-      const imports = createSaveImports(() => reads.shift()!)
-      const readingEarlier = imports.read(FILE)
-      const readingLater = imports.read(FILE)
-      if (order === 'first') earlier.finish({ game: IMPORTED })
-      later.finish({ game: OTHER })
-      if (order === 'last') earlier.finish({ game: IMPORTED })
-      await expect(readingEarlier).resolves.toBeNull()
-      await expect(readingLater).resolves.toEqual({ game: OTHER })
-    },
-  )
-
-  it('still reads the files picked after a cancel', async () => {
-    const imports = createSaveImports(() => Promise.resolve({ game: IMPORTED }))
-    imports.cancel()
-    await expect(imports.read(FILE)).resolves.toEqual({ game: IMPORTED })
-  })
-})
-
-/** The start menu over `stored`, with its callbacks as mocks. */
-function menu(stored: StoredSave = { status: 'none' }) {
-  const onStart = vi.fn<(game: GameState) => void>()
-  const onImportError = vi.fn<(error: string | null) => void>()
-  const onNewGame = vi.fn<() => void>()
-  const onDefis = vi.fn<() => void>()
-  const actions = startMenuActions({
-    readStored: () => stored,
-    imports: createSaveImports(),
-    onStart,
-    onImportError,
-    onNewGame,
-    onDefis,
-  })
-  return { actions, onStart, onImportError, onNewGame, onDefis }
-}
 
 /** A `localStorage` that every tab of the browser shares. */
 function sharedStorage(items: Record<string, string>): SaveStorage {
@@ -158,46 +63,25 @@ function tab(storage: SaveStorage) {
     const save = createSaveWriter(storage)
     startAutosave(
       store,
-      (saved) => {
-        failed = !save(saved)
+      (saved, replaces) => {
+        failed = !save(saved, replaces)
       },
       host,
     )
   })
-  const actions = startMenuActions({
-    readStored: () => readStoredSave(storage),
-    imports: createSaveImports(),
-    onStart,
-    onImportError: () => {},
-    onNewGame: () => {},
-    onDefis: () => {},
-  })
+  const continueGame = () =>
+    continueStoredGame(() => readStoredSave(storage), onStart)
   const hide = () => {
     hidden = true
     for (const listener of listeners) listener()
   }
-  return { store, actions, onStart, hide, failed: () => failed }
+  return { store, onStart, continueGame, hide, failed: () => failed }
 }
 
-describe('startMenuActions', () => {
-  it('plays the game of an imported file', async () => {
-    const { actions, onStart, onImportError } = menu()
-    await actions.importFile({ text: () => Promise.resolve(serialize(OTHER)) })
-    expect(onStart).toHaveBeenCalledExactlyOnceWith(OTHER)
-    expect(onImportError.mock.calls).toEqual([[null]])
-  })
-
-  it('clears the last error, then shows why a file was rejected', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const { actions, onStart, onImportError } = menu()
-    await actions.importFile({ text: () => Promise.resolve('{}') })
-    expect(onStart).not.toHaveBeenCalled()
-    expect(onImportError.mock.calls).toEqual([[null], [INVALID_SAVE_FILE]])
-  })
-
+describe('continueStoredGame', () => {
   it("continues the browser's saved game", () => {
-    const { actions, onStart } = menu({ status: 'found', game: CONTINUED })
-    actions.continueGame()
+    const onStart = vi.fn<(game: GameState) => void>()
+    continueStoredGame(() => ({ status: 'found', game: CONTINUED }), onStart)
     expect(onStart).toHaveBeenCalledExactlyOnceWith(CONTINUED)
   })
 
@@ -206,55 +90,9 @@ describe('startMenuActions', () => {
     { status: 'unreadable' },
     { status: 'unavailable' },
   ])('has nothing to continue when the browser holds $status', (stored) => {
-    const { actions, onStart } = menu(stored)
-    actions.continueGame()
+    const onStart = vi.fn<(game: GameState) => void>()
+    continueStoredGame(() => stored, onStart)
     expect(onStart).not.toHaveBeenCalled()
-  })
-
-  it('opens the new game form, clearing the last import error', () => {
-    const { actions, onNewGame, onImportError } = menu()
-    actions.newGame()
-    expect(onNewGame).toHaveBeenCalledOnce()
-    expect(onImportError.mock.calls).toEqual([[null]])
-  })
-
-  it('opens the Défis, clearing the last import error', () => {
-    const { actions, onDefis, onNewGame, onImportError } = menu()
-    actions.openDefis()
-    expect(onDefis).toHaveBeenCalledOnce()
-    expect(onNewGame).not.toHaveBeenCalled()
-    expect(onImportError.mock.calls).toEqual([[null]])
-  })
-
-  it('drops a file read while the player opened the Défis', async () => {
-    const { actions, onStart, onImportError } = menu()
-    const file = slowFile(serialize(IMPORTED))
-    const importing = actions.importFile(file.file)
-    actions.openDefis()
-    file.finish()
-    await importing
-    expect(onStart).not.toHaveBeenCalled()
-    expect(onImportError.mock.calls).toEqual([[null], [null]])
-  })
-
-  it('does not let a file read during Continuer replace the continued game', async () => {
-    const items: Record<string, string> = { [SAVE_KEY]: serialize(CONTINUED) }
-    const { store, actions, onStart, hide } = tab(sharedStorage(items))
-
-    const imported = slowFile(serialize(IMPORTED))
-    const importing = actions.importFile(imported.file)
-    actions.continueGame()
-    store.getState().togglePause()
-    imported.finish()
-    await importing
-    hide()
-
-    expect(onStart).toHaveBeenCalledExactlyOnceWith(CONTINUED)
-    expect(store.getState().game).toEqual(CONTINUED)
-    expect(store.getState().speed).toBe(PAUSED)
-    store.getState().togglePause()
-    expect(store.getState().speed).toBe(NORMAL_SPEED)
-    expect(deserialize(items[SAVE_KEY]!)).toEqual(CONTINUED)
   })
 
   it('continues the game as another tab saved it since the menu showed it', () => {
@@ -264,77 +102,18 @@ describe('startMenuActions', () => {
     // further and is closed.
     const tabB = tab(storage)
     const tabA = tab(storage)
-    tabA.actions.continueGame()
+    tabA.continueGame()
     tabA.store.getState().advance(30)
     tabA.hide()
     const ahead = tabA.store.getState().game
     expect(deserialize(items[SAVE_KEY]!)).toEqual(ahead)
 
-    tabB.actions.continueGame()
+    tabB.continueGame()
     tabB.hide()
 
     expect(tabB.onStart).toHaveBeenCalledExactlyOnceWith(ahead)
     expect(deserialize(items[SAVE_KEY]!)).toEqual(ahead)
     expect(tabB.failed()).toBe(false)
-  })
-
-  it.each([
-    ['a game', serialize(IMPORTED)],
-    ['an invalid file', '{}'],
-  ])(
-    'drops %s read while the player opened the new game form',
-    async (_, text) => {
-      const { actions, onStart, onImportError, onNewGame } = menu()
-      const file = slowFile(text)
-      const importing = actions.importFile(file.file)
-      actions.newGame()
-      file.finish()
-      await importing
-      expect(onNewGame).toHaveBeenCalledOnce()
-      expect(onStart).not.toHaveBeenCalled()
-      expect(onImportError.mock.calls).toEqual([[null], [null]])
-    },
-  )
-
-  it('drops a file read while the player started a new game', async () => {
-    const { actions, onStart } = menu()
-    const file = slowFile(serialize(IMPORTED))
-    const importing = actions.importFile(file.file)
-    actions.start(OTHER)
-    file.finish()
-    await importing
-    expect(onStart).toHaveBeenCalledExactlyOnceWith(OTHER)
-  })
-
-  it('plays only the last file picked, even when an earlier one reads last', async () => {
-    const { actions, onStart } = menu()
-    const earlier = slowFile(serialize(IMPORTED))
-    const later = slowFile(serialize(OTHER))
-    const importingEarlier = actions.importFile(earlier.file)
-    const importingLater = actions.importFile(later.file)
-    later.finish()
-    await importingLater
-    earlier.finish()
-    await importingEarlier
-    expect(onStart).toHaveBeenCalledExactlyOnceWith(OTHER)
-  })
-
-  it('shows only why the last file picked was rejected', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const { actions, onStart, onImportError } = menu()
-    const earlier = slowFile(serialize(IMPORTED))
-    const later = slowFile('{}')
-    const importingEarlier = actions.importFile(earlier.file)
-    const importingLater = actions.importFile(later.file)
-    earlier.finish()
-    later.finish()
-    await Promise.all([importingEarlier, importingLater])
-    expect(onStart).not.toHaveBeenCalled()
-    expect(onImportError.mock.calls).toEqual([
-      [null],
-      [null],
-      [INVALID_SAVE_FILE],
-    ])
   })
 })
 
@@ -345,10 +124,10 @@ describe('a Défi and the saved game', () => {
   it('leaves the long game saved through a Défi, its replay and the way back to the menu', () => {
     const items: Record<string, string> = { [SAVE_KEY]: serialize(CONTINUED) }
     const storage = sharedStorage(items)
-    const { store, actions, hide, failed } = tab(storage)
+    const { store, onStart, hide, failed } = tab(storage)
 
     // « Les travaux de la rue Saint-Denis » runs from May 15 to June 4.
-    actions.start(newChallenge('?seed=7', 'travauxSaintDenis'))
+    onStart(newChallenge('?seed=7', 'travauxSaintDenis'))
     store.getState().advance(40)
     expect(store.getState().game.day).toBeGreaterThan(FIRST_OF_JUNE)
     expect(isChallengeOver(store.getState().game)).toBe(true)
@@ -368,10 +147,10 @@ describe('a Défi and the saved game', () => {
 
   it('still saves the long game played after a Défi', () => {
     const items: Record<string, string> = { [SAVE_KEY]: serialize(CONTINUED) }
-    const { store, actions, hide } = tab(sharedStorage(items))
-    actions.start(newChallenge('?seed=7', 'travauxSaintDenis'))
+    const { store, onStart, continueGame, hide } = tab(sharedStorage(items))
+    onStart(newChallenge('?seed=7', 'travauxSaintDenis'))
     store.getState().advance(3)
-    actions.continueGame()
+    continueGame()
     store.getState().advance(FIRST_OF_JUNE)
     hide()
     expect(store.getState().game.day).toBe(FIRST_OF_JUNE)

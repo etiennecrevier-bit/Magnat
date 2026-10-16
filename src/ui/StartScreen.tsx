@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { useStore } from 'zustand'
 import type { Avatar, DifficultyId } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
@@ -9,91 +9,30 @@ import { DefiBriefingView, DefiListView } from './DefisScreen.tsx'
 import { formatGameDate } from './formatGameDate.ts'
 import { DIFFICULTIES, difficultyLine, readBusinessName } from './newGame.ts'
 import { browserStorage, readStoredSave, type StoredSave } from './saves.ts'
-import {
-  settingsStore,
-  VISUAL_EFFECTS,
-  type SettingsStore,
-  type VisualEffects,
-} from './settings.ts'
-import { createSaveImports, startMenuActions } from './startMenu.ts'
+import { settingsStore, type SettingsStore } from './settings.ts'
+import { continueStoredGame } from './startMenu.ts'
 import { newChallenge, newGame } from './store.ts'
 import './StartScreen.css'
 
 const AVATARS: Record<Avatar, string> = { femme: 'Femme', homme: 'Homme' }
 
-const EFFECTS: Record<VisualEffects, string> = {
-  full: 'Complets',
-  simple: 'Simples',
-}
-
-interface VisualEffectsFieldProps {
-  visualEffects: VisualEffects
-  onChange: (visualEffects: VisualEffects) => void
-}
-
-/**
- * The « Effets visuels » setting: complets, or simples for slower
- * computers. The world behind the menu shows the change at once.
- */
-export function VisualEffectsField({
-  visualEffects,
-  onChange,
-}: VisualEffectsFieldProps) {
-  return (
-    <fieldset className="start-screen__setting">
-      <legend>Effets visuels</legend>
-      <div className="start-screen__options">
-        {VISUAL_EFFECTS.map((option) => (
-          <label key={option} className="start-screen__option">
-            <input
-              type="radio"
-              name="visualEffects"
-              value={option}
-              checked={option === visualEffects}
-              onChange={() => onChange(option)}
-            />
-            {EFFECTS[option]}
-          </label>
-        ))}
-      </div>
-      <p className="start-screen__hint">
-        Les effets simples allègent la rue pour les ordinateurs plus lents.
-      </p>
-    </fieldset>
-  )
-}
-
 interface StartMenuViewProps {
   /** What the browser holds: « Continuer » shows only for a game it loads. */
   stored: StoredSave
-  /** Why the last imported file was rejected, if it was. */
-  importError: string | null
-  /** The visual effects the player picked, kept in this browser. */
-  visualEffects: VisualEffects
   onContinue: () => void
   onNewGame: () => void
   onDefis: () => void
-  onImport: (file: File) => void
-  onVisualEffectsChange: (visualEffects: VisualEffects) => void
 }
 
-/**
- * The first screen: continue the saved game, start one, try a Défi, or
- * import a game; and the visual effects.
- */
+/** The first screen: continue the saved game, start one or try a Défi. */
 export function StartMenuView({
   stored,
-  importError,
-  visualEffects,
   onContinue,
   onNewGame,
   onDefis,
-  onImport,
-  onVisualEffectsChange,
 }: StartMenuViewProps) {
   const headingId = useId()
   const savedId = useId()
-  const fileInput = useRef<HTMLInputElement>(null)
   return (
     <section className="start-screen" aria-labelledby={headingId}>
       <h1 id={headingId}>Magnat</h1>
@@ -106,7 +45,7 @@ export function StartMenuView({
       {stored.status === 'unavailable' && (
         <p className="notice">
           Ce navigateur bloque la sauvegarde automatique. Exportez votre partie
-          pour la reprendre plus tard.
+          dans les Réglages pour la reprendre plus tard.
         </p>
       )}
       <div className="start-screen__actions">
@@ -138,35 +77,7 @@ export function StartMenuView({
         <button type="button" className="button" onClick={onDefis}>
           Défis
         </button>
-        <button
-          type="button"
-          className="button"
-          onClick={() => fileInput.current?.click()}
-        >
-          Importer une sauvegarde
-        </button>
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".json,application/json"
-          hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0]
-            // So that picking the same file again still reports it.
-            event.target.value = ''
-            if (file !== undefined) onImport(file)
-          }}
-        />
       </div>
-      {importError !== null && (
-        <p className="start-screen__error" role="alert">
-          {importError}
-        </p>
-      )}
-      <VisualEffectsField
-        visualEffects={visualEffects}
-        onChange={onVisualEffectsChange}
-      />
     </section>
   )
 }
@@ -295,9 +206,9 @@ export function NewGameFormView({
 type Page = 'menu' | 'newGame' | 'defis' | { readonly briefing: string }
 
 /**
- * The start screen wired to the browser's saves and `settings`: the menu,
- * then the new game form, or the Défis and a Défi's briefing. `onStart`
- * gets the game to play, new, continued, imported or a Défi.
+ * The start screen wired to the browser's saves and the medals `settings`
+ * keeps: the menu, then the new game form, or the Défis and a Défi's
+ * briefing. `onStart` gets the game to play, new, continued or a Défi.
  */
 export default function StartScreen({
   onStart,
@@ -307,27 +218,12 @@ export default function StartScreen({
   settings?: SettingsStore
 }) {
   const [stored] = useState(() => readStoredSave(browserStorage()))
-  const [imports] = useState(() => createSaveImports())
   const [defaults] = useState(defaultProfile)
   const [page, setPage] = useState<Page>('menu')
-  const [importError, setImportError] = useState<string | null>(null)
   const [difficulty, setDifficulty] = useState(defaults.difficulty)
   const [businessName, setBusinessName] = useState(defaults.businessName)
   const [avatar, setAvatar] = useState(defaults.avatar)
-  const visualEffects = useStore(settings, (state) => state.visualEffects)
-  const setVisualEffects = useStore(settings, (state) => state.setVisualEffects)
   const bestMedals = useStore(settings, (state) => state.bestMedals)
-  const actions = startMenuActions({
-    readStored: () => readStoredSave(browserStorage()),
-    imports,
-    onStart,
-    onImportError: setImportError,
-    onNewGame: () => setPage('newGame'),
-    onDefis: () => setPage('defis'),
-  })
-
-  // Once the menu closes, a file still being read must not start its game.
-  useEffect(() => () => imports.cancel(), [imports])
 
   if (page === 'newGame') {
     return (
@@ -341,7 +237,7 @@ export default function StartScreen({
           onBusinessNameChange={setBusinessName}
           onAvatarChange={setAvatar}
           onStart={(name) =>
-            actions.start(
+            onStart(
               newGame(window.location.search, {
                 businessName: name,
                 avatar,
@@ -375,9 +271,7 @@ export default function StartScreen({
         <DefiBriefingView
           defi={defi}
           bestMedal={bestMedals[defi.id]}
-          onStart={() =>
-            actions.start(newChallenge(window.location.search, defi.id))
-          }
+          onStart={() => onStart(newChallenge(window.location.search, defi.id))}
           onBack={() => setPage('defis')}
         />
       </main>
@@ -388,13 +282,11 @@ export default function StartScreen({
     <main>
       <StartMenuView
         stored={stored}
-        importError={importError}
-        visualEffects={visualEffects}
-        onContinue={actions.continueGame}
-        onNewGame={actions.newGame}
-        onDefis={actions.openDefis}
-        onImport={(file) => void actions.importFile(file)}
-        onVisualEffectsChange={setVisualEffects}
+        onContinue={() =>
+          continueStoredGame(() => readStoredSave(browserStorage()), onStart)
+        }
+        onNewGame={() => setPage('newGame')}
+        onDefis={() => setPage('defis')}
       />
     </main>
   )
