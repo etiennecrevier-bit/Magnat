@@ -58,7 +58,7 @@ describe('triggersBetween', () => {
       NO_MEMORY,
     )
     expect(triggers).toEqual([{ kind: 'exhausted', day: 3 }])
-    expect(memory).toEqual({ exhaustedWeek: 0 })
+    expect(memory).toEqual({ ...NO_MEMORY, exhaustedWeek: 0 })
   })
 
   it('stays quiet while the owner stays exhausted, or is only tired', () => {
@@ -93,11 +93,40 @@ describe('triggersBetween', () => {
   it('stays quiet when no day was played: a decision, or another game going back in time', () => {
     const before = morning(10, RESTED, [0])
     expect(
-      triggersBetween(before, morning(10, EXHAUSTED, [0, 10]), NO_MEMORY),
-    ).toEqual({ triggers: [], memory: NO_MEMORY })
+      triggersBetween(before, morning(10, EXHAUSTED, [0, 10]), NO_MEMORY)
+        .triggers,
+    ).toEqual([])
     expect(
       triggersBetween(before, morning(3, EXHAUSTED, [0, 1]), NO_MEMORY),
     ).toEqual({ triggers: [], memory: NO_MEMORY })
+  })
+
+  it('calls for the owner the morning after a decision leaves them exhausted', () => {
+    // Day 9: an event's choice takes the tired owner below exhausted.
+    const decided = triggersBetween(
+      morning(9, TIRED),
+      morning(9, EXHAUSTED),
+      NO_MEMORY,
+    )
+    expect(decided.triggers).toEqual([])
+    expect(
+      triggersBetween(
+        morning(9, EXHAUSTED),
+        morning(10, EXHAUSTED),
+        decided.memory,
+      ),
+    ).toEqual({
+      triggers: [{ kind: 'exhausted', day: 10 }],
+      memory: { ...NO_MEMORY, exhaustedWeek: 1 },
+    })
+    // Another game, going back in time, does not carry the decision.
+    expect(
+      triggersBetween(
+        morning(9, EXHAUSTED),
+        morning(3, EXHAUSTED),
+        decided.memory,
+      ).memory,
+    ).toEqual(NO_MEMORY)
   })
 
   it('lists the rent before the owner, oldest first', () => {

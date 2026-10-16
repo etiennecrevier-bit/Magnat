@@ -42,17 +42,26 @@ export interface Trigger {
 export interface MessageMemory {
   /** The game week the owner last said they were exhausted; null if never. */
   readonly exhaustedWeek: number | null
+  /**
+   * Whether a decision left the owner exhausted since the last day played,
+   * such as an event's choice that costs energy: they did not wake up so.
+   */
+  readonly exhaustedByDecision: boolean
 }
 
-export const NO_MEMORY: MessageMemory = { exhaustedWeek: null }
+export const NO_MEMORY: MessageMemory = {
+  exhaustedWeek: null,
+  exhaustedByDecision: false,
+}
 
 /**
  * What calls for a message once the game moves on from `previous` to
  * `next`, oldest first. Nothing does unless days were played. Each rent that
  * went unpaid on the days played calls for the landlord's. Waking up
- * exhausted, from a morning that was not, calls for the owner's own, once a
- * game week at most: the week of `memory.exhaustedWeek` is skipped. Returns
- * the memory to keep.
+ * exhausted, from a morning that was not (before a decision left the owner
+ * exhausted, as `memory.exhaustedByDecision` keeps), calls for the owner's
+ * own, once a game week at most: the week of `memory.exhaustedWeek` is
+ * skipped. Returns the memory to keep.
  */
 export function triggersBetween(
   previous: GameState,
@@ -60,19 +69,27 @@ export function triggersBetween(
   memory: MessageMemory,
   energy: EnergyContent = ENERGY,
 ): { triggers: Trigger[]; memory: MessageMemory } {
-  if (next.day <= previous.day) return { triggers: [], memory }
+  const exhausted = (state: GameState) =>
+    fatigueOf(state.energy, energy) === 'exhausted'
+  if (next.day === previous.day) {
+    if (exhausted(previous) || !exhausted(next)) return { triggers: [], memory }
+    return { triggers: [], memory: { ...memory, exhaustedByDecision: true } }
+  }
+  if (next.day < previous.day) {
+    return { triggers: [], memory: { ...memory, exhaustedByDecision: false } }
+  }
   const triggers: Trigger[] = next.personal.unpaidRents
     .filter((day) => day >= previous.day)
     .map((day) => ({ kind: 'landlord', day }))
   const week = Math.floor(next.day / DAYS_PER_WEEK)
   const wokeExhausted =
-    fatigueOf(previous.energy, energy) !== 'exhausted' &&
-    fatigueOf(next.energy, energy) === 'exhausted'
+    (!exhausted(previous) || memory.exhaustedByDecision) && exhausted(next)
+  const kept: MessageMemory = { ...memory, exhaustedByDecision: false }
   if (wokeExhausted && memory.exhaustedWeek !== week) {
     triggers.push({ kind: 'exhausted', day: next.day })
-    return { triggers, memory: { exhaustedWeek: week } }
+    return { triggers, memory: { ...kept, exhaustedWeek: week } }
   }
-  return { triggers, memory }
+  return { triggers, memory: kept }
 }
 
 /**
