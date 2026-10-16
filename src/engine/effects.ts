@@ -63,11 +63,16 @@ export function whenDue(
   return day + (ahead === 0 ? DAYS_PER_WEEK : ahead)
 }
 
-/** The effect without its timing, as it runs and as a save keeps it. */
+/**
+ * The effect without its timing, its difficulties and its name, as it runs
+ * and as a save keeps it.
+ */
 export function untimed(effect: TimedEventEffect): EventEffect {
   const copy = { ...effect }
   delete copy.inDays
   delete copy.onNextWeekday
+  delete copy.difficulties
+  delete copy.name
   return copy
 }
 

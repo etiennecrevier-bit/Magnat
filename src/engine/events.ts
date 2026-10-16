@@ -6,6 +6,7 @@ import {
   type EventContent,
   type FoodTruckContent,
   type RestockRule,
+  type Standing,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
@@ -14,6 +15,8 @@ import { allowedChoices } from './challenge.ts'
 import { DEFIS, EVENTS, FOOD_TRUCK } from './day.ts'
 import { applyEffect, insertByDay, untimed, whenDue } from './effects.ts'
 import { next } from './rng.ts'
+import { effectsAt } from './scaling.ts'
+import { standingOf } from './standing.ts'
 import type { Day, EventRecord, EventsState, GameState } from './types.ts'
 
 // The event cards: a morning may bring a dilemma, which waits for the
@@ -30,6 +33,20 @@ export const NO_EVENTS: EventContent = loadEventContent({
   pacing: { firstDay: 0, minDaysBetween: 0, dailyChance: 0 },
   events: [],
 })
+
+/** No scaling: how a Défi plays the cards, as they are written. */
+const AS_WRITTEN: Pick<EventContent, 'scaling'> = {}
+
+/**
+ * How the cards scale in `state`'s game: as `content` sets for its
+ * difficulty, but in a Défi, whose medals take the cards as written.
+ */
+export function scalingOf(
+  state: GameState,
+  content: EventContent = EVENTS,
+): Pick<EventContent, 'scaling'> {
+  return state.challenge === null ? content : AS_WRITTEN
+}
 
 /** The events of a game that has had none yet. */
 export function noEvents(): EventsState {
@@ -56,7 +73,10 @@ export function noEvents(): EventsState {
  *    `pacing.minDaysBetween` days after `lastDrawnDay`.
  * 3. Otherwise the events that may come are those with a weight above 0,
  *    not `followUpOnly`, whose conditions all hold that morning (see
- *    `conditionsHold`). With none, nothing is drawn.
+ *    `conditionsHold`). With none, nothing is drawn. At a difficulty of
+ *    `adaptiveDraw`, but in a Défi, an event's weight is its
+ *    `weightByStanding` for the player's standing that morning (see
+ *    `standingOf`), if it sets one.
  * 4. Otherwise one draw against `pacing.dailyChance`, then one draw to pick
  *    among them by weight, and the event picked comes up with
  *    `lastDrawnDay` set to the day. A chance of 1, or a single event to
@@ -94,11 +114,12 @@ export function drawEvent(state: GameState, content: EventContent): GameState {
     return state
   }
   const seen = lastSeen(events.history)
+  const weightOf = weighing(state, content)
   const eligible = content.events.filter(
     (event) =>
-      event.weight > 0 &&
       event.conditions?.followUpOnly !== true &&
-      conditionsHold(event, state, seen),
+      conditionsHold(event, state, seen) &&
+      weightOf(event) > 0,
   )
   if (eligible.length === 0) return state
 
@@ -112,7 +133,7 @@ export function drawEvent(state: GameState, content: EventContent): GameState {
   if (eligible.length > 1) {
     const [value, after] = next(rngState)
     rngState = after
-    picked = byWeight(eligible, value)
+    picked = byWeight(eligible, weightOf, value)
   }
   if (picked === undefined) return state
   return {
@@ -199,10 +220,11 @@ export function conditionsHold(
 /**
  * Plays the player's choice `choiceId` on the event waiting: one draw picks
  * the outcome by its chance, unless the choice has a single outcome; the
- * outcome's effects then run in order, those that start now applied at
- * once (see `applyEffect`, with `foodTruck`'s unit costs) and the others
- * queued for their day (see `whenDue`). The event goes into the history
- * and no longer waits. Returns a new state; never mutates `state`. Throws
+ * outcome's effects that apply at the game's difficulty then run in order,
+ * scaled as the game scales them (see `scalingOf` and `effectsAt`), those
+ * that start now applied at once (see `applyEffect`, with `foodTruck`'s
+ * unit costs) and the others queued for their day (see `whenDue`), as they
+ * will run. The event goes into the history and no longer waits. Returns a new state; never mutates `state`. Throws
  * an Error when no event waits, and a RangeError when `content` does not
  * hold the event, the event has no such choice, or the game's Défi, one of
  * `defis`, forces the event that morning without allowing the choice (see
@@ -257,7 +279,12 @@ export function resolveEvent(
       history: [...state.events.history, record],
     },
   }
-  for (const timed of choice.outcomes[index]?.effects ?? []) {
+  const effects = effectsAt(
+    choice.outcomes[index]?.effects ?? [],
+    state.profile.difficulty,
+    scalingOf(state, content),
+  )
+  for (const timed of effects) {
     const day = whenDue(timed, state.day)
     const effect = untimed(timed)
     resolved =
@@ -290,13 +317,45 @@ function onMenu(rule: RestockRule): boolean {
   return rule.kind === 'buyDaily' ? rule.quantity > 0 : rule.upTo > 0
 }
 
-/** The event `value`, in [0, 1), falls on when each takes its weight. */
-function byWeight(events: readonly EventCard[], value: number): EventCard {
-  const total = events.reduce((sum, { weight }) => sum + weight, 0)
+/**
+ * How much each event weighs in the draw on the morning of `state.day`: its
+ * `weight`, or at a difficulty of `content.adaptiveDraw` but in a Défi, its
+ * `weightByStanding` for the player's standing, if it sets one. The
+ * standing is read once, and only if an event asks.
+ */
+function weighing(
+  state: GameState,
+  { adaptiveDraw }: EventContent,
+): (event: EventCard) => number {
+  if (
+    adaptiveDraw === undefined ||
+    state.challenge !== null ||
+    !adaptiveDraw.difficulties.includes(state.profile.difficulty)
+  ) {
+    return ({ weight }) => weight
+  }
+  let standing: Standing | undefined
+  return ({ weight, weightByStanding }) => {
+    if (weightByStanding === undefined) return weight
+    standing ??= standingOf(state, adaptiveDraw)
+    return weightByStanding[standing] ?? weight
+  }
+}
+
+/**
+ * The event `value`, in [0, 1), falls on when each weighs what `weightOf`
+ * gives it.
+ */
+function byWeight(
+  events: readonly EventCard[],
+  weightOf: (event: EventCard) => number,
+  value: number,
+): EventCard {
+  const total = events.reduce((sum, event) => sum + weightOf(event), 0)
   const target = value * total
   let reached = 0
   for (const event of events) {
-    reached += event.weight
+    reached += weightOf(event)
     if (target < reached) return event
   }
   // Only when the weights' float sum falls short of `total` at the end.

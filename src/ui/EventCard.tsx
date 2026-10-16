@@ -1,7 +1,13 @@
 import { useEffect, useRef, type Ref } from 'react'
-import type { EventCard as Card } from '../content/schema.ts'
+import type {
+  EventCard as Card,
+  DifficultyId,
+  EventContent,
+} from '../content/schema.ts'
 import { allowedChoices } from '../engine/challenge.ts'
 import { DEFIS, EVENTS } from '../engine/day.ts'
+import { scalingOf } from '../engine/events.ts'
+import { choiceTags } from '../engine/scaling.ts'
 import type { EventRecord, GameState } from '../engine/types.ts'
 import {
   allowedChoiceForKey,
@@ -10,6 +16,7 @@ import {
 } from './choiceKeys.ts'
 import { FORCED_CHOICE_REASON } from './defis.ts'
 import { choiceChanges, formatChangeLine } from './eventChanges.ts'
+import { formatChoiceTag } from './eventTags.ts'
 import { portraitUrl } from './portraits.ts'
 import { gameStore, useGame } from './store.ts'
 import './panel.css'
@@ -32,6 +39,13 @@ export interface EventResult {
 
 interface EventCardViewProps {
   card: Card
+  /** The game's difficulty, which sets the amounts the tags show. */
+  difficulty: DifficultyId
+  /**
+   * How the game scales the cards (see `scalingOf`); the shipped scaling
+   * by default.
+   */
+  scaling?: Pick<EventContent, 'scaling'>
   /** The URL of the character's portrait; null shows a silhouette. */
   portrait: string | null
   /** Null while the player chooses; then what came of the choice. */
@@ -51,12 +65,15 @@ interface EventCardViewProps {
 
 /**
  * An event card: who brings it, the title, the situation and their words,
- * then a large button for each choice, with its key and the tags the
- * content gives it. Once chosen, what came of it takes the choices' place,
- * with « Continuer ». There is no way to close it before choosing.
+ * then a large button for each choice, with its key and its tags at the
+ * game's difficulty (see `choiceTags`). Once chosen, what came of it takes
+ * the choices' place, with « Continuer ». There is no way to close it
+ * before choosing.
  */
 export function EventCardView({
   card,
+  difficulty,
+  scaling = EVENTS,
   portrait,
   result,
   allowed,
@@ -123,12 +140,16 @@ export function EventCardView({
                   </span>{' '}
                   <span className="event-card__label">{choice.label}</span>{' '}
                   <span className="event-card__tags">
-                    {choice.tags.map((tag, tagIndex) => (
-                      <span key={tagIndex}>
-                        {tagIndex > 0 && ' '}
-                        <span className="event-card__tag">{tag}</span>
-                      </span>
-                    ))}
+                    {choiceTags(choice, difficulty, scaling).map(
+                      (tag, tagIndex) => (
+                        <span key={tagIndex}>
+                          {tagIndex > 0 && ' '}
+                          <span className="event-card__tag">
+                            {formatChoiceTag(tag)}
+                          </span>
+                        </span>
+                      ),
+                    )}
                   </span>
                 </button>
                 {forbidden && (
@@ -285,6 +306,8 @@ export default function EventCard() {
     >
       <EventCardView
         card={card}
+        difficulty={game.profile.difficulty}
+        scaling={scalingOf(game)}
         portrait={portraitUrl(card.character.id)}
         result={result}
         allowed={allowed}

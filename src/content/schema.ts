@@ -654,7 +654,8 @@ export type EventEffect = z.output<typeof eventEffectSchema>
 /**
  * An effect as the content writes it: now, or later, after `inDays` days or
  * on the next `onNextWeekday` (4 is next Thursday, a week away on a
- * Thursday), never both.
+ * Thursday), never both; at every difficulty, or only at the `difficulties`
+ * listed; and with the `name` its choice's tags know it by, if any.
  */
 const timedEffectSchema = z
   .discriminatedUnion(
@@ -662,6 +663,8 @@ const timedEffectSchema = z
     effectSchemas({
       inDays: z.int().positive().optional(),
       onNextWeekday: weekday.optional(),
+      difficulties: z.array(difficultyIdSchema).min(1).optional(),
+      name: idSchema.optional(),
     }),
   )
   .refine(
@@ -671,6 +674,50 @@ const timedEffectSchema = z
   )
 
 export type TimedEventEffect = z.output<typeof timedEffectSchema>
+
+/** What a tag shows of an effect: money, energy or a percentage. */
+export type TagUnit = 'money' | 'energy' | 'percent'
+
+/**
+ * The kinds of effect a tag may show the amount of, with what it shows:
+ * money for a charge, a sale or the owner's own cash, points of energy, and
+ * how far a change to the street moves from 1, as a percentage.
+ */
+export const TAG_UNITS = {
+  charge: 'money',
+  cashSale: 'money',
+  creditSale: 'money',
+  personal: 'money',
+  energy: 'energy',
+  walkIns: 'percent',
+  appeal: 'percent',
+  willingness: 'percent',
+} as const satisfies Partial<Record<TimedEventEffect['kind'], TagUnit>>
+
+/** Where a tag's text shows the amount of the effect it names. */
+export const TAG_AMOUNT = '{montant}'
+
+/**
+ * What the owner would know of a choice before making it: a text shown as
+ * it is, or a text shown only at the `difficulties` listed and, when it
+ * names an `effect`, only where that effect applies, with `{montant}`
+ * replaced by its amount at the game's difficulty.
+ */
+const choiceTagSchema = z.union([
+  frenchText(),
+  z
+    .strictObject({
+      text: frenchText(),
+      effect: idSchema.optional(),
+      difficulties: z.array(difficultyIdSchema).min(1).optional(),
+    })
+    .refine(
+      ({ text, effect }) => effect !== undefined || !text.includes(TAG_AMOUNT),
+      { message: `a tag showing ${TAG_AMOUNT} names its effect` },
+    ),
+])
+
+export type ChoiceTagContent = z.output<typeof choiceTagSchema>
 
 /** One way a choice can turn out; the player never sees its chance. */
 const eventOutcomeSchema = z.strictObject({
@@ -686,7 +733,7 @@ const eventChoiceSchema = z
     id: idSchema,
     label: frenchText(CHOICE_LABEL_MAX_LENGTH),
     /** What the owner would know before choosing, as the card shows it. */
-    tags: z.array(frenchText()).min(1),
+    tags: z.array(choiceTagSchema).min(1),
     /** Their chances sum to 1. */
     outcomes: z.array(eventOutcomeSchema).min(1),
   })
@@ -699,6 +746,43 @@ const eventChoiceSchema = z
       path: ['outcomes'],
     },
   )
+  .superRefine(({ tags, outcomes }, ctx) => {
+    // The unit of each effect name of the choice; null when a name is
+    // shared by effects that show different units, or none.
+    const units = new Map<string, TagUnit | null>()
+    for (const { effects } of outcomes) {
+      for (const effect of effects) {
+        if (effect.name === undefined) continue
+        const unit: TagUnit | null =
+          effect.kind in TAG_UNITS
+            ? TAG_UNITS[effect.kind as keyof typeof TAG_UNITS]
+            : null
+        const known = units.get(effect.name)
+        units.set(
+          effect.name,
+          known === undefined || known === unit ? unit : null,
+        )
+      }
+    }
+    tags.forEach((tag, t) => {
+      if (typeof tag === 'string' || tag.effect === undefined) return
+      const path = ['tags', t, 'effect']
+      const unit = units.get(tag.effect)
+      if (unit === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `no effect of this choice is named ${tag.effect}`,
+          path,
+        })
+      } else if (unit === null && tag.text.includes(TAG_AMOUNT)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `the effects named ${tag.effect} have no amount of one unit to show`,
+          path,
+        })
+      }
+    })
+  })
 
 export type EventChoice = z.output<typeof eventChoiceSchema>
 
@@ -745,10 +829,25 @@ const eventConditionsSchema = z.strictObject({
 
 export type EventConditions = z.output<typeof eventConditionsSchema>
 
+/**
+ * How the player stands on a morning, at a difficulty whose draw adapts to
+ * them: « en difficulté », « dans la moyenne » or « en avance ».
+ */
+export const standingSchema = z.enum(['behind', 'average', 'ahead'])
+
+export type Standing = z.infer<typeof standingSchema>
+
+/** Relative odds among the events whose conditions hold; 0 never draws. */
+const eventWeight = z.number().nonnegative()
+
 const eventSchema = z.strictObject({
   id: idSchema,
-  /** Relative odds among the events whose conditions hold; 0 never draws. */
-  weight: z.number().nonnegative(),
+  weight: eventWeight,
+  /**
+   * The weight at a difficulty whose draw adapts to the player, for each
+   * standing it gives; `weight` for the others.
+   */
+  weightByStanding: z.partialRecord(standingSchema, eventWeight).optional(),
   /** Who brings the dilemma: a portrait id, a French name and a role. */
   character: z.strictObject({
     id: idSchema,
@@ -774,10 +873,61 @@ const eventPacingSchema = z.strictObject({
   dailyChance: share,
 })
 
+/** How a difficulty scales what a choice gives and what it takes. */
+const eventScaleSchema = z.strictObject({
+  /** Multiplies every gain: a sale, a change to the street above 1. */
+  gains: z.number().positive(),
+  /** Multiplies every loss: a charge, a change to the street below 1. */
+  losses: z.number().positive(),
+})
+
+export type EventScale = z.output<typeof eventScaleSchema>
+
+/**
+ * How each difficulty scales the effects of the choices; none does without
+ * it. A change to the street scales by its distance from 1, never below
+ * `lowestFactor`.
+ */
+const eventScalingSchema = z.strictObject({
+  _note: z.string().optional(),
+  lowestFactor: z.number().positive().max(1),
+  difficulties: z.record(difficultyIdSchema, eventScaleSchema),
+})
+
+export type EventScaling = z.output<typeof eventScalingSchema>
+
+/**
+ * Where the draw follows the player's standing (see `weightByStanding`);
+ * nowhere without it. The player is « en difficulté » below the percentile
+ * `behindBelowPercentile` of their difficulty and week, or with an encaisse
+ * below `behindBelowMonthsOfFixedCosts` months of fixed costs; « en
+ * avance » above the percentile `aheadAbovePercentile`.
+ */
+const adaptiveDrawSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    difficulties: z.array(difficultyIdSchema).min(1),
+    behindBelowPercentile: z.number().min(0).max(100),
+    aheadAbovePercentile: z.number().min(0).max(100),
+    behindBelowMonthsOfFixedCosts: z.number().nonnegative(),
+  })
+  .refine(
+    ({ behindBelowPercentile, aheadAbovePercentile }) =>
+      behindBelowPercentile <= aheadAbovePercentile,
+    {
+      message: 'behindBelowPercentile is at most aheadAbovePercentile',
+      path: ['aheadAbovePercentile'],
+    },
+  )
+
+export type AdaptiveDraw = z.output<typeof adaptiveDrawSchema>
+
 export const eventContentSchema = z
   .strictObject({
     _note: z.string().optional(),
     pacing: eventPacingSchema,
+    scaling: eventScalingSchema.optional(),
+    adaptiveDraw: adaptiveDrawSchema.optional(),
     events: z.array(eventSchema),
   })
   .superRefine(({ events }, ctx) => {
@@ -1370,11 +1520,13 @@ export function loadEnergyContent(raw: unknown = energyJson): EnergyContent {
 }
 
 /**
- * Validates the event cards and their pacing and returns them typed, with
- * money as `Cents`. Throws an Error naming every invalid field: besides
- * each field, event ids must be unique, choice ids unique within their
- * event, each choice's chances must sum to 1 and every follow-up must name
- * an event of the file. Pass `raw` only to check other data; by default it
+ * Validates the event cards, their pacing, their scaling by difficulty and
+ * the adaptive draw, and returns them typed, with money as `Cents`. Throws
+ * an Error naming every invalid field: besides each field, event ids must
+ * be unique, choice ids unique within their event, each choice's chances
+ * must sum to 1, every follow-up must name an event of the file, and every
+ * effect a tag names must be one of its choice's, of one unit when the tag
+ * shows its amount. Pass `raw` only to check other data; by default it
  * reads `events.json`.
  */
 export function loadEventContent(raw: unknown = eventsJson): EventContent {

@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadEventContent, type EventCard as Card } from '../content/schema.ts'
+import {
+  loadEventContent,
+  type DifficultyId,
+  type EventCard as Card,
+} from '../content/schema.ts'
 import { createInitialState } from '../engine/clock.ts'
 import { EVENTS } from '../engine/day.ts'
 import type { GameState } from '../engine/types.ts'
@@ -65,10 +69,12 @@ function render(
   result: EventResult | null = null,
   portrait: string | null = null,
   allowed: readonly string[] | null = null,
+  difficulty: DifficultyId = 'facile',
 ) {
   return renderToStaticMarkup(
     <EventCardView
       card={card}
+      difficulty={difficulty}
       portrait={portrait}
       result={result}
       allowed={allowed}
@@ -129,14 +135,15 @@ describe('EventCardView', () => {
     expect(html).not.toContain('event-card__silhouette')
   })
 
-  it('shows three choices as numbered buttons, with their tags as written', () => {
+  it('shows three choices as numbered buttons, with their tags at Facile', () => {
+    // Facile keeps the gains and takes 0.7 of the losses.
     const html = render()
     expect(choices(html)).toEqual([
       {
         shortcut: '1',
         key: '1',
         label: 'Tout essayer',
-        tags: ['Ventes +950 $', `Énergie ${M}10`, 'Risqué'],
+        tags: [`Ventes +950${S}$`, `Énergie ${M}7`, 'Risqué'],
       },
       {
         shortcut: '2',
@@ -154,6 +161,25 @@ describe('EventCardView', () => {
     expect(html).toContain(
       '<ol class="event-card__choices"><li><button type="button"',
     )
+  })
+
+  it('shows the amounts that apply at Difficile, to the dollar', () => {
+    // Difficile gives 0.7 of the gains and takes 1.2 of the losses.
+    const [toutEssayer] = choices(render(ESSAI, null, null, null, 'difficile'))
+    expect(toutEssayer?.tags).toEqual([
+      `Ventes +665${S}$`,
+      `Énergie ${M}12`,
+      'Risqué',
+    ])
+  })
+
+  it('shows a tag only at the difficulties where it holds', () => {
+    const card = EVENTS.events.find(({ id }) => id === 'grosseCommande')
+    if (card === undefined) throw new Error('No grosseCommande')
+    const refuser = (difficulty: DifficultyId) =>
+      choices(render(card, null, null, null, difficulty)).at(-1)?.tags
+    expect(refuser('moyen')).toEqual(['Rien ne change'])
+    expect(refuser('difficile')).toEqual([`Énergie ${M}6`])
   })
 
   it('disables the choices a Défi leaves out, with the reason and no key', () => {
@@ -242,6 +268,7 @@ describe('EventCard', () => {
   })
 
   it('shows what the choice did once it is made', () => {
+    // At Moyen: −130 $ + 260 $ − 20 croissants at 1,10 $ now, −65 $ later.
     gameStore.getState().startGame(waiting())
     gameStore.getState().chooseEvent('toutEssayer')
     const html = renderToStaticMarkup(<EventCard />)
@@ -249,8 +276,8 @@ describe('EventCard', () => {
     expect(html).toContain(
       `<p class="event-card__chosen">Votre choix${S}: Tout essayer</p><p class="event-card__outcome">Tout a été essayé. Thérèse coche sa liste.</p>`,
     )
-    expect(html).toContain(`<li>Encaisse +78${S}$</li>`)
-    expect(html).toContain(`<li>Encaisse ${M}50${S}$ jeudi</li>`)
+    expect(html).toContain(`<li>Encaisse +108${S}$</li>`)
+    expect(html).toContain(`<li>Encaisse ${M}65${S}$ jeudi</li>`)
     expect(html).toContain('Continuer')
   })
 
@@ -271,6 +298,8 @@ describe('EventCard', () => {
       [undefined, 'Refuser poliment'],
     ])
     expect(html.match(/ disabled=""/g)).toHaveLength(2)
+    // A Défi plays the cards as written, and its tags say so.
+    expect(choices(html)[0]?.tags[0]).toBe(`Ventes +750${S}$`)
   })
 
   it('shows nothing for an event the content does not hold', () => {

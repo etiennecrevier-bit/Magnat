@@ -5,6 +5,7 @@ import {
 } from '../../src/content/schema.ts'
 import { EVENTS } from '../../src/engine/day.ts'
 import { NO_EVENTS } from '../../src/engine/events.ts'
+import { effectsAt } from '../../src/engine/scaling.ts'
 import { cents } from '../../src/engine/money.ts'
 import { isRngState } from '../../src/engine/rng.ts'
 import type { GameState } from '../../src/engine/types.ts'
@@ -158,11 +159,11 @@ describe('playWindow', () => {
 })
 
 describe('branchEvent', () => {
-  it('measures nothing for a choice that changes nothing, and the charge alone for a charge', () => {
+  it('measures nothing for a choice that changes nothing, and the charge alone for a charge, as Moyen scales it', () => {
     const payer = EVENTS.events
       .find(({ id }) => id === 'formulaire14B')
       ?.choices.find(({ id }) => id === 'payer')
-    const fine = payer?.outcomes[0]?.effects[0]
+    const [fine] = effectsAt(payer?.outcomes[0]?.effects ?? [], 'moyen', EVENTS)
     if (fine?.kind !== 'charge') throw new Error('No fine to pay')
     expect(
       results(branchEvent(morningWith('formulaire14B'), SEED)).payer,

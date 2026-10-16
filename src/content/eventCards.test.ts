@@ -18,10 +18,12 @@ import { balance, entriesOf, type JournalEntry } from '../finance/journal.ts'
 import { balanceSheet } from '../finance/statements.ts'
 import type { EventCard, EventChoice, EventContent } from './schema.ts'
 
-// The twelve event cards of issue #93, each choice played out in a game of
+// The event cards of issues #93 and #137, each choice played out in a game of
 // seed 42: every outcome of every choice, from the first morning the card
 // may come up, until nothing it started is left. chequeDansLaMalle, which
 // only comes as a follow-up, plays from the late payment of grosseCommande.
+// The cards play as written, with no difficulty scaling them: the game is
+// at Moyen, so the effects of Difficile only never apply.
 
 const SEED = 42
 const CASH: AccountCode = '1000'
@@ -37,9 +39,12 @@ const DAYS_PER_YEAR = 365
 /** Days to play a choice out before giving up on it settling. */
 const MAX_DAYS = 200
 
-/** The shipped cards with no draw: only follow-ups come up. */
+/** The shipped cards as written, with no difficulty scaling them. */
+const AS_WRITTEN: EventContent = { ...EVENTS, scaling: undefined }
+
+/** The cards as written with no draw: only follow-ups come up. */
 const FOLLOW_UPS_ONLY: EventContent = {
-  ...EVENTS,
+  ...AS_WRITTEN,
   pacing: { ...EVENTS.pacing, dailyChance: 0 },
 }
 
@@ -140,7 +145,7 @@ function choose(
       choice.outcomes.length > 1 ? drawing(choice, index) : morning.rngState,
     events: { ...morning.events, pending: { event, followUp } },
   }
-  return resolveEvent(waiting, choiceId, EVENTS)
+  return resolveEvent(waiting, choiceId, AS_WRITTEN)
 }
 
 /** Whether nothing an event started is left in `state`. */
@@ -169,7 +174,7 @@ function playOut(
   let current = state
   for (let played = 0; played < MAX_DAYS; played += 1) {
     if (current.events.pending !== null) {
-      current = resolveEvent(current, answer, EVENTS)
+      current = resolveEvent(current, answer, AS_WRITTEN)
     }
     if (played >= minDays && settled(current)) return mornings
     current = step(current)
