@@ -1,0 +1,77 @@
+/* « Replier », at the right end of the screen buttons, even on a line of its
+   own. */
+.screens__fold {
+  margin: 0 0 1rem auto;
+}
+
+/* Folded, the card hugs the strip and leaves the street the room, never
+   wider than unfolded (WorldCanvas.css) even with a long message above. */
+main.screens--folded {
+  padding: 0.5rem;
+}
+
+.world ~ main.screens--folded {
+  width: fit-content;
+  max-width: min(42rem, calc(100% - 2rem));
+}
+
+/* On a phone it spans the window, as unfolded. */
+@media (max-width: 559px) {
+  .world ~ main.screens--folded {
+    width: auto;
+    max-width: none;
+  }
+}
+
+/* The strip is one button: a click anywhere on it unfolds the screens. */
+.screens-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.screens-strip:hover {
+  background: rgb(43 38 34 / 8%);
+}
+
+.screens-strip:focus-visible {
+  outline: 3px solid #2186eb;
+  outline-offset: 2px;
+}
+
+/* The open screen's badge, an ink pill. */
+.screens-strip__screen {
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
+  background: #2b2622;
+  color: #fff7e8;
+  font-size: 0.875rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* A label never parts from its number. */
+.screens-strip__number {
+  white-space: nowrap;
+}
+
+.screens-strip__number strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.screens-strip__unfold {
+  margin-left: auto;
+  font-weight: 600;
+  white-space: nowrap;
+}
