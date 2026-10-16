@@ -1902,7 +1902,8 @@ export function loadEnergyContent(raw: unknown = energyJson): EnergyContent {
  * the adaptive draw, and returns them typed, with money as `Cents`. Throws
  * an Error naming every invalid field: besides each field, event ids must
  * be unique, choice ids unique within their event, each choice's chances
- * must sum to 1, every follow-up must name an event of the file, and every
+ * must sum to 1, every follow-up must name an event of the file, a contract
+ * and a grocer walking away happen when the choice is made, and every
  * effect a tag names must be one of its choice's, of one unit when the tag
  * shows its amount. Pass `raw` only to check other data; by default it
  * reads `events.json`.

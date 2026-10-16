@@ -87,10 +87,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
  * The format `serialize()` writes. Bump it when a save written before a
  * change can no longer load (rule 8 in CLAUDE.md). Version 13 adds the
  * grocers' contracts: a version 12 game still loads, with no contract and no
- * delivery. Version 12 adds the
- * bakery: a version 11 game still loads, with none planned, none running,
- * no oven and the croissants bought. Version 11 adds the
- * Défis: a version 10 game still loads, as a game that is not a Défi.
+ * delivery. Version 12 adds the bakery: a version 11 game still loads, with
+ * none planned, none running, no oven and the croissants bought. Version 11
+ * adds the Défis: a version 10 game still loads, as a game that is not a
+ * Défi.
  * Version 10 adds the week in numbers: a version 9 game still loads, with no week reported yet and
  * the week under way counted from its last close. Version 9 adds the
  * changes to the street: a version 8 game still loads, as a game with none.
@@ -549,8 +549,8 @@ export function serialize(state: GameState): string {
  * Throws an Error that starts with "Invalid save:" and names the problem
  * unless: the text is JSON of the current `SAVE_VERSION`, or of version 12,
  * which loads with no contract, or of version 11, which also loads with no
- * bakery, or of version 10,
- * which also loads as a game that is not a Défi, or of version 9, which also
+ * bakery, or of version 10, which also loads as a game that is not a Défi,
+ * or of version 9, which also
  * loads with no week reported yet and the week under way counted from its
  * books (see `weekSince`), or of version 8, which also loads with no
  * change to the street, or of version 7, which also loads with no event
