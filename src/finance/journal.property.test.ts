@@ -38,6 +38,71 @@ const drafts = fc.array(draft, { maxLength: MAX_ENTRIES })
 
 type Draft = typeof draft extends fc.Arbitrary<infer T> ? T : never
 
+// Cash balances as close to the edge of the safe integer range as a journal
+// can take them without leaving it, so that working a balance back from a
+// later one goes past the edge unless it retraces the entries' running
+// balances. Each entry moves the cash to one level after another.
+const EDGE = Number.MAX_SAFE_INTEGER
+const level = fc.oneof(
+  fc.constantFrom(-EDGE, -EDGE + 1, -1, 0, 1, EDGE - 1, EDGE),
+  fc.integer({ min: -EDGE, max: EDGE }),
+)
+const swing = fc.record({
+  gap: fc.integer({ min: 0, max: MAX_GAP }),
+  levels: fc.array(level, { minLength: 1, maxLength: MAX_MOVEMENTS }),
+})
+const swings = fc.array(swing, { maxLength: MAX_ENTRIES })
+
+type Swing = typeof swing extends fc.Arbitrary<infer T> ? T : never
+
+/**
+ * Entries that move the cash to each level in turn, through zero when the
+ * step is too large for one line, with the capital lines after the cash
+ * ones so its balance takes the same path, negated. A move that would take
+ * an entry's debits past the safe integer range goes in another entry on
+ * the same day. A swing that leaves the cash where it is posts nothing.
+ */
+function toSwings(list: readonly Swing[]): JournalEntry[] {
+  let day = 0
+  let cash = 0
+  const entries: JournalEntry[] = []
+  let moves: number[] = []
+  let debits = 0
+  function close(): void {
+    if (moves.length === 0) return
+    const lines = [
+      ...moves.map((move) => line('1000', move)),
+      ...moves.map((move) => line('3000', -move)),
+    ]
+    entries.push({ day, memo: `Écriture ${entries.length + 1}`, lines })
+    moves = []
+    debits = 0
+  }
+  for (const { gap, levels } of list) {
+    day += gap
+    for (const target of levels) {
+      if (target === cash) continue
+      const steps =
+        Math.abs(target - cash) <= EDGE ? [target - cash] : [-cash, target]
+      for (const move of steps) {
+        if (debits + Math.abs(move) > EDGE) close()
+        moves.push(move)
+        debits += Math.abs(move)
+      }
+      cash = target
+    }
+    close()
+  }
+  return entries
+}
+
+/** A debit of `net` to the account, or a credit when it is negative. */
+function line(account: AccountCode, net: number): JournalLine {
+  return net > 0
+    ? { account, debit: cents(net), credit: cents(0) }
+    : { account, debit: cents(0), credit: cents(-net) }
+}
+
 function toEntries(list: readonly Draft[], startDay = 0): JournalEntry[] {
   let day = startDay
   return list.map(({ gap, movements }, index) => {
@@ -92,6 +157,27 @@ describe('journal properties', () => {
           }
         },
       ),
+      { numRuns: NUM_RUNS },
+    )
+  })
+
+  it('gives every balance a plain sum gives, near the edge of the safe integer range', () => {
+    fc.assert(
+      fc.property(swings, (list) => {
+        const entries = toSwings(list)
+        const journal = entries.reduce(postEntry, emptyJournal())
+        for (let toDay = -1; toDay <= lastDay(entries) + 1; toDay += 1) {
+          let cash = 0
+          for (const { day, lines } of entries) {
+            if (day > toDay) break
+            for (const { account, debit, credit } of lines) {
+              if (account === '1000') cash += debit - credit
+            }
+          }
+          expect(balance(journal, '1000', { toDay })).toBe(cash)
+          expect(balance(journal, '3000', { toDay })).toBe(cash)
+        }
+      }),
       { numRuns: NUM_RUNS },
     )
   })
@@ -185,5 +271,25 @@ describe('journal property generators', () => {
       }
     }
     expect([...seen].sort()).toEqual([...CODES].sort())
+  })
+
+  it('take the cash to both edges of the safe integer range, within an entry too', () => {
+    const samples = fc.sample(swings, { numRuns: 500, seed: 42 })
+    const reached = new Set<number>()
+    let movedTwice = false
+    for (const list of samples) {
+      let cash = 0
+      for (const { lines } of toSwings(list)) {
+        const moves = lines.filter(({ account }) => account === '1000')
+        if (moves.length > 1) movedTwice = true
+        for (const { debit, credit } of moves) {
+          cash += debit - credit
+          reached.add(cash)
+        }
+      }
+    }
+    expect(reached.has(EDGE)).toBe(true)
+    expect(reached.has(-EDGE)).toBe(true)
+    expect(movedTwice).toBe(true)
   })
 })

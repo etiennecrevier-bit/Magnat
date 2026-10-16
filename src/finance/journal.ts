@@ -250,13 +250,14 @@ export function netDebits(
   let summed: Map<AccountCode, Cents>
   // From the first entry, take the journal's own nets less the entries after
   // `toDay` when those are the fewer, so a balance late in a long game costs
-  // what it does early on. Taking them away goes back through the running
-  // balances that summing reaches, all in range while `nets` is set, so both
-  // ways give the same nets.
+  // what it does early on. Taking them away from the last line of the last
+  // entry back goes through the running balances that summing reaches, in
+  // reverse, all in range while `nets` is set, so both ways give the same
+  // nets. In any other order a balance on the way may leave the range.
   if (first === 0 && nets !== null && count - last < last) {
     summed = new Map(nets)
-    for (const { lines } of posted.slice(last, count)) {
-      for (const { account, debit, credit } of lines) {
+    for (const { lines } of posted.slice(last, count).reverse()) {
+      for (const { account, debit, credit } of lines.toReversed()) {
         summed.set(
           account,
           sub(summed.get(account) ?? ZERO, sub(debit, credit)),

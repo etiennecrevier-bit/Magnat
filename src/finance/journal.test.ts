@@ -452,6 +452,31 @@ describe('balance', () => {
     expect(balance(repaid, '1000', { toDay: 0 })).toBe(MAX)
     expect(() => balance(repaid, '1000', { toDay: 2 })).toThrow(RangeError)
   })
+
+  it('gives a balance at the edge of the safe integer range before later entries that swing it', () => {
+    const swung = post(
+      ...[MAX - 2, 1, 1, -MAX, MAX].map((amount, day) =>
+        amount > 0
+          ? entry(day, 'Mise de fonds', dr('1000', amount), cr('3000', amount))
+          : entry(day, 'Retrait', dr('3000', -amount), cr('1000', -amount)),
+      ),
+    )
+    expect(balance(swung, '1000', { toDay: 2 })).toBe(MAX)
+    expect(balance(swung, '3000', { toDay: 2 })).toBe(MAX)
+    expect(balance(swung, '1000', { toDay: 3 })).toBe(0)
+    expect(balance(swung, '1000', { toDay: 4 })).toBe(MAX)
+  })
+
+  it('gives a balance before an entry whose lines take it out to the edge and back', () => {
+    const moved = post(
+      entry(0, 'Mise de fonds', dr('1000', 1), cr('3000', 1)),
+      entry(1, 'Mise de fonds', dr('1000', 1), cr('3000', 1)),
+      entry(2, 'Mise de fonds', dr('1000', 1), cr('3000', 1)),
+      entry(3, 'Virement', cr('1000', MAX), dr('1000', MAX)),
+    )
+    expect(balance(moved, '1000', { toDay: 2 })).toBe(3)
+    expect(balance(moved, '1000', { toDay: 3 })).toBe(3)
+  })
 })
 
 describe('netDebits', () => {
