@@ -4,6 +4,8 @@ import {
   loadReportText,
   MAX_FACT_LENGTH,
   MAX_HEADLINE_LENGTH,
+  MIN_ADVICE_VARIANTS,
+  MIN_QUIET_ADVICE,
   MIN_VARIANTS,
   PLACEHOLDER,
   REPORT_PLACEHOLDERS,
@@ -20,6 +22,8 @@ function shipped() {
     facts: Record<string, string[]>
     headlines: Record<string, string[]>
     quietHeadlines: string[]
+    advice: Record<string, string[]>
+    quietAdvice: string[]
     creditSaleNote: string
   }
 }
@@ -31,8 +35,10 @@ function allLines(): string[] {
     ...weekFactIdSchema.options.flatMap((id) => [
       ...text.facts[id],
       ...text.headlines[id],
+      ...text.advice[id],
     ]),
     ...text.quietHeadlines,
+    ...text.quietAdvice,
     text.creditSaleNote,
   ]
 }
@@ -49,6 +55,16 @@ describe('report.fr.json', () => {
     expect(text.quietHeadlines.length).toBeGreaterThanOrEqual(MIN_VARIANTS)
   })
 
+  it(`has Mme Prudhomme's advice: at least ${MIN_ADVICE_VARIANTS} for each fact of a week and ${MIN_QUIET_ADVICE} for a quiet one`, () => {
+    const text = loadReportText()
+    for (const id of weekFactIdSchema.options) {
+      expect(text.advice[id].length, id).toBeGreaterThanOrEqual(
+        MIN_ADVICE_VARIANTS,
+      )
+    }
+    expect(text.quietAdvice.length).toBeGreaterThanOrEqual(MIN_QUIET_ADVICE)
+  })
+
   it('names every number of its fact in each fact, and only those', () => {
     const text = loadReportText()
     for (const id of weekFactIdSchema.options) {
@@ -59,7 +75,7 @@ describe('report.fr.json', () => {
     }
   })
 
-  it(`keeps facts within ${MAX_FACT_LENGTH} characters and headlines within ${MAX_HEADLINE_LENGTH}`, () => {
+  it(`keeps facts and advice within ${MAX_FACT_LENGTH} characters and headlines within ${MAX_HEADLINE_LENGTH}`, () => {
     const text = loadReportText()
     for (const id of weekFactIdSchema.options) {
       for (const fact of text.facts[id]) {
@@ -68,6 +84,12 @@ describe('report.fr.json', () => {
       for (const title of text.headlines[id]) {
         expect(title.length, title).toBeLessThanOrEqual(MAX_HEADLINE_LENGTH)
       }
+      for (const advice of text.advice[id]) {
+        expect(advice.length, advice).toBeLessThanOrEqual(MAX_FACT_LENGTH)
+      }
+    }
+    for (const advice of text.quietAdvice) {
+      expect(advice.length, advice).toBeLessThanOrEqual(MAX_FACT_LENGTH)
     }
   })
 
@@ -133,6 +155,38 @@ describe('loadReportText', () => {
     const raw = shipped()
     raw.quietHeadlines[0] = 'Une semaine à {sales}.'
     expect(() => loadReportText(raw)).toThrow(/\{sales\}/)
+  })
+
+  it('rejects advice naming a number of another fact', () => {
+    const raw = shipped()
+    raw.advice.unpaidRent![0] = 'Il vous manquait {amount} pour le loyer.'
+    expect(() => loadReportText(raw)).toThrow(/\{amount\}/)
+  })
+
+  it('rejects a number in quiet advice', () => {
+    const raw = shipped()
+    raw.quietAdvice[0] = 'Une semaine à {sales}. Rien à redire.'
+    expect(() => loadReportText(raw)).toThrow(/\{sales\}/)
+  })
+
+  it(`rejects a fact with fewer than ${MIN_ADVICE_VARIANTS} pieces of advice, fewer than ${MIN_QUIET_ADVICE} quiet ones, and a fact with none`, () => {
+    const few = shipped()
+    few.advice.spoilage = few.advice.spoilage!.slice(0, MIN_ADVICE_VARIANTS - 1)
+    expect(() => loadReportText(few)).toThrow(/spoilage/)
+
+    const quiet = shipped()
+    quiet.quietAdvice = quiet.quietAdvice.slice(0, MIN_QUIET_ADVICE - 1)
+    expect(() => loadReportText(quiet)).toThrow(/quietAdvice/)
+
+    const missing = shipped()
+    delete missing.advice.lostToLine
+    expect(() => loadReportText(missing)).toThrow(/lostToLine/)
+  })
+
+  it('rejects advice that repeats a headline', () => {
+    const raw = shipped()
+    raw.advice.bestWeek![2] = raw.headlines.bestWeek![0]!
+    expect(() => loadReportText(raw)).toThrow(/twice/)
   })
 
   it(`rejects a fact with fewer than ${MIN_VARIANTS} variants`, () => {

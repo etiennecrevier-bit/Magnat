@@ -3,10 +3,12 @@ import reportTextJson from './report.fr.json'
 import { weekFactIdSchema, type WeekFactId } from './schema.ts'
 
 // Rules the report's text is held to, not tunables: each fact needs enough
-// variants that the weeks do not keep repeating one, and a line has to fit
-// where it shows: a fact on the slide-in card, a headline in the ticker's
-// band.
+// variants that the weeks do not keep repeating one, Mme Prudhomme more
+// still, as her advice shows every week, and a line has to fit where it
+// shows: a fact on the slide-in card, a headline in the ticker's band.
 export const MIN_VARIANTS = 2
+export const MIN_ADVICE_VARIANTS = 3
+export const MIN_QUIET_ADVICE = 5
 export const MAX_FACT_LENGTH = 160
 export const MAX_HEADLINE_LENGTH = 120
 
@@ -49,6 +51,11 @@ export const reportTextSchema = z
     facts: z.record(weekFactIdSchema, z.array(factLine).min(MIN_VARIANTS)),
     headlines: z.record(weekFactIdSchema, z.array(headline).min(MIN_VARIANTS)),
     quietHeadlines: z.array(headline).min(MIN_VARIANTS),
+    advice: z.record(
+      weekFactIdSchema,
+      z.array(factLine).min(MIN_ADVICE_VARIANTS),
+    ),
+    quietAdvice: z.array(factLine).min(MIN_QUIET_ADVICE),
     creditSaleNote: factLine,
   })
   .superRefine((text, ctx) => {
@@ -91,9 +98,15 @@ export const reportTextSchema = z
       text.headlines[id].forEach((title, i) =>
         check(title, ['headlines', id, i], names, false),
       )
+      text.advice[id].forEach((advice, i) =>
+        check(advice, ['advice', id, i], names, false),
+      )
     }
     text.quietHeadlines.forEach((title, i) =>
       check(title, ['quietHeadlines', i], [], false),
+    )
+    text.quietAdvice.forEach((advice, i) =>
+      check(advice, ['quietAdvice', i], [], false),
     )
     check(
       text.creditSaleNote,
@@ -105,7 +118,8 @@ export const reportTextSchema = z
 
 /**
  * What the « Bilan de la semaine » says: each fact's variants, the
- * La Presse-Citron headlines and the chart's note on a sale on credit.
+ * La Presse-Citron headlines, Mme Prudhomme's advice and the chart's note
+ * on a sale on credit.
  */
 export type ReportText = z.output<typeof reportTextSchema>
 
