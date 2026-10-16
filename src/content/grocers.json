@@ -1,8 +1,9 @@
 {
-  "_note": "The three grocers of #156, as Étienne decided them on October 16, 2026, their weekly volumes five times the issue's so that the cash trap holds (#998): each offers a weekly croissant contract through an event card, at a lower price, paid at 45 or 60 days, so a contract raises sales and ties up cash until its first payment. The croissants cost what foodtruck.json sets, or, when the bakery makes them, its ingredients (difficulty.json); Marché Bio-Logique pays artisanalPremiumCents more for each one the bakery made. Deliveries come every deliveryWeekday morning, the truck open or closed, at most maxContracts contracts at once, each delivery taking deliveryEnergyCost from the owner. renewalEvent is the card that comes the morning after a contract's last delivery.",
+  "_note": "The three grocers of #156, as Étienne decided them on October 16, 2026, their weekly volumes five times the issue's so that the cash trap holds (#998): each offers a weekly croissant contract through an event card, at a lower price, paid at 45 or 60 days, so a contract raises sales and ties up cash until its first payment. The croissants cost what foodtruck.json sets, or, when the bakery makes them, its ingredients (difficulty.json); Marché Bio-Logique pays artisanalPremiumCents more for each one the bakery made. Deliveries come every deliveryWeekday morning, the truck open or closed, at most maxContracts contracts at once, each delivery taking deliveryEnergyCost from the owner. renewalEvent is the card that comes the morning after a contract's last delivery. A delivery nobody can make (#158) is missed: no sale, a week off the contract and a strike; the maxStrikes-th strike ends it with no renewal.",
   "maxContracts": 3,
   "deliveryWeekday": 1,
   "deliveryEnergyCost": 4,
+  "maxStrikes": 3,
   "grocers": {
     "chezNormand": {
       "name": "Épicerie Chez Normand",

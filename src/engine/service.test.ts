@@ -4,6 +4,7 @@ import { createInitialState, tick } from './clock.ts'
 import { CUSTOMERS, ENERGY, FOOD_TRUCK } from './day.ts'
 import { SEGMENTS } from './customers.ts'
 import { FULL_ENERGY } from './energy.ts'
+import { STAFF } from './staff.ts'
 import {
   openLine,
   patienceSeconds,
@@ -20,7 +21,7 @@ const SERVICE: Service = {
   maxAheadInLine: 8,
 }
 
-const ONE: readonly Server[] = [{ speed: 1 }]
+const ONE: readonly Server[] = [{ speed: 1, owner: true }]
 
 /** Each customer looks at the line, then joins it ordering `items` units. */
 function waits(
@@ -29,7 +30,7 @@ function waits(
 ): { ahead: Ahead; start: number }[] {
   return arrivals.map(({ second, items }) => ({
     ahead: line.ahead(second),
-    start: line.join(second, items),
+    start: line.join(second, items).start,
   }))
 }
 
@@ -41,9 +42,9 @@ function together(count: number) {
 describe('servers', () => {
   it('is the avatar alone, at speed 1 when rested', () => {
     let state = createInitialState(42)
-    expect(servers(state, ENERGY)).toEqual([{ speed: 1 }])
+    expect(servers(state, ENERGY)).toEqual([{ speed: 1, owner: true }])
     for (let day = 0; day < 10; day += 1) state = tick(state)
-    expect(servers(state, ENERGY)).toEqual([{ speed: 1 }])
+    expect(servers(state, ENERGY)).toEqual([{ speed: 1, owner: true }])
   })
 
   it.each([
@@ -58,7 +59,7 @@ describe('servers', () => {
     [0, 1 / (1 + ENERGY.exhausted.serviceTimeIncrease)],
   ])('serves at energy %d at speed %d', (energy, speed) => {
     const state = { ...createInitialState(42), energy }
-    expect(servers(state, ENERGY)).toEqual([{ speed }])
+    expect(servers(state, ENERGY)).toEqual([{ speed, owner: true }])
   })
 
   it('takes 20 % longer tired and 80 % longer exhausted, as shipped', () => {
@@ -66,6 +67,46 @@ describe('servers', () => {
       servers({ ...createInitialState(42), energy }, ENERGY)[0]?.speed
     expect(at(49)).toBe(1 / 1.2)
     expect(at(24)).toBe(1 / 1.8)
+  })
+
+  const camion = {
+    candidate: 'amelie',
+    role: 'camion',
+    hourlyWage: STAFF.roles.camion.hourlyWageCents.start,
+    hiredOnDay: 0,
+  } as const
+
+  it('adds each employee at the truck after the owner, at truckSpeed', () => {
+    const state = {
+      ...createInitialState(42),
+      energy: 24,
+      staff: [camion, { ...camion, candidate: 'kevin' as const }],
+    }
+    expect(servers(state, ENERGY)).toEqual([
+      { speed: 1 / 1.8, owner: true },
+      { speed: STAFF.truckSpeed, owner: false },
+      { speed: STAFF.truckSpeed, owner: false },
+    ])
+    expect(STAFF.truckSpeed).toBe(0.85)
+  })
+
+  it('leaves the owner out while they are away', () => {
+    const away = { ...createInitialState(42), ownerAway: true }
+    expect(servers(away, ENERGY)).toEqual([])
+    expect(servers({ ...away, staff: [camion] }, ENERGY)).toEqual([
+      { speed: STAFF.truckSpeed, owner: false },
+    ])
+  })
+
+  it('serves with nobody else when the staff neither serves', () => {
+    const state = {
+      ...createInitialState(42),
+      staff: [
+        { ...camion, role: 'livreur' as const },
+        { ...camion, candidate: 'kevin' as const, role: 'boulanger' as const },
+      ],
+    }
+    expect(servers(state, ENERGY)).toEqual([{ speed: 1, owner: true }])
   })
 })
 
@@ -94,7 +135,7 @@ describe('openLine', () => {
   it('serves a lone customer at once', () => {
     const line = openLine(ONE, SERVICE)
     expect(line.ahead(600)).toEqual({ wait: 0, waiting: 0 })
-    expect(line.join(600, 3)).toBe(600)
+    expect(line.join(600, 3)).toEqual({ start: 600, server: ONE[0] })
   })
 
   it('makes customers who come together wait their turn', () => {
@@ -120,7 +161,7 @@ describe('openLine', () => {
     line.join(0, 1)
     expect(line.ahead(55)).toEqual({ wait: 0, waiting: 0 })
     expect(line.ahead(120)).toEqual({ wait: 0, waiting: 0 })
-    expect(line.join(120, 1)).toBe(120)
+    expect(line.join(120, 1).start).toBe(120)
   })
 
   it('stops counting a customer as waiting once they reach the counter', () => {
@@ -133,14 +174,33 @@ describe('openLine', () => {
   })
 
   it('sends each customer to the server free first', () => {
-    const line = openLine([{ speed: 1 }, { speed: 1 }], SERVICE)
+    const line = openLine(
+      [
+        { speed: 1, owner: true },
+        { speed: 1, owner: false },
+      ],
+      SERVICE,
+    )
     expect(waits(line, together(4)).map(({ start }) => start)).toEqual([
       0, 0, 55, 55,
     ])
   })
 
+  it('says which server each customer reached, the first on a tie', () => {
+    const owner: Server = { speed: 1, owner: true }
+    const employee: Server = { speed: 0.5, owner: false }
+    const line = openLine([owner, employee], SERVICE)
+    // The owner is free at 55, the employee at 110.
+    expect(together(4).map(({ second }) => line.join(second, 1))).toEqual([
+      { start: 0, server: owner },
+      { start: 0, server: employee },
+      { start: 55, server: owner },
+      { start: 110, server: owner },
+    ])
+  })
+
   it('serves twice as fast at speed 2', () => {
-    const line = openLine([{ speed: 2 }], SERVICE)
+    const line = openLine([{ speed: 2, owner: true }], SERVICE)
     expect(waits(line, together(3)).map(({ start }) => start)).toEqual([
       0, 27.5, 55,
     ])
@@ -148,10 +208,16 @@ describe('openLine', () => {
 
   it.each([
     ['no server', []],
-    ['a speed of 0', [{ speed: 0 }]],
-    ['a negative speed', [{ speed: 1 }, { speed: -1 }]],
-    ['a speed that is not a number', [{ speed: Number.NaN }]],
-    ['an infinite speed', [{ speed: Number.POSITIVE_INFINITY }]],
+    ['a speed of 0', [{ speed: 0, owner: true }]],
+    [
+      'a negative speed',
+      [
+        { speed: 1, owner: true },
+        { speed: -1, owner: false },
+      ],
+    ],
+    ['a speed that is not a number', [{ speed: Number.NaN, owner: true }]],
+    ['an infinite speed', [{ speed: Number.POSITIVE_INFINITY, owner: true }]],
   ] as const)('rejects %s', (_, crew) => {
     expect(() => openLine(crew, SERVICE)).toThrow(RangeError)
   })

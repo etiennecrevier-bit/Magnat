@@ -112,6 +112,8 @@ export interface Served {
   readonly withdrawals: Readonly<Record<ProductId, readonly Withdrawal[]>>
   /** Visits that left the line without being served. */
   readonly leftLine: number
+  /** Visits the owner served, of those that reached the counter. */
+  readonly servedByOwner: number
   /**
    * The average wait, in whole seconds, of the customers who reached the
    * counter; 0 when nobody did.
@@ -148,8 +150,9 @@ export interface Counter {
   readonly service: Service
   readonly servers: readonly Server[]
   /**
-   * The share of the units made that are botched and made again: 0 when the
-   * owner is rested (see `effectsOf` in energy.ts).
+   * The share of the units the owner makes that are botched and made again:
+   * 0 when the owner is rested (see `effectsOf` in energy.ts). Employees
+   * botch none.
    */
   readonly botchedShare: number
 }
@@ -233,13 +236,13 @@ export const NO_CHANGES: CrowdChanges = {
  * counter, they buy each unit they want that is left; one sold out is a
  * lost sale, so a stockout hits the customers served later.
  *
- * Each unit made for a customer, counted from 1 in the order they are made
- * that day, remakes aside, is botched when ⌊n × `botchedShare`⌋ goes up at
- * it: a fixed quota rather than a draw, so at 0.02 every 50th unit. A
- * botched unit leaves the stock and is thrown out, then the next unit left
- * is made in its place; with none left, the customer loses it as a lost
- * sale. Making it again takes no time, so the line never depends on the
- * stock or the fatigue.
+ * Each unit the owner makes for a customer they serve, counted from 1 in the
+ * order they are made that day, remakes aside, is botched when
+ * ⌊n × `botchedShare`⌋ goes up at it: a fixed quota rather than a draw, so
+ * at 0.02 every 50th unit. A botched unit leaves the stock and is thrown out,
+ * then the next unit left is made in its place; with none left, the customer
+ * loses it as a lost sale. Making it again takes no time, so the line never
+ * depends on the stock or the fatigue. An employee botches nothing.
  *
  * Never mutates its arguments.
  */
@@ -318,6 +321,7 @@ export function serveWalkIns(
     }
   }
   const { botchedShare } = counter
+  /** The units the owner made, remakes aside. */
   let made = 0
   const tally = perSegment<Record<keyof SegmentSummary, number>>(() => ({
     visits: 0,
@@ -327,6 +331,7 @@ export function serveWalkIns(
   }))
   const visits: Visit[] = []
   let leftLine = 0
+  let servedByOwner = 0
   let reachedCounter = 0
   let totalWait = 0
   let longestWait = 0
@@ -344,9 +349,10 @@ export function serveWalkIns(
         leftMinute = arrivalMinute
         leftLine += 1
       } else {
-        const start = line.join(second, wanted.length)
+        const { start, server } = line.join(second, wanted.length)
         servedMinute = Math.floor(start / SECONDS_PER_MINUTE)
         reachedCounter += 1
+        if (server.owner) servedByOwner += 1
         totalWait += start - second
         longestWait = Math.max(longestWait, start - second)
         // Customers reach the counter in the order they join the line, so
@@ -357,10 +363,11 @@ export function serveWalkIns(
             lost[product] += 1
             continue
           }
-          made += 1
+          if (server.owner) made += 1
           if (
+            server.owner &&
             Math.floor(made * botchedShare) >
-            Math.floor((made - 1) * botchedShare)
+              Math.floor((made - 1) * botchedShare)
           ) {
             take(product, true)
             botched[product] += 1
@@ -402,6 +409,7 @@ export function serveWalkIns(
     botched,
     withdrawals,
     leftLine,
+    servedByOwner,
     averageWaitSeconds:
       reachedCounter === 0 ? 0 : Math.round(totalWait / reachedCounter),
     longestWaitSeconds: Math.round(longestWait),

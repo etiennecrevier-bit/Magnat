@@ -305,11 +305,48 @@ function withoutWeek(save: Json): void {
 }
 
 /**
+ * Takes the staff out of `save`, as version 13 wrote it: the save of a game
+ * that never hired anyone, with the owner at work, no strike and nothing
+ * missed.
+ */
+function withoutStaff(save: Json): void {
+  expect(save.staff).toEqual([])
+  expect(save.ownerAway).toBe(false)
+  delete save.staff
+  delete save.ownerAway
+  for (const key of ['decisions', 'pendingDecisions']) {
+    const decisions = save[key] as Json | null
+    if (decisions === null) continue
+    expect(decisions.staff).toEqual([])
+    delete decisions.staff
+  }
+  const contracts = save.contracts as Json
+  expect(contracts.missed).toEqual([])
+  delete contracts.missed
+  for (const contract of contracts.running as Json[]) {
+    expect(contract.strikes).toBe(0)
+    delete contract.strikes
+  }
+  const lastDay = save.lastDay as Json | null
+  if (lastDay === null) return
+  expect(lastDay.missed).toEqual([])
+  delete lastDay.missed
+}
+
+/** `state`, with no staff, saved as version 13, before the staff. */
+function v13(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutStaff(save)
+  return JSON.stringify({ ...save, saveVersion: 13 })
+}
+
+/**
  * Takes the contracts out of `save`, as version 12 wrote it: the save of a
- * game that never signed one.
+ * game that never signed one, nor hired anyone, which came later.
  */
 function withoutContracts(save: Json): void {
-  expect(save.contracts).toEqual(noContracts())
+  withoutStaff(save)
+  expect(save.contracts).toEqual({ running: [], deliveries: [], away: {} })
   delete save.contracts
   const lastDay = save.lastDay as Json | null
   if (lastDay === null) return
@@ -409,8 +446,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(13)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 13 })
+    expect(SAVE_VERSION).toBe(14)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 14 })
   })
 
   it.each<Profile>([
@@ -947,7 +984,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 6, 14, '13', '12', '11', '10', '9', '8', '7', null])(
+  it.each([0, 1, 6, 15, '14', '13', '12', '11', '10', '9', '8', '7', null])(
     'saveVersion %j',
     (version) => {
       expectInvalid(withValue('saveVersion', version), [
@@ -3510,7 +3547,7 @@ describe("the grocers' contracts", () => {
     [
       'deliveries left that do not match those made',
       withValue('contracts.running.0.weeksLeft', 12, MORNING_SAVE),
-      'contract 1 has 12 of its 12 deliveries left, after 4 since day 0',
+      'contract 1 has 12 of its 12 deliveries left, after 4 made and 0 missed since day 0',
     ],
     [
       'no delivery left',
@@ -3599,5 +3636,231 @@ describe("the grocers' contracts", () => {
     ],
   ])('rejects %s', (_, text, reason) => {
     rejects(text, reason)
+  })
+})
+
+describe('the staff and the missed deliveries', () => {
+  /**
+   * Seed 42 with Épicerie Chez Normand's contract signed on day 0 and
+   * Amélie hired at the truck that morning, from day 1. The owner is away on
+   * Monday 14 with nobody to deliver, so the delivery is missed: a strike.
+   */
+  const HIRED: GameState = applyDecision(
+    {
+      ...createInitialState(SEED),
+      contracts: startContract(noContracts(), 0, 'chezNormand'),
+    },
+    { kind: 'hire', role: 'camion', candidate: 'amelie' },
+  )
+  const AWAY_MONDAY: GameState = { ...played(14, HIRED), ownerAway: true }
+  const STRUCK = playDay(AWAY_MONDAY)
+  const STRUCK_SAVE = serialize(STRUCK)
+  // The morning of day 17.
+  const AFTER = played(3, AWAY_MONDAY)
+  const AFTER_SAVE = serialize(AFTER)
+
+  it('give back a game mid-employment with a strike, which then plays on the same', () => {
+    expect(STRUCK.lastDay?.missed).toEqual([{ day: 14, grocer: 'chezNormand' }])
+    expect(STRUCK.contracts.running).toMatchObject([
+      { grocer: 'chezNormand', weeksLeft: 10, strikes: 1 },
+    ])
+    expect(STRUCK.staff).toMatchObject([{ candidate: 'amelie', hiredOnDay: 1 }])
+    expect(STRUCK.ownerAway).toBe(true)
+    for (const state of [AWAY_MONDAY, STRUCK, AFTER]) {
+      const back = reloaded(state)
+      expect(back).toStrictEqual(state)
+      expect(serialize(back)).toBe(serialize(state))
+      expect(serialize(played(40, back))).toBe(serialize(played(40, state)))
+    }
+    expect(AFTER.ownerAway).toBe(false)
+  })
+
+  it('give back a hire, a firing and a raise waiting for the next morning', () => {
+    const waiting = [
+      { kind: 'hire', role: 'livreur', candidate: 'kevin' },
+      { kind: 'fire', candidate: 'amelie' },
+    ] satisfies DecisionChange[]
+    const raised = applyDecision(AFTER, {
+      kind: 'setWage',
+      candidate: 'amelie',
+      hourlyWage: cents(2_000),
+    })
+    for (const state of [
+      waiting.reduce((next, change) => applyDecision(next, change), AFTER),
+      raised,
+    ]) {
+      expect(reloaded(state)).toStrictEqual(state)
+    }
+  })
+
+  it('load a version 13 game as one with nobody on staff, the owner at work and nothing missed', () => {
+    const signed: GameState = played(30, {
+      ...createInitialState(SEED),
+      contracts: startContract(noContracts(), 0, 'chezNormand'),
+    })
+    expect(signed.contracts.deliveries).toHaveLength(4)
+    for (const state of [
+      signed,
+      playDay(signed),
+      createInitialState(SEED),
+      DAY_400,
+    ]) {
+      expect(deserialize(v13(state))).toStrictEqual(state)
+    }
+  })
+
+  /** The load of `text` fails, naming `reason`. */
+  function rejects(
+    text: string,
+    reason: string,
+    grocers = loadGrocerContent(grocersJson, EVENTS),
+  ): void {
+    expect(() =>
+      deserialize(
+        text,
+        FOOD_TRUCK,
+        EVENTS,
+        DIFFICULTIES,
+        DEFIS,
+        BAKERY,
+        grocers,
+      ),
+    ).toThrow(reason)
+  }
+
+  const amelie = AFTER.staff[0]
+  it.each([
+    [
+      'an employee hired on a day not played',
+      withValue('staff.0.hiredOnDay', 17, AFTER_SAVE),
+      'employee 1, amelie, was hired on day 17, not a day played from day 0 to day 16',
+    ],
+    [
+      'a wage outside the range',
+      withValue('staff.0.hourlyWage', 2_501, AFTER_SAVE),
+      'staff: Invalid decision: staff.0.hourlyWage',
+    ],
+    [
+      'an unknown candidate',
+      withValue('staff.0.candidate', 'gilles', AFTER_SAVE),
+      '→ at staff[0].candidate',
+    ],
+    [
+      'an employee twice',
+      withValue('staff', [amelie, amelie], AFTER_SAVE),
+      'hired twice',
+    ],
+    [
+      'more employees than the most at once',
+      withValue(
+        'staff',
+        (['amelie', 'kevin', 'sophie', 'mathieu'] as const).map(
+          (candidate) => ({
+            ...amelie,
+            candidate,
+          }),
+        ),
+        AFTER_SAVE,
+      ),
+      'staff holds at most 3 employees: 4',
+    ],
+    [
+      'a staff at the close other than the decisions want',
+      withValue('decisions.staff', [], STRUCK_SAVE),
+      'the staff at the close of day 14 is not the one the decisions want',
+    ],
+    [
+      'decisions that give an employee another role',
+      withValue('decisions.staff.0.role', 'livreur', AFTER_SAVE),
+      'decisions.staff gives amelie the role livreur, but they work as camion',
+    ],
+    [
+      'pending decisions that give an employee another role',
+      withValue(
+        'pendingDecisions',
+        {
+          ...AFTER.decisions,
+          staff: [
+            {
+              ...AFTER.decisions.staff[0],
+              role: 'boulanger',
+              hourlyWage: 2_200,
+            },
+          ],
+        },
+        AFTER_SAVE,
+      ),
+      'pendingDecisions.staff gives amelie the role boulanger, but they work as camion',
+    ],
+    [
+      'an owner away who is neither',
+      withValue('ownerAway', 'parfois', AFTER_SAVE),
+      '→ at ownerAway',
+    ],
+    [
+      'strikes that are not the deliveries missed',
+      withValue('contracts.running.0.strikes', 0, STRUCK_SAVE),
+      'contract 1 has 0 strikes, after 1 deliveries missed since day 0',
+    ],
+    [
+      'deliveries left that do not count those missed',
+      withValue('contracts.running.0.weeksLeft', 11, STRUCK_SAVE),
+      'contract 1 has 11 of its 12 deliveries left, after 1 made and 1 missed since day 0',
+    ],
+    [
+      'a missed delivery on another day than Monday',
+      withValue('contracts.missed.0.day', 15, AFTER_SAVE),
+      'missed delivery 1 is on day 15, not a delivery day',
+    ],
+    [
+      'a missed delivery on a day not played',
+      withValue('contracts.missed.0.day', 21, AFTER_SAVE),
+      'missed delivery 1 is on day 21, a day not played',
+    ],
+    [
+      'missed deliveries out of order',
+      withValue(
+        'contracts.missed',
+        [
+          { day: 14, grocer: 'chezNormand' },
+          { day: 7, grocer: 'marcheBioLogique' },
+        ],
+        AFTER_SAVE,
+      ),
+      'missed delivery 2 comes before the one before it: day 7 < day 14',
+    ],
+    [
+      'a last day that lost its missed delivery',
+      withValue('lastDay.missed', [], STRUCK_SAVE),
+      "lastDay's missed deliveries are not those of day 14",
+    ],
+    [
+      'a version 13 game with a staff',
+      edited('staff', () => undefined, v13(createInitialState(SEED))).replace(
+        '"saveVersion":13',
+        '"saveVersion":13,"staff":[]',
+      ),
+      'Unrecognized key: "staff"',
+    ],
+    [
+      'a version 13 game with missed deliveries',
+      withValue('contracts.missed', [], v13(createInitialState(SEED))),
+      'Unrecognized key: "missed"',
+    ],
+    [
+      'a version 13 game with decisions.staff',
+      withValue('decisions.staff', [], v13(createInitialState(SEED))),
+      'Unrecognized key: "staff"',
+    ],
+  ])('rejects %s', (_, text, reason) => {
+    rejects(text, reason)
+  })
+
+  it('rejects a contract running at the strikes that end it', () => {
+    rejects(
+      STRUCK_SAVE,
+      'contract 1 has 1 strikes, after 1 deliveries missed since day 0, and fewer than 1 keep it running',
+      loadGrocerContent({ ...grocersJson, maxStrikes: 1 }, EVENTS),
+    )
   })
 })

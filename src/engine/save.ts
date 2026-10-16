@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   avatarSchema,
+  candidateIdSchema,
   croissantSourceSchema,
   difficultyIdSchema,
   eventEffectSchema,
@@ -9,6 +10,7 @@ import {
   ovenTermsSchema,
   productIdSchema,
   segmentIdSchema,
+  staffRoleIdSchema,
   streetChangeSchema,
   type BakeryContent,
   type Defi,
@@ -18,6 +20,7 @@ import {
   type EventContent,
   type FoodTruckContent,
   type GrocerContent,
+  type StaffContent,
 } from '../content/schema.ts'
 import { isAccountCode, type AccountCode } from '../finance/accounts.ts'
 import {
@@ -48,7 +51,7 @@ import {
   startingEnergy,
   verdict,
 } from './challenge.ts'
-import { GROCERS, noContracts } from './contracts.ts'
+import { GROCERS } from './contracts.ts'
 import {
   DEFIS,
   DIFFICULTIES,
@@ -56,7 +59,11 @@ import {
   FOOD_TRUCK,
   openingJournal,
 } from './day.ts'
-import { startingDecisions, validateDecisions } from './decisions.ts'
+import {
+  startingDecisions,
+  validateDecisions,
+  validateStaff,
+} from './decisions.ts'
 import { FULL_ENERGY } from './energy.ts'
 import { noEvents } from './events.ts'
 import { PRODUCTS, inventoryValue } from './inventory.ts'
@@ -64,6 +71,7 @@ import { cents, sum } from './money.ts'
 import { LABELS, isKept } from './personal.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
+import { STAFF } from './staff.ts'
 import type {
   BakeryPlan,
   BakeryState,
@@ -71,6 +79,7 @@ import type {
   Day,
   Decisions,
   GameState,
+  Hire,
   VisitOutcome,
   WeekDay,
   WeekReport,
@@ -85,7 +94,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 13 adds the
+ * change can no longer load (rule 8 in CLAUDE.md). Version 14 adds the
+ * employees, the owner's absence and the missed deliveries: a version 13 game
+ * still loads, with nobody on staff or wanted, the owner at work, no strike
+ * and nothing missed. Version 13 adds the
  * grocers' contracts: a version 12 game still loads, with no contract and no
  * delivery. Version 12 adds the bakery: a version 11 game still loads, with
  * none planned, none running, no oven and the croissants bought. Version 11
@@ -106,9 +118,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 13
+export const SAVE_VERSION = 14
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const STAFFLESS_VERSION = 13
 const CONTRACTLESS_VERSION = 12
 const BAKERYLESS_VERSION = 11
 const CHALLENGELESS_VERSION = 10
@@ -200,6 +213,9 @@ const deliverySchema = z.strictObject({
   dueDay: gameDay,
 })
 
+// `checkContracts()` checks the days, their order and the strikes.
+const missedSchema = z.strictObject({ day: gameDay, grocer: grocerIdSchema })
+
 // `checkEvents()` checks the days, their order and the event ids.
 const modifierSchema = z.strictObject({
   event: z.string(),
@@ -208,7 +224,8 @@ const modifierSchema = z.strictObject({
   lastDay: gameDay,
 })
 
-const daySummarySchema = z.strictObject({
+/** The last day of a version 13 save, before the missed deliveries. */
+const stafflessDaySummarySchema = z.strictObject({
   day: gameDay,
   sold: unitsPerProduct,
   revenue: money,
@@ -244,6 +261,10 @@ const daySummarySchema = z.strictObject({
   deliveries: z.array(deliverySchema),
 })
 
+const daySummarySchema = stafflessDaySummarySchema.extend({
+  missed: z.array(missedSchema),
+})
+
 const restockRuleSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('buyDaily'), quantity: count }),
   z.strictObject({
@@ -262,12 +283,25 @@ const bakerylessDecisionsSchema = z.strictObject({
   marketingDaily: money,
 })
 
-// `validateDecisions()` checks the limits and the days open, `checkBakery()`
-// the bakery planned against the bakery.
-const decisionsSchema = bakerylessDecisionsSchema.extend({
+/** The decisions of a version 13 save, before the staff. */
+const stafflessDecisionsSchema = bakerylessDecisionsSchema.extend({
   bakery: z.strictObject({ oven: ovenTermsSchema }).nullable(),
   croissantSource: croissantSourceSchema,
   bake: restockRuleSchema,
+})
+
+// `validateDecisions()` checks the wages and that nobody is hired twice.
+const hireSchema = z.strictObject({
+  candidate: candidateIdSchema,
+  role: staffRoleIdSchema,
+  hourlyWage: money,
+})
+
+// `validateDecisions()` checks the limits and the days open, `checkBakery()`
+// the bakery planned against the bakery, and `checkStaff()` the staff
+// against the staff on hand.
+const decisionsSchema = stafflessDecisionsSchema.extend({
+  staff: z.array(hireSchema),
 })
 
 // `validateProfile()` checks the business name.
@@ -409,6 +443,8 @@ const challengeSchema = z.strictObject({
 
 type SavedDecisions = z.output<typeof decisionsSchema>
 
+type StafflessDecisions = z.output<typeof stafflessDecisionsSchema>
+
 // `checkBakery()` checks the days, the oven and the books.
 const bakerySchema = z.strictObject({
   openedOnDay: gameDay.nullable(),
@@ -417,23 +453,37 @@ const bakerySchema = z.strictObject({
   ovenBoughtOnDay: gameDay.nullable(),
 })
 
-// `checkContracts()` checks the contracts and the deliveries against the
-// grocers.
-const contractsSchema = z.strictObject({
-  running: z.array(
-    z.strictObject({
-      grocer: grocerIdSchema,
-      startDay: gameDay,
-      weeksLeft: z.int().positive(),
-      unitPrice: z
-        .int()
-        .positive()
-        .transform((n) => cents(n)),
-    }),
-  ),
+/** A contract of a version 13 save, before the strikes. */
+const stafflessContractSchema = z.strictObject({
+  grocer: grocerIdSchema,
+  startDay: gameDay,
+  weeksLeft: z.int().positive(),
+  unitPrice: z
+    .int()
+    .positive()
+    .transform((n) => cents(n)),
+})
+
+/** The contracts of a version 13 save, with nothing missed. */
+const stafflessContractsSchema = z.strictObject({
+  running: z.array(stafflessContractSchema),
   deliveries: z.array(deliverySchema),
   away: z.partialRecord(grocerIdSchema, gameDay),
 })
+
+// `checkContracts()` checks the contracts, the deliveries, those missed and
+// the strikes against the grocers. In the order of `ContractsState`, so a
+// game loaded writes the same save as one played on.
+const contractsSchema = z.strictObject({
+  running: z.array(stafflessContractSchema.extend({ strikes: count })),
+  deliveries: z.array(deliverySchema),
+  missed: z.array(missedSchema),
+  away: z.partialRecord(grocerIdSchema, gameDay),
+})
+
+// `checkStaff()` checks the wages, the days and the staff against the
+// decisions.
+const employeeSchema = hireSchema.extend({ hiredOnDay: gameDay })
 
 const saveSchema = z.strictObject({
   saveVersion: z.literal(SAVE_VERSION),
@@ -457,6 +507,8 @@ const saveSchema = z.strictObject({
   challenge: challengeSchema.nullable(),
   bakery: bakerySchema,
   contracts: contractsSchema,
+  staff: z.array(employeeSchema),
+  ownerAway: z.boolean(),
 })
 
 // The week under way may come from the books rather than the save.
@@ -472,10 +524,26 @@ type Parsed = Omit<Save, 'weekSoFar'> & {
   readonly weekSoFar: WeekSoFar | null
 }
 
-/** A version 12 save: no contract, and no delivery on the last day. */
-const contractlessSchema = saveSchema.omit({ contracts: true }).extend({
+/**
+ * A version 13 save: nobody on staff or wanted, the owner at work, and
+ * contracts with no strike and nothing missed.
+ */
+const stafflessSchema = saveSchema
+  .omit({ staff: true, ownerAway: true })
+  .extend({
+    saveVersion: z.literal(STAFFLESS_VERSION),
+    lastDay: stafflessDaySummarySchema.nullable(),
+    decisions: stafflessDecisionsSchema,
+    pendingDecisions: stafflessDecisionsSchema.nullable(),
+    contracts: stafflessContractsSchema,
+  })
+
+type Staffless = z.output<typeof stafflessSchema>
+
+/** A version 12 save: no contract either, and no delivery on the last day. */
+const contractlessSchema = stafflessSchema.omit({ contracts: true }).extend({
   saveVersion: z.literal(CONTRACTLESS_VERSION),
-  lastDay: daySummarySchema.omit({ deliveries: true }).nullable(),
+  lastDay: stafflessDaySummarySchema.omit({ deliveries: true }).nullable(),
 })
 
 /** A version 11 save: no bakery either, and decisions without one. */
@@ -498,7 +566,7 @@ const weeklessSchema = challengelessSchema
 /** A version 8 save: no change to the street either. */
 const streetlessSchema = weeklessSchema.extend({
   saveVersion: z.literal(STREETLESS_VERSION),
-  lastDay: daySummarySchema
+  lastDay: stafflessDaySummarySchema
     .omit({ modifiers: true, deliveries: true })
     .nullable(),
   events: eventsSchema.omit({ modifiers: true }),
@@ -536,6 +604,8 @@ export function serialize(state: GameState): string {
     challenge: state.challenge,
     bakery: state.bakery,
     contracts: state.contracts,
+    staff: state.staff,
+    ownerAway: state.ownerAway,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -547,8 +617,10 @@ export function serialize(state: GameState): string {
  * nothing was played: the books open on day 0 either way.
  *
  * Throws an Error that starts with "Invalid save:" and names the problem
- * unless: the text is JSON of the current `SAVE_VERSION`, or of version 12,
- * which loads with no contract, or of version 11, which also loads with no
+ * unless: the text is JSON of the current `SAVE_VERSION`, or of version 13,
+ * which loads with nobody on staff, the owner at work and nothing missed,
+ * or of version 12, which also loads with no contract, or of version 11,
+ * which also loads with no
  * bakery, or of version 10, which also loads as a game that is not a Défi,
  * or of version 9, which also
  * loads with no week reported yet and the week under way counted from its
@@ -582,8 +654,8 @@ export function serialize(state: GameState): string {
  * profile's difficulty (see `checkDifficulty`), with the Défi's cash in a
  * Défi; the week under way, the last week reported and the history pass
  * `checkWeek()`; the Défi, if any, is one of `defis` and passes
- * `checkChallenge()`; and the contracts pass `checkContracts()` against
- * `grocers`.
+ * `checkChallenge()`; the contracts pass `checkContracts()` against
+ * `grocers`; and the staff passes `checkStaff()` against `staff`.
  *
  * The products, limits, restock kinds, `awarenessDays` and the truck's
  * price are those of `content` as it is now, the events, choices, outcomes
@@ -600,6 +672,7 @@ export function deserialize(
   defis: DefiContent = DEFIS,
   bakery: BakeryContent = BAKERY,
   grocers: GrocerContent = GROCERS,
+  staff: StaffContent = STAFF,
 ): GameState {
   const loaded = parsed(text, bakery)
   const journal = rebuilt(loaded.journal)
@@ -617,9 +690,15 @@ export function deserialize(
   checkEvents(save, events)
   checkEnergy(save, defi === null ? FULL_ENERGY : startingEnergy(defi))
   checkMarketingHistory(save, content)
-  checkDecisions('decisions', save.decisions, content, bakery)
+  checkDecisions('decisions', save.decisions, content, bakery, staff)
   if (save.pendingDecisions !== null) {
-    checkDecisions('pendingDecisions', save.pendingDecisions, content, bakery)
+    checkDecisions(
+      'pendingDecisions',
+      save.pendingDecisions,
+      content,
+      bakery,
+      staff,
+    )
   }
   checkBakery(save, journal, bakery)
   attempt('profile', () => validateProfile(save.profile))
@@ -628,6 +707,7 @@ export function deserialize(
   checkWeek(save, journal, content, events, opening)
   if (defi !== null) checkChallenge(save, journal, defi, content, opening)
   checkContracts(save, grocers)
+  checkStaff(save, staff)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -650,6 +730,8 @@ export function deserialize(
     challenge: save.challenge,
     bakery: save.bakery,
     contracts: save.contracts,
+    staff: save.staff,
+    ownerAway: save.ownerAway,
   }
 }
 
@@ -666,15 +748,22 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
   if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  if (saveVersion === STAFFLESS_VERSION) {
+    return withStaff(checked(stafflessSchema, raw))
+  }
   if (saveVersion === CONTRACTLESS_VERSION) {
-    return withContracts(checked(contractlessSchema, raw))
+    return withStaff(withContracts(checked(contractlessSchema, raw)))
   }
   if (saveVersion === BAKERYLESS_VERSION) {
-    return withContracts(withBakery(checked(bakerylessSchema, raw), bakery))
+    return withStaff(
+      withContracts(withBakery(checked(bakerylessSchema, raw), bakery)),
+    )
   }
   if (saveVersion === CHALLENGELESS_VERSION) {
     const save = checked(challengelessSchema, raw)
-    return withContracts(withBakery({ ...save, challenge: null }, bakery))
+    return withStaff(
+      withContracts(withBakery({ ...save, challenge: null }, bakery)),
+    )
   }
   // An older version's own schema first, strict, so a key it did not know
   // still fails the load.
@@ -704,12 +793,63 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
     weekHistory: [],
     challenge: null,
   })
-  return withContracts(withBakery({ ...save, weekSoFar: null }, bakery))
+  return withStaff(
+    withContracts(withBakery({ ...save, weekSoFar: null }, bakery)),
+  )
 }
 
 /**
- * A save from before the contracts as the current version: with no
- * contract, and no delivery on its last day.
+ * A save from before the employees as the current version: with nobody on
+ * staff, none wanted in the decisions and those pending, the owner at work,
+ * no strike against a contract, nothing missed, and no delivery missed on
+ * its last day.
+ */
+function withStaff<
+  Old extends {
+    readonly lastDay: Staffless['lastDay']
+    readonly decisions: StafflessDecisions
+    readonly pendingDecisions: StafflessDecisions | null
+    readonly contracts: Staffless['contracts']
+  },
+>(
+  save: Old,
+): Omit<
+  Old,
+  'saveVersion' | 'lastDay' | 'decisions' | 'pendingDecisions' | 'contracts'
+> & {
+  readonly saveVersion: typeof SAVE_VERSION
+  readonly lastDay: Save['lastDay']
+  readonly decisions: SavedDecisions
+  readonly pendingDecisions: SavedDecisions | null
+  readonly contracts: Save['contracts']
+  readonly staff: Save['staff']
+  readonly ownerAway: boolean
+} {
+  const { contracts, pendingDecisions } = save
+  return {
+    ...save,
+    saveVersion: SAVE_VERSION,
+    lastDay: save.lastDay === null ? null : { ...save.lastDay, missed: [] },
+    decisions: { ...save.decisions, staff: [] },
+    pendingDecisions:
+      pendingDecisions === null ? null : { ...pendingDecisions, staff: [] },
+    contracts: {
+      running: contracts.running.map((contract) => ({
+        ...contract,
+        strikes: 0,
+      })),
+      deliveries: contracts.deliveries,
+      missed: [],
+      away: contracts.away,
+    },
+    staff: [],
+    ownerAway: false,
+  }
+}
+
+/**
+ * A save from before the contracts as version 13: with no contract, and no
+ * delivery on its last day.
  */
 function withContracts<
   Old extends {
@@ -718,16 +858,15 @@ function withContracts<
 >(
   save: Old,
 ): Omit<Old, 'saveVersion' | 'lastDay'> & {
-  readonly saveVersion: typeof SAVE_VERSION
-  readonly lastDay: Save['lastDay']
-  readonly contracts: Save['contracts']
+  readonly saveVersion: typeof STAFFLESS_VERSION
+  readonly lastDay: Staffless['lastDay']
+  readonly contracts: Staffless['contracts']
 } {
-  const { running, deliveries, away } = noContracts()
   return {
     ...save,
-    saveVersion: SAVE_VERSION,
+    saveVersion: STAFFLESS_VERSION,
     lastDay: save.lastDay === null ? null : { ...save.lastDay, deliveries: [] },
-    contracts: { running: [...running], deliveries: [...deliveries], away },
+    contracts: { running: [], deliveries: [], away: {} },
   }
 }
 
@@ -746,12 +885,12 @@ function withBakery<
   bakery: BakeryContent,
 ): Omit<Old, 'saveVersion' | 'decisions' | 'pendingDecisions'> & {
   readonly saveVersion: typeof CONTRACTLESS_VERSION
-  readonly decisions: SavedDecisions
-  readonly pendingDecisions: SavedDecisions | null
+  readonly decisions: StafflessDecisions
+  readonly pendingDecisions: StafflessDecisions | null
   readonly bakery: BakeryState
 } {
   const { croissantSource, bake } = bakery.startingDecisions
-  const upgraded = (decisions: Old['decisions']): SavedDecisions => ({
+  const upgraded = (decisions: Old['decisions']): StafflessDecisions => ({
     ...decisions,
     bakery: null,
     croissantSource,
@@ -1087,9 +1226,10 @@ function checkDecisions(
   decisions: Decisions,
   content: FoodTruckContent,
   bakery: BakeryContent,
+  staff: StaffContent,
 ): void {
   attempt(field, () =>
-    validateDecisions(decisions, content.decisionLimits, bakery),
+    validateDecisions(decisions, content.decisionLimits, bakery, staff),
   )
   for (const product of PRODUCTS) {
     const { kind } = content.startingDecisions.restock[product]
@@ -1834,24 +1974,28 @@ function checkChallenge(
  * `grocers`:
  * - at most `maxContracts` run, one per grocer at most, each signed no
  *   later than the save's day, with from 1 to the grocer's `weeks`
- *   deliveries left, and as many deliveries to the grocer since the day it
- *   was signed as the weeks it ran;
+ *   deliveries left, as many deliveries to the grocer, made or missed,
+ *   since the day it was signed as the weeks it ran, and as many strikes as
+ *   those missed, fewer than `maxStrikes`;
  * - the deliveries, oldest first, are each on the `deliveryWeekday` of a day
  *   played, with no more croissants made than delivered, and due after
  *   their day;
- * - `lastDay`'s deliveries are those of its day, in order.
+ * - those missed, oldest first, are each on the `deliveryWeekday` of a day
+ *   played;
+ * - `lastDay`'s deliveries, and those it missed, are those of its day, in
+ *   order.
  */
 function checkContracts(save: Save, grocers: GrocerContent): void {
   const { day, lastDay, contracts } = save
-  const { running, deliveries } = contracts
+  const { running, deliveries, missed } = contracts
   const played = lastDay?.day ?? firstDay(save) - 1
-  const { maxContracts, deliveryWeekday } = grocers
+  const { maxContracts, deliveryWeekday, maxStrikes } = grocers
   if (running.length > maxContracts) {
     invalid(
       `${running.length} contracts run, more than the ${maxContracts} at once`,
     )
   }
-  running.forEach(({ grocer, startDay, weeksLeft }, index) => {
+  running.forEach(({ grocer, startDay, weeksLeft, strikes }, index) => {
     const what = `contract ${index + 1}`
     if (running.findIndex((other) => other.grocer === grocer) !== index) {
       invalid(`${what} is a second contract with ${grocer}`)
@@ -1865,12 +2009,18 @@ function checkContracts(save: Save, grocers: GrocerContent): void {
         `${what} has ${weeksLeft} deliveries left, more than the ${weeks} of a contract with ${grocer}`,
       )
     }
-    const made = deliveries.filter(
-      (delivery) => delivery.grocer === grocer && delivery.day > startDay,
-    ).length
-    if (made !== weeks - weeksLeft) {
+    const since = (delivery: { day: Day; grocer: string }) =>
+      delivery.grocer === grocer && delivery.day > startDay
+    const made = deliveries.filter(since).length
+    const misses = missed.filter(since).length
+    if (made + misses !== weeks - weeksLeft) {
       invalid(
-        `${what} has ${weeksLeft} of its ${weeks} deliveries left, after ${made} since day ${startDay}`,
+        `${what} has ${weeksLeft} of its ${weeks} deliveries left, after ${made} made and ${misses} missed since day ${startDay}`,
+      )
+    }
+    if (strikes !== misses || strikes >= maxStrikes) {
+      invalid(
+        `${what} has ${strikes} strikes, after ${misses} deliveries missed since day ${startDay}, and fewer than ${maxStrikes} keep it running`,
       )
     }
   })
@@ -1891,11 +2041,104 @@ function checkContracts(save: Save, grocers: GrocerContent): void {
     }
     if (dueDay <= on) invalid(`${what} is due on day ${dueDay}, not after it`)
   })
+  missed.forEach(({ day: on }, index) => {
+    const what = `missed delivery ${index + 1}`
+    if (on > played) invalid(`${what} is on day ${on}, a day not played`)
+    if (toCalendar(on).weekday !== deliveryWeekday) {
+      invalid(`${what} is on day ${on}, not a delivery day`)
+    }
+    const before = missed[index - 1]
+    if (before !== undefined && on < before.day) {
+      invalid(
+        `${what} comes before the one before it: day ${on} < day ${before.day}`,
+      )
+    }
+  })
   if (lastDay === null) return
   // Both read with the same schema, so their keys come in the same order.
   const that = deliveries.filter((delivery) => delivery.day === lastDay.day)
   if (JSON.stringify(lastDay.deliveries) !== JSON.stringify(that)) {
     invalid(`lastDay's deliveries are not those of day ${lastDay.day}`)
+  }
+  const thatMissed = missed.filter((miss) => miss.day === lastDay.day)
+  if (JSON.stringify(lastDay.missed) !== JSON.stringify(thatMissed)) {
+    invalid(`lastDay's missed deliveries are not those of day ${lastDay.day}`)
+  }
+}
+
+/**
+ * What the staff could be at the save's day, against `content`:
+ * - at most `maxEmployees`, each a different candidate, at a wage within
+ *   their role's range (see `validateDecisions`), hired on a day played, no
+ *   earlier than the game's first day, so nobody is on staff before the
+ *   first day is played;
+ * - at a close, the staff is the one the decisions want, in order, since
+ *   that morning hired and let go as they did;
+ * - on a morning, the decisions keep each employee on staff in their role,
+ *   and those pending keep each employee the decisions want in theirs.
+ */
+function checkStaff(save: Save, content: StaffContent): void {
+  const { day, lastDay, staff, decisions, pendingDecisions } = save
+  const first = firstDay(save)
+  const played = lastDay?.day ?? first - 1
+  const hires = staff.map(({ candidate, role, hourlyWage }): Hire => ({
+    candidate,
+    role,
+    hourlyWage,
+  }))
+  attempt('staff', () => validateStaff(hires, content))
+  staff.forEach(({ candidate, hiredOnDay }, index) => {
+    if (hiredOnDay < first || hiredOnDay > played) {
+      invalid(
+        `employee ${index + 1}, ${candidate}, was hired on day ${hiredOnDay}, not a day played from day ${first} to day ${played}`,
+      )
+    }
+  })
+  if (lastDay?.day === day) {
+    if (!sameHires(hires, decisions.staff)) {
+      invalid(
+        `the staff at the close of day ${day} is not the one the decisions want`,
+      )
+    }
+  } else {
+    keepsRoles('decisions', decisions.staff, hires)
+  }
+  if (pendingDecisions !== null) {
+    keepsRoles('pendingDecisions', pendingDecisions.staff, decisions.staff)
+  }
+}
+
+/** Whether `a` and `b` hire the same people, in the same roles and order, at the same wages. */
+function sameHires(a: readonly Hire[], b: readonly Hire[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((hire, index) => {
+      const other = b[index]
+      return (
+        other?.candidate === hire.candidate &&
+        other.role === hire.role &&
+        other.hourlyWage === hire.hourlyWage
+      )
+    })
+  )
+}
+
+/**
+ * The staff `plan` wants on the morning after `staff` worked keeps each of
+ * them it still wants in the role they have (see `staffMorning`).
+ */
+function keepsRoles(
+  field: string,
+  plan: readonly Hire[],
+  staff: readonly Hire[],
+): void {
+  for (const { candidate, role } of plan) {
+    const on = staff.find((hire) => hire.candidate === candidate)
+    if (on !== undefined && on.role !== role) {
+      invalid(
+        `${field}.staff gives ${candidate} the role ${role}, but they work as ${on.role}`,
+      )
+    }
   }
 }
 

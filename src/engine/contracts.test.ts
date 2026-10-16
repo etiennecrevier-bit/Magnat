@@ -155,6 +155,20 @@ function closeOf(
   return playedTo(morning, day + 1, NO_EVENTS, grocers)
 }
 
+/**
+ * Like `closeOf`, the owner away all of `day`: the morning after it, with
+ * `events` and `grocers`.
+ */
+function awayOn(
+  state: GameState,
+  day: Day,
+  events: EventContent = NO_EVENTS,
+  grocers: GrocerContent = GROCERS,
+): GameState {
+  const morning = playedTo(state, day, events, grocers)
+  return playedTo({ ...morning, ownerAway: true }, day + 1, events, grocers)
+}
+
 function entriesOn(state: GameState, day: Day): JournalEntry[] {
   return entriesOf(state.journal).filter((entry) => entry.day === day)
 }
@@ -216,8 +230,20 @@ describe('startContract', () => {
     const one = startContract(noContracts(), 3, 'chezNormand')
     const two = startContract(one, 5, 'depanneur2424')
     expect(two.running).toEqual([
-      { grocer: 'chezNormand', startDay: 3, weeksLeft: 12, unitPrice: 210 },
-      { grocer: 'depanneur2424', startDay: 5, weeksLeft: 8, unitPrice: 195 },
+      {
+        grocer: 'chezNormand',
+        startDay: 3,
+        weeksLeft: 12,
+        unitPrice: 210,
+        strikes: 0,
+      },
+      {
+        grocer: 'depanneur2424',
+        startDay: 5,
+        weeksLeft: 8,
+        unitPrice: 195,
+        strikes: 0,
+      },
     ])
     expect(two.deliveries).toEqual([])
   })
@@ -398,6 +424,7 @@ describe('a delivery', () => {
         closed.morning.energy,
         {
           worked: false,
+          away: false,
           customersServed: 0,
           stressed: false,
           bakingCost: 0,
@@ -435,6 +462,7 @@ describe('a delivery', () => {
         startDay: last + 1,
         weeksLeft: 12,
         unitPrice: 210,
+        strikes: 0,
       },
     ])
     expect(
@@ -448,6 +476,109 @@ describe('a delivery', () => {
     const twice = () =>
       playedTo(signed(started(), 'chezNormand', 'depanneur2424'), 120)
     expect(twice().journal.entries).toEqual(twice().journal.entries)
+  })
+})
+
+describe('a missed delivery', () => {
+  const SIGNED = signed(started(), 'chezNormand')
+  const HIRE_DELIVERER: DecisionChange = {
+    kind: 'hire',
+    role: 'livreur',
+    candidate: 'kevin',
+  }
+
+  it('posts nothing and owes nothing, takes a week off the contract and counts a strike', () => {
+    const before = playedTo(SIGNED, MONDAY)
+    const missed = awayOn(SIGNED, MONDAY)
+    expect(missed.lastDay?.deliveries).toEqual([])
+    expect(missed.lastDay?.missed).toEqual([
+      { day: MONDAY, grocer: 'chezNormand' },
+    ])
+    expect(missed.contracts.missed).toEqual([
+      { day: MONDAY, grocer: 'chezNormand' },
+    ])
+    expect(missed.contracts.deliveries).toEqual([])
+    expect(missed.contracts.running).toEqual([
+      { ...SIGNED.contracts.running[0], weeksLeft: 11, strikes: 1 },
+    ])
+    // A closed Monday: no entry at all, and the owner's energy held.
+    expect(entriesOn(missed, MONDAY)).toEqual([])
+    expect(missed.receivables).toEqual([])
+    expect(missed.lastDay?.energy).toBe(before.energy)
+    // The next Monday, the owner back, delivers as usual.
+    const next = closeOf(missed, 2 * MONDAY)
+    expect(next.lastDay?.deliveries).toHaveLength(1)
+    expect(next.contracts.running[0]).toMatchObject({
+      weeksLeft: 10,
+      strikes: 1,
+    })
+  })
+
+  it("ends the contract at the grocers' third strike, with no renewal", () => {
+    expect(GROCERS.maxStrikes).toBe(3)
+    let state = SIGNED
+    for (const week of [1, 2, 3])
+      state = awayOn(state, week * MONDAY, RENEWALS_ONLY)
+    expect(state.contracts.missed.map(({ day }) => day)).toEqual([7, 14, 21])
+    expect(state.contracts.running).toEqual([])
+    expect(state.events.followUps).toEqual([])
+    expect(state.events.pending).toBeNull()
+    // Two strikes leave it running.
+    const twice = awayOn(awayOn(SIGNED, MONDAY), 2 * MONDAY)
+    expect(twice.contracts.running[0]).toMatchObject({
+      weeksLeft: 10,
+      strikes: 2,
+    })
+  })
+
+  it('ends the contract with its last week missed, which still brings the renewal', () => {
+    const last = MONDAY * 12
+    const morning = awayOn(SIGNED, last, RENEWALS_ONLY)
+    expect(morning.contracts.deliveries).toHaveLength(11)
+    expect(morning.contracts.missed).toEqual([
+      { day: last, grocer: 'chezNormand' },
+    ])
+    expect(morning.contracts.running).toEqual([])
+    expect(morning.events.pending).toEqual({
+      event: 'renouvellementNormand',
+      followUp: true,
+    })
+  })
+
+  it('ends it at the strikes the content sets', () => {
+    const once = loadGrocerContent({ ...grocersJson, maxStrikes: 1 }, EVENTS)
+    const state = awayOn(SIGNED, MONDAY, NO_EVENTS, once)
+    expect(state.contracts.running).toEqual([])
+    expect(state.events.followUps).toEqual([])
+  })
+
+  it('never happens with a deliverer, who delivers while the owner is away, at no energy to the owner', () => {
+    const hired = signed(started([HIRE_DELIVERER]), 'chezNormand')
+    const before = playedTo(hired, MONDAY)
+    const away = awayOn(hired, MONDAY)
+    expect(away.lastDay?.missed).toEqual([])
+    expect(away.lastDay?.deliveries).toHaveLength(1)
+    expect(away.lastDay?.energy).toBe(before.energy)
+    // With the owner there, the delivery takes nothing from them either.
+    const there = closeOf(hired, MONDAY)
+    expect(there.lastDay?.deliveries).toHaveLength(1)
+    expect(there.lastDay?.energy).toBe(
+      energyAtClose(
+        before.energy,
+        {
+          worked: false,
+          away: false,
+          customersServed: 0,
+          stressed: false,
+          bakingCost: 0,
+          deliveryCost: 0,
+        },
+        ENERGY,
+      ),
+    )
+    expect(there.lastDay?.energy).toBeGreaterThan(
+      closeOf(SIGNED, MONDAY).lastDay?.energy ?? 0,
+    )
   })
 })
 
@@ -558,6 +689,7 @@ describe('a delivery the bakery makes', () => {
     const { state, deliveries, baked } = deliverContracts(
       monday,
       true,
+      true,
       PRICES,
       FOOD_TRUCK,
       BAKERY,
@@ -597,6 +729,52 @@ describe('a delivery the bakery makes', () => {
     })
   })
 
+  it('makes nothing when nobody bakes: a deliverer then buys every croissant', () => {
+    const state = signed(
+      started([
+        ...BAKING,
+        { kind: 'hire', role: 'livreur', candidate: 'kevin' },
+      ]),
+      'marcheBioLogique',
+    )
+    const away = awayOn(state, MONDAY)
+    expect(away.lastDay?.deliveries).toMatchObject([
+      { grocer: 'marcheBioLogique', units: 1250, baked: 0, amount: 1250 * 225 },
+    ])
+    expect(
+      entriesOn(away, MONDAY).filter(
+        ({ memo }) => memo === BAKERY_MEMO.ingredients,
+      ),
+    ).toEqual([])
+  })
+
+  it('bakes with a baker at no energy to the owner', () => {
+    const state = signed(
+      started([
+        ...BAKING,
+        { kind: 'hire', role: 'boulanger', candidate: 'sophie' },
+      ]),
+      'chezNormand',
+    )
+    const morning = playedTo(state, MONDAY)
+    const close = playedTo(morning, MONDAY + 1)
+    expect(close.lastDay?.deliveries).toMatchObject([{ baked: 300 }])
+    expect(close.lastDay?.energy).toBe(
+      energyAtClose(
+        morning.energy,
+        {
+          worked: false,
+          away: false,
+          customersServed: 0,
+          stressed: false,
+          bakingCost: 0,
+          deliveryCost: GROCERS.deliveryEnergyCost,
+        },
+        ENERGY,
+      ),
+    )
+  })
+
   it('takes a morning of baking from the owner on a closed Monday that baked only for the deliveries', () => {
     const game = signed(started(BAKING), 'chezNormand')
     const morning = playedTo(game, MONDAY)
@@ -606,6 +784,7 @@ describe('a delivery the bakery makes', () => {
         morning.energy,
         {
           worked: false,
+          away: false,
           customersServed: 0,
           stressed: false,
           bakingCost: BAKERY.bakingEnergyCost,
@@ -659,6 +838,7 @@ describe('the grocer condition of a card', () => {
         startDay: 40,
         weeksLeft: 12,
         unitPrice: cents(210),
+        strikes: 0,
       },
     ]
     expect(resolveEvent(waiting, 'accepter', OFFER).contracts.running).toEqual(
@@ -677,7 +857,13 @@ describe('the grocer condition of a card', () => {
       'contratNormand',
     )
     expect(negotiated.contracts.running).toEqual([
-      { grocer: 'chezNormand', startDay: 40, weeksLeft: 12, unitPrice: 231 },
+      {
+        grocer: 'chezNormand',
+        startDay: 40,
+        weeksLeft: 12,
+        unitPrice: 231,
+        strikes: 0,
+      },
     ])
     const away = applyEffect(
       morning,

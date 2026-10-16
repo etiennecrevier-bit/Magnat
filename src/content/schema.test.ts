@@ -7,7 +7,9 @@ import grocersJson from './grocers.json'
 import personalJson from './personal.json'
 import profileJson from './profile.json'
 import reportJson from './report.json'
+import staffJson from './staff.json'
 import {
+  candidateIdSchema,
   dayTypeIdSchema,
   difficultyIdSchema,
   loadBakeryContent,
@@ -20,6 +22,7 @@ import {
   loadPersonalContent,
   loadProfileContent,
   loadReportContent,
+  loadStaffContent,
   productIdSchema,
   segmentIdSchema,
   weekFactIdSchema,
@@ -779,6 +782,8 @@ describe('loadGrocerContent', () => {
     ['deliveryWeekday', 8],
     ['deliveryEnergyCost', -1],
     ['deliveryEnergyCost', 101],
+    ['maxStrikes', 0],
+    ['maxStrikes', 2.5],
     [`${NORMAND}.name`, ''],
     [`${NORMAND}.name`, ' Chez Normand'],
     [`${NORMAND}.owner`, ''],
@@ -828,6 +833,86 @@ describe('loadGrocerContent', () => {
     reject(drawn, `${NORMAND}.renewalEvent`)
     expect(() => loadGrocers(drawn)).toThrow(
       'the event chalet does not come only as a follow-up',
+    )
+  })
+})
+
+describe('loadStaffContent', () => {
+  const loadStaff: Load = loadStaffContent
+  const reject = (raw: unknown, path: string) =>
+    expectRejected(raw, path, loadStaff)
+  const withStaffValue = (path: string, value: unknown) =>
+    withValue(path, value, staffJson)
+  const CAMION = 'roles.camion'
+
+  it('loads the shipped staff.json: three roles and twelve candidates', () => {
+    const staff = loadStaffContent()
+    expect(Object.keys(staff.roles)).toEqual(['camion', 'livreur', 'boulanger'])
+    expect(Object.keys(staff.candidates)).toEqual(candidateIdSchema.options)
+    expect(staff.roles.camion.hourlyWageCents).toEqual({
+      min: 1600,
+      start: 1750,
+      max: 2500,
+    })
+  })
+
+  it('names staff.json in its error', () => {
+    expect(() => loadStaffContent({})).toThrow(/^staff\.json is invalid/)
+  })
+
+  it.each([
+    ['maxEmployees', 0],
+    ['maxEmployees', 1.5],
+    ['trainingWeeks', -1],
+    ['trainingWeeks', 0.5],
+    ['noticeWeeks', -1],
+    ['truckSpeed', 0],
+    ['truckSpeed', 1.2],
+    [`${CAMION}.name`, ''],
+    [`${CAMION}.hoursPerWeek`, 0],
+    [`${CAMION}.hoursPerWeek`, 35.5],
+    [`${CAMION}.hourlyWageCents.min`, 0],
+    [`${CAMION}.hourlyWageCents.start`, 1750.5],
+    ['candidates.amelie.name', ' Amélie'],
+    ['candidates.amelie.portrait', 'Amelie'],
+  ])('rejects %s = %j', (path, value) => {
+    reject(withStaffValue(path, value), path)
+  })
+
+  it('rejects a starting wage outside its range', () => {
+    for (const start of [1_599, 2_501]) {
+      const raw = withStaffValue(`${CAMION}.hourlyWageCents.start`, start)
+      reject(raw, `${CAMION}.hourlyWageCents`)
+      expect(() => loadStaff(raw)).toThrow(
+        'the starting wage must be within [min, max]',
+      )
+    }
+  })
+
+  it('rejects a role or a candidate missing, one the game does not know, and a mistyped key', () => {
+    reject(without('roles.boulanger', staffJson), 'roles.boulanger')
+    reject(without('candidates.thierry', staffJson), 'candidates.thierry')
+    expect(() =>
+      loadStaff(withStaffValue('roles.gerant', staffJson.roles.camion)),
+    ).toThrow(/gerant/)
+    expect(() =>
+      loadStaff(
+        withStaffValue('candidates.gilles', staffJson.candidates.amelie),
+      ),
+    ).toThrow(/gilles/)
+    expect(() => loadStaff(withStaffValue(`${CAMION}.salary`, 1))).toThrow(
+      'Unrecognized key: "salary"',
+    )
+  })
+
+  it('rejects two candidates of one name, whose wages would mix', () => {
+    const raw = withStaffValue(
+      'candidates.kevin.name',
+      staffJson.candidates.amelie.name,
+    )
+    reject(raw, 'candidates.kevin.name')
+    expect(() => loadStaff(raw)).toThrow(
+      'two candidates are named Amélie Gagnon',
     )
   })
 })

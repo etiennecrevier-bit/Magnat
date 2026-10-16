@@ -13,6 +13,7 @@ import personalJson from './personal.json'
 import profileJson from './profile.json'
 import reportJson from './report.json'
 import segmentsJson from './segments.json'
+import staffJson from './staff.json'
 
 // Every object is strict, so a mistyped key while tuning fails loudly instead
 // of being silently dropped.
@@ -1301,6 +1302,11 @@ export const grocerContentSchema = z
     deliveryWeekday: weekday,
     /** What a delivery takes from the owner's energy. */
     deliveryEnergyCost: energyAmount,
+    /**
+     * The missed deliveries that end a contract, with no renewal: the last
+     * one does.
+     */
+    maxStrikes: z.int().positive(),
     grocers: z.record(grocerIdSchema, grocerSchema),
   })
   .superRefine(({ grocers }, ctx) => {
@@ -1318,6 +1324,101 @@ export const grocerContentSchema = z
   })
 
 export type GrocerContent = z.output<typeof grocerContentSchema>
+
+/**
+ * What an employee does (#158): serves at the truck beside the owner
+ * (`camion`), delivers to the grocers (`livreur`) or bakes at the bakery
+ * (`boulanger`).
+ */
+export const staffRoleIdSchema = z.enum(['camion', 'livreur', 'boulanger'])
+
+export type StaffRoleId = z.infer<typeof staffRoleIdSchema>
+
+/** The people the player may hire (#158), by id. */
+export const candidateIdSchema = z.enum([
+  'amelie',
+  'kevin',
+  'sophie',
+  'mathieu',
+  'nadia',
+  'jonathan',
+  'isabelle',
+  'samuel',
+  'chloe',
+  'olivier',
+  'maude',
+  'thierry',
+])
+
+export type CandidateId = z.infer<typeof candidateIdSchema>
+
+/** One role: what it is called, its hours and its wage. */
+const staffRoleSchema = z
+  .strictObject({
+    /** The role, as the player reads it. */
+    name: frenchText(),
+    /** The hours worked a week, which the weekly wage pays. */
+    hoursPerWeek: z.int().positive(),
+    /** The hourly wage the player may set, and the one a hire starts at. */
+    hourlyWageCents: z.strictObject({
+      min: positiveMoney,
+      start: positiveMoney,
+      max: positiveMoney,
+    }),
+  })
+  .refine(
+    ({ hourlyWageCents: { min, start, max } }) => min <= start && start <= max,
+    {
+      message: 'the starting wage must be within [min, max]',
+      path: ['hourlyWageCents'],
+    },
+  )
+
+export type StaffRole = z.output<typeof staffRoleSchema>
+
+/** Someone the player may hire. */
+const candidateSchema = z.strictObject({
+  /** Their name, as the player and the journal read it. */
+  name: frenchText(),
+  /** Their portrait's id; one with no image shows none. */
+  portrait: idSchema,
+})
+
+export type Candidate = z.output<typeof candidateSchema>
+
+/** The employees (#158): their roles, the candidates and what hiring costs. */
+export const staffContentSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    /** The most employees at once. */
+    maxEmployees: z.int().positive(),
+    /** Weeks of pay a hire costs up front, as « Formation ». */
+    trainingWeeks: z.int().nonnegative(),
+    /** Weeks of pay firing costs, as « Préavis ». */
+    noticeWeeks: z.int().nonnegative(),
+    /**
+     * How fast an employee at the truck serves, as a ratio to a rested
+     * owner: 0.85 takes the content's service times ÷ 0.85.
+     */
+    truckSpeed: z.number().gt(0).max(1),
+    roles: z.record(staffRoleIdSchema, staffRoleSchema),
+    candidates: z.record(candidateIdSchema, candidateSchema),
+  })
+  .superRefine(({ candidates }, ctx) => {
+    const seen = new Set<string>()
+    for (const [id, { name }] of Object.entries(candidates)) {
+      if (seen.has(name)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `two candidates are named ${name}, so their wages would mix`,
+          path: ['candidates', id, 'name'],
+        })
+      }
+      seen.add(name)
+    }
+  })
+
+export type StaffContent = z.output<typeof staffContentSchema>
 
 /**
  * The facts of a week the « Bilan de la semaine » may tell, in the order
@@ -1952,6 +2053,17 @@ export function loadGrocerContent(
   events: EventContent = loadEventContent(),
 ): GrocerContent {
   return parsed(grocerContentFor(events), raw, 'grocers.json')
+}
+
+/**
+ * Validates the employees' roles and candidates and returns them typed, with
+ * money as `Cents`. Throws an Error naming every invalid field: besides each
+ * field, each role's starting wage is within its range and the candidates'
+ * names differ. Pass `raw` only to check other data; by default it reads
+ * `staff.json`.
+ */
+export function loadStaffContent(raw: unknown = staffJson): StaffContent {
+  return parsed(staffContentSchema, raw, 'staff.json')
 }
 
 /**

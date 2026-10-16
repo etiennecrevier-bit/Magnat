@@ -8,6 +8,8 @@ import {
   type FoodTruckContent,
   type ProductId,
   type RestockRule,
+  type CandidateId,
+  type StaffRoleId,
 } from '../content/schema.ts'
 import type { JournalEntry } from '../finance/journal.ts'
 import { BAKERY } from './bakery.ts'
@@ -23,11 +25,13 @@ import {
 } from './decisions.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
 import type { Cents } from './money.ts'
+import { STAFF } from './staff.ts'
 import type {
   Day,
   DaySummary,
   Decisions,
   GameState,
+  Hire,
   PerProduct,
 } from './types.ts'
 
@@ -168,6 +172,15 @@ function marketingDaily(budget: number): DecisionChange {
   return { kind: 'marketingDaily', budget: budget as Cents }
 }
 
+/** `candidate` hired as `role` at the role's starting wage. */
+function hireOf(candidate: CandidateId, role: StaffRoleId): Hire {
+  return {
+    candidate,
+    role,
+    hourlyWage: STAFF.roles[role].hourlyWageCents.start,
+  }
+}
+
 /** Expects the change to throw a RangeError whose message names `field`. */
 function expectRejected(
   change: DecisionChange,
@@ -203,6 +216,7 @@ describe('the starting decisions', () => {
       bakery: null,
       croissantSource: BAKERY.startingDecisions.croissantSource,
       bake: BAKERY.startingDecisions.bake,
+      staff: [],
     })
     expect(state.decisions).toEqual(startingDecisions())
     expect(state.pendingDecisions).toBeNull()
@@ -466,12 +480,18 @@ describe('applyDecision', () => {
 })
 
 describe('the kinds of change', () => {
-  it("are those a Défi may lock, and the bakery's, which none may", () => {
+  it("are those a Défi may lock, and the bakery's and the staff's, which none may", () => {
     expectTypeOf<
       Extract<DecisionChange['kind'], DecisionKind>
     >().toEqualTypeOf<DecisionKind>()
     expectTypeOf<Exclude<DecisionChange['kind'], DecisionKind>>().toEqualTypeOf<
-      'openBakery' | 'closeBakery' | 'croissantSource' | 'bake'
+      | 'openBakery'
+      | 'closeBakery'
+      | 'croissantSource'
+      | 'bake'
+      | 'hire'
+      | 'fire'
+      | 'setWage'
     >()
     expect(decisionKindSchema.options).toEqual([
       'price',
@@ -608,6 +628,26 @@ describe('the bakery', () => {
 
 describe('validateDecisions', () => {
   const valid = startingDecisions()
+  const AMELIE = hireOf('amelie', 'camion')
+  const KEVIN = hireOf('kevin', 'livreur')
+  const SOPHIE = hireOf('sophie', 'boulanger')
+  const MATHIEU = hireOf('mathieu', 'camion')
+
+  it('accepts a staff of up to 3, each at a wage within its range', () => {
+    const { min, max } = STAFF.roles.camion.hourlyWageCents
+    const staff = [
+      { ...AMELIE, hourlyWage: min },
+      KEVIN,
+      { ...SOPHIE, hourlyWage: STAFF.roles.boulanger.hourlyWageCents.max },
+    ]
+    expect(() => validateDecisions({ ...valid, staff }, LIMITS)).not.toThrow()
+    expect(() =>
+      validateDecisions(
+        { ...valid, staff: [{ ...AMELIE, hourlyWage: max }] },
+        LIMITS,
+      ),
+    ).not.toThrow()
+  })
 
   it('accepts the starting decisions', () => {
     expect(() => validateDecisions(valid, LIMITS)).not.toThrow()
@@ -665,9 +705,190 @@ describe('validateDecisions', () => {
         bake: { kind: 'bakeWeekly', quantity: 5 },
       } as unknown as Decisions,
     ],
+    [
+      'staff holds at most 3',
+      { ...valid, staff: [AMELIE, KEVIN, SOPHIE, MATHIEU] },
+    ],
+    ['staff.1.candidate is hired twice', { ...valid, staff: [AMELIE, AMELIE] }],
+    [
+      'staff.0.candidate is unknown',
+      {
+        ...valid,
+        staff: [{ ...AMELIE, candidate: 'gilles' }],
+      } as unknown as Decisions,
+    ],
+    [
+      'staff.0.role is unknown',
+      {
+        ...valid,
+        staff: [{ ...AMELIE, role: 'gerant' }],
+      } as unknown as Decisions,
+    ],
+    [
+      'staff.0.hourlyWage',
+      {
+        ...valid,
+        staff: [{ ...AMELIE, hourlyWage: 2501 }],
+      } as unknown as Decisions,
+    ],
+    [
+      'staff.0.hourlyWage',
+      {
+        ...valid,
+        staff: [{ ...AMELIE, hourlyWage: 1750.5 }],
+      } as unknown as Decisions,
+    ],
+    [
+      'staff.0 must name exactly',
+      {
+        ...valid,
+        staff: [{ ...AMELIE, hiredOnDay: 0 }],
+      } as unknown as Decisions,
+    ],
   ])('rejects decisions a save could hold: %s', (field, decisions) => {
     expect(() => validateDecisions(decisions, LIMITS)).toThrow(RangeError)
     expect(() => validateDecisions(decisions, LIMITS)).toThrow(field)
+  })
+})
+
+describe('the staff', () => {
+  const hire = (role: StaffRoleId, candidate: CandidateId): DecisionChange => ({
+    kind: 'hire',
+    role,
+    candidate,
+  })
+  const fire = (candidate: CandidateId): DecisionChange => ({
+    kind: 'fire',
+    candidate,
+  })
+  const setWage = (candidate: CandidateId, wage: number): DecisionChange => ({
+    kind: 'setWage',
+    candidate,
+    // A wage a save could hold, part of a cent included.
+    hourlyWage: wage as Cents,
+  })
+  /** `state` with `changes` made, one after the other. */
+  function made(state: GameState, ...changes: DecisionChange[]): GameState {
+    return changes.reduce((next, change) => applyDecision(next, change), state)
+  }
+
+  it("hires after the others at the role's starting wage, from the next morning", () => {
+    const state = made(
+      monday(),
+      hire('camion', 'amelie'),
+      hire('livreur', 'kevin'),
+    )
+    expect(state.decisions.staff).toEqual([])
+    expect(state.pendingDecisions?.staff).toEqual([
+      hireOf('amelie', 'camion'),
+      hireOf('kevin', 'livreur'),
+    ])
+    expect(STAFF.roles.camion.hourlyWageCents.start).toBe(1750)
+    expect(STAFF.roles.livreur.hourlyWageCents.start).toBe(1600)
+    expect(STAFF.roles.boulanger.hourlyWageCents.start).toBe(2200)
+    // The staff is as of the last close: day 1 hires them.
+    const morning = tick(state)
+    expect(morning.decisions.staff).toEqual(state.pendingDecisions?.staff)
+    expect(morning.staff).toEqual([])
+    expect(tick(morning).staff).toEqual([
+      { ...hireOf('amelie', 'camion'), hiredOnDay: 1 },
+      { ...hireOf('kevin', 'livreur'), hiredOnDay: 1 },
+    ])
+  })
+
+  it('fires and sets a wage on top of the latest decisions', () => {
+    const working = tick(made(monday(), hire('camion', 'amelie')))
+    const fired = made(working, fire('amelie'))
+    expect(fired.pendingDecisions?.staff).toEqual([])
+    expect(fired.decisions.staff).toEqual([hireOf('amelie', 'camion')])
+    const raised = made(working, setWage('amelie', 2000))
+    expect(raised.pendingDecisions?.staff).toEqual([
+      { ...hireOf('amelie', 'camion'), hourlyWage: 2000 },
+    ])
+    // Day 1 pays the old wage, day 2 the new one.
+    expect(tick(raised).staff).toEqual([
+      { ...hireOf('amelie', 'camion'), hiredOnDay: 1 },
+    ])
+    expect(tick(tick(raised)).staff).toEqual([
+      { ...hireOf('amelie', 'camion'), hourlyWage: 2000, hiredOnDay: 1 },
+    ])
+  })
+
+  it('cancels a hire who has not started yet for free', () => {
+    const state = made(monday(), hire('camion', 'amelie'), fire('amelie'))
+    expect(state.pendingDecisions?.staff).toEqual([])
+    const close = tick(tick(state))
+    expect(close.staff).toEqual([])
+    expect(memosOn(close, 1).filter((memo) => memo.includes('·'))).toEqual([])
+  })
+
+  it.each([
+    [
+      'an unknown candidate',
+      [hire('camion', 'gilles' as CandidateId)],
+      'unknown candidate gilles',
+    ],
+    [
+      'an unknown role',
+      [hire('gerant' as StaffRoleId, 'amelie')],
+      'unknown role gerant',
+    ],
+    [
+      'a candidate already hired',
+      [hire('camion', 'amelie'), hire('livreur', 'amelie')],
+      'amelie is already hired',
+    ],
+    [
+      'a 4th employee',
+      [
+        hire('camion', 'amelie'),
+        hire('livreur', 'kevin'),
+        hire('boulanger', 'sophie'),
+        hire('camion', 'mathieu'),
+      ],
+      'staff holds at most 3',
+    ],
+    [
+      'a wage below the range',
+      [hire('camion', 'amelie'), setWage('amelie', 1599)],
+      'staff.0.hourlyWage',
+    ],
+    [
+      'a wage above the range',
+      [hire('camion', 'amelie'), setWage('amelie', 2501)],
+      'staff.0.hourlyWage',
+    ],
+    [
+      'a wage of part of a cent',
+      [hire('camion', 'amelie'), setWage('amelie', 1750.5)],
+      'staff.0.hourlyWage',
+    ],
+    ['firing someone not hired', [fire('amelie')], 'amelie is not hired'],
+    [
+      'a wage for someone not hired',
+      [setWage('amelie', 1800)],
+      'amelie is not hired',
+    ],
+  ])('rejects %s', (_, changes, message) => {
+    const last = changes.at(-1)
+    if (last === undefined) throw new Error('no change')
+    const before = made(monday(), ...changes.slice(0, -1))
+    expect(() => applyDecision(before, last)).toThrow(RangeError)
+    expect(() => applyDecision(before, last)).toThrow(message)
+  })
+
+  it('rejects hiring again, the same day, someone who works the day under way', () => {
+    const working = tick(made(monday(), hire('camion', 'amelie')))
+    const fired = made(working, fire('amelie'))
+    expect(() => applyDecision(fired, hire('livreur', 'amelie'))).toThrow(
+      'amelie works on day 1',
+    )
+    // The morning they leave, they may come back the next.
+    const left = tick(fired)
+    expect(left.decisions.staff).toEqual([])
+    expect(
+      made(left, hire('livreur', 'amelie')).pendingDecisions?.staff,
+    ).toEqual([hireOf('amelie', 'livreur')])
   })
 })
 
@@ -887,6 +1108,7 @@ describe('determinism with decisions', () => {
       bakery: null,
       croissantSource: 'acheter',
       bake: BAKERY.startingDecisions.bake,
+      staff: [],
     })
   })
 })

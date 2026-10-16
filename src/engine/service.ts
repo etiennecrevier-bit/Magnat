@@ -3,8 +3,10 @@ import type {
   EnergyContent,
   Segment,
   Service,
+  StaffContent,
 } from '../content/schema.ts'
 import { effectsOf } from './energy.ts'
+import { STAFF, crewOf } from './staff.ts'
 import type { GameState } from './types.ts'
 
 // The line at the counter: who serves, how long serving takes, and how long
@@ -20,25 +22,41 @@ export interface Server {
    * exactly those times, 2 half of them.
    */
   readonly speed: number
+  /**
+   * Whether they are the owner, whose fatigue botches units; an employee
+   * never tires.
+   */
+  readonly owner: boolean
 }
 
 // Speed 1 is the unit the content's service times are written in, not a
 // tunable.
-const AVATAR: Server = { speed: 1 }
+const AVATAR: Server = { speed: 1, owner: true }
 
 /**
- * Who serves at the counter on business day `state.day`: for now the avatar
- * alone, at speed 1 when rested. Tired, they take `serviceTimeIncrease`
- * longer (see `effectsOf` in energy.ts), so their speed is
- * 1 ÷ (1 + `serviceTimeIncrease`), by their energy that morning, which
- * holds for the whole day. Employees will add servers and speeds (phase 3).
+ * Who serves at the counter on business day `state.day`, with `state.staff`
+ * on staff that day: first the owner, unless away all day (see `crewOf`), at
+ * speed 1 when rested. Tired, they take `serviceTimeIncrease` longer (see
+ * `effectsOf` in energy.ts), so their speed is 1 ÷ (1 + `serviceTimeIncrease`),
+ * by their energy that morning, which holds for the whole day. Then each
+ * employee at the truck, at `staff.truckSpeed`. Empty when nobody serves.
  */
 export function servers(
   state: GameState,
   energy: EnergyContent,
+  staff: StaffContent = STAFF,
 ): readonly Server[] {
+  const crew = crewOf(state.staff, state.ownerAway)
+  const employees = Array.from(
+    { length: crew.atTruck },
+    (): Server => ({ speed: staff.truckSpeed, owner: false }),
+  )
+  if (!crew.ownerServes) return employees
   const { serviceTimeIncrease } = effectsOf(state.energy, energy)
-  return [{ speed: AVATAR.speed / (1 + serviceTimeIncrease) }]
+  return [
+    { speed: AVATAR.speed / (1 + serviceTimeIncrease), owner: true },
+    ...employees,
+  ]
 }
 
 /**
@@ -68,10 +86,16 @@ export interface Line {
   ahead: (second: number) => Ahead
   /**
    * Puts a customer arriving at `second` and ordering `items` units in line.
-   * Returns the second they reach a server: the one free first, the first of
-   * them on a tie.
+   * Returns the second they reach a server and that server: the one free
+   * first, the first of them on a tie.
    */
-  join: (second: number, items: number) => number
+  join: (second: number, items: number) => Joined
+}
+
+/** When a customer who joined the line reaches a server, and which. */
+export interface Joined {
+  readonly start: number
+  readonly server: Server
 }
 
 /**
@@ -125,11 +149,12 @@ export function openLine(servers: readonly Server[], service: Service): Line {
       at(second)
       const server = firstFree()
       const start = Math.max(second, freeAt[server] ?? 0)
-      const { speed } = servers[server] ?? AVATAR
+      const reached = servers[server] ?? AVATAR
       freeAt[server] =
-        start + (service.baseSeconds + service.perItemSeconds * items) / speed
+        start +
+        (service.baseSeconds + service.perItemSeconds * items) / reached.speed
       starts.push(start)
-      return start
+      return { start, server: reached }
     },
   }
 }

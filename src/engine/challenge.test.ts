@@ -234,6 +234,7 @@ describe('startChallenge', () => {
         bakery: null,
         croissantSource: start.croissantSource,
         bake: start.bake,
+        staff: [],
       },
       energy: 80,
       events: {

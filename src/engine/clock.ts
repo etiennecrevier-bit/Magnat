@@ -9,6 +9,7 @@ import type {
   GrocerContent,
   PercentileContent,
   PersonalContent,
+  StaffContent,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
@@ -46,6 +47,7 @@ import { PERCENTILES } from './percentiles.ts'
 import { openingAccount } from './personal.ts'
 import { defaultProfile, validateProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
+import { STAFF } from './staff.ts'
 import type { GameState, Profile } from './types.ts'
 import { openingWeek } from './week.ts'
 
@@ -62,8 +64,8 @@ export { toCalendar, type CalendarDate } from './calendar.ts'
  * the owner's personal account holding the difficulty's starting savings, the
  * owner at full energy, no event yet, nobody owing the business anything, a
  * first week to come, partial, from the cash the books open with (see
- * `openingWeek`), no Défi, no bakery, with the croissants bought, and no
- * contract. Throws a
+ * `openingWeek`), no Défi, no bakery, with the croissants bought, no
+ * contract, nobody on staff and the owner at work. Throws a
  * RangeError unless `seed` is an integer in [0, 2^32), if the starting
  * decisions break the content's limits, if `profile` breaks
  * `validateProfile()`, or if the difficulty leaves a negative Mise de fonds.
@@ -103,6 +105,8 @@ export function createInitialState(
     challenge: null,
     bakery: closedBakery(),
     contracts: noContracts(),
+    staff: [],
+    ownerAway: false,
   }
 }
 
@@ -182,10 +186,11 @@ export function startChallenge(
 
 /**
  * Plays business day `state.day` with `state.decisions` (see `playDay`, with
- * `bakery` as the bakery's content and `grocers` as the contracts'), then
- * moves on to the next morning, where
+ * `bakery` as the bakery's content, `grocers` as the contracts' and `staff`
+ * as the employees'), then moves on to the next morning, where
  * the pending decisions, if any, take effect, after a night that gives the
- * owner some energy back (see `nightRest`), and where an event of `events` may
+ * owner some energy back (see `nightRest`), with the owner at work unless
+ * something sends them away again, and where an event of `events` may
  * come up (see `drawEvent`, which reads the player's standing against
  * `percentiles`). By default no event ever does: a game turns them on by
  * passing the content, such as `EVENTS`. In a Défi of `defis`, the morning
@@ -207,6 +212,7 @@ export function tick(
   percentiles: PercentileContent = PERCENTILES,
   bakery: BakeryContent = BAKERY,
   grocers: GrocerContent = GROCERS,
+  staff: StaffContent = STAFF,
 ): GameState {
   const played = playDay(
     state,
@@ -218,6 +224,7 @@ export function tick(
     defis,
     bakery,
     grocers,
+    staff,
   )
   const morning: GameState = {
     ...played,
@@ -225,6 +232,7 @@ export function tick(
     decisions: latestDecisions(played),
     pendingDecisions: null,
     energy: nightRest(played.energy, energy),
+    ownerAway: false,
   }
   const { challenge } = morning
   if (challenge === null) {
