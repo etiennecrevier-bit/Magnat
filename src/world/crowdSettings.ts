@@ -81,7 +81,12 @@ export interface CrowdSettings {
   readonly fatigue: AvatarFatigue
   /** Who fans themselves, and when: as in a heat wave. */
   readonly fans: AssetManifest['fans']
-  /** The badge that counts the day's customers at speeds with no walking. */
+  /**
+   * The badge that counts the day's customers at speeds with no walking.
+   * It stands above the truck's sign and the festival's banner, right of
+   * the panels' card: the card covers the page up to 688 px
+   * (WorldCanvas.css), which is x 780 of the design in a 1280 × 720 window.
+   */
   readonly tally: {
     readonly x: number
     readonly y: number
@@ -159,7 +164,7 @@ export const CROWD: CrowdSettings = {
   avatar: { x: 982, feetY: 694, height: 150, skin: '#C98E62', hair: '#3B2A20' },
   fatigue: AVATAR_FATIGUE,
   fans: ASSETS.fans,
-  tally: { x: 420, y: 724, width: 330, height: 96, fontSize: 30 },
+  tally: { x: 850, y: 176, width: 330, height: 96, fontSize: 30 },
   card: { width: 260, gap: 10, margin: 8 },
   pickMargin: 8,
   looks: {
