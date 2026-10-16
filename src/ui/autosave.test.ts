@@ -83,6 +83,18 @@ describe('startAutosave', () => {
     expect(days()).toEqual([0, 100])
   })
 
+  it('saves a game started in place at once, though it is of the same month', () => {
+    const { store, write } = start()
+    store.getState().advance(10)
+    const imported = createInitialState(7)
+    store.getState().startGame(imported)
+    expect(write).toHaveBeenCalledTimes(2)
+    expect(write).toHaveBeenLastCalledWith(imported)
+    // The month it saved in is that game's.
+    store.getState().advance(LAST_OF_MAY)
+    expect(write).toHaveBeenCalledTimes(2)
+  })
+
   it('ignores store changes that leave the game alone', () => {
     const { store, write } = start()
     store.getState().setSpeed(10)
@@ -134,7 +146,8 @@ describe('startAutosave', () => {
     startAutosave(store, write, createFakeHost().host)
     store.getState().startGame(createInitialState(42))
     store.getState().advance(LAST_OF_MAY + 1)
-    expect(write).toHaveBeenCalledExactlyOnceWith(store.getState().game)
+    expect(write.mock.calls.map(([game]) => game.day)).toEqual([0, 31])
+    expect(write).toHaveBeenLastCalledWith(store.getState().game)
   })
 })
 

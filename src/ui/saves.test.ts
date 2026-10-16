@@ -199,6 +199,26 @@ describe('createSaveWriter', () => {
     },
   )
 
+  it.each([
+    ['another game', createInitialState(8, FOOD_TRUCK, GAME.profile)],
+    ['an earlier save of its game', GAME],
+  ])(
+    'replaces what another tab saved since with %s it is handed, as an import mid-game',
+    (_, imported) => {
+      const storage = memoryStorage()
+      const save = createSaveWriter(storage)
+      save(LATER)
+      createSaveWriter(storage)(played(3, LATER))
+      expect(save(imported)).toBe(true)
+      expect(storage.items).toEqual({ [SAVE_KEY]: serialize(imported) })
+      // From then on it saves that game played on, and only that.
+      const further = played(1, imported)
+      expect(save(further)).toBe(true)
+      createSaveWriter(storage)(played(3, imported))
+      expect(save(played(2, imported))).toBe(false)
+    },
+  )
+
   it("does not save over a save it cannot load, such as a newer version's", () => {
     const storage = memoryStorage()
     const save = createSaveWriter(storage)

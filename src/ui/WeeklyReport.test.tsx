@@ -15,7 +15,6 @@ import { defaultProfile } from '../engine/profile.ts'
 import type { GameState, WeekReport } from '../engine/types.ts'
 import { incomeStatement } from '../finance/statements.ts'
 import { formatBriefMoney, formatMoney } from './formatMoney.ts'
-import { createSettingsStore, SETTINGS_KEY } from './settings.ts'
 import { gameStore, type GameStoreState } from './store.ts'
 import WeeklyReportPanel, {
   LastWeekReport,
@@ -77,14 +76,8 @@ function amount(value: number): string {
   return `<span class="${kind}">${formatMoney(cents(value))}</span>`
 }
 
-function render(report: WeekReport = WEEK, everyWeek = false) {
-  return renderToStaticMarkup(
-    <WeeklyReportView
-      report={report}
-      everyWeek={everyWeek}
-      onEveryWeekChange={() => {}}
-    />,
-  )
+function render(report: WeekReport = WEEK) {
+  return renderToStaticMarkup(<WeeklyReportView report={report} />)
 }
 
 /** The markup of one day of the chart. */
@@ -157,8 +150,6 @@ describe('WeeklyReportView', () => {
     const html = renderToStaticMarkup(
       <WeeklyReportView
         report={WEEK}
-        everyWeek={false}
-        onEveryWeekChange={() => {}}
         challenge={{
           ...challenge!,
           progress: {
@@ -180,21 +171,16 @@ describe('WeeklyReportView', () => {
     const html = renderToStaticMarkup(
       <WeeklyReportView
         report={WEEK}
-        everyWeek={false}
-        onEveryWeekChange={() => {}}
         challenge={{ ...challenge!, status: 'reussi', medal: 'or' }}
       />,
     )
     expect(html).not.toContain('Défi')
   })
 
-  it('has the « Ouvrir le bilan chaque semaine » switch, on or off', () => {
-    expect(render(WEEK, false)).toContain(
-      '<label class="weekly-report__switch"><input type="checkbox" role="switch"/>Ouvrir le bilan chaque semaine</label>',
-    )
-    expect(render(WEEK, true)).toContain(
-      '<input type="checkbox" role="switch" checked=""/>Ouvrir le bilan chaque semaine',
-    )
+  it('ends on the headline, the switch that opens it every week being in « Réglages »', () => {
+    const html = render()
+    expect(html).toMatch(/<p class="weekly-report__headline">.*<\/p><\/div>$/)
+    expect(html).not.toContain('role="switch"')
   })
 })
 
@@ -320,24 +306,5 @@ describe('WeeklyReportPanel', () => {
     expect(renderToStaticMarkup(<LastWeekReport />)).toBe(
       '<p>Aucun bilan pour l&#x27;instant.</p>',
     )
-  })
-
-  it('shows the switch as the settings keep it', () => {
-    gameStore.setState({ game: GAME })
-    const on = createSettingsStore({
-      getItem: (key) =>
-        key === SETTINGS_KEY
-          ? JSON.stringify({ visualEffects: 'full', openReportEveryWeek: true })
-          : null,
-      setItem: () => {},
-    })
-    expect(renderToStaticMarkup(<LastWeekReport settings={on} />)).toContain(
-      '<input type="checkbox" role="switch" checked=""/>',
-    )
-    expect(
-      renderToStaticMarkup(
-        <LastWeekReport settings={createSettingsStore(null)} />,
-      ),
-    ).toContain('<input type="checkbox" role="switch"/>')
   })
 })

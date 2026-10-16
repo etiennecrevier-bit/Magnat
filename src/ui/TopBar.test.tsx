@@ -54,6 +54,7 @@ function render(
       defiLabel={defiLabel}
       defiEnergy={defiEnergy}
       onDefi={() => {}}
+      onSettings={() => {}}
     />,
   )
 }
@@ -147,6 +148,12 @@ describe('TopBarView', () => {
     )
   })
 
+  it('ends with the gear, which opens the « Réglages » dialog', () => {
+    expect(render(0, 1)).toMatch(
+      /<\/div><button type="button" class="top-bar__settings" aria-label="Réglages" aria-haspopup="dialog" title="Réglages">\u2699\ufe0e<\/button><\/header>$/,
+    )
+  })
+
   it('has no chip outside a Défi', () => {
     expect(render(0, 1)).not.toContain('top-bar__defi')
   })
@@ -231,6 +238,26 @@ describe('TopBar', () => {
     const html = renderToStaticMarkup(<TopBar />)
     expect(html).toMatch(
       /^<header class="top-bar">.*<\/header><dialog class="panel manage" aria-labelledby="manage-title">.*<\/dialog>$/,
+    )
+    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+      label: 'Pause',
+      pressed: 'true',
+    })
+
+    gameStore.getState().closePanel()
+    const closed = renderToStaticMarkup(<TopBar />)
+    expect(closed).not.toContain('<dialog')
+    expect(closed).toContain('aria-label="Vitesse ×3" aria-pressed="true"')
+  })
+
+  it('shows « Réglages » only while it is open, paused, then resumes at the speed before', () => {
+    gameStore.getState().setSpeed(3)
+    expect(renderToStaticMarkup(<TopBar />)).not.toContain('<dialog')
+
+    gameStore.getState().openPanel('settings')
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toMatch(
+      /^<header class="top-bar">.*<\/header><dialog class="panel settings-panel" aria-labelledby="settings-title">.*<\/dialog>$/,
     )
     expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
       label: 'Pause',

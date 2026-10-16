@@ -1,5 +1,4 @@
 import { useEffect, useId, useMemo, useRef } from 'react'
-import { useStore } from 'zustand'
 import type { ReportText } from '../content/reportText.ts'
 import { defiById } from '../engine/challenge.ts'
 import { DEFIS } from '../engine/day.ts'
@@ -14,7 +13,6 @@ import {
   formatWeekdayName,
 } from './formatGameDate.ts'
 import { formatBriefMoney, formatMoney } from './formatMoney.ts'
-import { settingsStore, type SettingsStore } from './settings.ts'
 import { useGame } from './store.ts'
 import {
   chartScale,
@@ -290,9 +288,6 @@ function DefiInProgress({ challenge }: { challenge: ChallengeState }) {
 
 interface WeeklyReportViewProps {
   report: WeekReport
-  /** Whether « Ouvrir le bilan chaque semaine » is on. */
-  everyWeek: boolean
-  onEveryWeekChange: (everyWeek: boolean) => void
   /** The game's Défi; the report shows it while it is under way. */
   challenge?: ChallengeState | null
   /**
@@ -306,14 +301,11 @@ interface WeeklyReportViewProps {
 /**
  * The « Bilan de la semaine » of `report`: its dates, ventes, bénéfice and
  * encaisse, the chart of its days, its facts, how the owner compares,
- * La Presse-Citron's headline, and the switch that opens it every week,
- * with the Défi under way, if any, after the figures. The percentile is
- * rounded down. It never explains a term.
+ * and La Presse-Citron's headline, with the Défi under way, if any, after
+ * the figures. The percentile is rounded down. It never explains a term.
  */
 export function WeeklyReportView({
   report,
-  everyWeek,
-  onEveryWeekChange,
   challenge = null,
   percentile = null,
   text = REPORT_TEXT,
@@ -345,44 +337,24 @@ export function WeeklyReportView({
         <span className="weekly-report__paper">La Presse-Citron</span>{' '}
         {reportHeadline(report, text)}
       </p>
-      <label className="weekly-report__switch">
-        <input
-          type="checkbox"
-          role="switch"
-          checked={everyWeek}
-          onChange={(event) => onEveryWeekChange(event.target.checked)}
-        />
-        Ouvrir le bilan chaque semaine
-      </label>
     </div>
   )
 }
 
 /**
- * The report of the app store's last week, with the switch wired, how the
- * owner compares, and the game's Défi under way.
+ * The report of the app store's last week, with how the owner compares and
+ * the game's Défi under way.
  */
-export function LastWeekReport({
-  settings = settingsStore,
-}: {
-  settings?: SettingsStore
-}) {
+export function LastWeekReport() {
   const report = useGame((state) => state.game.lastWeek)
   const challenge = useGame((state) => state.game.challenge)
   const game = useGame((state) => state.game)
   const percentile = useMemo(() => percentileOnMorning(game), [game])
-  const everyWeek = useStore(settings, (state) => state.openReportEveryWeek)
-  const setEveryWeek = useStore(
-    settings,
-    (state) => state.setOpenReportEveryWeek,
-  )
   return report === null ? (
     <p>Aucun bilan pour l'instant.</p>
   ) : (
     <WeeklyReportView
       report={report}
-      everyWeek={everyWeek}
-      onEveryWeekChange={setEveryWeek}
       challenge={challenge}
       percentile={percentile}
     />

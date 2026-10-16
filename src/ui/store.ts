@@ -24,14 +24,14 @@ export const PAUSED = 0
 export const NORMAL_SPEED = 1
 
 /**
- * The panels: « Gérer le camion », « Vos finances » and the Défi's, which
- * the top bar opens, the event card, which opens on its own when an event
- * comes up, the « Bilan de la semaine », which opens on its own on a Monday
- * morning or from the card that slides in, and the end of a Défi, which
- * opens on its own once the Défi is over and never closes.
+ * The panels: « Gérer le camion », « Vos finances », the Défi's and
+ * « Réglages », which the top bar opens, the event card, which opens on its
+ * own when an event comes up, the « Bilan de la semaine », which opens on
+ * its own on a Monday morning or from the card that slides in, and the end
+ * of a Défi, which opens on its own once the Défi is over and never closes.
  */
 export type Panel =
-  'manage' | 'finances' | 'defi' | 'event' | 'report' | 'defiEnd'
+  'manage' | 'finances' | 'defi' | 'settings' | 'event' | 'report' | 'defiEnd'
 
 /** How the store shows the « Bilan de la semaine ». */
 export interface WeeklyReportOptions {
@@ -41,6 +41,13 @@ export interface WeeklyReportOptions {
 
 export interface GameStoreState {
   game: GameState
+  /**
+   * How many games `startGame` has played, new or loaded. It counts up
+   * whenever one replaces the game, as an import does mid-game, so what
+   * follows the game, such as the autosave, can tell it from the same game
+   * played on.
+   */
+  gamesStarted: number
   /** Game speed multiplier; `PAUSED` stops time. */
   speed: number
   /** The last speed above `PAUSED`, which `togglePause` resumes at. */
@@ -132,7 +139,8 @@ export interface GameStoreState {
   /**
    * Plays `game` from now on, new or loaded, at normal speed: paused on the
    * event card if an event waits for the player's choice, and on the end of
-   * the Défi if it is a Défi over.
+   * the Défi if it is a Défi over. Closes the panel open, if any, and counts
+   * the game in `gamesStarted`.
    */
   startGame: (game: GameState) => void
 }
@@ -247,6 +255,7 @@ export function createGameStore(
 ): GameStore {
   return createStore<GameStoreState>()((set, get) => ({
     ...playing(game),
+    gamesStarted: 0,
     setSpeed: (speed) => {
       if (get().resumeSpeed !== null) return
       set(speed > PAUSED ? { speed, lastSpeed: speed } : { speed })
@@ -379,7 +388,8 @@ export function createGameStore(
       if (get().slideIn !== null) set({ slideIn: null })
     },
     decide: (change) => set({ game: applyDecision(get().game, change) }),
-    startGame: (next) => set(playing(next)),
+    startGame: (next) =>
+      set({ ...playing(next), gamesStarted: get().gamesStarted + 1 }),
   }))
 }
 

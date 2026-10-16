@@ -74,28 +74,36 @@ export function writeStoredSave(
 /**
  * What one tab saves its game with. The first call saves as
  * `writeStoredSave` does: starting, continuing or importing a game replaces
- * the browser's save. Each later one saves over what another tab saved
- * since only when that is the same game, played no further. So of two tabs
- * on one game, the one that played it furthest keeps the save, whichever
- * closes last, and a tab never writes over a game another tab started. Each
- * call returns whether it saved; never throws.
+ * the browser's save. So does a later call with a game that is not the one
+ * this tab saved last, played on, as when the player imports a game
+ * mid-game, an earlier save of the same one included. Any other call saves
+ * over what another tab saved since only when that is the same game, played
+ * no further. So of two tabs on one game, the one that played it furthest
+ * keeps the save, whichever closes last, and a tab never writes over a game
+ * another tab started, unless it starts one itself. Each call returns
+ * whether it saved; never throws.
  */
 export function createSaveWriter(
   storage: SaveStorage | null,
 ): (game: GameState) => boolean {
-  let saved: string | null = null
+  let saved: { readonly text: string; readonly game: GameState } | null = null
   return (game) => {
     if (storage === null) return false
     try {
+      const replaces = saved === null || !isBehind(saved.game, game)
       // Storage cleared since holds no game to keep.
-      const stored = saved === null ? null : storage.getItem(SAVE_KEY)
-      if (stored !== null && stored !== saved && !isBehind(stored, game)) {
+      const stored = replaces ? null : storage.getItem(SAVE_KEY)
+      if (
+        stored !== null &&
+        stored !== saved?.text &&
+        !isStoredBehind(stored, game)
+      ) {
         console.warn('Another tab saved a game this one would set back')
         return false
       }
       const text = serialize(game)
       storage.setItem(SAVE_KEY, text)
-      saved = text
+      saved = { text, game }
       return true
     } catch (error) {
       console.warn('Could not save the game', error)
@@ -105,30 +113,38 @@ export function createSaveWriter(
 }
 
 /**
- * Whether the save `text` holds `game` as of a day no later than its own:
- * the same seed and player, no further on. A save that does not load, such
- * as one a newer version of the game wrote, is not.
+ * Whether `earlier` is `game` as of a day no later than its own: the same
+ * seed and player, no further on.
  */
-function isBehind(text: string, game: GameState): boolean {
+function isBehind(earlier: GameState, game: GameState): boolean {
+  const { profile } = earlier
+  return (
+    earlier.seed === game.seed &&
+    profile.businessName === game.profile.businessName &&
+    profile.avatar === game.profile.avatar &&
+    profile.difficulty === game.profile.difficulty &&
+    earlier.day <= game.day
+  )
+}
+
+/**
+ * Whether the save `text` holds `game` as of a day no later than its own
+ * (see `isBehind`). A save that does not load, such as one a newer version
+ * of the game wrote, is not.
+ */
+function isStoredBehind(text: string, game: GameState): boolean {
   let stored: GameState
   try {
     stored = deserialize(text)
   } catch {
     return false
   }
-  const { profile } = stored
-  return (
-    stored.seed === game.seed &&
-    profile.businessName === game.profile.businessName &&
-    profile.avatar === game.profile.avatar &&
-    profile.difficulty === game.profile.difficulty &&
-    stored.day <= game.day
-  )
+  return isBehind(stored, game)
 }
 
 /**
  * Loads the game an exported file holds. A file `deserialize()` rejects
- * gives the French message the start screen shows; the reason goes to the
+ * gives the French message « Réglages » shows; the reason goes to the
  * console.
  */
 export function readImportedSave(text: string): ImportedSave {
@@ -170,7 +186,7 @@ export function saveFileName(game: GameState): string {
   return `magnat-${slug === '' ? 'partie' : slug}-jour-${game.day}.json`
 }
 
-/** Downloads `game` as a save file the start screen can import. */
+/** Downloads `game` as a save file « Importer une partie » loads. */
 export function downloadSave(game: GameState, doc: Document = document): void {
   const url = URL.createObjectURL(
     new Blob([serialize(game)], { type: 'application/json' }),

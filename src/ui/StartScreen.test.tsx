@@ -5,16 +5,7 @@ import { createInitialState, tick } from '../engine/clock.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
 import { serialize } from '../engine/save.ts'
 import { SAVE_KEY, type StoredSave } from './saves.ts'
-import {
-  createSettingsStore,
-  SETTINGS_KEY,
-  type VisualEffects,
-} from './settings.ts'
-import StartScreen, {
-  NewGameFormView,
-  StartMenuView,
-  VisualEffectsField,
-} from './StartScreen.tsx'
+import StartScreen, { NewGameFormView, StartMenuView } from './StartScreen.tsx'
 
 // Every space in an amount is a no-break space (U+00A0).
 const S = ' '
@@ -34,21 +25,13 @@ const SAVED_GAME = tick(
   ),
 )
 
-function menu(
-  stored: StoredSave,
-  importError: string | null = null,
-  visualEffects: VisualEffects = 'full',
-) {
+function menu(stored: StoredSave) {
   return renderToStaticMarkup(
     <StartMenuView
       stored={stored}
-      importError={importError}
-      visualEffects={visualEffects}
       onContinue={() => {}}
       onNewGame={() => {}}
       onDefis={() => {}}
-      onImport={() => {}}
-      onVisualEffectsChange={() => {}}
     />,
   )
 }
@@ -111,11 +94,9 @@ describe('StartMenuView', () => {
     expect(buttons(html)).toEqual([
       { text: 'Nouvelle partie', primary: true },
       { text: 'Défis', primary: false },
-      { text: 'Importer une sauvegarde', primary: false },
     ])
     expect(html).not.toContain('Continuer')
     expect(html).not.toContain('class="notice"')
-    expect(html).not.toContain('role="alert"')
   })
 
   it('offers to continue the saved game, named with its date', () => {
@@ -124,7 +105,6 @@ describe('StartMenuView', () => {
       { text: 'Continuer', primary: true },
       { text: 'Nouvelle partie', primary: false },
       { text: 'Défis', primary: false },
-      { text: 'Importer une sauvegarde', primary: false },
     ])
     const describedBy = /aria-describedby="([^"]+)"/.exec(html)?.[1]
     expect(html).toContain(
@@ -132,10 +112,12 @@ describe('StartMenuView', () => {
     )
   })
 
-  it('imports through a hidden file input that takes JSON', () => {
-    expect(menu({ status: 'none' })).toContain(
-      '<input type="file" accept=".json,application/json" hidden=""/>',
-    )
+  it('leaves the import and the visual effects to « Réglages »', () => {
+    const html = menu({ status: 'found', game: SAVED_GAME })
+    expect(html).not.toContain('Importer')
+    expect(html).not.toContain('type="file"')
+    expect(html).not.toContain('Effets visuels')
+    expect(html).not.toContain('<fieldset')
   })
 
   it('says when the saved game no longer loads', () => {
@@ -149,57 +131,9 @@ describe('StartMenuView', () => {
   it('says when the browser blocks saving', () => {
     const html = menu({ status: 'unavailable' })
     expect(html).toContain(
-      '<p class="notice">Ce navigateur bloque la sauvegarde automatique. Exportez votre partie pour la reprendre plus tard.</p>',
+      '<p class="notice">Ce navigateur bloque la sauvegarde automatique. Exportez votre partie dans les Réglages pour la reprendre plus tard.</p>',
     )
     expect(html).not.toContain('Continuer')
-  })
-
-  it('shows why an imported file was rejected, as an alert', () => {
-    const html = menu(
-      { status: 'found', game: SAVED_GAME },
-      "Ce fichier n'est pas une sauvegarde valide de Magnat.",
-    )
-    expect(html).toMatch(
-      /<\/div><p class="start-screen__error" role="alert">Ce fichier n&#x27;est pas une sauvegarde valide de Magnat\.<\/p><fieldset/,
-    )
-    expect(buttons(html)[0]).toEqual({ text: 'Continuer', primary: true })
-  })
-})
-
-describe('the visual effects', () => {
-  it.each<VisualEffects>(['full', 'simple'])(
-    'offers « Complets » and « Simples » under the buttons, %s checked',
-    (visualEffects) => {
-      const html = menu({ status: 'none' }, null, visualEffects)
-      expect(html).toContain('<legend>Effets visuels</legend>')
-      expect(radios(html, 'visualEffects')).toEqual([
-        { value: 'full', checked: visualEffects === 'full' },
-        { value: 'simple', checked: visualEffects === 'simple' },
-      ])
-      expect(html).toMatch(/>Complets<\/label>.*>Simples<\/label>/)
-      expect(html.indexOf('<fieldset')).toBeGreaterThan(
-        html.indexOf('Importer une sauvegarde'),
-      )
-    },
-  )
-
-  it('reports the effects the player picks', () => {
-    const picked: VisualEffects[] = []
-    const field = VisualEffectsField({
-      visualEffects: 'full',
-      onChange: (effects) => picked.push(effects),
-    })
-    const [, options] = field.props.children as [
-      unknown,
-      { props: { children: { props: { children: unknown[] } }[] } },
-    ]
-    for (const label of options.props.children) {
-      const [input] = label.props.children as {
-        props: { onChange: () => void }
-      }[]
-      input!.props.onChange()
-    }
-    expect(picked).toEqual(['full', 'simple'])
   })
 })
 
@@ -321,7 +255,6 @@ describe('StartScreen', () => {
     expect(buttons(html).map(({ text }) => text)).toEqual([
       'Nouvelle partie',
       'Défis',
-      'Importer une sauvegarde',
     ])
   })
 
@@ -330,24 +263,6 @@ describe('StartScreen', () => {
     const html = renderToStaticMarkup(<StartScreen onStart={() => {}} />)
     expect(buttons(html)[0]).toEqual({ text: 'Continuer', primary: true })
     expect(html).toContain('Chez Mimi, mercredi 3 mai, an 1')
-  })
-
-  it('shows the visual effects the browser keeps', () => {
-    withStorage({})
-    const settings = createSettingsStore({
-      getItem: (key) =>
-        key === SETTINGS_KEY
-          ? JSON.stringify({ visualEffects: 'simple' })
-          : null,
-      setItem: () => {},
-    })
-    const html = renderToStaticMarkup(
-      <StartScreen onStart={() => {}} settings={settings} />,
-    )
-    expect(radios(html, 'visualEffects')).toEqual([
-      { value: 'full', checked: false },
-      { value: 'simple', checked: true },
-    ])
   })
 
   it('says when the browser blocks storage', () => {

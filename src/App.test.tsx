@@ -256,4 +256,48 @@ describe('App', () => {
     expect(gameStore.getState().panel).not.toBe('defiEnd')
     app.unmount()
   })
+
+  it('saves a game imported from « Réglages » at once, over what another tab saved since', () => {
+    const items: Record<string, string> = {}
+    const storage: SaveStorage = {
+      getItem: (key) => items[key] ?? null,
+      setItem: (key, value) => {
+        items[key] = value
+      },
+    }
+    vi.stubGlobal('window', {
+      localStorage: storage,
+      location: { search: '' },
+      requestAnimationFrame: () => 1,
+      cancelAnimationFrame: () => {},
+    })
+    vi.stubGlobal('document', {
+      hidden: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })
+    const app = mountApp()
+    const played = createInitialState(7, FOOD_TRUCK, {
+      businessName: 'Chez Ginette',
+      avatar: 'femme',
+      difficulty: 'moyen',
+    })
+    find(app.render(), StartScreen)?.props.onStart(played)
+    app.render()
+    gameStore.getState().advance(5)
+    expect(readStoredSave(storage)).toEqual({ status: 'found', game: played })
+    // Another tab plays the same game further and saves it.
+    items[SAVE_KEY] = serialize({ ...played, day: 9 })
+
+    // What « Importer une partie » does with a game of the same month.
+    const imported = createInitialState(8)
+    gameStore.getState().openPanel('settings')
+    gameStore.getState().startGame(imported)
+    expect(readStoredSave(storage)).toEqual({ status: 'found', game: imported })
+
+    const tree = app.render()
+    expect(find(tree, GameScreens)?.props.autosaveFailed).toBe(false)
+    expect(gameStore.getState().panel).toBeNull()
+    app.unmount()
+  })
 })

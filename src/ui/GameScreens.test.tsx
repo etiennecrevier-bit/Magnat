@@ -7,7 +7,6 @@ function render(screen: Screen, autosaveFailed = false) {
     <GameScreensView
       screen={screen}
       onScreenChange={() => {}}
-      onExport={() => {}}
       autosaveFailed={autosaveFailed}
     />,
   )
@@ -17,7 +16,7 @@ const MESSAGES =
   '<section class="messages" role="log" aria-label="Messages"></section>'
 
 const AUTOSAVE_FAILED =
-  '<p class="notice" role="status">La sauvegarde automatique a échoué. Exportez la sauvegarde pour ne pas perdre votre partie.</p>'
+  '<p class="notice" role="status">La sauvegarde automatique a échoué. Exportez la partie dans les Réglages pour ne pas la perdre.</p>'
 
 /** Each screen button's text and pressed state, in order. */
 function screenButtons(html: string) {
@@ -86,10 +85,11 @@ describe('GameScreensView', () => {
     expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
   })
 
-  it('has an export button after the screen menu', () => {
+  it('has only the screen buttons in its menu, the export being in « Réglages »', () => {
     expect(render('today')).toMatch(
-      /<\/div><button type="button" class="button">Exporter la sauvegarde<\/button><\/nav>/,
+      /<nav class="screen-nav" aria-label="Écrans"><div class="toggle-group">(<button [^>]*>[^<]*<\/button>){4}<\/div><\/nav>/,
     )
+    expect(render('today')).not.toContain('Exporter')
   })
 
   it('tells the player to export when the autosave fails', () => {
