@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   loadEventContent,
+  textParts,
   type DifficultyId,
+  type EventCard,
   type EventChoice,
   type EventScaling,
   type TimedEventEffect,
@@ -15,10 +17,12 @@ import { cents } from './money.ts'
 import { defaultProfile } from './profile.ts'
 import { next } from './rng.ts'
 import {
+  cardText,
   choiceTags,
   effectsAt,
   scaledEffect,
   type TagAmount,
+  type TextScope,
 } from './scaling.ts'
 import type { GameState } from './types.ts'
 
@@ -111,6 +115,18 @@ describe('scaledEffect', () => {
       ...gift,
       amountCents: -70_000,
     })
+  })
+
+  it('rounds energy to the whole point, half away from zero, and never to 0', () => {
+    const energy = (amount: number): TimedEventEffect => ({
+      kind: 'energy',
+      amount,
+    })
+    expect(at('facile', energy(-5))).toEqual(energy(-4))
+    expect(at('difficile', energy(5))).toEqual(energy(4))
+    expect(at('moyen', energy(-5))).toEqual(energy(-7))
+    expect(at('facile', energy(-1))).toEqual(energy(-1))
+    expect(at('difficile', energy(15))).toEqual(energy(11))
   })
 
   it('scales a change to the street by its distance from 1, never below the lowest factor', () => {
@@ -277,6 +293,127 @@ describe('choiceTags', () => {
   })
 })
 
+describe('cardText', () => {
+  const [card] = loadEventContent({
+    pacing: { firstDay: 0, minDaysBetween: 0, dailyChance: 1 },
+    events: [
+      {
+        id: 'carte',
+        weight: 1,
+        character: { id: 'gilles', name: 'Gilles Lacasse', role: 'Traiteur' },
+        title: 'Une carte',
+        situation: 'Mettez {montant:mise}, revoyez {montant:retour}.',
+        quote: 'Pas de montant ici.',
+        choices: [
+          {
+            id: 'miser',
+            label: 'Miser {montant:mise}',
+            tags: ['Risqué'],
+            outcomes: [
+              {
+                chance: 0.5,
+                result: 'Perdu {montant:mise}.',
+                effects: [
+                  {
+                    kind: 'personal',
+                    amountCents: -100_000,
+                    label: 'Mise',
+                    name: 'mise',
+                  },
+                ],
+              },
+              {
+                chance: 0.5,
+                result:
+                  'Gagné {montant:retour}, en {montant:fatigue} de fatigue.',
+                effects: [
+                  {
+                    kind: 'personal',
+                    amountCents: -100_000,
+                    label: 'Mise',
+                    name: 'mise',
+                  },
+                  {
+                    kind: 'personal',
+                    amountCents: 150_000,
+                    label: 'Retour',
+                    inDays: 90,
+                    name: 'retour',
+                    difficulties: ['facile', 'moyen'],
+                  },
+                  {
+                    kind: 'personal',
+                    amountCents: 200_000,
+                    label: 'Retour',
+                    inDays: 90,
+                    name: 'retour',
+                    difficulties: ['difficile'],
+                  },
+                  { kind: 'energy', amount: -5, name: 'fatigue' },
+                ],
+              },
+            ],
+          },
+          {
+            id: 'non',
+            label: 'Non',
+            tags: ['Rien ne change'],
+            outcomes: [{ chance: 1, result: 'Non.', effects: [] }],
+          },
+        ],
+      },
+    ],
+  }).events as [EventCard]
+  const content = { scaling: SCALING }
+  const [miser] = card.choices as [EventChoice]
+  const [lost, won] = miser.outcomes
+
+  it('cuts the text into its words and the amounts it shows, scaled', () => {
+    expect(cardText(card.situation, card, 'moyen', content)).toEqual([
+      'Mettez ',
+      { unit: 'money', cents: 130_000 },
+      ', revoyez ',
+      { unit: 'money', cents: 195_000 },
+      '.',
+    ])
+    expect(cardText(card.quote ?? '', card, 'moyen', content)).toEqual([
+      'Pas de montant ici.',
+    ])
+  })
+
+  it('reads the event’s choices, the choice’s outcomes or the outcome’s own effects, at the game’s difficulty', () => {
+    expect(cardText(card.situation, card, 'difficile', content)[3]).toEqual({
+      unit: 'money',
+      cents: 140_000,
+    })
+    expect(cardText(miser.label, miser, 'facile', content)).toEqual([
+      'Miser ',
+      { unit: 'money', cents: 70_000 },
+    ])
+    if (lost === undefined || won === undefined) throw new Error('No outcome')
+    expect(cardText(won.result, won, 'facile', content)).toEqual([
+      'Gagné ',
+      { unit: 'money', cents: 150_000 },
+      ', en ',
+      { unit: 'energy', points: 4 },
+      ' de fatigue.',
+    ])
+    expect(() => cardText(won.result, lost, 'facile', content)).toThrow(
+      RangeError,
+    )
+  })
+
+  it('is the text as written without amounts, or as written with no scaling', () => {
+    expect(cardText('Sans montant.', card, 'facile', content)).toEqual([
+      'Sans montant.',
+    ])
+    expect(cardText(miser.label, miser, 'moyen', {})[1]).toEqual({
+      unit: 'money',
+      cents: 100_000,
+    })
+  })
+})
+
 describe('every tag of every card tells the amount played', () => {
   // A morning with the owner's energy halfway, so that no energy effect is
   // held at 0 or 100.
@@ -437,6 +574,78 @@ describe('every tag of every card tells the amount played', () => {
           0,
         )
         expect(sizeOfTag(amount), tag.text).toBeCloseTo(size, 9)
+      }
+    },
+  )
+
+  /**
+   * Whether the effects named `name` that `cardText` reads in `outcomes` at
+   * `difficulty` are those of `played`: the first outcome holding one that
+   * applies there.
+   */
+  function readsFrom(
+    outcomes: readonly { readonly effects: readonly TimedEventEffect[] }[],
+    played: { readonly effects: readonly TimedEventEffect[] } | undefined,
+    name: string,
+    difficulty: DifficultyId,
+  ): boolean {
+    return (
+      outcomes.find(({ effects }) =>
+        effects.some(
+          (effect) =>
+            effect.name === name &&
+            (effect.difficulties === undefined ||
+              effect.difficulties.includes(difficulty)),
+        ),
+      ) === played
+    )
+  }
+
+  it.each(CASES)(
+    'tells in its text the amounts played: %s, %s, at %s, outcome %i',
+    (event, choiceId, difficulty, index) => {
+      const card = EVENTS.events.find(({ id }) => id === event)
+      const choice = card?.choices.find(({ id }) => id === choiceId)
+      const outcome = choice?.outcomes[index]
+      if (card === undefined || choice === undefined || outcome === undefined) {
+        throw new Error(`No ${event}, ${choiceId}, ${index}`)
+      }
+      const everyOutcome = card.choices.flatMap(({ outcomes }) => outcomes)
+      type Written = readonly [
+        text: string,
+        scope: TextScope,
+        outcomes: readonly { effects: readonly TimedEventEffect[] }[],
+      ]
+      const texts: Written[] = [
+        [card.situation, card, everyOutcome],
+        ...(card.quote === undefined
+          ? []
+          : [[card.quote, card, everyOutcome] satisfies Written]),
+        [choice.label, choice, choice.outcomes],
+        [outcome.result, outcome, [outcome]],
+      ]
+      const { morning, after } = played(difficulty, event, choice, index)
+      for (const [text, scope, outcomes] of texts) {
+        const pieces = cardText(text, scope, difficulty, EVENTS)
+        textParts(text).forEach((part, at) => {
+          if (typeof part === 'string') return
+          if (!readsFrom(outcomes, outcome, part.amountOf, difficulty)) return
+          const named = outcome.effects.filter(
+            ({ name, difficulties }) =>
+              name === part.amountOf &&
+              (difficulties === undefined || difficulties.includes(difficulty)),
+          )
+          const piece = pieces[at]
+          if (piece === undefined || typeof piece === 'string') {
+            throw new Error(`No amount for ${part.amountOf} in « ${text} »`)
+          }
+          const size = named.reduce(
+            (total, effect) =>
+              total + sizeOf(effect, morning.day, morning, after),
+            0,
+          )
+          expect(sizeOfTag(piece), text).toBeCloseTo(size, 9)
+        })
       }
     },
   )

@@ -4,6 +4,7 @@ import {
   loadEventContent,
   type DifficultyId,
   type EventCard as Card,
+  type EventContent,
 } from '../content/schema.ts'
 import { createInitialState } from '../engine/clock.ts'
 import { EVENTS } from '../engine/day.ts'
@@ -32,6 +33,30 @@ const S = ' '
 const M = '−'
 
 const [ESSAI] = EVENTS.events as [Card]
+
+/**
+ * The starting values of #137, so that the view's amounts do not follow the
+ * tuning of the shipped scaling: Facile keeps the gains and takes 0.7 of the
+ * losses, Moyen takes 1.3 of both, and Difficile gives 0.7 of the gains and
+ * takes 1.2 of the losses.
+ */
+const SCALING: Pick<EventContent, 'scaling'> = {
+  scaling: {
+    lowestFactor: 0.1,
+    difficulties: {
+      facile: { gains: 1, losses: 0.7 },
+      moyen: { gains: 1.3, losses: 1.3 },
+      difficile: { gains: 0.7, losses: 1.2 },
+    },
+  },
+}
+
+/** The shipped card `id`. */
+function shipped(id: string): Card {
+  const card = EVENTS.events.find((event) => event.id === id)
+  if (card === undefined) throw new Error(`No ${id}`)
+  return card
+}
 
 /** A card with two choices and no quote. */
 const [TWO_CHOICES] = loadEventContent({
@@ -75,6 +100,7 @@ function render(
     <EventCardView
       card={card}
       difficulty={difficulty}
+      scaling={SCALING}
       portrait={portrait}
       result={result}
       allowed={allowed}
@@ -173,9 +199,27 @@ describe('EventCardView', () => {
     ])
   })
 
+  it('writes the amounts of the quote and of the labels at the difficulty', () => {
+    const card = shipped('influenceuse')
+    for (const [difficulty, amount] of [
+      ['facile', 280],
+      ['moyen', 520],
+      ['difficile', 480],
+    ] as const) {
+      const html = render(card, null, null, null, difficulty)
+      expect(html).toContain(`Une story chez vous, c&#x27;est ${amount}${S}$.`)
+      expect(choices(html)[0]?.label).toBe(`Payer ${amount}${S}$`)
+      expect(choices(html)[0]?.tags[0]).toBe(`Marketing ${M}${amount}${S}$`)
+    }
+    expect(
+      render(shipped('placementMiracle'), null, null, null, 'moyen'),
+    ).toContain(
+      `Mettez 1${S}300${S}$, vous en revoyez 1${S}950${S}$ dans trois mois.`,
+    )
+  })
+
   it('shows a tag only at the difficulties where it holds', () => {
-    const card = EVENTS.events.find(({ id }) => id === 'grosseCommande')
-    if (card === undefined) throw new Error('No grosseCommande')
+    const card = shipped('grosseCommande')
     const refuser = (difficulty: DifficultyId) =>
       choices(render(card, null, null, null, difficulty)).at(-1)?.tags
     expect(refuser('moyen')).toEqual(['Rien ne change'])
@@ -268,7 +312,8 @@ describe('EventCard', () => {
   })
 
   it('shows what the choice did once it is made', () => {
-    // At Moyen: −130 $ + 260 $ − 20 croissants at 1,10 $ now, −65 $ later.
+    // At Moyen, with the shipped scaling of 1.1: −110 $ + 220 $ − 20
+    // croissants at 1,10 $ now, −55 $ later.
     gameStore.getState().startGame(waiting())
     gameStore.getState().chooseEvent('toutEssayer')
     const html = renderToStaticMarkup(<EventCard />)
@@ -276,9 +321,19 @@ describe('EventCard', () => {
     expect(html).toContain(
       `<p class="event-card__chosen">Votre choix${S}: Tout essayer</p><p class="event-card__outcome">Tout a été essayé. Thérèse coche sa liste.</p>`,
     )
-    expect(html).toContain(`<li>Encaisse +108${S}$</li>`)
-    expect(html).toContain(`<li>Encaisse ${M}65${S}$ jeudi</li>`)
+    expect(html).toContain(`<li>Encaisse +88${S}$</li>`)
+    expect(html).toContain(`<li>Encaisse ${M}55${S}$ jeudi</li>`)
     expect(html).toContain('Continuer')
+  })
+
+  it('writes the amounts of what came of the choice as the game plays them', () => {
+    // At Moyen, with the shipped scaling of 1.1, Normand's 60 $ are 66 $.
+    gameStore.getState().startGame(waiting('premierJuillet'))
+    gameStore.getState().chooseEvent('aiderNormand')
+    const html = renderToStaticMarkup(<EventCard />)
+    expect(html).toContain(
+      `Il a passé par la fenêtre. Normand vous glisse 66${S}$ et une bière tiède.</p>`,
+    )
   })
 
   it('leaves only « Accepter » on « La grosse commande » of « Payé dans 60 jours »', () => {

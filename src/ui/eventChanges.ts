@@ -5,14 +5,16 @@ import type { Day, DelayedEffect, GameState } from '../engine/types.ts'
 import { getAccount, type AccountCode } from '../finance/accounts.ts'
 import { entriesOf } from '../finance/journal.ts'
 import { formatDayAndMonth, formatWeekdayName } from './formatGameDate.ts'
+import { wholeEnergy } from './eventTags.ts'
 import { formatSignedMoney } from './formatMoney.ts'
 
 // What an event's choice did, as the plain lines its card shows once the
 // player has chosen. They are read off the game before and after the
 // choice, and nothing is played again here:
 // - What changed at once is a fact: how much each balance sheet account
-//   moved in the entries the choice posted, then the owner's energy and
-//   their own cash.
+//   moved in the entries the choice posted, then the owner's energy, in
+//   whole points as the tags round it (see `wholeEnergy`), and their own
+//   cash.
 // - What comes later is one line for each effect the choice queued, never
 //   added to another, since what else happens by then is not known yet. An
 //   amount shows only when the effect fixes it: a payment, a sale, a
@@ -149,7 +151,7 @@ function nowLines(
           : [],
     })
   }
-  const energy = Math.round(after.energy - before.energy)
+  const energy = wholeEnergy(after.energy - before.energy)
   if (energy !== 0) {
     changes.push({ label: ENERGY, amount: { energy }, day, collectedOn: [] })
   }
@@ -258,7 +260,7 @@ function laterLine(
     case 'personal':
       return money(PERSONAL, effect.amountCents)
     case 'energy': {
-      const energy = Math.round(effect.amount)
+      const energy = wholeEnergy(effect.amount)
       return energy === 0
         ? []
         : [{ label: ENERGY, amount: { energy }, day, collectedOn: [] }]

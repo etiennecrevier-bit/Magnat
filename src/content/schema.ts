@@ -698,6 +698,96 @@ export const TAG_UNITS = {
 export const TAG_AMOUNT = '{montant}'
 
 /**
+ * Where a card's situation, quote, choice label or outcome result shows the
+ * amount of the effects named `name`: `{montant:name}`.
+ */
+const TEXT_AMOUNT = /\{montant:([a-z][A-Za-z0-9]*)\}/g
+
+/** A piece of a card's text: words, or the name of the effects shown. */
+export type TextPart = string | { readonly amountOf: string }
+
+/** `text` as its words and the amounts it shows (see `TEXT_AMOUNT`). */
+export function textParts(text: string): TextPart[] {
+  const parts: TextPart[] = []
+  let from = 0
+  for (const match of text.matchAll(TEXT_AMOUNT)) {
+    const [whole, name] = match
+    if (match.index > from) parts.push(text.slice(from, match.index))
+    if (name !== undefined) parts.push({ amountOf: name })
+    from = match.index + whole.length
+  }
+  if (from < text.length) parts.push(text.slice(from))
+  return parts
+}
+
+/**
+ * The effects of `outcomes` named `name` that apply at `difficulty`, in the
+ * first outcome holding one; none when no outcome does.
+ */
+export function namedEffects(
+  outcomes: readonly (readonly TimedEventEffect[])[],
+  name: string,
+  difficulty: DifficultyId,
+): TimedEventEffect[] {
+  for (const effects of outcomes) {
+    const named = effects.filter(
+      (effect) =>
+        effect.name === name &&
+        (effect.difficulties === undefined ||
+          effect.difficulties.includes(difficulty)),
+    )
+    if (named.length > 0) return named
+  }
+  return []
+}
+
+/**
+ * Checks `text`, at `path`: every amount it shows names effects of
+ * `outcomes` (see `namedEffects`) at every difficulty, all of one unit, and
+ * it has no other braces, so that no amount shows as written.
+ */
+function checkTextAmounts(
+  text: string,
+  outcomes: readonly (readonly TimedEventEffect[])[],
+  path: readonly (string | number)[],
+  ctx: z.RefinementCtx,
+): void {
+  for (const part of textParts(text)) {
+    if (typeof part === 'string') {
+      if (/[{}]/.test(part)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `a card's text shows an amount as {montant:name}`,
+          path: [...path],
+        })
+      }
+      continue
+    }
+    for (const difficulty of difficultyIdSchema.options) {
+      const named = namedEffects(outcomes, part.amountOf, difficulty)
+      const units = new Set(
+        named.map(({ kind }) =>
+          kind in TAG_UNITS ? TAG_UNITS[kind as keyof typeof TAG_UNITS] : null,
+        ),
+      )
+      if (named.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `no effect named ${part.amountOf} applies at ${difficulty}`,
+          path: [...path],
+        })
+      } else if (units.size !== 1 || units.has(null)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `the effects named ${part.amountOf} have no amount of one unit to show`,
+          path: [...path],
+        })
+      }
+    }
+  }
+}
+
+/**
  * What the owner would know of a choice before making it: a text shown as
  * it is, or a text shown only at the `difficulties` listed and, when it
  * names an `effect`, only where that effect applies, with `{montant}`
@@ -840,26 +930,58 @@ export type Standing = z.infer<typeof standingSchema>
 /** Relative odds among the events whose conditions hold; 0 never draws. */
 const eventWeight = z.number().nonnegative()
 
-const eventSchema = z.strictObject({
-  id: idSchema,
-  weight: eventWeight,
-  /**
-   * The weight at a difficulty whose draw adapts to the player, for each
-   * standing it gives; `weight` for the others.
-   */
-  weightByStanding: z.partialRecord(standingSchema, eventWeight).optional(),
-  /** Who brings the dilemma: a portrait id, a French name and a role. */
-  character: z.strictObject({
+const eventSchema = z
+  .strictObject({
     id: idSchema,
-    name: frenchText(),
-    role: frenchText(),
-  }),
-  title: frenchText(),
-  situation: frenchText(SITUATION_MAX_LENGTH),
-  quote: frenchText().optional(),
-  conditions: eventConditionsSchema.optional(),
-  choices: z.array(eventChoiceSchema).min(2).max(3),
-})
+    weight: eventWeight,
+    /**
+     * The weight at a difficulty whose draw adapts to the player, for each
+     * standing it gives; `weight` for the others.
+     */
+    weightByStanding: z.partialRecord(standingSchema, eventWeight).optional(),
+    /** Who brings the dilemma: a portrait id, a French name and a role. */
+    character: z.strictObject({
+      id: idSchema,
+      name: frenchText(),
+      role: frenchText(),
+    }),
+    title: frenchText(),
+    /**
+     * The situation, the quote, each choice's label and each outcome's
+     * result may show amounts as `{montant:name}` (see `textParts`): the
+     * effects so named in the event's choices, the choice's outcomes or the
+     * outcome, in that order.
+     */
+    situation: frenchText(SITUATION_MAX_LENGTH),
+    quote: frenchText().optional(),
+    conditions: eventConditionsSchema.optional(),
+    choices: z.array(eventChoiceSchema).min(2).max(3),
+  })
+  .superRefine(({ situation, quote, choices }, ctx) => {
+    const everyOutcome = choices.flatMap(({ outcomes }) =>
+      outcomes.map(({ effects }) => effects),
+    )
+    checkTextAmounts(situation, everyOutcome, ['situation'], ctx)
+    if (quote !== undefined) {
+      checkTextAmounts(quote, everyOutcome, ['quote'], ctx)
+    }
+    choices.forEach(({ label, outcomes }, c) => {
+      checkTextAmounts(
+        label,
+        outcomes.map(({ effects }) => effects),
+        ['choices', c, 'label'],
+        ctx,
+      )
+      outcomes.forEach(({ result, effects }, o) => {
+        checkTextAmounts(
+          result,
+          [effects],
+          ['choices', c, 'outcomes', o, 'result'],
+          ctx,
+        )
+      })
+    })
+  })
 
 export type EventCard = z.output<typeof eventSchema>
 

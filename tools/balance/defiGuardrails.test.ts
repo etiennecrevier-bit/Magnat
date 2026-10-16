@@ -162,10 +162,10 @@ const P3_13_OWNERS: Readonly<Record<string, ReturnType<typeof medalCounts>>> = {
   },
   payeDans60Jours: {
     games: 200,
-    broken: 60,
+    broken: 57,
     or: 20,
-    argentOrBetter: 87,
-    bronzeOrBetter: 140,
+    argentOrBetter: 85,
+    bronzeOrBetter: 143,
   },
   moisSansConge: {
     games: 200,

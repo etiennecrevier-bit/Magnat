@@ -248,14 +248,14 @@ describe('events.json', () => {
     expect(free).toEqual([])
   })
 
-  it('scales the cards by difficulty from the starting values of #137', () => {
+  it('scales the cards by difficulty as #137 tuned them', () => {
     expect(content.scaling).toEqual({
       _note: expect.any(String),
       lowestFactor: 0.1,
       difficulties: {
-        facile: { gains: 1, losses: 0.7 },
-        moyen: { gains: 1.3, losses: 1.3 },
-        difficile: { gains: 0.7, losses: 1.2 },
+        facile: { gains: 1, losses: 0.9 },
+        moyen: { gains: 1.1, losses: 1.1 },
+        difficile: { gains: 0.85, losses: 1.15 },
       },
     })
   })
@@ -308,6 +308,22 @@ describe('events.json', () => {
           .filter((text) => /\d\s*[$%]|Énergie [+−]\d/.test(text))
           .map((text) => `${id}, ${choice}: ${text}`),
       ),
+    )
+    expect(typed).toEqual([])
+  })
+
+  it('writes no amount of money into a card’s text by hand: the effects it names give it', () => {
+    const typed = content.events.flatMap((event) =>
+      [
+        event.situation,
+        event.quote ?? '',
+        ...event.choices.flatMap(({ label, outcomes }) => [
+          label,
+          ...outcomes.map(({ result }) => result),
+        ]),
+      ]
+        .filter((text) => /\d\s*\$/.test(text))
+        .map((text) => `${event.id}: ${text}`),
     )
     expect(typed).toEqual([])
   })
@@ -755,6 +771,108 @@ describe('loadEventContent rejects', () => {
       tagged({ kind: 'closed', days: 1, name: 'cout' }),
       'the effects named cout have no amount of one unit to show',
     )
+  })
+
+  it('an amount in a card’s text naming no effect where it looks, or not at every difficulty', () => {
+    /** A card with `texts`, its first choice's label `label`. */
+    const named = (
+      {
+        label,
+        ...texts
+      }: { label?: string; quote?: string; situation?: string },
+      effects: Json[] = [],
+    ) =>
+      file([
+        card({
+          ...texts,
+          choices: [
+            choice('a', {
+              outcomes: [outcome({ effects })],
+              ...(label === undefined ? {} : { label }),
+            }),
+            choice('b'),
+          ],
+        }),
+      ])
+    const sale = {
+      kind: 'cashSale',
+      amountCents: 67_500,
+      description: 'Vente',
+      name: 'vente',
+    }
+    expect(() =>
+      loadEventContent(named({ quote: 'Payé {montant:vente}.' }, [sale])),
+    ).not.toThrow()
+    rejects(
+      named({ quote: 'Payé {montant:prix}.' }, [sale]),
+      'no effect named prix applies at facile',
+      '→ at events[0].quote',
+    )
+    rejects(
+      named({ situation: 'Payé {montant:vente}.' }, [
+        { ...sale, difficulties: ['facile', 'moyen'] },
+      ]),
+      'no effect named vente applies at difficile',
+      '→ at events[0].situation',
+    )
+    rejects(
+      named({ label: 'Vendre {montant:vente}' }),
+      'no effect named vente applies at facile',
+      '→ at events[0].choices[0].label',
+    )
+  })
+
+  it('an amount in an outcome’s result taken from another outcome', () => {
+    const sale = {
+      kind: 'cashSale',
+      amountCents: 67_500,
+      description: 'Vente',
+      name: 'vente',
+    }
+    rejects(
+      file([
+        card({
+          choices: [
+            choice('a', {
+              outcomes: [
+                outcome({ chance: 0.5, effects: [sale] }),
+                outcome({ chance: 0.5, result: 'Payé {montant:vente}.' }),
+              ],
+              tags: ['Risqué'],
+            }),
+            choice('b'),
+          ],
+        }),
+      ]),
+      'no effect named vente applies at facile',
+      '→ at events[0].choices[0].outcomes[1].result',
+    )
+  })
+
+  it('an amount in a card’s text of effects of different units, or written otherwise', () => {
+    const effects = [
+      { kind: 'energy', amount: -5, name: 'cout' },
+      { kind: 'charge', amountCents: 100, description: 'Taxi', name: 'cout' },
+    ]
+    rejects(
+      file([
+        card({
+          quote: 'Ça coûte {montant:cout}.',
+          choices: [
+            choice('a', { outcomes: [outcome({ effects })] }),
+            choice('b'),
+          ],
+        }),
+      ]),
+      'the effects named cout have no amount of one unit to show',
+    )
+    for (const quote of ['Ça coûte {montant}.', 'Ça coûte {montant:Cout}.']) {
+      rejects(
+        file([card({ quote })]),
+        "a card's text shows an amount as {montant:name}",
+        '→ at events[0].quote',
+      )
+    }
   })
 
   it('a tag shown at no difficulty, or with a key the game does not know', () => {

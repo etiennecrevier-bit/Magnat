@@ -5,6 +5,7 @@ import {
   type EventConditions,
   type EventContent,
   type FoodTruckContent,
+  type PercentileContent,
   type RestockRule,
   type Standing,
 } from '../content/schema.ts'
@@ -14,6 +15,7 @@ import { toCalendar } from './calendar.ts'
 import { allowedChoices } from './challenge.ts'
 import { DEFIS, EVENTS, FOOD_TRUCK } from './day.ts'
 import { applyEffect, insertByDay, untimed, whenDue } from './effects.ts'
+import { PERCENTILES } from './percentiles.ts'
 import { next } from './rng.ts'
 import { effectsAt } from './scaling.ts'
 import { standingOf } from './standing.ts'
@@ -42,10 +44,10 @@ const AS_WRITTEN: Pick<EventContent, 'scaling'> = {}
  * difficulty, but in a Défi, whose medals take the cards as written.
  */
 export function scalingOf(
-  state: GameState,
+  { challenge }: Pick<GameState, 'challenge'>,
   content: EventContent = EVENTS,
 ): Pick<EventContent, 'scaling'> {
-  return state.challenge === null ? content : AS_WRITTEN
+  return challenge === null ? content : AS_WRITTEN
 }
 
 /** The events of a game that has had none yet. */
@@ -75,15 +77,19 @@ export function noEvents(): EventsState {
  *    not `followUpOnly`, whose conditions all hold that morning (see
  *    `conditionsHold`). With none, nothing is drawn. At a difficulty of
  *    `adaptiveDraw`, but in a Défi, an event's weight is its
- *    `weightByStanding` for the player's standing that morning (see
- *    `standingOf`), if it sets one.
+ *    `weightByStanding` for the player's standing that morning against
+ *    `percentiles` (see `standingOf`), if it sets one.
  * 4. Otherwise one draw against `pacing.dailyChance`, then one draw to pick
  *    among them by weight, and the event picked comes up with
  *    `lastDrawnDay` set to the day. A chance of 1, or a single event to
  *    pick, takes no draw.
  * Returns a new state; never mutates `state`.
  */
-export function drawEvent(state: GameState, content: EventContent): GameState {
+export function drawEvent(
+  state: GameState,
+  content: EventContent,
+  percentiles: PercentileContent = PERCENTILES,
+): GameState {
   const { day, events } = state
   if (events.pending !== null || events.history.at(-1)?.day === day) {
     return state
@@ -114,7 +120,7 @@ export function drawEvent(state: GameState, content: EventContent): GameState {
     return state
   }
   const seen = lastSeen(events.history)
-  const weightOf = weighing(state, content)
+  const weightOf = weighing(state, content, percentiles)
   const eligible = content.events.filter(
     (event) =>
       event.conditions?.followUpOnly !== true &&
@@ -320,12 +326,13 @@ function onMenu(rule: RestockRule): boolean {
 /**
  * How much each event weighs in the draw on the morning of `state.day`: its
  * `weight`, or at a difficulty of `content.adaptiveDraw` but in a Défi, its
- * `weightByStanding` for the player's standing, if it sets one. The
- * standing is read once, and only if an event asks.
+ * `weightByStanding` for the player's standing against `percentiles`, if it
+ * sets one. The standing is read once, and only if an event asks.
  */
 function weighing(
   state: GameState,
   { adaptiveDraw }: EventContent,
+  percentiles: PercentileContent,
 ): (event: EventCard) => number {
   if (
     adaptiveDraw === undefined ||
@@ -337,7 +344,7 @@ function weighing(
   let standing: Standing | undefined
   return ({ weight, weightByStanding }) => {
     if (weightByStanding === undefined) return weight
-    standing ??= standingOf(state, adaptiveDraw)
+    standing ??= standingOf(state, adaptiveDraw, percentiles)
     return weightByStanding[standing] ?? weight
   }
 }

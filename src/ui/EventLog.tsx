@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { scalingOf } from '../engine/events.ts'
 import { recentEvents, type EventLogEntry } from './eventLog.ts'
 import { formatShortGameDate } from './formatGameDate.ts'
 import { useGame } from './store.ts'
@@ -36,10 +37,15 @@ export function EventLogView({
   )
 }
 
-/** The journal of the app store's game. */
+/** The journal of the app store's game, with the amounts it plays. */
 export default function EventLog() {
   const history = useGame((state) => state.game.events.history)
   const day = useGame((state) => state.game.day)
-  const entries = useMemo(() => recentEvents(history, day), [history, day])
+  const difficulty = useGame((state) => state.game.profile.difficulty)
+  const challenge = useGame((state) => state.game.challenge)
+  const entries = useMemo(
+    () => recentEvents(history, day, difficulty, scalingOf({ challenge })),
+    [history, day, difficulty, challenge],
+  )
   return <EventLogView entries={entries} />
 }

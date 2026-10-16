@@ -1,13 +1,13 @@
 {
-  "_note": "Pacing from issue #91. The twelve cards of issue #93 keep a weight of 1; P3-13 (#101) tuned their amounts, chances and effects at Moyen with `npm run balance -- --percentiles`, until no choice wins too often or too seldom: see docs/balance/phase-3.md. P3-13b (#137) scales what a choice gives and takes by difficulty, gives every Difficile choice a cost, and adds four cards that Facile draws by the player's standing. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
+  "_note": "Pacing from issue #91. The twelve cards of issue #93 keep a weight of 1; P3-13 (#101) tuned their amounts, chances and effects at Moyen with `npm run balance -- --percentiles`, until no choice wins too often or too seldom: see docs/balance/phase-3.md. P3-13b (#137) scales what a choice gives and takes by difficulty, gives every Difficile choice a cost, adds four cards that Facile draws by the player's standing, and tuned the cards at each difficulty with the same report. A card's text writes its amounts as {montant:name}, so they follow the scaling too. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
   "pacing": { "firstDay": 7, "minDaysBetween": 5, "dailyChance": 0.15 },
   "scaling": {
-    "_note": "Starting values of #137, to tune with the event report at each difficulty: Facile keeps the gains and softens the losses, Moyen raises both, Difficile gives less and takes more.",
+    "_note": "Tuned at each difficulty with the event report of npm run balance -- --percentiles (#137): Facile keeps the gains and softens the losses, Moyen raises both, Difficile gives less and takes more. The issue's starting values (1 and 0.7, 1.3 and 1.3, 0.7 and 1.2) pushed choices off their targets, since a choice's money scales but the days it closes the truck or stops a product do not: see docs/balance/phase-3.md.",
     "lowestFactor": 0.1,
     "difficulties": {
-      "facile": { "gains": 1, "losses": 0.7 },
-      "moyen": { "gains": 1.3, "losses": 1.3 },
-      "difficile": { "gains": 0.7, "losses": 1.2 }
+      "facile": { "gains": 1, "losses": 0.9 },
+      "moyen": { "gains": 1.1, "losses": 1.1 },
+      "difficile": { "gains": 0.85, "losses": 1.15 }
     }
   },
   "adaptiveDraw": {
@@ -186,7 +186,7 @@
       },
       "title": "La grosse commande",
       "situation": "Un homme en nœud papillon arrive au comptoir au pas de course, un bon de commande à la main et le sourire de quelqu'un à qui tout réussit.",
-      "quote": "Il me faut 400 croissants jeudi matin pour le congrès. 750 $, payables à 60 jours. Pensez à la visibilité : 400 optimistes, c'est 400 bouches.",
+      "quote": "Il me faut 400 croissants jeudi matin pour le congrès. {montant:vente}, payables à 60 jours. Pensez à la visibilité : 400 optimistes, c'est 400 bouches.",
       "conditions": { "fromDay": 14, "weekdays": [1, 2], "oncePerGame": true },
       "choices": [
         {
@@ -295,7 +295,7 @@
                 },
                 {
                   "kind": "cashSale",
-                  "amountCents": 67500,
+                  "amountCents": 62500,
                   "description": "Commande du Congrès québécois des optimistes",
                   "onNextWeekday": 4,
                   "name": "vente"
@@ -339,7 +339,7 @@
         "role": "Traiteur du Congrès québécois des optimistes"
       },
       "title": "Le chèque est dans la malle",
-      "situation": "Les 750 $ de la grosse commande sont dus ce matin. Pas de chèque. Le téléphone sonne : c'est Gilles.",
+      "situation": "Le paiement de la grosse commande est dû ce matin. Pas de chèque. Le téléphone sonne : c'est Gilles.",
       "quote": "Le chèque est parti, promis. La poste est très optimiste, elle aussi.",
       "conditions": { "followUpOnly": true },
       "choices": [
@@ -474,7 +474,7 @@
               "effects": [
                 {
                   "kind": "charge",
-                  "amountCents": 100000,
+                  "amountCents": 115000,
                   "description": "Formulaire 22-C, changement de coin de rue",
                   "account": "6100",
                   "name": "permis"
@@ -593,7 +593,7 @@
           ],
           "outcomes": [
             {
-              "chance": 0.5,
+              "chance": 0.4,
               "result": "Le ruban tient. Bertrand est impressionné, et un peu inquiet.",
               "effects": [
                 {
@@ -607,7 +607,7 @@
               ]
             },
             {
-              "chance": 0.5,
+              "chance": 0.6,
               "result": "Le ruban tient trois jours, puis lâche pendant le rush. Bertrand ne dit rien. Il facture.",
               "effects": [
                 {
@@ -749,7 +749,7 @@
       },
       "title": "L'influenceuse",
       "situation": "Une jeune femme filme votre camion sous tous les angles, puis se filme devant. Elle range sa perche à égoportrait et s'approche.",
-      "quote": "Une story chez vous, c'est 400 $. Mes abonnés adorent les camions. Enfin, ils adorent les photos de camions.",
+      "quote": "Une story chez vous, c'est {montant:story}. Mes abonnés adorent les camions. Enfin, ils adorent les photos de camions.",
       "conditions": {
         "fromDay": 14,
         "cooldownDays": 90,
@@ -758,7 +758,7 @@
       "choices": [
         {
           "id": "payer",
-          "label": "Payer 400 $",
+          "label": "Payer {montant:story}",
           "tags": [
             { "text": "Marketing −{montant}", "effect": "story" },
             "Plus de clients pendant 10 jours"
@@ -775,7 +775,7 @@
                   "account": "6300",
                   "name": "story"
                 },
-                { "kind": "walkIns", "factor": 1.2, "days": 10 }
+                { "kind": "walkIns", "factor": 1.22, "days": 10 }
               ]
             }
           ]
@@ -786,7 +786,7 @@
           "tags": ["Quelques croissants offerts", "Risqué"],
           "outcomes": [
             {
-              "chance": 0.4,
+              "chance": 0.35,
               "result": "Coralie publie vos croissants avec trois filtres et un cœur. Quelques abonnés viennent voir s'ils existent vraiment.",
               "effects": [
                 { "kind": "buyStock", "product": "croissant", "units": 10 },
@@ -800,7 +800,7 @@
               ]
             },
             {
-              "chance": 0.6,
+              "chance": 0.65,
               "result": "Coralie a publié la photo. De son café. Sans votre camion.",
               "effects": [
                 { "kind": "buyStock", "product": "croissant", "units": 10 },
@@ -819,10 +819,7 @@
           "label": "Non merci",
           "tags": [
             { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
-            {
-              "text": "Clients −{montant} pendant 1 semaine",
-              "effect": "clients"
-            }
+            { "text": "Énergie −{montant}", "effect": "energie" }
           ],
           "outcomes": [
             {
@@ -830,11 +827,10 @@
               "result": "Coralie hausse les épaules et se filme en train de partir. Ses abonnés adorent.",
               "effects": [
                 {
-                  "kind": "walkIns",
-                  "factor": 0.95,
-                  "days": 7,
+                  "kind": "energy",
+                  "amount": -5,
                   "difficulties": ["difficile"],
-                  "name": "clients"
+                  "name": "energie"
                 }
               ]
             }
@@ -922,7 +918,7 @@
       },
       "title": "Le formulaire 14-B",
       "situation": "Une inspectrice examine votre permis à la loupe. Puis le tampon. Puis le permis encore. Elle sort son carnet de contraventions.",
-      "quote": "Votre formulaire 14-B n'a pas le bon tampon. C'est 150 $, ou vous contestez demain matin au comptoir 3. Ou 4.",
+      "quote": "Votre formulaire 14-B n'a pas le bon tampon. C'est {montant:amende}, ou vous contestez demain matin au comptoir 3. Ou 4.",
       "conditions": { "fromDay": 10, "cooldownDays": 120 },
       "choices": [
         {
@@ -1117,7 +1113,7 @@
       },
       "title": "Le Festival du Pas Pire",
       "situation": "Un bénévole en dossard jaune colle une affiche sur votre camion, puis vous en tend une autre, au cas où.",
-      "quote": "Trois jours de festival dans votre rue, de vendredi à dimanche! L'emplacement sur le site coûte 250 $. Pensez à vos stocks.",
+      "quote": "Trois jours de festival dans votre rue, de vendredi à dimanche! L'emplacement sur le site coûte {montant:emplacement}. Pensez à vos stocks.",
       "conditions": {
         "months": [6, 7, 8, 9],
         "weekdays": [1, 2],
@@ -1252,7 +1248,7 @@
           "outcomes": [
             {
               "chance": 1,
-              "result": "Le divan n'a pas passé dans l'escalier. Il a passé par la fenêtre. Normand vous glisse 60 $ et une bière tiède.",
+              "result": "Le divan n'a pas passé dans l'escalier. Il a passé par la fenêtre. Normand vous glisse {montant:merci} et une bière tiède.",
               "effects": [
                 { "kind": "closed", "days": 1, "inDays": 1 },
                 {
@@ -1313,7 +1309,7 @@
       "conditions": {
         "fromDay": 14,
         "weekdays": [1, 2, 3, 4],
-        "cooldownDays": 90,
+        "cooldownDays": 42,
         "productOnMenu": "croissant"
       },
       "choices": [
@@ -1323,12 +1319,13 @@
           "tags": [
             { "text": "Ventes +{montant}", "effect": "vente" },
             "Payé samedi",
-            { "text": "Énergie −{montant}", "effect": "energie" }
+            { "text": "Énergie −{montant}", "effect": "energie" },
+            { "text": "Clients −{montant} samedi", "effect": "clients" }
           ],
           "outcomes": [
             {
               "chance": 1,
-              "result": "Samedi matin, Mme Ouellette repart avec deux grosses boîtes et paie comptant, comme promis. Sa fille, paraît-il, n'a laissé que les miettes.",
+              "result": "Samedi, vous ouvrez en retard, le temps de livrer deux grosses boîtes chez Mme Ouellette. Elle paie comptant, comme promis. Sa fille, paraît-il, n'a laissé que les miettes.",
               "effects": [
                 {
                   "kind": "buyStock",
@@ -1344,6 +1341,19 @@
                   "onNextWeekday": 6
                 },
                 {
+                  "kind": "buyStock",
+                  "product": "chocolat",
+                  "units": 12,
+                  "onNextWeekday": 6
+                },
+                {
+                  "kind": "useStock",
+                  "product": "chocolat",
+                  "units": 12,
+                  "to": "order",
+                  "onNextWeekday": 6
+                },
+                {
                   "kind": "cashSale",
                   "amountCents": 15000,
                   "description": "Fête de la fille de Mme Ouellette",
@@ -1355,6 +1365,13 @@
                   "amount": -5,
                   "onNextWeekday": 6,
                   "name": "energie"
+                },
+                {
+                  "kind": "walkIns",
+                  "factor": 0.6,
+                  "days": 1,
+                  "onNextWeekday": 6,
+                  "name": "clients"
                 }
               ]
             }
@@ -1366,7 +1383,7 @@
           "tags": [
             { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
             {
-              "text": "Habitués −{montant} pendant 2 semaines",
+              "text": "Habitués −{montant} pendant 1 semaine",
               "effect": "habitues"
             }
           ],
@@ -1379,7 +1396,7 @@
                   "kind": "walkIns",
                   "factor": 0.95,
                   "segment": "habitue",
-                  "days": 14,
+                  "days": 7,
                   "difficulties": ["difficile"],
                   "name": "habitues"
                 }
@@ -1400,10 +1417,10 @@
       },
       "title": "Le traiteur pressé",
       "situation": "Un homme en tablier enfariné arrive en courant, son cellulaire dans une main et ses clés de camionnette dans l'autre. Il a un brunch de 40 personnes dans deux heures.",
-      "quote": "Mon four a rendu l'âme. 40 croissants avant midi, je paie le double.",
+      "quote": "Mon four a rendu l'âme. 40 croissants avant midi, {montant:vente} comptant.",
       "conditions": {
         "fromDay": 14,
-        "cooldownDays": 90,
+        "cooldownDays": 42,
         "productOnMenu": "croissant"
       },
       "choices": [
@@ -1413,12 +1430,13 @@
           "tags": [
             { "text": "Ventes +{montant}", "effect": "vente" },
             "Payé comptant",
-            { "text": "Énergie −{montant}", "effect": "energie" }
+            { "text": "Énergie −{montant}", "effect": "energie" },
+            { "text": "Clients −{montant} aujourd'hui", "effect": "clients" }
           ],
           "outcomes": [
             {
               "chance": 1,
-              "result": "Vous enfournez 40 croissants à toute vitesse. Rosaire repart à midi moins cinq, soulagé, en laissant l'argent sur le comptoir.",
+              "result": "Vous enfournez 40 croissants à toute vitesse pendant que la file s'allonge, puis se décourage. Rosaire repart à midi moins cinq, soulagé, en laissant l'argent sur le comptoir.",
               "effects": [
                 { "kind": "buyStock", "product": "croissant", "units": 40 },
                 {
@@ -1433,7 +1451,13 @@
                   "description": "Commande des Bouchées Gagnon",
                   "name": "vente"
                 },
-                { "kind": "energy", "amount": -10, "name": "energie" }
+                { "kind": "energy", "amount": -10, "name": "energie" },
+                {
+                  "kind": "walkIns",
+                  "factor": 0.55,
+                  "days": 1,
+                  "name": "clients"
+                }
               ]
             }
           ]
@@ -1473,8 +1497,8 @@
       },
       "title": "Le placement miracle",
       "situation": "Un homme en complet lustré s'appuie sur votre camion comme s'il en était le propriétaire. Il a entendu dire que vos affaires vont bien, et il a une occasion à vous proposer. À vous seulement.",
-      "quote": "Un placement garanti. Garanti par moi, en tout cas. Mettez 1 000 $, vous en revoyez 1 500 $ dans trois mois.",
-      "conditions": { "fromDay": 21, "cooldownDays": 180 },
+      "quote": "Un placement garanti. Garanti par moi, en tout cas. Mettez {montant:mise}, vous en revoyez {montant:retour} dans trois mois.",
+      "conditions": { "fromDay": 21, "cooldownDays": 90 },
       "choices": [
         {
           "id": "investir",
@@ -1554,7 +1578,7 @@
       "title": "Le camion de luxe",
       "situation": "Une femme en salopette tachée fait lentement le tour de votre camion en hochant la tête, l'air peiné. Elle vous tend une carte d'affaires couverte de paillettes.",
       "quote": "Une peinture métallisée, des lettres dorées. Les clients chics vont adorer.",
-      "conditions": { "fromDay": 21, "cooldownDays": 180 },
+      "conditions": { "fromDay": 21, "cooldownDays": 90 },
       "choices": [
         {
           "id": "payer",
@@ -1573,14 +1597,14 @@
               "effects": [
                 {
                   "kind": "charge",
-                  "amountCents": 180000,
+                  "amountCents": 140000,
                   "description": "Peinture métallisée et lettres dorées",
                   "account": "6200",
                   "name": "peinture"
                 },
                 {
                   "kind": "walkIns",
-                  "factor": 1.12,
+                  "factor": 1.3,
                   "segment": "chic",
                   "days": 60,
                   "name": "chic"

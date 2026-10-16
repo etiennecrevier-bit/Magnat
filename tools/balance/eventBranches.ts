@@ -1,4 +1,4 @@
-import type { EventContent } from '../../src/content/schema.ts'
+import type { EventCard, EventContent } from '../../src/content/schema.ts'
 import { EVENTS } from '../../src/engine/day.ts'
 import { resolveEvent } from '../../src/engine/events.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
@@ -14,12 +14,60 @@ import { medianCents } from './summary.ts'
 // the card comes up, every choice plays the next 8 weeks, and so does the
 // same morning with no card, and each choice is measured against that
 // baseline. Every branch plays the same business days, so what differs is
-// the choice alone. No I/O: phase3.ts writes the results.
+// the choice alone. A card that moves only the owner's own money is judged
+// on it instead, over long enough for all of it to come. No I/O: phase3.ts
+// writes the results.
 
 const CASH: AccountCode = '1000'
 
+// A calendar fact, not a tunable: the next given weekday is a week away at
+// most.
+const DAYS_PER_WEEK = 7
+
 /** Days each branch plays from the card's morning, that day included. */
 export const WINDOW_DAYS = 56
+
+/**
+ * What a card's choices are judged on: the encaisse and the bénéfice net,
+ * or, for a card whose choices move the owner's own money and touch neither
+ * the business's books nor the street, that money (see `measuresOf`).
+ */
+export type CardMeasures = 'business' | 'ownMoney'
+
+/**
+ * What `card` is judged on: the owner's money when its effects, at every
+ * difficulty, move it and do nothing else but the owner's energy; the
+ * business otherwise.
+ */
+export function measuresOf(card: EventCard): CardMeasures {
+  const effects = card.choices.flatMap(({ outcomes }) =>
+    outcomes.flatMap(({ effects: of }) => of),
+  )
+  return effects.some(({ kind }) => kind === 'personal') &&
+    effects.every(({ kind }) => kind === 'personal' || kind === 'energy')
+    ? 'ownMoney'
+    : 'business'
+}
+
+/**
+ * The days each branch of `card` plays: `WINDOW_DAYS`, or for a card judged
+ * on the owner's money, more if its last effect lands later, so that the
+ * window holds it.
+ */
+export function windowOf(card: EventCard): number {
+  if (measuresOf(card) === 'business') return WINDOW_DAYS
+  const latest = Math.max(
+    0,
+    ...card.choices.flatMap(({ outcomes }) =>
+      outcomes.flatMap(({ effects }) =>
+        effects.map(({ inDays, onNextWeekday }) =>
+          onNextWeekday === undefined ? (inDays ?? 0) : DAYS_PER_WEEK,
+        ),
+      ),
+    ),
+  )
+  return Math.max(WINDOW_DAYS, latest + 1)
+}
 
 /** Too strong: best on both measures in more than this % of games. */
 export const TOO_STRONG = 80
@@ -116,11 +164,18 @@ export interface ChoiceResult {
   readonly cash: Cents
   /** Bénéfice net over the window, minus the baseline's. */
   readonly netIncome: Cents
+  /**
+   * The owner's own cash at the close of the window's last day, minus the
+   * baseline's.
+   */
+  readonly personal: Cents
 }
 
 /** One occurrence of a card, every choice played out. */
 export interface EventSample {
   readonly event: string
+  /** What the card is judged on (see `measuresOf`). */
+  readonly measures: CardMeasures
   /** The morning the card came up. */
   readonly day: Day
   /** In the order of the card's choices. */
@@ -129,17 +184,17 @@ export interface EventSample {
 
 /**
  * Plays every choice of the card waiting on `morning`, a morning of game
- * `seed`, for `days` days from that morning (see `playWindow`), each choice
- * drawing its outcome from `outcomeStream`, and the same morning with no
- * card, the baseline. Measures each choice against the baseline. Throws an
- * Error when no card waits, and a RangeError when `content` does not hold
- * it.
+ * `seed`, for `days` days from that morning, by default the card's window
+ * (see `windowOf` and `playWindow`), each choice drawing its outcome from
+ * `outcomeStream`, and the same morning with no card, the baseline.
+ * Measures each choice against the baseline. Throws an Error when no card
+ * waits, and a RangeError when `content` does not hold it.
  */
 export function branchEvent(
   morning: GameState,
   seed: number,
   content: EventContent = EVENTS,
-  days: number = WINDOW_DAYS,
+  days?: number,
 ): EventSample {
   const { pending } = morning.events
   if (pending === null) throw new Error(`No event waits on day ${morning.day}`)
@@ -147,12 +202,18 @@ export function branchEvent(
   if (card === undefined) {
     throw new RangeError(`Unknown event: ${pending.event}`)
   }
+  const window = days ?? windowOf(card)
   const { day } = morning
-  const lastDay = day + days - 1
-  function measure(end: GameState): { cash: number; netIncome: number } {
+  const lastDay = day + window - 1
+  function measure(end: GameState): {
+    cash: number
+    netIncome: number
+    personal: number
+  } {
     return {
       cash: balance(end.journal, CASH, { toDay: lastDay }),
       netIncome: incomeStatement(end.journal, day, lastDay).netIncome.amount,
+      personal: end.personal.cash,
     }
   }
 
@@ -161,11 +222,12 @@ export function branchEvent(
       { ...morning, events: { ...morning.events, pending: null } },
       seed,
       content,
-      days,
+      window,
     ),
   )
   return {
     event: card.id,
+    measures: measuresOf(card),
     day,
     choices: card.choices.map(({ id }, index) => {
       const answered = resolveEvent(
@@ -173,11 +235,12 @@ export function branchEvent(
         id,
         content,
       )
-      const end = measure(playWindow(answered, seed, content, days))
+      const end = measure(playWindow(answered, seed, content, window))
       return {
         choice: id,
         cash: cents(end.cash - baseline.cash),
         netIncome: cents(end.netIncome - baseline.netIncome),
+        personal: cents(end.personal - baseline.personal),
       }
     }),
   }
@@ -186,16 +249,26 @@ export function branchEvent(
 /** How one choice of a card fared over the games it came up in. */
 export interface ChoiceVerdict {
   readonly choice: string
+  /** What the card is judged on (see `measuresOf`). */
+  readonly measures: CardMeasures
   /** Games the card came up in. */
   readonly games: number
   /** Over those games, rounded half away from zero to the cent. */
   readonly medianCash: Cents
   readonly medianNetIncome: Cents
+  readonly medianPersonal: Cents
   /** Games where no other choice did strictly better on Encaisse. */
   readonly bestOnCash: number
   /** Games where no other choice did strictly better on Bénéfice net. */
   readonly bestOnNetIncome: number
+  /** Games where no other choice did strictly better on the owner's cash. */
+  readonly bestOnPersonal: number
+  /**
+   * Games where it was best on all the card is judged on: the encaisse and
+   * the bénéfice net, or the owner's money.
+   */
   readonly bestOnBoth: number
+  /** Games where it was best on none of it. */
   readonly bestOnNeither: number
 }
 
@@ -210,14 +283,23 @@ export function choiceVerdicts(
 ): ChoiceVerdict[] {
   const first = samples[0]
   if (first === undefined) return []
+  const { measures } = first
   const best = samples.map(({ choices }) => {
     const topCash = Math.max(...choices.map(({ cash }) => cash))
     const topNet = Math.max(...choices.map(({ netIncome }) => netIncome))
-    return choices.map(({ cash, netIncome }) => ({
+    const topPersonal = Math.max(...choices.map(({ personal }) => personal))
+    return choices.map(({ cash, netIncome, personal }) => ({
       cash: cash === topCash,
       netIncome: netIncome === topNet,
+      personal: personal === topPersonal,
     }))
   })
+  const judged = (flags: {
+    cash: boolean
+    netIncome: boolean
+    personal: boolean
+  }): boolean[] =>
+    measures === 'ownMoney' ? [flags.personal] : [flags.cash, flags.netIncome]
   return first.choices.map(({ choice }, index) => {
     const results = samples.map(({ choices }) => {
       const result = choices[index]
@@ -227,19 +309,21 @@ export function choiceVerdicts(
       return result
     })
     const flags = best.map(
-      (game) => game[index] ?? { cash: false, netIncome: false },
+      (game) =>
+        game[index] ?? { cash: false, netIncome: false, personal: false },
     )
     return {
       choice,
+      measures,
       games: samples.length,
       medianCash: medianCents(results.map(({ cash }) => cash)),
       medianNetIncome: medianCents(results.map(({ netIncome }) => netIncome)),
+      medianPersonal: medianCents(results.map(({ personal }) => personal)),
       bestOnCash: flags.filter(({ cash }) => cash).length,
       bestOnNetIncome: flags.filter(({ netIncome }) => netIncome).length,
-      bestOnBoth: flags.filter(({ cash, netIncome }) => cash && netIncome)
-        .length,
-      bestOnNeither: flags.filter(({ cash, netIncome }) => !cash && !netIncome)
-        .length,
+      bestOnPersonal: flags.filter(({ personal }) => personal).length,
+      bestOnBoth: flags.filter((game) => judged(game).every(Boolean)).length,
+      bestOnNeither: flags.filter((game) => !judged(game).some(Boolean)).length,
     }
   })
 }

@@ -1,18 +1,21 @@
 import { format } from 'prettier'
-import type { DifficultyId } from '../../src/content/schema.ts'
+import type { Standing } from '../../src/content/schema.ts'
 import { DIFFICULTIES, EVENTS } from '../../src/engine/day.ts'
 import type { Cents } from '../../src/engine/money.ts'
 import { formatDollars } from '../sim/cli.ts'
 import {
   choiceVerdicts,
   eventTarget,
+  measuresOf,
   TOO_STRONG,
   TOO_WEAK,
   WINDOW_DAYS,
+  windowOf,
   type ChoiceVerdict,
   type TargetCheck,
 } from './eventBranches.ts'
 import {
+  adapts,
   DAYS_PER_WEEK,
   PERCENTILES,
   percentileRows,
@@ -34,12 +37,12 @@ export interface PercentileRun {
   readonly difficulties: readonly OwnersRun[]
 }
 
-/**
- * The difficulty the event cards are tuned at: Étienne's decision on #101.
- * The others are shown for information until the cards have numbers of
- * their own per difficulty.
- */
-export const TARGET_DIFFICULTY: DifficultyId = 'moyen'
+/** The standings, in the order the report shows them, with their names. */
+const STANDINGS: readonly (readonly [Standing, string])[] = [
+  ['behind', 'En difficulté'],
+  ['average', 'Dans la moyenne'],
+  ['ahead', 'En avance'],
+]
 
 /** The weeks the report shows of the percentile table. */
 export const REPORT_WEEKS = [1, 4, 13, 26, 52, 78, 104] as const
@@ -72,24 +75,56 @@ export async function formatPercentileJson(
   return format(JSON.stringify(content), { parser: 'json' })
 }
 
+/** A card's choices at one difficulty, summed up over the games. */
+export interface CardVerdicts {
+  readonly event: string
+  /** Whether it is judged on the owner's money (see `measuresOf`). */
+  readonly ownMoney: boolean
+  readonly verdicts: ChoiceVerdict[]
+}
+
 /**
  * Every card's choices at `run`'s difficulty, summed up over the games:
  * each card a game may draw, with a weight above 0, in the order of the
  * content.
  */
-export function eventVerdicts(
-  run: OwnersRun,
-): { readonly event: string; readonly verdicts: ChoiceVerdict[] }[] {
+export function eventVerdicts(run: OwnersRun): CardVerdicts[] {
   return EVENTS.events
     .filter(({ weight }) => weight > 0)
-    .map(({ id }) => ({
-      event: id,
+    .map((card) => ({
+      event: card.id,
+      ownMoney: measuresOf(card) === 'ownMoney',
       verdicts: choiceVerdicts(
         run.games.flatMap(({ events }) =>
-          events.filter(({ event }) => event === id),
+          events.filter(({ event }) => event === card.id),
         ),
       ),
     }))
+}
+
+/**
+ * How many times each card was drawn by weight at each standing over
+ * `run`'s games (see `OwnerGame.draws`), for each card a game may draw by
+ * weight, in the order of the content, then the cards of no such kind
+ * that were drawn all the same.
+ */
+export function standingDraws(
+  run: OwnersRun,
+): { readonly event: string; readonly draws: Record<Standing, number> }[] {
+  const counts = new Map<string, Record<Standing, number>>()
+  for (const { id } of EVENTS.events.filter(
+    ({ weight, conditions }) => weight > 0 && conditions?.followUpOnly !== true,
+  )) {
+    counts.set(id, { behind: 0, average: 0, ahead: 0 })
+  }
+  for (const { draws } of run.games) {
+    for (const { event, standing } of draws) {
+      const count = counts.get(event) ?? { behind: 0, average: 0, ahead: 0 }
+      count[standing] += 1
+      counts.set(event, count)
+    }
+  }
+  return [...counts].map(([event, draws]) => ({ event, draws }))
 }
 
 /** The whole report, in Markdown. */
@@ -100,9 +135,9 @@ export function formatPhase3Report(run: PercentileRun): string {
     name: DIFFICULTIES.difficulties[owners.difficulty].name,
     cards: eventVerdicts(owners),
   }))
-  const target = named.find(
-    ({ owners }) => owners.difficulty === TARGET_DIFFICULTY,
-  )
+  const ownMoneyWindows = EVENTS.events
+    .filter((card) => card.weight > 0 && measuresOf(card) === 'ownMoney')
+    .map((card) => `${card.id}, ${windowOf(card)} days`)
   return [
     '# Balance report: phase 3',
     '',
@@ -111,6 +146,8 @@ export function formatPhase3Report(run: PercentileRun): string {
     '## What each game plays',
     '',
     `Each difficulty plays seeds 1 to ${run.games}, each game ${weeks} weeks (${weeks * DAYS_PER_WEEK} days) from Monday, May 1st, year 1. The owner of seed n holds one strategy of the grid of \`docs/balance/phase-2.md\` from day 0, drawn at random from the seed, the same at every difficulty. The event cards come up, and the owner answers each with a choice drawn at random, seeded from the game, as \`npm run sim -- --events random\` does.`,
+    '',
+    `Where the draw follows the player's standing (\`adaptiveDraw\` in \`src/content/events.json\`), the owners read their standing against the table they make: all of them play each week side by side, and the week's row is made from their bénéfice net at Sunday's close, before Monday's card is drawn, the first that reads it. So the table below is the one they played against, and running the command again writes it again, whatever table was there before.`,
     '',
     '## How other owners did',
     '',
@@ -130,54 +167,119 @@ export function formatPhase3Report(run: PercentileRun): string {
     "- **Δ bénéfice net**: the bénéfice net over the window, minus the baseline's.",
     '- **Median**: over the games the card came up in; for an even number, the mean of the middle two, rounded half away from zero to the cent.',
     '- **Best on encaisse**, **Best on bénéfice net**: the share of those games where no other choice of the card did strictly better on that measure; a tie counts for each choice in it. **Best on both** and **Best on neither** follow.',
+    `- A card whose choices move the owner's own money and touch neither the business's books nor the street (but for the owner's energy) is judged on that money instead: **Δ vos finances**, the owner's cash at the close of the window's last day minus the baseline's, over a window long enough for its last effect to land${ownMoneyWindows.length === 0 ? '' : ` (${ownMoneyWindows.join('; ')})`}. **Best on both** is then best on it, and **Best on neither** not best on it.`,
     '',
-    `A choice is too strong when it is best on both in more than ${TOO_STRONG}% of the games, and too weak when it is best on neither in more than ${TOO_WEAK}%. The cards are tuned at ${target?.name ?? TARGET_DIFFICULTY} only (#101); the other difficulties are shown for information. A card that came up in few games is judged on few: the Games column says how many.`,
+    `A choice is too strong when it is best on both in more than ${TOO_STRONG}% of the games, and too weak when it is best on neither in more than ${TOO_WEAK}%. The cards are tuned at every difficulty (#137). A card that came up in few games is judged on few: the Games column says how many.`,
     '',
-    ...(target === undefined
-      ? []
-      : [
-          `### Targets at ${target.name}`,
-          '',
-          row(['Event', 'Games', 'Verdict']),
-          row(['---', '---:', '---']),
-          ...target.cards.map(({ event, verdicts }) =>
-            targetRow(eventTarget(event, verdicts)),
-          ),
-          '',
-        ]),
     ...named.flatMap(({ name, cards }) => [
-      `### ${name}`,
+      `### Targets at ${name}`,
       '',
-      row([
-        'Event',
-        'Choice',
-        'Games',
-        'Median Δ encaisse',
-        'Median Δ bénéfice net',
-        'Best on encaisse',
-        'Best on bénéfice net',
-        'Best on both',
-        'Best on neither',
-      ]),
-      row([
-        '---',
-        '---',
-        '---:',
-        '---:',
-        '---:',
-        '---:',
-        '---:',
-        '---:',
-        '---:',
-      ]),
-      ...cards.flatMap(({ event, verdicts }) =>
-        verdicts.length === 0
-          ? [row([event, 'never came up', '0', '', '', '', '', '', ''])]
-          : verdicts.map((verdict) => choiceRow(event, verdict)),
+      row(['Event', 'Games', 'Verdict']),
+      row(['---', '---:', '---']),
+      ...cards.map(({ event, ownMoney, verdicts }) =>
+        targetRow(eventTarget(event, verdicts), ownMoney),
       ),
       '',
     ]),
+    ...named
+      .filter(({ owners }) => adapts(EVENTS, owners.difficulty))
+      .flatMap(({ owners, name }) => drawsTable(owners, name)),
+    ...named.flatMap(({ name, cards }) => {
+      const ownMoney = cards.filter((card) => card.ownMoney)
+      return [
+        `### ${name}`,
+        '',
+        row([
+          'Event',
+          'Choice',
+          'Games',
+          'Median Δ encaisse',
+          'Median Δ bénéfice net',
+          'Best on encaisse',
+          'Best on bénéfice net',
+          'Best on both',
+          'Best on neither',
+        ]),
+        row([
+          '---',
+          '---',
+          '---:',
+          '---:',
+          '---:',
+          '---:',
+          '---:',
+          '---:',
+          '---:',
+        ]),
+        ...cards
+          .filter((card) => !card.ownMoney)
+          .flatMap(({ event, verdicts }) =>
+            verdicts.length === 0
+              ? [row([event, 'never came up', '0', '', '', '', '', '', ''])]
+              : verdicts.map((verdict) => choiceRow(event, verdict)),
+          ),
+        '',
+        ...(ownMoney.length === 0
+          ? []
+          : [
+              `Judged on the owner's money at ${name}:`,
+              '',
+              row([
+                'Event',
+                'Choice',
+                'Games',
+                'Median Δ vos finances',
+                'Best on vos finances',
+                'Best on neither',
+              ]),
+              row(['---', '---', '---:', '---:', '---:', '---:']),
+              ...ownMoney.flatMap(({ event, verdicts }) =>
+                verdicts.length === 0
+                  ? [row([event, 'never came up', '0', '', '', ''])]
+                  : verdicts.map((verdict) => ownMoneyRow(event, verdict)),
+              ),
+              '',
+            ]),
+      ]
+    }),
   ].join('\n')
+}
+
+/**
+ * How often each standing drew each card in `owners`' games, at a
+ * difficulty whose draw follows it, as a section of the report.
+ */
+function drawsTable(owners: OwnersRun, name: string): string[] {
+  const cards = standingDraws(owners)
+  const totals = Object.fromEntries(
+    STANDINGS.map(([standing]) => [
+      standing,
+      cards.reduce((sum, { draws }) => sum + draws[standing], 0),
+    ]),
+  ) as Record<Standing, number>
+  const cell = (count: number, standing: Standing) =>
+    totals[standing] === 0
+      ? '0'
+      : `${count} (${share(count, totals[standing])})`
+  return [
+    `### Draws by standing at ${name}`,
+    '',
+    `Each card drawn by weight in the ${name} games, by the owner's standing on its morning (\`standingOf\` in \`src/engine/standing.ts\`): how many times, and the share of the cards drawn at that standing. The weights by standing are each card's \`weightByStanding\` in \`src/content/events.json\`; follow-ups are not drawn by weight.`,
+    '',
+    row(['Event', ...STANDINGS.map(([, label]) => label)]),
+    row(['---', ...STANDINGS.map(() => '---:')]),
+    ...cards.map(({ event, draws }) =>
+      row([
+        event,
+        ...STANDINGS.map(([standing]) => cell(draws[standing], standing)),
+      ]),
+    ),
+    row([
+      'All cards',
+      ...STANDINGS.map(([standing]) => String(totals[standing])),
+    ]),
+    '',
+  ]
 }
 
 function percentileTable(owners: OwnersRun, weeks: number): string[] {
@@ -194,25 +296,30 @@ function percentileTable(owners: OwnersRun, weeks: number): string[] {
   ]
 }
 
-function targetRow({
-  event,
-  games,
-  met,
-  tooStrong,
-  tooWeak,
-}: TargetCheck): string {
+function targetRow(
+  { event, games, met, tooStrong, tooWeak }: TargetCheck,
+  ownMoney: boolean,
+): string {
   if (met === null) return row([event, '0', 'n/a: never came up'])
+  const [best, notBest] = ownMoney
+    ? ['best on vos finances', 'not best on vos finances']
+    : ['best on both', 'best on neither']
   const misses = [
     ...tooStrong.map(
       ({ choice, bestOnBoth }) =>
-        `${choice} best on both in ${share(bestOnBoth, games)}`,
+        `${choice} ${best} in ${share(bestOnBoth, games)}`,
     ),
     ...tooWeak.map(
       ({ choice, bestOnNeither }) =>
-        `${choice} best on neither in ${share(bestOnNeither, games)}`,
+        `${choice} ${notBest} in ${share(bestOnNeither, games)}`,
     ),
   ]
-  return row([event, String(games), met ? '✓' : `✗ ${misses.join('; ')}`])
+  const verdict = met ? '✓' : `✗ ${misses.join('; ')}`
+  return row([
+    event,
+    String(games),
+    ownMoney ? `${verdict} (vos finances)` : verdict,
+  ])
 }
 
 function choiceRow(event: string, verdict: ChoiceVerdict): string {
@@ -226,6 +333,18 @@ function choiceRow(event: string, verdict: ChoiceVerdict): string {
     share(verdict.bestOnCash, games),
     share(verdict.bestOnNetIncome, games),
     share(verdict.bestOnBoth, games),
+    share(verdict.bestOnNeither, games),
+  ])
+}
+
+function ownMoneyRow(event: string, verdict: ChoiceVerdict): string {
+  const { games } = verdict
+  return row([
+    event,
+    verdict.choice,
+    String(games),
+    formatDollars(verdict.medianPersonal),
+    share(verdict.bestOnPersonal, games),
     share(verdict.bestOnNeither, games),
   ])
 }

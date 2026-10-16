@@ -320,13 +320,13 @@ describe('grosseCommande', () => {
     expect(end.events.history).toHaveLength(1)
   })
 
-  it('« Accepter, mais payé à la livraison » brings 675 $ in cash on Thursday', () => {
+  it('« Accepter, mais payé à la livraison » brings 625 $ in cash on Thursday', () => {
     const chosen = choose(morning, 'grosseCommande', 'payeLivraison')
     const end = last(playOut(chosen))
     expect(
       entries(end, 'Commande du Congrès québécois des optimistes').map(shape),
     ).toEqual([
-      { day: thursday, debited: CASH, credited: SALES, amount: 67_500 },
+      { day: thursday, debited: CASH, credited: SALES, amount: 62_500 },
     ])
     expect(entries(end, `Vente à crédit · ${GILLES}`)).toEqual([])
   })
@@ -516,7 +516,7 @@ describe('the changes to the street', () => {
     expect(
       entries(chosen, 'Formulaire 22-C, changement de coin de rue').map(shape),
     ).toEqual([
-      { day, debited: RENT_AND_PERMIT, credited: CASH, amount: 100_000 },
+      { day, debited: RENT_AND_PERMIT, credited: CASH, amount: 115_000 },
     ])
     const days = playOut(chosen)
     expect(daysWhen(days, day, day + 21, ({ closed }) => closed)).toEqual([

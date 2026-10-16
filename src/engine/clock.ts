@@ -5,6 +5,7 @@ import type {
   EnergyContent,
   EventContent,
   FoodTruckContent,
+  PercentileContent,
   PersonalContent,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
@@ -37,6 +38,7 @@ import { applyEffect, insertByDay } from './effects.ts'
 import { FULL_ENERGY, nightRest } from './energy.ts'
 import { NO_EVENTS, drawEvent, noEvents } from './events.ts'
 import { PRODUCTS } from './inventory.ts'
+import { PERCENTILES } from './percentiles.ts'
 import { openingAccount } from './personal.ts'
 import { defaultProfile, validateProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
@@ -176,8 +178,9 @@ export function startChallenge(
  * moves on to the next morning, where the pending decisions, if any, take
  * effect, after a night that gives the owner some energy back (see
  * `nightRest`), and where an event of `events` may come up (see
- * `drawEvent`). By default no event ever does: a game turns them on by
- * passing the content, such as `EVENTS`. In a Défi of `defis`, the morning
+ * `drawEvent`, which reads the player's standing against `percentiles`). By
+ * default no event ever does: a game turns them on by passing the content,
+ * such as `EVENTS`. In a Défi of `defis`, the morning
  * brings the event the Défi forces that day, if any, in place of the draw;
  * otherwise the draw, with no chance of a new event unless the Défi lets
  * random events come, though a follow-up still comes; and nothing once the
@@ -193,6 +196,7 @@ export function tick(
   energy: EnergyContent = ENERGY,
   events: EventContent = NO_EVENTS,
   defis: DefiContent = DEFIS,
+  percentiles: PercentileContent = PERCENTILES,
 ): GameState {
   const played = playDay(
     state,
@@ -211,7 +215,7 @@ export function tick(
     energy: nightRest(played.energy, energy),
   }
   const { challenge } = morning
-  if (challenge === null) return drawEvent(morning, events)
+  if (challenge === null) return drawEvent(morning, events, percentiles)
   if (challenge.status !== 'enCours') return morning
   const forced = withForcedEvent(morning, defis)
   if (forced !== morning) return forced
@@ -220,6 +224,7 @@ export function tick(
     defiById(defis, challenge.id).randomEvents
       ? events
       : { ...events, pacing: { ...events.pacing, dailyChance: 0 } },
+    percentiles,
   )
 }
 

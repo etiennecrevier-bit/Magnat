@@ -1,9 +1,13 @@
 import {
+  namedEffects,
   TAG_AMOUNT,
   TAG_UNITS,
+  textParts,
   type DifficultyId,
+  type EventCard,
   type EventChoice,
   type EventContent,
+  type EventOutcome,
   type EventScaling,
   type TimedEventEffect,
 } from '../content/schema.ts'
@@ -63,9 +67,10 @@ export function effectsAt(
  * scaling. A gain is what the player wants: a cash or a credit sale, the
  * owner's energy or cash going up, a change to the street above 1. A loss
  * is the opposite: a charge, the owner's energy or cash going down, a
- * change to the street below 1. Money is scaled to the cent, half away from
- * zero, and never reaches 0; energy moves 100 points at most, the whole
- * scale; a change to the street scales by its distance from 1, so ×0.65
+ * change to the street below 1. Money is scaled to the cent and energy to
+ * the whole point, half away from zero, and neither reaches 0; energy moves
+ * 100 points at most, the whole scale; a change to the street scales by its
+ * distance from 1, so ×0.65
  * with losses ×1.3 becomes ×0.545, and never falls below `lowestFactor`.
  * Stock, durations, chances and receivable terms stay as the card writes
  * them.
@@ -89,9 +94,8 @@ export function scaledEffect(
       return { ...effect, amountCents: scaledMoney(amountCents, by) }
     }
     case 'energy': {
-      const scaled = effect.amount * (effect.amount > 0 ? gains : losses)
-      const amount = Math.min(Math.max(scaled, -FULL_ENERGY), FULL_ENERGY)
-      return { ...effect, amount }
+      const by = effect.amount > 0 ? gains : losses
+      return { ...effect, amount: scaledPoints(effect.amount, by) }
     }
     case 'walkIns':
     case 'appeal':
@@ -118,9 +122,7 @@ export function choiceTags(
   difficulty: DifficultyId,
   content: Pick<EventContent, 'scaling'>,
 ): ChoiceTag[] {
-  const outcomes = choice.outcomes.map(({ effects }) =>
-    effectsAt(effects, difficulty, content),
-  )
+  const outcomes = choice.outcomes.map(({ effects }) => effects)
   return choice.tags.flatMap((tag): ChoiceTag[] => {
     if (typeof tag === 'string') return [{ text: tag, amount: null }]
     const { text, effect, difficulties } = tag
@@ -128,17 +130,81 @@ export function choiceTags(
       return []
     }
     if (effect === undefined) return [{ text, amount: null }]
-    const named = outcomes
-      .map((effects) => effects.filter(({ name }) => name === effect))
-      .find((effects) => effects.length > 0)
-    if (named === undefined) return []
+    const named = scaledNamed(outcomes, effect, difficulty, content)
+    if (named.length === 0) return []
     return [
       { text, amount: text.includes(TAG_AMOUNT) ? amountOf(named) : null },
     ]
   })
 }
 
-/** The size of what `effects`, of one unit, add up to. */
+/** A piece of a card's text at a difficulty: words, or an amount. */
+export type TextPiece = string | TagAmount
+
+/**
+ * What a card's text holds amounts of: an event's situation and quote, the
+ * effects of all its choices; a choice's label, its outcomes'; an outcome's
+ * result, its own.
+ */
+export type TextScope =
+  | Pick<EventCard, 'choices'>
+  | Pick<EventChoice, 'outcomes'>
+  | Pick<EventOutcome, 'effects'>
+
+/**
+ * `text`, written for `scope`, as the card shows it at `difficulty`: each
+ * `{montant:name}` (see `textParts`) is the size of what the effects named
+ * `name` add up to, in the first of the scope's outcomes where one applies,
+ * with `content`'s scaling, as a tag shows it. Throws a RangeError when
+ * none applies, which the content's schema rules out.
+ */
+export function cardText(
+  text: string,
+  scope: TextScope,
+  difficulty: DifficultyId,
+  content: Pick<EventContent, 'scaling'>,
+): TextPiece[] {
+  const outcomes = outcomesOf(scope)
+  return textParts(text).map((part) => {
+    if (typeof part === 'string') return part
+    const named = scaledNamed(outcomes, part.amountOf, difficulty, content)
+    const amount = amountOf(named)
+    if (amount === null) {
+      throw new RangeError(
+        `No amount of ${part.amountOf} to show at ${difficulty}`,
+      )
+    }
+    return amount
+  })
+}
+
+function outcomesOf(scope: TextScope): (readonly TimedEventEffect[])[] {
+  if ('effects' in scope) return [scope.effects]
+  if ('outcomes' in scope) return scope.outcomes.map(({ effects }) => effects)
+  return scope.choices.flatMap(({ outcomes }) =>
+    outcomes.map(({ effects }) => effects),
+  )
+}
+
+/**
+ * The effects named `name` in the first of `outcomes` where one applies at
+ * `difficulty` (see `namedEffects`), scaled as it plays them.
+ */
+function scaledNamed(
+  outcomes: readonly (readonly TimedEventEffect[])[],
+  name: string,
+  difficulty: DifficultyId,
+  content: Pick<EventContent, 'scaling'>,
+): TimedEventEffect[] {
+  return namedEffects(outcomes, name, difficulty).map((effect) =>
+    scaledEffect(effect, difficulty, content.scaling),
+  )
+}
+
+/**
+ * The size of what `effects`, of one unit, add up to; null for none, or
+ * when one shows no amount, such as stock or a closed day.
+ */
 function amountOf(effects: readonly TimedEventEffect[]): TagAmount | null {
   let total = 0
   let unit: TagAmount['unit'] | undefined
@@ -180,4 +246,14 @@ function scaledMoney(amount: Cents, by: number): Cents {
   const scaled = mulRatio(amount, by)
   if (scaled !== 0) return scaled
   return cents(Math.sign(amount))
+}
+
+/**
+ * `points` of energy × `by`, in whole points, rounded half away from zero
+ * as money is (see `mulRatio`), of the same sign, never 0, and 100 at most
+ * either way, the whole scale.
+ */
+function scaledPoints(points: number, by: number): number {
+  const scaled: number = scaledMoney(cents(Math.round(points)), by)
+  return Math.min(Math.max(scaled, -FULL_ENERGY), FULL_ENERGY)
 }
