@@ -22,7 +22,7 @@ import type { Day, GameState } from '../src/engine/types.ts'
 import type { AccountCode } from '../src/finance/accounts.ts'
 import {
   balance,
-  entriesOf,
+  entriesSince,
   trialBalance,
   type Journal,
 } from '../src/finance/journal.ts'
@@ -135,16 +135,22 @@ function median(values: readonly number[]): number {
  */
 class Tally {
   private readonly nets = new Map<AccountCode, Cents>()
-  private counted = 0
+  /** The day of the last entry counted, and how many counted are on it. */
+  private lastDay: Day = 0
+  private onLastDay = 0
 
   count(journal: Journal): void {
-    const entries = entriesOf(journal)
-    for (const { lines } of entries.slice(this.counted)) {
+    // Days never go down, so the entries posted since the last count come
+    // after those counted on the last day counted: read from that day on
+    // only, as `entriesOf()` would copy the whole journal every day.
+    const posted = entriesSince(journal, this.lastDay).slice(this.onLastDay)
+    for (const { day, lines } of posted) {
       for (const { account, debit, credit } of lines) {
         this.nets.set(account, add(this.net(account), sub(debit, credit)))
       }
+      this.onLastDay = day === this.lastDay ? this.onLastDay + 1 : 1
+      this.lastDay = day
     }
-    this.counted = entries.length
   }
 
   net(account: AccountCode): Cents {

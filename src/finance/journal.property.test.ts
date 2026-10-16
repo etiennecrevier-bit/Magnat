@@ -96,6 +96,47 @@ describe('journal properties', () => {
     )
   })
 
+  it('keeps each journal its own entries when an earlier one is posted to again', () => {
+    fc.assert(
+      fc.property(drafts, drafts, fc.nat(), (list, other, pick) => {
+        const entries = toEntries(list)
+        const journals = entries.reduce(
+          (made, posted) => [
+            ...made,
+            postEntry(made.at(-1) ?? emptyJournal(), posted),
+          ],
+          [emptyJournal()],
+        )
+        const at = pick % journals.length
+        const from = journals[at] ?? emptyJournal()
+        const added = toEntries(other, lastDay(entries.slice(0, at)))
+        const branch = added.reduce(postEntry, from)
+
+        const kept = entries.slice(0, at)
+        expect(branch.entries).toEqual([...kept, ...added])
+        journals.forEach((journal, count) => {
+          expect(journal.entries).toEqual(entries.slice(0, count))
+        })
+        for (const code of CODES) {
+          const sum = (posted: readonly JournalEntry[]) =>
+            posted
+              .flatMap(({ lines }) => lines)
+              .filter(({ account }) => account === code)
+              .reduce((net, { debit, credit }) => net + debit - credit, 0)
+          const toDay = lastDay(added) + lastDay(entries)
+          const sign = getAccount(code).normalBalance === 'debit' ? 1 : -1
+          expect(balance(branch, code, { toDay })).toBe(
+            sign * sum([...kept, ...added]) + 0,
+          )
+          expect(balance(journals.at(-1) ?? from, code, { toDay })).toBe(
+            sign * sum(entries) + 0,
+          )
+        }
+      }),
+      { numRuns: NUM_RUNS },
+    )
+  })
+
   it('rejects a balanced entry with any amount added to one line', () => {
     fc.assert(
       fc.property(

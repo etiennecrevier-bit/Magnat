@@ -5,6 +5,9 @@ import { ACCOUNTS, type AccountCode } from './accounts.ts'
 import {
   balance,
   emptyJournal,
+  entriesOf,
+  entriesSince,
+  netDebits,
   postEntry,
   trialBalance,
   type Journal,
@@ -96,6 +99,46 @@ describe('postEntry', () => {
   it('keeps entries in posting order, several per day included', () => {
     const journal = post(...FIRST_DAYS)
     expect(journal.entries).toEqual(FIRST_DAYS)
+  })
+
+  it('leaves both journals alone when one already posted to is posted to again', () => {
+    const [opening, ...later] = FIRST_DAYS
+    if (opening === undefined) throw new Error('no entry')
+    const opened = post(opening)
+    const kept = later.reduce(postEntry, opened)
+    const refund = entry(1, 'Remboursement', dr('3000', 500), cr('1000', 500))
+    const branched = postEntry(opened, refund)
+    const again = postEntry(
+      kept,
+      entry(4, 'Vente', dr('1000', 1), cr('4000', 1)),
+    )
+
+    expect(opened.entries).toEqual([opening])
+    expect(kept.entries).toEqual(FIRST_DAYS)
+    expect(branched.entries).toEqual([opening, refund])
+    expect(again.entries).toEqual([
+      ...FIRST_DAYS,
+      entry(4, 'Vente', dr('1000', 1), cr('4000', 1)),
+    ])
+    expect(balance(opened, '1000', { toDay: 9 })).toBe(500_000)
+    expect(balance(kept, '1000', { toDay: 9 })).toBe(530_000)
+    expect(balance(branched, '1000', { toDay: 9 })).toBe(499_500)
+    expect(balance(again, '1000', { toDay: 9 })).toBe(530_001)
+  })
+
+  it('makes a new journal each time the empty journal is posted to', () => {
+    const sale = entry(0, 'Vente', dr('1000', 100), cr('4000', 100))
+    const first = postEntry(emptyJournal(), sale)
+    const second = postEntry(emptyJournal(), FIRST_DAYS[0] ?? sale)
+    expect(first.entries).toEqual([sale])
+    expect(second.entries).toEqual(FIRST_DAYS.slice(0, 1))
+    expect(emptyJournal().entries).toEqual([])
+  })
+
+  it('reads the same frozen entries every time', () => {
+    const journal = post(...FIRST_DAYS)
+    expect(journal.entries).toBe(journal.entries)
+    expect(entriesOf(journal)).toBe(journal.entries)
   })
 
   it('accepts a compound entry with several debits for one credit', () => {
@@ -399,6 +442,88 @@ describe('balance', () => {
     expect(balance(rich, '1000', { toDay: 0 })).toBe(MAX)
     expect(() => balance(rich, '1000', { toDay: 1 })).toThrow(RangeError)
   })
+
+  it('still throws once a balance that left the safe integer range is back', () => {
+    const repaid = post(
+      entry(0, 'Mise de fonds', dr('1000', MAX), cr('3000', MAX)),
+      entry(1, 'Emprunt', dr('1000', 1), cr('2500', 1)),
+      entry(2, 'Remboursement', dr('2500', 1), cr('1000', 1)),
+    )
+    expect(balance(repaid, '1000', { toDay: 0 })).toBe(MAX)
+    expect(() => balance(repaid, '1000', { toDay: 2 })).toThrow(RangeError)
+  })
+})
+
+describe('netDebits', () => {
+  const journal = post(...FIRST_DAYS)
+
+  it('sums every account from the first entry to toDay, zeros left out', () => {
+    expect(netDebits(journal, { toDay: 2 })).toEqual(
+      new Map([
+        ['1000', 530_000],
+        ['3000', -500_000],
+        ['1200', 68_000],
+        ['2000', -80_000],
+        ['4000', -30_000],
+        ['5000', 12_000],
+      ]),
+    )
+  })
+
+  it('sums only the entries from fromDay to toDay', () => {
+    expect(netDebits(journal, { fromDay: 2, toDay: 2 })).toEqual(
+      new Map([
+        ['1000', 30_000],
+        ['4000', -30_000],
+        ['5000', 12_000],
+        ['1200', -12_000],
+      ]),
+    )
+    expect(netDebits(journal, { fromDay: 4, toDay: 9 })).toEqual(new Map())
+  })
+
+  it('gives a new map each time', () => {
+    const nets = netDebits(journal, { toDay: 9 })
+    nets.set('1000', cents(1))
+    expect(netDebits(journal, { toDay: 9 }).get('1000')).toBe(530_000)
+    expect(balance(journal, '1000', { toDay: 9 })).toBe(530_000)
+  })
+
+  it.each([1.5, NaN, Infinity, MAX + 1])('rejects day %s', (day) => {
+    expect(() => netDebits(journal, { toDay: day })).toThrow(RangeError)
+    expect(() => netDebits(journal, { fromDay: day, toDay: 3 })).toThrow(
+      RangeError,
+    )
+  })
+})
+
+describe('entriesSince', () => {
+  const journal = post(...FIRST_DAYS)
+
+  it('gives the entries dated fromDay or later, in posting order', () => {
+    expect(entriesSince(journal, 3)).toEqual(FIRST_DAYS.slice(3))
+    expect(entriesSince(journal, 2)).toEqual(FIRST_DAYS.slice(2))
+    expect(entriesSince(journal, -1)).toEqual(FIRST_DAYS)
+    expect(entriesSince(journal, 4)).toEqual([])
+    expect(entriesSince(emptyJournal(), 0)).toEqual([])
+  })
+
+  it('reads only the journal it is given, not one posted from it', () => {
+    const later = postEntry(
+      journal,
+      entry(3, 'Vente', dr('1000', 100), cr('4000', 100)),
+    )
+    expect(entriesSince(journal, 3)).toEqual(FIRST_DAYS.slice(3))
+    expect(entriesSince(later, 3)).toHaveLength(3)
+  })
+
+  it('is frozen', () => {
+    expect(Object.isFrozen(entriesSince(journal, 0))).toBe(true)
+  })
+
+  it.each([1.5, NaN, -Infinity, MAX + 1])('rejects fromDay %s', (day) => {
+    expect(() => entriesSince(journal, day)).toThrow(RangeError)
+  })
 })
 
 describe('trialBalance', () => {
@@ -559,6 +684,15 @@ describe('a journal that emptyJournal() and postEntry() did not make', () => {
     ({ journal }) => {
       expect(() => balance(journal, '1000', { toDay: 10 })).toThrow(TypeError)
       expect(() => trialBalance(journal, 10)).toThrow(TypeError)
+    },
+  )
+
+  it.each(forgeries)(
+    'is rejected by the reads of its entries: $when',
+    ({ journal }) => {
+      expect(() => entriesOf(journal)).toThrow(TypeError)
+      expect(() => entriesSince(journal, 0)).toThrow(TypeError)
+      expect(() => netDebits(journal, { toDay: 10 })).toThrow(TypeError)
     },
   )
 })

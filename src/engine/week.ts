@@ -5,7 +5,7 @@ import {
   type WeekFactId,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
-import { balance, entriesOf, type Journal } from '../finance/journal.ts'
+import { balance, entriesSince, type Journal } from '../finance/journal.ts'
 import { incomeStatement } from '../finance/statements.ts'
 import { mondayOf, sundayOf } from './calendar.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
@@ -309,7 +309,7 @@ function movedOn(
   journal: Journal,
   day: Day,
 ): { sales: Cents; cashReceived: Cents; cash: Cents } {
-  const entries = entriesOf(journal)
+  const entries = entriesSince(journal, day)
   let sales = ZERO
   let cashReceived = ZERO
   let cash = ZERO
