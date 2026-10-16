@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import eventsJson from './events.json'
-import { eventEffectSchema, loadEventContent } from './schema.ts'
+import {
+  eventEffectSchema,
+  loadEventContent,
+  type DifficultyId,
+  type TimedEventEffect,
+} from './schema.ts'
 
 // The event cards: the shipped file, and what the schema refuses.
 
@@ -94,6 +99,44 @@ function withEffects(...effects: unknown[]): Json {
   ])
 }
 
+/**
+ * Whether `effect` applies at `difficulty` (#137): it names no difficulty,
+ * or that one among those it names.
+ */
+function appliesAt(effect: object, difficulty: DifficultyId): boolean {
+  const { difficulties } = effect as { difficulties?: readonly DifficultyId[] }
+  return difficulties === undefined || difficulties.includes(difficulty)
+}
+
+/**
+ * Whether `effect` costs the player something (#137): a charge, energy or
+ * the owner's own cash going down, a change to the street below 1, the
+ * truck closed or a product it cannot sell, stock given away, or a client
+ * who pays late or never.
+ */
+function costs(effect: TimedEventEffect): boolean {
+  switch (effect.kind) {
+    case 'charge':
+    case 'closed':
+    case 'unavailable':
+    case 'delayReceivable':
+    case 'writeOff':
+      return true
+    case 'energy':
+      return effect.amount < 0
+    case 'personal':
+      return effect.amountCents < 0
+    case 'walkIns':
+    case 'appeal':
+    case 'willingness':
+      return effect.factor < 1
+    case 'useStock':
+      return effect.to === 'giveaway'
+    default:
+      return false
+  }
+}
+
 function rejects(raw: unknown, ...reasons: string[]): void {
   let message = ''
   try {
@@ -164,6 +207,23 @@ describe('events.json', () => {
         expect(tags.includes('Risqué'), `${id}, ${choice}`).toBe(leftToChance)
       }
     }
+  })
+
+  it('charges for every outcome of every choice at Difficile, refusing included', () => {
+    const free = content.events
+      .slice(1)
+      .flatMap(({ id, choices }) =>
+        choices.flatMap(({ id: choice, outcomes }) =>
+          outcomes.flatMap(({ effects }, outcome) =>
+            effects.some(
+              (effect) => appliesAt(effect, 'difficile') && costs(effect),
+            )
+              ? []
+              : [`${id}, ${choice}, outcome ${outcome}`],
+          ),
+        ),
+      )
+    expect(free).toEqual([])
   })
 
   it('names the characters by the ids of their portraits in issue #95', () => {
