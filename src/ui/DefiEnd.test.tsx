@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { loadDefiPercentileContent } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
 import { startChallenge, tick } from '../engine/clock.ts'
 import { DEFIS } from '../engine/day.ts'
@@ -140,10 +141,6 @@ describe('DefiEndView', () => {
       { text: 'Retour au menu', primary: false },
     ])
   })
-
-  it('does not show the percentile of the simulated games yet (#102)', () => {
-    expect(render()).not.toContain('parties simulées')
-  })
 })
 
 describe('DefiEnd', () => {
@@ -158,5 +155,83 @@ describe('DefiEnd', () => {
 
   it('shows nothing outside a Défi', () => {
     expect(renderToStaticMarkup(<DefiEnd onMenu={() => {}} />)).toBe('')
+  })
+})
+
+describe('DefiEnd: « Mieux que N % des parties simulées » (#148)', () => {
+  // How the simulated owners' games of each Défi ended, as
+  // defis-percentiles.json's `_note` reads them.
+  const table = loadDefiPercentileContent()
+
+  /**
+   * What `id`'s goal measured at `percentile` in the simulated games that
+   * broke no condition, and the N a game with that value reads, rounded
+   * down: N = 100 × (brokenShare + (1 − brokenShare) × p / 100), in whole
+   * games so no float rounds it.
+   */
+  function atPercentile(id: string, percentile: number) {
+    const { brokenShare, values } = table.defis[id]!
+    const value = values![table.percentiles.indexOf(percentile)]!
+    const broken = Math.round(brokenShare * table.games)
+    const n = Math.floor(
+      (broken * 100 + (table.games - broken) * percentile) / table.games,
+    )
+    return { value, n }
+  }
+
+  /** The connected end screen, the app store on the Défi `challenge`. */
+  function renderEnd(challenge: ChallengeState) {
+    gameStore.setState({
+      game: { ...startChallenge(challenge.id, 7), challenge },
+    })
+    return renderToStaticMarkup(<DefiEnd onMenu={() => {}} />)
+  }
+
+  it('shows it at the end of « La semaine des 1 000 $ » played out', () => {
+    gameStore.getState().startGame(playedOut('semaineDesMilleDollars', 7))
+    expect(renderToStaticMarkup(<DefiEnd onMenu={() => {}} />)).toMatch(
+      new RegExp(`Mieux que \\d+${S}% des parties simulées`),
+    )
+  })
+
+  it('ranks a Défi réussi by its goal among the games that broke no condition', () => {
+    const { value, n } = atPercentile(milleDollars.id, 50)
+    const html = renderEnd(
+      over(
+        milleDollars.id,
+        { status: 'reussi', medal: 'bronze' },
+        { netIncome: cents(value) },
+      ),
+    )
+    expect(html).toContain(`Mieux que ${n}${S}% des parties simulées`)
+  })
+
+  it('counts the games that broke a condition below it, rounding down', () => {
+    // A quarter of the owners fell under the energy floor: 62.65 reads 62.
+    const { value, n } = atPercentile(moisSansConge.id, 50)
+    const html = renderEnd(
+      over(
+        moisSansConge.id,
+        { status: 'reussi', medal: 'bronze' },
+        { netIncome: cents(value) },
+      ),
+    )
+    expect(html).toContain(`Mieux que ${n}${S}% des parties simulées`)
+  })
+
+  it('ranks a Défi échoué short of bronze by its goal too', () => {
+    const { value, n } = atPercentile(milleDollars.id, 5)
+    const html = renderEnd(
+      over(milleDollars.id, { status: 'echoue' }, { netIncome: cents(value) }),
+    )
+    expect(html).toContain('>Défi échoué</h2>')
+    expect(html).toContain(`Mieux que ${n}${S}% des parties simulées`)
+  })
+
+  it('ranks a Défi that broke a condition better than none', () => {
+    const html = renderEnd(
+      over(moisSansConge.id, { status: 'echoue' }, { lowestEnergy: 19.4 }),
+    )
+    expect(html).toContain(`Mieux que 0${S}% des parties simulées`)
   })
 })
