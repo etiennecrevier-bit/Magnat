@@ -124,20 +124,26 @@ describe('GameScreensView', () => {
     expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
   })
 
-  it('has the screen buttons and « Replier » in its menu, the export being in « Réglages »', () => {
+  it('has only the screen buttons in its menu, the export being in « Réglages »', () => {
     expect(render('today')).toMatch(
-      new RegExp(
-        `<nav class="screen-nav" aria-label="Écrans"><div class="toggle-group">(<button [^>]*>[^<]*</button>){4}</div>${literal(FOLD_BUTTON)}</nav>`,
-      ),
+      /<nav class="screen-nav" aria-label="Écrans"><div class="toggle-group">(<button [^>]*>[^<]*<\/button>){4}<\/div><\/nav>/,
     )
     expect(render('today')).not.toContain('Exporter')
   })
 
-  it('shows the screen in a part of its own, which is not hidden', () => {
-    expect(render('today')).toContain(
-      '<div class="screens__screen"><section class="today"><h1>',
-    )
-  })
+  it.each<[Screen, string]>([
+    ['today', 'today'],
+    ['statements', 'statements'],
+    ['events', 'event-log'],
+    ['reports', 'week-reports'],
+  ])(
+    'puts « Replier » before the %s screen, its tooltip naming the key, in a part that is not hidden',
+    (screen, section) => {
+      expect(render(screen)).toContain(
+        `</nav><div class="screens__screen">${FOLD_BUTTON}<section class="${section}"><h1>`,
+      )
+    },
+  )
 
   it.each<[Screen, string]>([
     ['today', 'Aujourd&#x27;hui'],

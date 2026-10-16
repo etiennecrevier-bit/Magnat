@@ -39,9 +39,9 @@ interface GameScreensViewProps {
 
 /**
  * The page under the top bar: the messages the game sends, a button per
- * screen and « Replier », then that screen. Folded, a strip with the screen's
- * name and the last day's numbers takes the place of the buttons and the
- * screen, and unfolds them.
+ * screen, then that screen with « Replier » beside its title. Folded, a strip
+ * with the screen's name and the last day's numbers takes the place of the
+ * buttons and the screen, and unfolds them.
  */
 export function GameScreensView({
   screen,
@@ -81,6 +81,12 @@ export function GameScreensView({
               </button>
             ))}
           </div>
+        </nav>
+      )}
+      {/* Hidden rather than gone while folded, so the screen keeps what the
+          player picked in it, such as a statement and its period. */}
+      <div className="screens__screen" hidden={folded}>
+        {!folded && (
           <button
             ref={foldButtonRef}
             type="button"
@@ -92,11 +98,7 @@ export function GameScreensView({
           >
             Replier
           </button>
-        </nav>
-      )}
-      {/* Hidden rather than gone while folded, so the screen keeps what the
-          player picked in it, such as a statement and its period. */}
-      <div className="screens__screen" hidden={folded}>
+        )}
         {screen === 'today' && <TodayPanel />}
         {screen === 'statements' && <FinancialStatements />}
         {screen === 'events' && <EventLog />}
