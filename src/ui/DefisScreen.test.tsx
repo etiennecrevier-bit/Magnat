@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest'
 import type { Medal } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
 import { DEFIS } from '../engine/day.ts'
+import { cents } from '../engine/money.ts'
+import { lengthText } from './defis.ts'
 import { DefiBriefingView, DefiListView } from './DefisScreen.tsx'
+import { formatBriefMoney, formatMoney } from './formatMoney.ts'
 
 // French puts a no-break space (U+00A0) in amounts, before a colon and a
 // percent sign, and inside its quotation marks.
@@ -67,18 +70,15 @@ describe('DefiListView', () => {
     const html = list()
     expect(html).toContain('<h1 id="')
     expect(html).toContain('>Défis</h1>')
-    expect(cards(html)).toEqual([
-      [
-        'Les travaux de la rue Saint-Denis',
-        'Moyen · 3 semaines',
+    // The titles and lengths come from the content.
+    const names = { facile: 'Facile', moyen: 'Moyen', difficile: 'Difficile' }
+    expect(cards(html)).toEqual(
+      DEFIS.defis.map((defi) => [
+        defi.title,
+        `${names[defi.difficulty]} · ${lengthText(defi.lengthDays)}`,
         'Aucune médaille',
-      ],
-      ['La semaine des 1 000 $', 'Facile · 1 semaine', 'Aucune médaille'],
-      ['Zéro gaspillage', 'Facile · 2 semaines', 'Aucune médaille'],
-      ['Le Festival du Pas Pire', 'Moyen · 1 semaine', 'Aucune médaille'],
-      ['Payé dans 60 jours', 'Moyen · 64 jours', 'Aucune médaille'],
-      ['Le mois sans congé', 'Facile · 4 semaines', 'Aucune médaille'],
-    ])
+      ]),
+    )
   })
 
   it('shows the best medal won in each Défi', () => {
@@ -108,8 +108,10 @@ describe('DefiBriefingView', () => {
     const html = briefing('travauxSaintDenis')
     expect(html).toContain('>Les travaux de la rue Saint-Denis</h1>')
     expect(html).toContain('La Ville refait la rue Saint-Denis')
+    const { cashCents } = defiById(DEFIS, 'travauxSaintDenis').setup
+    expect(cashCents).toBeDefined()
     expect(html).toContain(
-      `Moyen${S}: Prêt de démarrage de 70${S}000,00${S}$ à la Caisse, 3${S}500,00${S}$ en banque`,
+      `Moyen${S}: Prêt de démarrage de 70${S}000,00${S}$ à la Caisse, ${formatMoney(cashCents ?? cents(0))} en banque`,
     )
     expect(html).toContain('Du 15 mai au 4 juin, an 1 (3 semaines)')
   })
@@ -119,13 +121,19 @@ describe('DefiBriefingView', () => {
     expect(html).toContain(
       '<h2>Objectif</h2><p>Gardez votre encaisse la plus haute possible, même à son plus bas.</p>',
     )
+    // The thresholds and the condition come from the content.
+    const { goal, conditions } = defiById(DEFIS, 'travauxSaintDenis')
+    const atLeast = (amount: number) =>
+      `${formatBriefMoney(cents(amount))} ou plus`
     expect(listAfter(html, 'Objectif')).toEqual([
-      `Or${S}: 2${S}500${S}$ ou plus`,
-      `Argent${S}: 1${S}000${S}$ ou plus`,
-      `Bronze${S}: 0${S}$ ou plus`,
+      `Or${S}: ${atLeast(goal.medals.or)}`,
+      `Argent${S}: ${atLeast(goal.medals.argent)}`,
+      `Bronze${S}: ${atLeast(goal.medals.bronze)}`,
     ])
+    const [minCash] = conditions
+    if (minCash?.kind !== 'minCash') throw new Error('Saint-Denis watches cash')
     expect(listAfter(html, 'Conditions')).toEqual([
-      `L&#x27;encaisse ne doit jamais passer sous 0${S}$.`,
+      `L&#x27;encaisse ne doit jamais passer sous ${formatBriefMoney(minCash.amountCents)}.`,
     ])
   })
 

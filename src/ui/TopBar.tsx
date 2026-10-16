@@ -10,7 +10,7 @@ import { balance } from '../finance/journal.ts'
 import { CashGaugeView } from './CashGauge.tsx'
 import { monthlyFixedCosts } from './cashLevel.ts'
 import DefiPanel from './DefiPanel.tsx'
-import { chipLabel } from './defis.ts'
+import { chipLabel, energyFloorLine } from './defis.ts'
 import { EnergyGaugeView } from './EnergyGauge.tsx'
 import EventCard from './EventCard.tsx'
 import FinancesPanel from './FinancesPanel.tsx'
@@ -54,6 +54,11 @@ interface TopBarViewProps {
   onFinances: () => void
   /** The chip of the Défi played, « Défi · semaine 2 de 3 »; null if none. */
   defiLabel: string | null
+  /**
+   * The owner's energy against the Défi's floor, on a line of its own in
+   * the chip: « Énergie : 52 (plancher : 33) »; null if the Défi sets none.
+   */
+  defiEnergy: string | null
   /** Opens the Défi's panel. */
   onDefi: () => void
 }
@@ -70,6 +75,7 @@ export function TopBarView({
   onManage,
   onFinances,
   defiLabel,
+  defiEnergy,
   onDefi,
 }: TopBarViewProps) {
   return (
@@ -80,11 +86,21 @@ export function TopBarView({
         {defiLabel !== null && (
           <button
             type="button"
-            className="top-bar__defi"
+            className={
+              defiEnergy === null
+                ? 'top-bar__defi'
+                : 'top-bar__defi top-bar__defi--energy'
+            }
             aria-haspopup="dialog"
             onClick={onDefi}
           >
             {defiLabel}
+            {defiEnergy !== null && (
+              <>
+                {' '}
+                <span className="top-bar__defi-energy">{defiEnergy}</span>
+              </>
+            )}
           </button>
         )}
       </div>
@@ -169,10 +185,10 @@ export default function TopBar() {
     () => monthlyFixedCosts(day, difficulty, firstDay),
     [day, difficulty, firstDay],
   )
+  const defi = challenge === null ? null : defiById(DEFIS, challenge.id)
   const defiLabel =
-    challenge === null
-      ? null
-      : chipLabel(challenge, defiById(DEFIS, challenge.id), day)
+    challenge === null || defi === null ? null : chipLabel(challenge, defi, day)
+  const defiEnergy = defi === null ? null : energyFloorLine(energy, defi)
 
   return (
     <>
@@ -188,6 +204,7 @@ export default function TopBar() {
         onManage={() => openPanel('manage')}
         onFinances={() => openPanel('finances')}
         defiLabel={defiLabel}
+        defiEnergy={defiEnergy}
         onDefi={() => openPanel('defi')}
       />
       {panel === 'manage' && <ManagePanel />}

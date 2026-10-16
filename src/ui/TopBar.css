@@ -49,6 +49,18 @@
   cursor: pointer;
 }
 
+/* A Défi with an energy floor shows the energy on a second line, so the
+   chip keeps about the width the media queries below size the date for. */
+.top-bar__defi--energy {
+  padding: 0.25rem 1rem;
+  border-radius: 1rem;
+}
+
+.top-bar__defi-energy {
+  display: block;
+  font-weight: 600;
+}
+
 .top-bar__defi:hover {
   background: #323f4b;
 }

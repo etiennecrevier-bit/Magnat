@@ -6,6 +6,7 @@ import type { ChallengeState, Day } from '../engine/types.ts'
 import {
   conditionLine,
   defiWeek,
+  energyFloorLine,
   goalLine,
   progressLines,
   thresholdLines,
@@ -41,20 +42,25 @@ interface DefiPanelViewProps {
   challenge: ChallengeState
   /** The morning the game is at. */
   day: Day
+  /** The owner's energy that morning. */
+  energy: number
   onClose: () => void
 }
 
 /**
- * The Défi under way: its week, its goal, where it stands, the medals'
- * thresholds and its conditions.
+ * The Défi under way: its week, its goal, where it stands, with the
+ * owner's energy against its floor if it sets one, the medals' thresholds
+ * and its conditions.
  */
 export function DefiPanelView({
   defi,
   challenge,
   day,
+  energy,
   onClose,
 }: DefiPanelViewProps) {
   const { week, weeks } = defiWeek(challenge, defi, day)
+  const floor = energyFloorLine(energy, defi)
   return (
     <div className="panel__content">
       {/* Fermer comes first so it has the focus when the panel opens. */}
@@ -71,6 +77,7 @@ export function DefiPanelView({
       <p>{goalLine(defi.goal)}</p>
       <h3>Où vous en êtes</h3>
       <DefiProgressView challenge={challenge} defi={defi} />
+      {floor !== null && <p className="defi-panel__energy">{floor}</p>}
       <h3>Médailles</h3>
       <ul className="defi-panel__list">
         {thresholdLines(defi.goal).map((line) => (
@@ -98,6 +105,7 @@ export function DefiPanelView({
 export default function DefiPanel() {
   const challenge = useGame((state) => state.game.challenge)
   const day = useGame((state) => state.game.day)
+  const energy = useGame((state) => state.game.energy)
   const closePanel = useGame((state) => state.closePanel)
   const dialogRef = useRef<HTMLDialogElement>(null)
 
@@ -119,6 +127,7 @@ export default function DefiPanel() {
         defi={defiById(DEFIS, challenge.id)}
         challenge={challenge}
         day={day}
+        energy={energy}
         onClose={() => dialogRef.current?.close()}
       />
     </dialog>

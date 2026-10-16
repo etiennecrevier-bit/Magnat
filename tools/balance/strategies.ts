@@ -93,15 +93,16 @@ export function strategyChanges(
 }
 
 /**
- * The starting price of `product` moved by `priceChange` %, rounded half up
- * to a whole step of the content's price limits.
+ * `start`, by default the content's starting price of `product`, moved by
+ * `priceChange` %, rounded half up to a whole step of the content's price
+ * limits.
  */
 export function changedPrice(
   priceChange: number,
   product: ProductId,
   content: FoodTruckContent = FOOD_TRUCK,
+  start: Cents = content.startingDecisions.pricesCents[product],
 ): Cents {
-  const start = content.startingDecisions.pricesCents[product]
   const { step } = content.decisionLimits.priceCents
   const moved = mulRatio(start, (100 + priceChange) / 100)
   const remainder = moved % step

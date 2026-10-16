@@ -1,8 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DifficultyId } from '../content/schema.ts'
+import { defiById } from '../engine/challenge.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
-import { FOOD_TRUCK } from '../engine/day.ts'
+import { DEFIS, FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { cents } from '../engine/money.ts'
 import { defaultProfile } from '../engine/profile.ts'
@@ -36,6 +37,7 @@ function render(
   businessName = "Le P'tit Camion",
   energy = 100,
   defiLabel: string | null = null,
+  defiEnergy: string | null = null,
 ) {
   return renderToStaticMarkup(
     <TopBarView
@@ -50,6 +52,7 @@ function render(
       onManage={() => {}}
       onFinances={() => {}}
       defiLabel={defiLabel}
+      defiEnergy={defiEnergy}
       onDefi={() => {}}
     />,
   )
@@ -127,6 +130,23 @@ describe('TopBarView', () => {
     )
   })
 
+  it("puts the owner's energy against the Défi's floor on a line of its own in the chip", () => {
+    const energy = `Énergie${S}: 52 (plancher${S}: 33)`
+    expect(
+      render(
+        21,
+        1,
+        cents(0),
+        "Le P'tit Camion",
+        52,
+        'Défi · semaine 2 de 3',
+        energy,
+      ),
+    ).toContain(
+      `<button type="button" class="top-bar__defi top-bar__defi--energy" aria-haspopup="dialog">Défi · semaine 2 de 3 <span class="top-bar__defi-energy">${energy}</span></button>`,
+    )
+  })
+
   it('has no chip outside a Défi', () => {
     expect(render(0, 1)).not.toContain('top-bar__defi')
   })
@@ -191,6 +211,15 @@ describe('TopBar', () => {
     gameStore.getState().openPanel('defi')
     expect(renderToStaticMarkup(<TopBar />)).toMatch(
       /^<header class="top-bar">.*<\/header><dialog class="panel defi-panel" aria-labelledby="defi-title">.*<\/dialog>$/,
+    )
+  })
+
+  it("shows the owner's energy against the floor of « Les deux semaines sans congé » in its chip", () => {
+    const [floor] = defiById(DEFIS, 'moisSansConge').conditions
+    if (floor?.kind !== 'minEnergy') throw new Error('It sets an energy floor')
+    gameStore.getState().startGame(newChallenge('?seed=7', 'moisSansConge'))
+    expect(renderToStaticMarkup(<TopBar />)).toContain(
+      `aria-haspopup="dialog">Défi · semaine 1 de 2 <span class="top-bar__defi-energy">Énergie${S}: 100 (plancher${S}: ${floor.amount})</span></button>`,
     )
   })
 

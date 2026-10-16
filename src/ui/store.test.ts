@@ -934,23 +934,25 @@ describe('a Défi', () => {
   })
 
   it('stops on the morning a condition breaks, before its last day', () => {
-    // On seed 7, the owner of « Le mois sans congé » falls asleep on day 15.
-    const store = createGameStore(newChallenge('?seed=7', 'moisSansConge'))
+    // On seed 7, 3 000 $ a week to the owner leaves the cash of « Les travaux
+    // de la rue Saint-Denis » below zero on its 12th day, day 25.
+    const store = createGameStore(newChallenge('?seed=7', 'travauxSaintDenis'))
+    store.getState().decide({ kind: 'ownerWeeklyPay', pay: cents(300_000) })
     store.getState().advance(40)
     expect(store.getState()).toMatchObject({
       game: {
-        day: 15,
+        day: 26,
         challenge: {
           status: 'echoue',
           medal: null,
-          progress: { daysPlayed: 15 },
+          progress: { daysPlayed: 12 },
         },
       },
       panel: 'defiEnd',
       speed: PAUSED,
     })
     expect(() => store.getState().advance(1)).not.toThrow()
-    expect(store.getState().game.day).toBe(15)
+    expect(store.getState().game.day).toBe(26)
   })
 
   it('opens its end once the panel open when it ended closes', () => {

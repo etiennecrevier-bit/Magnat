@@ -5,6 +5,7 @@ import { DEFIS } from '../engine/day.ts'
 import { cents } from '../engine/money.ts'
 import type { ChallengeState } from '../engine/types.ts'
 import { DefiPanelView } from './DefiPanel.tsx'
+import { formatBriefMoney } from './formatMoney.ts'
 
 // French puts a no-break space (U+00A0) in amounts, before a colon and a
 // percent sign.
@@ -31,12 +32,13 @@ const CHALLENGE: ChallengeState = {
   medal: null,
 }
 
-function render(day = 23) {
+function render(day = 23, defi = travaux) {
   return renderToStaticMarkup(
     <DefiPanelView
-      defi={travaux}
-      challenge={CHALLENGE}
+      defi={defi}
+      challenge={{ ...CHALLENGE, id: defi.id }}
       day={day}
+      energy={52.7}
       onClose={() => {}}
     />,
   )
@@ -57,11 +59,27 @@ describe('DefiPanelView', () => {
     expect(html).toContain(
       `<ul class="defi-progress"><li>Encaisse la plus basse${S}: 1${S}870${S}$</li></ul>`,
     )
+    // The thresholds and the condition come from the content.
+    const { medals } = travaux.goal
+    const atLeast = (amount: number) =>
+      `${formatBriefMoney(cents(amount))} ou plus`
     expect(html).toContain(
-      `<h3>Médailles</h3><ul class="defi-panel__list"><li>Or${S}: 2${S}500${S}$ ou plus</li><li>Argent${S}: 1${S}000${S}$ ou plus</li><li>Bronze${S}: 0${S}$ ou plus</li></ul>`,
+      `<h3>Médailles</h3><ul class="defi-panel__list"><li>Or${S}: ${atLeast(medals.or)}</li><li>Argent${S}: ${atLeast(medals.argent)}</li><li>Bronze${S}: ${atLeast(medals.bronze)}</li></ul>`,
     )
+    const [minCash] = travaux.conditions
+    if (minCash?.kind !== 'minCash') throw new Error('Saint-Denis watches cash')
     expect(html).toContain(
-      `<h3>Conditions</h3><ul class="defi-panel__list"><li>L&#x27;encaisse ne doit jamais passer sous 0${S}$.</li></ul>`,
+      `<h3>Conditions</h3><ul class="defi-panel__list"><li>L&#x27;encaisse ne doit jamais passer sous ${formatBriefMoney(minCash.amountCents)}.</li></ul>`,
+    )
+  })
+
+  it('shows the energy against the floor of a Défi that sets one, and only then', () => {
+    expect(render()).not.toContain('defi-panel__energy')
+    const deuxSemaines = defiById(DEFIS, 'moisSansConge')
+    const [floor] = deuxSemaines.conditions
+    if (floor?.kind !== 'minEnergy') throw new Error('It sets an energy floor')
+    expect(render(23, deuxSemaines)).toContain(
+      `<ul class="defi-progress"><li>Bénéfice net${S}: -410${S}$</li><li>Énergie la plus basse${S}: 80</li></ul><p class="defi-panel__energy">Énergie${S}: 52 (plancher${S}: ${floor.amount})</p><h3>Médailles</h3>`,
     )
   })
 
