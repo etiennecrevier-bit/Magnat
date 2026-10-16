@@ -102,7 +102,7 @@ describe('GameScreensView', () => {
 
 describe('GameScreens', () => {
   it("opens on Aujourd'hui, then the week's card and the ticker", () => {
-    const html = renderToStaticMarkup(<GameScreens />)
+    const html = renderToStaticMarkup(<GameScreens onMenu={() => {}} />)
     expect(html.startsWith(render('today'))).toBe(true)
     // The card's region is empty until a week slides in, and the ticker
     // shows only once there are headlines (see headlines.ts).
@@ -112,8 +112,8 @@ describe('GameScreens', () => {
   })
 
   it('passes on a failed autosave', () => {
-    expect(renderToStaticMarkup(<GameScreens autosaveFailed />)).toContain(
-      AUTOSAVE_FAILED,
-    )
+    expect(
+      renderToStaticMarkup(<GameScreens autosaveFailed onMenu={() => {}} />),
+    ).toContain(AUTOSAVE_FAILED)
   })
 })

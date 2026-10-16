@@ -75,27 +75,19 @@ export function GameScreensView({
 }
 
 /**
- * Back to the start screen, which the app opens on: the page loads again.
- * Nothing is lost, as a Défi is never saved and its medal is already kept.
- */
-function reloadToMenu() {
-  window.location.reload()
-}
-
-/**
  * The screens, opening on Aujourd'hui, exporting the app store's game, with
  * the La Presse-Citron ticker along the bottom and the week's card sliding
  * in above it. Once a Défi is over, its end shows over them, whose « Retour
- * au menu » calls `onMenu`, by default reloading the page. Every medal the
- * game wins is kept in `settings`, a Défi won and then loaded included.
+ * au menu » calls `onMenu`. Every medal the game wins is kept in `settings`,
+ * a Défi won and then loaded included.
  */
 export default function GameScreens({
   autosaveFailed = false,
-  onMenu = reloadToMenu,
+  onMenu,
   settings = settingsStore,
 }: {
   autosaveFailed?: boolean
-  onMenu?: () => void
+  onMenu: () => void
   settings?: SettingsStore
 }) {
   const [screen, setScreen] = useState<Screen>('today')
