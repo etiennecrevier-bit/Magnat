@@ -1,16 +1,55 @@
+import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import GameScreens, { GameScreensView, type Screen } from './GameScreens.tsx'
+import ScreensStrip from './ScreensStrip.tsx'
+import {
+  createSettingsStore,
+  DEFAULT_SETTINGS,
+  SETTINGS_KEY,
+  type SettingsStorage,
+} from './settings.ts'
 
-function render(screen: Screen, autosaveFailed = false) {
+function render(screen: Screen, autosaveFailed = false, folded = false) {
   return renderToStaticMarkup(
     <GameScreensView
       screen={screen}
       onScreenChange={() => {}}
       autosaveFailed={autosaveFailed}
+      folded={folded}
+      onFoldChange={() => {}}
     />,
   )
 }
+
+/** Every element in `node` and its children, in order, `node` included. */
+function elements(node: ReactNode): ReactElement[] {
+  if (Array.isArray(node)) return (node as ReactNode[]).flatMap(elements)
+  if (!isValidElement(node)) return []
+  const { children } = node.props as { children?: ReactNode }
+  return [node, ...elements(children)]
+}
+
+/** A storage holding `items`, as the browser's after a reload. */
+function memory(items: Record<string, string> = {}): SettingsStorage {
+  return {
+    getItem: (key) => items[key] ?? null,
+    setItem: (key, value) => {
+      items[key] = value
+    },
+  }
+}
+
+/** `text` as a pattern that matches it and nothing else. */
+function literal(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const FOLD_BUTTON =
+  '<button type="button" class="button screens__fold" aria-expanded="true" aria-keyshortcuts="R" title="Replier le panneau (touche R)">Replier</button>'
+
+const STRIP =
+  '<button type="button" class="screens-strip" aria-expanded="false" aria-keyshortcuts="R" title="Déplier le panneau (touche R)">'
 
 const MESSAGES =
   '<section class="messages" role="log" aria-label="Messages"></section>'
@@ -92,6 +131,79 @@ describe('GameScreensView', () => {
     expect(render('today')).not.toContain('Exporter')
   })
 
+  it.each<[Screen, string]>([
+    ['today', 'today'],
+    ['statements', 'statements'],
+    ['events', 'event-log'],
+    ['reports', 'week-reports'],
+  ])(
+    'puts « Replier » before the %s screen, its tooltip naming the key, in a part that is not hidden',
+    (screen, section) => {
+      expect(render(screen)).toContain(
+        `</nav><div class="screens__screen">${FOLD_BUTTON}<section class="${section}"><h1>`,
+      )
+    },
+  )
+
+  it.each<[Screen, string]>([
+    ['today', 'Aujourd&#x27;hui'],
+    ['statements', 'États financiers'],
+    ['events', 'Journal des événements'],
+    ['reports', 'Bilans'],
+  ])(
+    'folded on %s, shows the strip with its badge in place of the menu, and hides the screen',
+    (screen, badge) => {
+      const html = render(screen, false, true)
+      expect(html).toMatch(
+        new RegExp(
+          `^<main class="screens--folded">${MESSAGES}${literal(STRIP)}`,
+        ),
+      )
+      expect(html).toContain(
+        `<span class="screens-strip__screen">${badge}</span>`,
+      )
+      expect(html).not.toContain('<nav')
+      expect(html).not.toContain('Replier')
+      // Still on the page, so the screen keeps what the player picked in
+      // it, such as a statement and its period, for when it unfolds.
+      expect(html).toMatch(
+        /<\/button><div class="screens__screen" hidden=""><section class="[^"]+"><h1>[^<]+<\/h1>.*<\/div><\/main>$/,
+      )
+    },
+  )
+
+  it('keeps the autosave notice and the messages above the strip', () => {
+    expect(render('today', true, true)).toMatch(
+      new RegExp(
+        `^<main class="screens--folded">${AUTOSAVE_FAILED}${MESSAGES}${literal(STRIP)}`,
+      ),
+    )
+  })
+
+  it('folds when « Replier » is pressed, and unfolds when the strip is', () => {
+    const props = {
+      screen: 'today' as const,
+      onScreenChange: () => {},
+      autosaveFailed: false,
+      onFoldChange: vi.fn<(folded: boolean) => void>(),
+    }
+    const unfolded = elements(GameScreensView({ ...props, folded: false }))
+    const replier = unfolded.find(
+      (element) =>
+        element.type === 'button' &&
+        (element.props as { children?: unknown }).children === 'Replier',
+    )
+    ;(replier?.props as { onClick: () => void }).onClick()
+    expect(unfolded.some((element) => element.type === ScreensStrip)).toBe(
+      false,
+    )
+
+    const folded = elements(GameScreensView({ ...props, folded: true }))
+    const strip = folded.find((element) => element.type === ScreensStrip)
+    ;(strip?.props as { onUnfold: () => void }).onUnfold()
+    expect(props.onFoldChange.mock.calls).toEqual([[true], [false]])
+  })
+
   it('tells the player to export when the autosave fails', () => {
     expect(render('today', true)).toMatch(
       new RegExp(`^<main>${AUTOSAVE_FAILED}${MESSAGES}<nav`),
@@ -115,5 +227,35 @@ describe('GameScreens', () => {
     expect(
       renderToStaticMarkup(<GameScreens autosaveFailed onMenu={() => {}} />),
     ).toContain(AUTOSAVE_FAILED)
+  })
+
+  it('opens folded after a reload when the player folded the screens', () => {
+    const storage = memory()
+    createSettingsStore(storage).getState().setScreensFolded(true)
+    const reloaded = createSettingsStore(storage)
+    const html = renderToStaticMarkup(
+      <GameScreens onMenu={() => {}} settings={reloaded} />,
+    )
+    expect(html.startsWith(render('today', false, true))).toBe(true)
+  })
+
+  it('opens unfolded when the player unfolded them, or never folded them', () => {
+    const storage = memory({
+      [SETTINGS_KEY]: JSON.stringify({
+        ...DEFAULT_SETTINGS,
+        screensFolded: true,
+      }),
+    })
+    createSettingsStore(storage).getState().setScreensFolded(false)
+    for (const settings of [
+      createSettingsStore(storage),
+      createSettingsStore(memory()),
+    ]) {
+      expect(
+        renderToStaticMarkup(
+          <GameScreens onMenu={() => {}} settings={settings} />,
+        ).startsWith(render('today')),
+      ).toBe(true)
+    }
   })
 })

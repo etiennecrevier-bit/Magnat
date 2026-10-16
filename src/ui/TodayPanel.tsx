@@ -4,13 +4,20 @@ import type { DaySummary } from '../engine/types.ts'
 import { formatGameDate } from './formatGameDate.ts'
 import { formatMoney } from './formatMoney.ts'
 import { useGame } from './store.ts'
+import { todayNumbers, totalUnits } from './todayNumbers.ts'
+import './TodayPanel.css'
 
-/** Yesterday at the truck: units sold, lost and spoiled, and the revenue. */
+/**
+ * Yesterday at the truck: units sold, lost and spoiled, by product and in
+ * all, the revenue and the customers served. The folded strip shows the
+ * same numbers (see todayNumbers.ts).
+ */
 export function TodayPanelView({ lastDay }: { lastDay: DaySummary | null }) {
+  const numbers = lastDay === null ? null : todayNumbers(lastDay)
   return (
     <section className="today">
       <h1>Aujourd'hui</h1>
-      {lastDay === null ? (
+      {lastDay === null || numbers === null ? (
         <p>La première journée n'est pas encore terminée.</p>
       ) : (
         <>
@@ -40,10 +47,21 @@ export function TodayPanelView({ lastDay }: { lastDay: DaySummary | null }) {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">Total</th>
+                <td className="number">{totalUnits(lastDay.sold)}</td>
+                <td className="number">{numbers.lostSales}</td>
+                <td className="number">{totalUnits(lastDay.spoiled)}</td>
+              </tr>
+            </tfoot>
           </table>
           <p>
             Chiffre d'affaires&nbsp;:{' '}
-            <strong>{formatMoney(lastDay.revenue)}</strong>
+            <strong>{formatMoney(numbers.revenue)}</strong>
+          </p>
+          <p>
+            Clients servis&nbsp;: <strong>{numbers.customersServed}</strong>
           </p>
         </>
       )}

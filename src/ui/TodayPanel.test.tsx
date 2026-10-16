@@ -12,10 +12,14 @@ function render(lastDay: DaySummary | null) {
   return renderToStaticMarkup(<TodayPanelView lastDay={lastDay} />)
 }
 
-/** Each product row: its name and the numbers in its cells. */
-function productRows(html: string) {
+/**
+ * Each row of the table's body, the products, or of its foot, the total:
+ * its name and the numbers in its cells.
+ */
+function rows(html: string, part: 'tbody' | 'tfoot' = 'tbody') {
+  const section = new RegExp(`<${part}>.*</${part}>`).exec(html)?.[0] ?? ''
   return [
-    ...html.matchAll(
+    ...section.matchAll(
       /<tr><th scope="row">([^<]*)<\/th>((?:<td[^>]*>[^<]*<\/td>)*)<\/tr>/g,
     ),
   ].map(([, name, cells = '']) => [
@@ -34,7 +38,7 @@ describe('TodayPanelView', () => {
     expect(html).not.toContain('<table')
   })
 
-  it("shows yesterday's units and revenue per product", () => {
+  it("shows yesterday's units per product and in all, the revenue and the customers served", () => {
     const html = render({
       day: 3,
       sold: { cafe: 87, chocolat: 12, croissant: 54 },
@@ -46,8 +50,27 @@ describe('TodayPanelView', () => {
         habitue: { visits: 60, buyers: 59, tooExpensive: 0, soldOut: 1 },
         chic: { visits: 24, buyers: 24, tooExpensive: 0, soldOut: 0 },
       },
-      visits: [],
-      leftLine: 0,
+      visits: [
+        {
+          arrivalMinute: 420,
+          segment: 'habitue',
+          bought: { cafe: 1, chocolat: 0, croissant: 0 },
+          outcome: 'bought',
+          servedMinute: 425,
+          leftMinute: null,
+          botched: 0,
+        },
+        {
+          arrivalMinute: 430,
+          segment: 'aubaine',
+          bought: { cafe: 0, chocolat: 0, croissant: 0 },
+          outcome: 'leftLine',
+          servedMinute: null,
+          leftMinute: 440,
+          botched: 0,
+        },
+      ],
+      leftLine: 1,
       averageWaitSeconds: 0,
       longestWaitSeconds: 0,
       energy: 100,
@@ -58,13 +81,15 @@ describe('TodayPanelView', () => {
     expect(html).toContain(
       '<tr><th scope="col">Produit</th><th scope="col" class="number">Vendus</th><th scope="col" class="number">Ventes perdues</th><th scope="col" class="number">Périmés</th></tr>',
     )
-    expect(productRows(html)).toEqual([
+    expect(rows(html)).toEqual([
       ['Café', '87', '0', '2'],
       ['Chocolat chaud', '12', '3', '0'],
       ['Croissant', '54', '6', '10'],
     ])
+    expect(rows(html, 'tfoot')).toEqual([['Total', '153', '9', '12']])
     expect(html).toContain(
-      `Chiffre d&#x27;affaires${S}: <strong>1${S}234,56${S}$</strong>`,
+      `Chiffre d&#x27;affaires${S}: <strong>1${S}234,56${S}$</strong></p>` +
+        `<p>Clients servis${S}: <strong>1</strong></p>`,
     )
   })
 
@@ -73,7 +98,7 @@ describe('TodayPanelView', () => {
     const { lastDay } = tick(tick(createInitialState(42)))
     if (lastDay === null) throw new Error('A played day has a summary')
     const html = render(lastDay)
-    expect(productRows(html)).toEqual([
+    expect(rows(html)).toEqual([
       [
         'Café',
         String(lastDay.sold.cafe),
@@ -92,6 +117,12 @@ describe('TodayPanelView', () => {
         String(lastDay.lostSales.croissant),
         String(lastDay.spoiled.croissant),
       ],
+    ])
+    const { sold, lostSales, spoiled } = lastDay
+    const total = (units: typeof sold) =>
+      String(units.cafe + units.chocolat + units.croissant)
+    expect(rows(html, 'tfoot')).toEqual([
+      ['Total', total(sold), total(lostSales), total(spoiled)],
     ])
     expect(lastDay.revenue).toBeGreaterThan(0)
   })

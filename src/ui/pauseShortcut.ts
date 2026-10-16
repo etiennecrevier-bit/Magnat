@@ -12,7 +12,8 @@ export interface KeyEventLike {
 
 const TEXT_ENTRY_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 
-function isEditable(target: unknown): boolean {
+/** Whether `target` takes text, so its keys are the player's typing. */
+export function isEditable(target: unknown): boolean {
   if (typeof target !== 'object' || target === null) return false
   const { tagName, isContentEditable } = target as {
     tagName?: unknown
@@ -27,11 +28,12 @@ function isEditable(target: unknown): boolean {
 // store keeps the game paused while a panel is open anyway.
 const OWNS_SPACE = 'dialog, [aria-haspopup="dialog"]'
 
-function ownsSpace(target: unknown): boolean {
+/** Whether `target` is, or sits inside, an element matching `selectors`. */
+export function isInside(target: unknown, selectors: string): boolean {
   if (typeof target !== 'object' || target === null) return false
   const { closest } = target as { closest?: unknown }
   if (typeof closest !== 'function') return false
-  return closest.call(target, OWNS_SPACE) !== null
+  return closest.call(target, selectors) !== null
 }
 
 function isPauseKey(event: KeyEventLike): boolean {
@@ -42,7 +44,7 @@ function isPauseKey(event: KeyEventLike): boolean {
     !event.metaKey &&
     !event.shiftKey &&
     !isEditable(event.target) &&
-    !ownsSpace(event.target)
+    !isInside(event.target, OWNS_SPACE)
   )
 }
 

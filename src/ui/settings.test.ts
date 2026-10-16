@@ -40,12 +40,13 @@ afterEach(() => {
 })
 
 describe('the settings', () => {
-  it('start with the full visual effects, and the weekly report in full only at first', () => {
+  it('start with the full visual effects, the weekly report in full only at first and the screens unfolded', () => {
     expect(DEFAULT_SETTINGS).toEqual({
       visualEffects: 'full',
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: {},
+      screensFolded: false,
     })
     expect(readSettings(null)).toEqual(DEFAULT_SETTINGS)
     expect(readSettings(memory())).toEqual(DEFAULT_SETTINGS)
@@ -61,6 +62,7 @@ describe('the settings', () => {
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: {},
+      screensFolded: false,
     })
     expect(createSettingsStore(storage).getState().visualEffects).toBe('simple')
   })
@@ -73,6 +75,7 @@ describe('the settings', () => {
       openReportEveryWeek: true,
       reportCadence: 'week',
       bestMedals: {},
+      screensFolded: false,
     })
     expect(createSettingsStore(storage).getState().openReportEveryWeek).toBe(
       true,
@@ -87,8 +90,43 @@ describe('the settings', () => {
       openReportEveryWeek: false,
       reportCadence: 'month',
       bestMedals: {},
+      screensFolded: false,
     })
     expect(createSettingsStore(storage).getState().reportCadence).toBe('month')
+  })
+
+  it('keep the screens folded in this browser, after a reload', () => {
+    const storage = memory()
+    createSettingsStore(storage).getState().setVisualEffects('simple')
+    createSettingsStore(storage).getState().setScreensFolded(true)
+    expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
+      visualEffects: 'simple',
+      openReportEveryWeek: false,
+      reportCadence: 'week',
+      bestMedals: {},
+      screensFolded: true,
+    })
+    const reloaded = createSettingsStore(storage)
+    expect(reloaded.getState().screensFolded).toBe(true)
+
+    reloaded.getState().setScreensFolded(false)
+    expect(readSettings(storage)).toEqual({
+      visualEffects: 'simple',
+      openReportEveryWeek: false,
+      reportCadence: 'week',
+      bestMedals: {},
+      screensFolded: false,
+    })
+    expect(createSettingsStore(storage).getState().screensFolded).toBe(false)
+  })
+
+  it('tell those listening when the screens fold', () => {
+    const store = createSettingsStore(memory())
+    const heard: boolean[] = []
+    store.subscribe((state) => heard.push(state.screensFolded))
+    store.getState().setScreensFolded(true)
+    store.getState().setScreensFolded(false)
+    expect(heard).toEqual([true, false])
   })
 
   it('keep each setting when the other changes, after a reload', () => {
@@ -100,6 +138,7 @@ describe('the settings', () => {
       openReportEveryWeek: true,
       reportCadence: 'week',
       bestMedals: {},
+      screensFolded: false,
     })
 
     createSettingsStore(storage).getState().setVisualEffects('full')
@@ -108,6 +147,7 @@ describe('the settings', () => {
       openReportEveryWeek: true,
       reportCadence: 'week',
       bestMedals: {},
+      screensFolded: false,
     })
     createSettingsStore(storage).getState().setOpenReportEveryWeek(false)
     expect(readSettings(storage)).toEqual({
@@ -115,6 +155,7 @@ describe('the settings', () => {
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: {},
+      screensFolded: false,
     })
     createSettingsStore(storage).getState().setReportCadence('month')
     createSettingsStore(storage).getState().setVisualEffects('simple')
@@ -123,6 +164,7 @@ describe('the settings', () => {
       openReportEveryWeek: false,
       reportCadence: 'month',
       bestMedals: {},
+      screensFolded: false,
     })
   })
 
@@ -135,6 +177,7 @@ describe('the settings', () => {
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: {},
+      screensFolded: false,
     })
   })
 
@@ -146,6 +189,7 @@ describe('the settings', () => {
         openReportEveryWeek: true,
         reportCadence: 'week',
         bestMedals: {},
+        screensFolded: false,
       },
     ],
     [
@@ -155,6 +199,7 @@ describe('the settings', () => {
         openReportEveryWeek: false,
         reportCadence: 'week',
         bestMedals: {},
+        screensFolded: false,
       },
     ],
     [
@@ -164,6 +209,7 @@ describe('the settings', () => {
         openReportEveryWeek: true,
         reportCadence: 'week',
         bestMedals: {},
+        screensFolded: false,
       },
     ],
     [
@@ -173,6 +219,27 @@ describe('the settings', () => {
         openReportEveryWeek: false,
         reportCadence: 'month',
         bestMedals: {},
+        screensFolded: false,
+      },
+    ],
+    [
+      { visualEffects: 'simple', screensFolded: 'oui' },
+      {
+        visualEffects: 'simple',
+        openReportEveryWeek: false,
+        reportCadence: 'week',
+        bestMedals: {},
+        screensFolded: false,
+      },
+    ],
+    [
+      { visualEffects: 'ultra', screensFolded: true },
+      {
+        visualEffects: 'full',
+        openReportEveryWeek: false,
+        reportCadence: 'week',
+        bestMedals: {},
+        screensFolded: true,
       },
     ],
   ])('keep a valid setting beside an invalid one: %j', (stored, settings) => {
@@ -216,6 +283,7 @@ describe('the settings', () => {
         openReportEveryWeek: true,
         reportCadence: 'week',
         bestMedals: {},
+        screensFolded: false,
       }),
     ).toBe(false)
     const store = createSettingsStore(BLOCKED)
@@ -241,6 +309,7 @@ describe('the settings', () => {
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: { travauxSaintDenis: 'bronze', zeroGaspillage: 'argent' },
+      screensFolded: false,
     })
     expect(createSettingsStore(storage).getState().bestMedals).toEqual({
       travauxSaintDenis: 'bronze',
@@ -288,6 +357,10 @@ describe('the settings', () => {
         'the report cadence',
         (b: SettingsStore) => b.getState().setReportCadence('month'),
       ],
+      [
+        'the fold of the screens',
+        (b: SettingsStore) => b.getState().setScreensFolded(true),
+      ],
     ])(
       'keep the medals one won when the other changes %s',
       (_, changeSetting) => {
@@ -331,6 +404,7 @@ describe('the settings', () => {
         openReportEveryWeek: false,
         reportCadence: 'week',
         bestMedals: { travauxSaintDenis: 'or' },
+        screensFolded: false,
       })
       expect(a.getState().bestMedals).toEqual({ travauxSaintDenis: 'or' })
     })
@@ -396,6 +470,7 @@ describe('the settings', () => {
         openReportEveryWeek: true,
         reportCadence: 'week',
         bestMedals: kept,
+        screensFolded: false,
       })
     },
   )
@@ -404,5 +479,6 @@ describe('the settings', () => {
     expect(settingsStore.getState().visualEffects).toBe('full')
     expect(settingsStore.getState().openReportEveryWeek).toBe(false)
     expect(settingsStore.getState().reportCadence).toBe('week')
+    expect(settingsStore.getState().screensFolded).toBe(false)
   })
 })

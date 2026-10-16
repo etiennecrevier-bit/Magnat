@@ -1,0 +1,6 @@
+/* The Total row stands apart from the products above it. */
+.today tfoot th,
+.today tfoot td {
+  border-top: 2px solid #2b2622;
+  font-weight: 700;
+}

@@ -35,6 +35,11 @@ export interface Settings {
   readonly reportCadence: ReportCadence
   /** The best medal won in each Défi, by its id, in any game. */
   readonly bestMedals: Readonly<Record<string, Medal>>
+  /**
+   * Whether the screens are folded down to a strip, leaving the street the
+   * room. Set from the screens themselves, not in « Réglages ».
+   */
+  readonly screensFolded: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -42,6 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   openReportEveryWeek: false,
   reportCadence: 'week',
   bestMedals: {},
+  screensFolded: false,
 }
 
 /** The localStorage key the settings are kept under. */
@@ -55,6 +61,7 @@ export interface SettingsState extends Settings {
   setVisualEffects: (visualEffects: VisualEffects) => void
   setOpenReportEveryWeek: (openReportEveryWeek: boolean) => void
   setReportCadence: (reportCadence: ReportCadence) => void
+  setScreensFolded: (screensFolded: boolean) => void
   /**
    * Keeps `medal` as the best won in the Défi `defiId` unless a better one,
    * or the same, already is.
@@ -86,8 +93,13 @@ export function readSettings(storage: SettingsStorage | null): Settings {
     return DEFAULT_SETTINGS
   }
   if (typeof stored !== 'object' || stored === null) return DEFAULT_SETTINGS
-  const { visualEffects, openReportEveryWeek, reportCadence, bestMedals } =
-    stored as Record<string, unknown>
+  const {
+    visualEffects,
+    openReportEveryWeek,
+    reportCadence,
+    bestMedals,
+    screensFolded,
+  } = stored as Record<string, unknown>
   return {
     visualEffects: VISUAL_EFFECTS.includes(visualEffects as VisualEffects)
       ? (visualEffects as VisualEffects)
@@ -100,6 +112,10 @@ export function readSettings(storage: SettingsStorage | null): Settings {
       ? (reportCadence as ReportCadence)
       : DEFAULT_SETTINGS.reportCadence,
     bestMedals: readMedals(bestMedals),
+    screensFolded:
+      typeof screensFolded === 'boolean'
+        ? screensFolded
+        : DEFAULT_SETTINGS.screensFolded,
   }
 }
 
@@ -165,12 +181,18 @@ export function createSettingsStore(
         settings.bestMedals ?? get().bestMedals,
       )
       set({ ...settings, bestMedals })
-      const { visualEffects, openReportEveryWeek, reportCadence } = get()
+      const {
+        visualEffects,
+        openReportEveryWeek,
+        reportCadence,
+        screensFolded,
+      } = get()
       writeSettings(storage, {
         visualEffects,
         openReportEveryWeek,
         reportCadence,
         bestMedals,
+        screensFolded,
       })
     }
     return {
@@ -179,6 +201,7 @@ export function createSettingsStore(
       setOpenReportEveryWeek: (openReportEveryWeek) =>
         change({ openReportEveryWeek }),
       setReportCadence: (reportCadence) => change({ reportCadence }),
+      setScreensFolded: (screensFolded) => change({ screensFolded }),
       recordMedal: (defiId, medal) => {
         const { bestMedals } = get()
         const best = bestMedals[defiId]
