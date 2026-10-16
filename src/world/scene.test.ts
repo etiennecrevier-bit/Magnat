@@ -616,6 +616,23 @@ describe('Scene.update: the events on the street', () => {
     expect(node(scene, 'out-of-order').visible).toBe(false)
   })
 
+  it('stops the steam while the café cannot be sold, then steams again', () => {
+    const scene = build(ASSETS)
+    const [, , , , broken] = CASES
+    scene.update({ ...OPEN, modifiers: [broken!.modifier] })
+    expect(node(scene, 'out-of-order').visible).toBe(true)
+    expect(node(scene, 'steam').visible).toBe(false)
+    scene.update(OPEN)
+    expect(node(scene, 'steam').visible).toBe(true)
+    scene.update({
+      ...OPEN,
+      modifiers: [
+        change('essai', { kind: 'unavailable', product: 'croissant' }),
+      ],
+    })
+    expect(node(scene, 'steam').visible).toBe(true)
+  })
+
   it.each(['cones-left', 'cones-right', 'road-sign', 'rival-truck'])(
     "shows and hides the %s's shadows with it",
     (id) => {
