@@ -465,6 +465,38 @@ describe('startStreet: the customers', () => {
     )
   })
 
+  it.each([
+    [1920, 1080],
+    [1440, 900],
+    [1366, 768],
+    [1280, 720],
+  ])(
+    'shows the x10 tally whole, clear of the panels and the band, at %i × %i',
+    async (width, height) => {
+      const app = createFakeApp(width, height)
+      const store = wednesdayStore()
+      await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+      store.getState().setSpeed(10)
+      app.frame(16)
+
+      // A long screen such as « États financiers » runs the panels' card
+      // down the whole window, 42rem wide and 1rem in from the left, and
+      // La Presse-Citron's band is at least 2.75rem tall along the bottom
+      // (WorldCanvas.css, Ticker.css): the tally must show beside them, or
+      // « 49 clients servis » reads « 9 clients servis » (#131).
+      const tally = piece(app, 'tally')
+      expect(tally.visible).toBe(true)
+      // The badge's card, which holds its numbers: Node has no canvas to
+      // measure the text with.
+      const card = tally.children.find((c) => c instanceof Graphics)!
+      const { minX, minY, maxX, maxY } = card.getBounds()
+      expect(minX).toBeGreaterThanOrEqual(16 + 42 * 16)
+      expect(maxX).toBeLessThanOrEqual(width)
+      expect(minY).toBeGreaterThanOrEqual(0)
+      expect(maxY).toBeLessThanOrEqual(height - 2.75 * 16)
+    },
+  )
+
   it('sends everyone away without buying when the truck closes', async () => {
     const app = createFakeApp()
     const store = wednesdayStore()
