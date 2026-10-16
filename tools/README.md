@@ -100,7 +100,39 @@ Plays the simulated owners the « Bilan de la semaine » will compare the player
 
 **Running it.** The three difficulties play side by side on worker threads, as for the grid, about 0.3 s a game with the branches: the default run takes about 6 min on three threads, and `--games 200` about a minute, enough to try a change to `events.json`. A card that comes up seldom needs the full run: `chequeDansLaMalle`, the late cheque of « La grosse commande », comes up in about one game in 20. The same options always write the same files. After any change to the engine or the content that moves the numbers, run it again with the default options and commit both files together. Everything from the hand-written line of the report to its end stays, as in phase 2.
 
-The code is in `balance/` too: `owners.ts` plays the owners and computes the percentiles, `eventBranches.ts` plays the choices of a card from the same morning and judges them, and `phase3.ts` writes the table and the report, all without I/O. `worker.ts` plays either kind of job, the grid's or the owners'.
+The code is in `balance/` too: `owners.ts` plays the owners and computes the percentiles, `eventBranches.ts` plays the choices of a card from the same morning and judges them, and `phase3.ts` writes the table and the report, all without I/O. `worker.ts` plays any kind of job: the grid's, the owners' or a Défi.
+
+## Défis
+
+```sh
+npm run balance -- --defis
+```
+
+Plays each Défi of `src/content/defis.json` by the simulated owners and by the grid's best strategy for it, and checks its medal thresholds against the targets of #102: the owners win « Or » in under 10 % of their games, « Argent » or better in 30 % to 40 %, « Bronze » or better in 65 % to 75 %, and the best strategy wins « Or » in 80 % or more. It writes the Défis' percentile table, `src/content/defis-percentiles.json`, for « Mieux que N % des parties simulées », and the Défis section of `docs/balance/phase-3.md`.
+
+| Option     | Default                              | Meaning                                                                                             |
+| ---------- | ------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `--defis`  |                                      | Plays the Défis. `--percentiles`, `--years` and `--events` do not go with it.                       |
+| `--games`  | 1000                                 | Games per Défi, by the owners and by the best strategy, on seeds 1 to this, a whole number from 1.  |
+| `--search` | 100                                  | Seeds each strategy of the grid plays in the search for the best, a whole number from 1; only here. |
+| `--out`    | `docs/balance/phase-3.md`            | Report its section goes in, relative to the current folder (the repo root under `npm run`).         |
+| `--json`   | `src/content/defis-percentiles.json` | File the table goes to, the same way.                                                               |
+
+**A game.** Each game plays as a player would: `startChallenge()` opens the Défi, the decisions change with `applyDecision()` on its first morning, so they take effect from its second day, and `tick()` plays each day with the event cards on until the Défi is over. A decision the Défi locks does not change. Each morning, the card waiting is answered with a choice drawn at random among those the Défi allows (`allowedChoices()`), seeded from the game.
+
+**The owners.** The owner of seed n holds the strategy of the grid that `--percentiles` draws for seed n, moved from the Défi's own opening decisions: every price moves by the strategy's % from the Défi's opening price, the croissants bought each day scale the Défi's opening quantity as the grid scales the content's starting 70, rounded half up (40, 70 and 110 for a Défi that keeps 70; 17, 30 and 47 for one that opens on 30), and the marketing budget, the days open and the owner's pay are the grid's.
+
+**The best strategy.** Every strategy of the grid, moved the same way, plays seeds 1 to `--search`; the best has the highest median outcome, the lower middle, then the most games that broke no condition, then comes first in the grid. It then plays seeds 1 to `--games`, like the owners. A game that broke a condition ranks below every game that did not; the others rank by what the goal measured, where lower is better for a spoilage rate.
+
+**The table.** For each Défi: its goal's metric, the share of the owners' games that broke a condition, and what the goal measured in the others at the 5th, 10th, 20th … 90th and 95th percentiles, in increasing order of the value (null if every game broke one). Cents and customers are whole, rounded half away from zero; shares and energy have 4 decimals. Its `_note` says how a lookup reads it.
+
+**The report.** Its section lies between `<!-- npm run balance -- --defis writes this section. -->` and `<!-- End of the Défis section. -->`: `--defis` replaces only that, or puts it before the hand-written line, and `--percentiles` keeps it as it is. It holds a table of targets per Défi, the owners' outcomes at each percentile, worst first, with the thresholds they suggest (the outcomes at the 92nd, 65th and 30th percentiles), and the best strategy's outcomes the same way: « Or » at or below its 20th percentile gives it « Or » in 80 % of its games.
+
+**Running it.** One worker thread a Défi, three at once at most. The search plays every strategy of the grid, so it takes most of the time, « Payé dans 60 jours », 64 days long, the longest: the default run takes about 3 min 40 s on three threads, and `--games 200 --search 30` about a minute, enough to try a change to `defis.json`. The same options always write the same files. After any change to the engine or the content that moves the numbers, run it again with the default options and commit both files together.
+
+**The guardrails.** `balance/defiGuardrails.test.ts`, part of `npm test`, checks the shipped Défis on fixed seeds: the best strategy of each, as the last full run found it, wins « Or » in at least 80 % of seeds 1 to 50; an absurd play wins nothing on any of them; and P3-13's owners, who play the grid in its own values whatever the Défi opens on, win the same medals on seeds 1 to 200 as when the Défis were tuned. After retuning a Défi, copy the new best strategy from the report and the new counts into the test.
+
+The code is in `balance/`: `defis.ts` plays the Défis and sums them up, and `defisReport.ts` writes the table and the section, both without I/O.
 
 ## The 10-year invariant test
 

@@ -1,14 +1,14 @@
 {
-  "_note": "The Défis (#99): short games with one goal and a medal. A Défi opens as a game of its difficulty, with the cash in `setup.cashCents` in place of the difficulty's, on its `start` date of the first season, and plays `lengthDays` days from there; its loan and truck count their months from that date. `setup` replaces the starting decisions and energy, `locked` lists the kinds of decision the player cannot change, `modifiers` force changes to the street for `days` days from the Défi's day `day` (counting from 0), as if by a choice of the card `event`, and `events` force a card on the morning of a day, with only `choices` allowed. `randomEvents` lets the event cards' draws come too; follow-ups always do. The `goal` measures one `metric` over the Défi and gives « Or », « Argent » or « Bronze » from its thresholds; a `condition` that breaks ends it at once, « échoué ». The thresholds are starting values for P3-14 (#102), set by playing a few strategies on a few seeds. « Les travaux de la rue Saint-Denis » starts on May 15 so that the 1st of June's charges fall in it. « Payé dans 60 jours » forces the order on day 2, a Wednesday, so the cheque, due 60 days after Thursday's delivery, comes on the last of its 64 days unless Gilles is late; it ends then either way. « Le mois sans congé » is hard: an open day tires the owner more than a night gives back, so 28 days open leave room for about 25 customers a day.",
+  "_note": "The Défis (#99): short games with one goal and a medal. A Défi opens as a game of its difficulty, with the cash in `setup.cashCents` in place of the difficulty's, on its `start` date of the first season, and plays `lengthDays` days from there; its loan and truck count their months from that date. `setup` replaces the starting decisions and energy, `locked` lists the kinds of decision the player cannot change, `modifiers` force changes to the street for `days` days from the Défi's day `day` (counting from 0), as if by a choice of the card `event`, and `events` force a card on the morning of a day, with only `choices` allowed. `randomEvents` lets the event cards' draws come too; follow-ups always do. The `goal` measures one `metric` over the Défi and gives « Or », « Argent » or « Bronze » from its thresholds; a `condition` that breaks ends it at once, « échoué ». P3-14 (#102) tuned the setups and the thresholds with `npm run balance -- --defis`, which plays each Défi by simulated owners and by the best strategy of the grid: see docs/balance/phase-3.md, and run it again after changing a Défi. « Les travaux de la rue Saint-Denis » starts on May 15 so that the 1st of June's charges fall in it. « Payé dans 60 jours » forces the order on day 2, a Wednesday, so the cheque, due 60 days after Thursday's delivery, comes on the last of its 64 days unless Gilles is late; it ends then either way. « Les deux semaines sans congé » (id moisSansConge, once a month long) is hard: an open day tires the owner more than a night gives back, so 14 days open with a floor of 33 leave room for about 55 customers a day; it opens with prices 30 % above the starting ones, and its medals are losses limited to an amount. At the starting prices with nothing else changed, the owner falls under the floor on every seed: keep it so (docs/balance/phase-3.md).",
   "defis": [
     {
       "id": "travauxSaintDenis",
       "title": "Les travaux de la rue Saint-Denis",
-      "story": "La Ville refait la rue Saint-Denis devant votre camion. Les cônes orange sont là pour trois semaines, et un client sur trois fait le détour. Il vous reste 3 500 $ en banque, et le 1er juin, le permis, les assurances et l'emprunt passent quand même. Tenez bon jusqu'à la fin des travaux sans que l'encaisse passe sous zéro, même une minute.",
+      "story": "La Ville refait la rue Saint-Denis devant votre camion. Les cônes orange sont là pour trois semaines, et un client sur trois fait le détour. Il vous reste 4 500 $ en banque, et le 1er juin, le permis, les assurances et l'emprunt passent quand même. Tenez bon jusqu'à la fin des travaux sans que l'encaisse passe sous zéro, même une minute.",
       "difficulty": "moyen",
       "start": { "month": 5, "dayOfMonth": 15 },
       "lengthDays": 21,
-      "setup": { "cashCents": 350000 },
+      "setup": { "cashCents": 450000 },
       "locked": [],
       "modifiers": [
         {
@@ -40,7 +40,7 @@
       "randomEvents": false,
       "goal": {
         "metric": "netIncome",
-        "medals": { "or": 100000, "argent": 70000, "bronze": 40000 }
+        "medals": { "or": 100000, "argent": 60000, "bronze": 10000 }
       },
       "conditions": []
     },
@@ -52,7 +52,7 @@
       "start": { "month": 5, "dayOfMonth": 8 },
       "lengthDays": 14,
       "setup": {
-        "restock": { "croissant": { "kind": "buyDaily", "quantity": 30 } }
+        "restock": { "croissant": { "kind": "buyDaily", "quantity": 25 } }
       },
       "locked": [],
       "modifiers": [],
@@ -60,7 +60,7 @@
       "randomEvents": false,
       "goal": {
         "metric": "customersServed",
-        "medals": { "or": 1150, "argent": 950, "bronze": 750 }
+        "medals": { "or": 1150, "argent": 875, "bronze": 520 }
       },
       "conditions": [{ "kind": "maxSpoilageRate", "rate": 0.03 }]
     },
@@ -71,7 +71,9 @@
       "difficulty": "moyen",
       "start": { "month": 7, "dayOfMonth": 10 },
       "lengthDays": 7,
-      "setup": {},
+      "setup": {
+        "restock": { "croissant": { "kind": "buyDaily", "quantity": 35 } }
+      },
       "locked": [],
       "modifiers": [
         {
@@ -85,18 +87,18 @@
       "randomEvents": false,
       "goal": {
         "metric": "sales",
-        "medals": { "or": 380000, "argent": 330000, "bronze": 280000 }
+        "medals": { "or": 300000, "argent": 245000, "bronze": 175000 }
       },
       "conditions": [{ "kind": "maxSpoilageRate", "rate": 0.15 }]
     },
     {
       "id": "payeDans60Jours",
       "title": "Payé dans 60 jours",
-      "story": "Mercredi, Gilles Lacasse viendra vous commander 400 croissants pour le Congrès québécois des optimistes : 750 $, payables à 60 jours. Vous allez accepter. Il vous reste 4 000 $ en banque, et d'ici à ce que le chèque arrive, il faudra payer les croissants, la paie, le permis et l'emprunt. L'encaisse ne doit jamais passer sous zéro.",
+      "story": "Mercredi, Gilles Lacasse viendra vous commander 400 croissants pour le Congrès québécois des optimistes : 750 $, payables à 60 jours. Vous allez accepter. Il vous reste 7 000 $ en banque, et d'ici à ce que le chèque arrive, il faudra payer les croissants, la paie, le permis et l'emprunt. L'encaisse ne doit jamais passer sous zéro.",
       "difficulty": "moyen",
       "start": { "month": 5, "dayOfMonth": 8 },
       "lengthDays": 64,
-      "setup": { "cashCents": 400000 },
+      "setup": { "cashCents": 700000 },
       "locked": [],
       "modifiers": [],
       "events": [
@@ -105,27 +107,30 @@
       "randomEvents": true,
       "goal": {
         "metric": "lowestCash",
-        "medals": { "or": 350000, "argent": 200000, "bronze": 0 }
+        "medals": { "or": 590000, "argent": 290000, "bronze": 0 }
       },
       "conditions": [{ "kind": "minCash", "amountCents": 0 }]
     },
     {
       "id": "moisSansConge",
-      "title": "Le mois sans congé",
-      "story": "Vous avez promis à la Chambre de commerce que votre camion ouvrirait tous les jours du mois de mai. Sept jours sur sept, quatre semaines de suite. Faites le plus gros bénéfice possible, mais si votre énergie tombe sous 25, vous vous endormez sur la caisse et c'est fini.",
+      "title": "Les deux semaines sans congé",
+      "story": "Vous avez promis à la Chambre de commerce d'ouvrir votre camion tous les jours des deux premières semaines de mai. Vous allez perdre de l'argent ces deux semaines. Perdez-en le moins possible, et ne vous écroulez pas. Vous ne tiendrez pas en servant tout le monde. Mieux vaut moins de clients, mais qui paient plus. Si votre énergie tombe sous 33, vous vous endormez sur la caisse et c'est fini.",
       "difficulty": "facile",
       "start": { "month": 5, "dayOfMonth": 1 },
-      "lengthDays": 28,
-      "setup": { "daysOpen": [1, 2, 3, 4, 5, 6, 7] },
+      "lengthDays": 14,
+      "setup": {
+        "prices": { "cafe": 425, "chocolat": 455, "croissant": 490 },
+        "daysOpen": [1, 2, 3, 4, 5, 6, 7]
+      },
       "locked": ["daysOpen"],
       "modifiers": [],
       "events": [],
       "randomEvents": false,
       "goal": {
         "metric": "netIncome",
-        "medals": { "or": 75000, "argent": 40000, "bronze": 0 }
+        "medals": { "or": -100000, "argent": -300000, "bronze": -485000 }
       },
-      "conditions": [{ "kind": "minEnergy", "amount": 25 }]
+      "conditions": [{ "kind": "minEnergy", "amount": 33 }]
     }
   ]
 }

@@ -18,6 +18,7 @@ import {
 } from '../engine/day.ts'
 import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
 import { resolveEvent } from '../engine/events.ts'
+import { PRODUCTS } from '../engine/inventory.ts'
 import { cents } from '../engine/money.ts'
 import type { GameState } from '../engine/types.ts'
 import defisJson from './defis.json'
@@ -391,6 +392,12 @@ const prices = (price: number): DecisionChange[] =>
     product,
     price: cents(price),
   }))
+/** The content's starting prices, those of a game that is not a Défi. */
+const startingPrices: DecisionChange[] = PRODUCTS.map((product) => ({
+  kind: 'price',
+  product,
+  price: FOOD_TRUCK.startingDecisions.pricesCents[product],
+}))
 const marketing = (budget: number): DecisionChange => ({
   kind: 'marketingDaily',
   budget: cents(budget),
@@ -417,7 +424,8 @@ function outcome(ended: GameState) {
 }
 
 // One scripted success and one scripted failure for each Défi, from seed
-// 42. The thresholds are starting values that P3-14 (#102) tunes, so these
+// 42. P3-14 (#102) tuned the setups and the thresholds with
+// `npm run balance -- --defis` (docs/balance/phase-3.md), so these
 // expectations move with them.
 describe('the six Défis, scripted', () => {
   it('« Les travaux de la rue Saint-Denis »: or for a tight truck without pay, open every day; lost when 1 500 $ a week to the owner leaves the cash below zero', () => {
@@ -428,17 +436,17 @@ describe('the six Défis, scripted', () => {
         }),
       ),
     ).toEqual({ status: 'reussi', medal: 'or', daysPlayed: 21, broken: null })
-    // Doing nothing scrapes through the 1st of June.
+    // Doing nothing gets through the 1st of June with some cash left.
     expect(outcome(played('travauxSaintDenis', 42))).toMatchObject({
       status: 'reussi',
-      medal: 'bronze',
+      medal: 'argent',
     })
     expect(
       outcome(played('travauxSaintDenis', 42, { start: [pay(150_000)] })),
     ).toEqual({
       status: 'echoue',
       medal: null,
-      daysPlayed: 18,
+      daysPlayed: 19,
       broken: 'minCash',
     })
   })
@@ -477,7 +485,7 @@ describe('the six Défis, scripted', () => {
     })
   })
 
-  it('« Le Festival du Pas Pire »: bronze with fewer croissants in the week and more for the festival; lost on its first open day with 70 croissants', () => {
+  it('« Le Festival du Pas Pire »: or with fewer croissants in the week and more for the festival; lost on its second day with 70 croissants', () => {
     const forTomorrow = (state: GameState) => [
       croissants(toCalendar(state.day + 1).weekday >= 5 ? 90 : 40),
     ]
@@ -487,7 +495,7 @@ describe('the six Défis, scripted', () => {
     })
     expect(outcome(ended)).toEqual({
       status: 'reussi',
-      medal: 'bronze',
+      medal: 'or',
       daysPlayed: 7,
       broken: null,
     })
@@ -500,7 +508,13 @@ describe('the six Défis, scripted', () => {
         lastDay: 76,
       },
     ])
-    expect(outcome(played('festivalDuPasPire', 42))).toEqual({
+    expect(outcome(played('festivalDuPasPire', 42))).toMatchObject({
+      status: 'reussi',
+      medal: 'argent',
+    })
+    expect(
+      outcome(played('festivalDuPasPire', 42, { start: [croissants(70)] })),
+    ).toEqual({
       status: 'echoue',
       medal: null,
       daysPlayed: 2,
@@ -512,7 +526,7 @@ describe('the six Défis, scripted', () => {
     const careful: Script = { start: [pay(30_000), croissants(45)] }
     const gilles = 'Gilles Lacasse'
 
-    it('argent with a smaller pay, Gilles paying on the last day; lost when 1 000 $ a week to the owner leaves the cash below zero', () => {
+    it('argent with a smaller pay, Gilles paying on the last day; lost when 1 500 $ a week to the owner leaves the cash below zero', () => {
       const ended = played('payeDans60Jours', 42, careful)
       expect(outcome(ended)).toEqual({
         status: 'reussi',
@@ -534,11 +548,11 @@ describe('the six Défis, scripted', () => {
         { day: 70, memo: `Encaissement · ${gilles}` },
       ])
       expect(
-        outcome(played('payeDans60Jours', 42, { start: [pay(100_000)] })),
+        outcome(played('payeDans60Jours', 42, { start: [pay(150_000)] })),
       ).toEqual({
         status: 'echoue',
         medal: null,
-        daysPlayed: 26,
+        daysPlayed: 55,
         broken: 'minCash',
       })
     })
@@ -566,7 +580,13 @@ describe('the six Défis, scripted', () => {
     })
   })
 
-  it('« Le mois sans congé »: bronze at 5,75 $ a unit without pay, so fewer customers tire the owner; lost when the owner, as a game starts, runs out of energy in two weeks', () => {
+  it('« Les deux semaines sans congé »: argent at its opening prices, and at 5,75 $ a unit without pay; lost when serving everyone at the starting prices tires the owner under the floor on day 13', () => {
+    expect(outcome(played('moisSansConge', 42))).toEqual({
+      status: 'reussi',
+      medal: 'argent',
+      daysPlayed: 14,
+      broken: null,
+    })
     expect(
       outcome(
         played('moisSansConge', 42, {
@@ -575,15 +595,15 @@ describe('the six Défis, scripted', () => {
       ),
     ).toEqual({
       status: 'reussi',
-      medal: 'bronze',
-      daysPlayed: 28,
+      medal: 'argent',
+      daysPlayed: 14,
       broken: null,
     })
-    const tired = played('moisSansConge', 42)
+    const tired = played('moisSansConge', 42, { start: startingPrices })
     expect(outcome(tired)).toEqual({
       status: 'echoue',
       medal: null,
-      daysPlayed: 14,
+      daysPlayed: 13,
       broken: 'minEnergy',
     })
     expect(() => applyDecision(tired, everyDay)).toThrow(
