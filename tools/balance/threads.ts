@@ -1,15 +1,17 @@
 import { Worker } from 'node:worker_threads'
 import type { DifficultyId } from '../../src/content/schema.ts'
 import type { EventPolicy } from '../sim/simulate.ts'
+import type { OwnersRun } from './owners.ts'
 import type { BalanceOptions, DifficultyRun } from './play.ts'
 import type { Strategy } from './strategies.ts'
 
 // Plays each difficulty of a run on its own worker thread (worker.ts), so
 // the three play side by side. Each difficulty plays the same games in the
-// same order as runBalance() would, so the run is the same.
+// same order as runBalance() or runOwners() would, so the run is the same.
 
-/** What one worker plays: one difficulty of the run. */
-export interface WorkerJob {
+/** What one worker plays for the grid: one difficulty of the run. */
+export interface GridJob {
+  readonly kind: 'grid'
   readonly years: number
   readonly games: number
   readonly difficulty: DifficultyId
@@ -19,6 +21,21 @@ export interface WorkerJob {
   readonly events?: EventPolicy
 }
 
+/** What one worker plays for `--percentiles`: one difficulty's owners. */
+export interface OwnersJob {
+  readonly kind: 'owners'
+  readonly years: number
+  readonly games: number
+  readonly difficulty: DifficultyId
+}
+
+export type WorkerJob = GridJob | OwnersJob
+
+/** What a worker posts back for `Job`. */
+export type JobRun<Job extends WorkerJob> = Job extends OwnersJob
+  ? OwnersRun
+  : DifficultyRun
+
 /** What `runBalance()` plays for `job`: its one difficulty. */
 export function jobOptions({
   years,
@@ -26,14 +43,14 @@ export function jobOptions({
   difficulty,
   strategies,
   events,
-}: WorkerJob): BalanceOptions {
+}: GridJob): BalanceOptions {
   return { years, games, strategies, events, difficulties: [difficulty] }
 }
 
 /** A difficulty being played, and how to stop it. */
-export interface Playing {
+export interface Playing<Run = DifficultyRun> {
   /** Rejects with what the worker threw, or if it stops before posting. */
-  readonly run: Promise<DifficultyRun>
+  readonly run: Promise<Run>
   /** Stops the worker; harmless once it is done. */
   readonly stop: () => Promise<unknown>
 }
@@ -44,12 +61,14 @@ const WORKER = new URL('./worker.ts', import.meta.url)
  * Starts a worker thread that plays `job`. The thread loads the TypeScript
  * through tsx, as `npm run balance` does, whatever the parent runs under.
  */
-export function playInWorker(job: WorkerJob): Playing {
+export function playInWorker<Job extends WorkerJob>(
+  job: Job,
+): Playing<JobRun<Job>> {
   const worker = new Worker(WORKER, {
     workerData: job,
     execArgv: ['--import', 'tsx'],
   })
-  const run = new Promise<DifficultyRun>((resolve, reject) => {
+  const run = new Promise<JobRun<Job>>((resolve, reject) => {
     worker.once('message', resolve)
     worker.once('error', reject)
     // After a message or an error, the promise is settled and this is a
@@ -69,11 +88,11 @@ export function playInWorker(job: WorkerJob): Playing {
  * Resolves to the runs in the order of `jobs`. On the first failure, stops
  * every other job and rejects with that failure.
  */
-export async function playAll(
-  jobs: readonly WorkerJob[],
-  onDone: (run: DifficultyRun) => void,
-  play: (job: WorkerJob) => Playing = playInWorker,
-): Promise<DifficultyRun[]> {
+export async function playAll<Job extends WorkerJob>(
+  jobs: readonly Job[],
+  onDone: (run: JobRun<Job>) => void,
+  play: (job: Job) => Playing<JobRun<Job>> = playInWorker,
+): Promise<JobRun<Job>[]> {
   const playing = jobs.map(play)
   try {
     return await Promise.all(
