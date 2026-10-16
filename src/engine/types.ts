@@ -266,6 +266,13 @@ export interface ChallengeState {
   readonly startDay: Day
   /** Where the Défi stands, as of the last close. */
   readonly progress: ChallengeProgress
+  /**
+   * The owner's lowest energy since the last close, that close's included,
+   * or since the Défi's first morning: after each effect of a choice made
+   * since and of the start of the day, so a dip a later effect makes up
+   * still counts. The next close adds it to `progress.lowestEnergy`.
+   */
+  readonly lowestEnergySinceClose: number
   /** Under way, won or lost. */
   readonly status: ChallengeStatus
   /** The medal won; null unless the Défi is won. */
@@ -299,8 +306,9 @@ export interface ChallengeProgress {
   /** Units written off at the close because their shelf life was over. */
   readonly unitsSpoiled: number
   /**
-   * The owner's lowest energy since the Défi began: on its first morning,
-   * on each morning played, after the start of each day and at each close.
+   * The owner's lowest energy since the Défi began, up to the last close:
+   * on its first morning, after each effect of a choice or of the start of
+   * a day, and at each close (see `ChallengeState.lowestEnergySinceClose`).
    */
   readonly lowestEnergy: number
 }

@@ -219,9 +219,9 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * receivables brought up to the close, the day added to the week under
  * way, summed up on a Sunday (see `recordDay`), and, in a Défi of `defis`,
  * the day added to its progress, which may end it (see
- * `recordChallengeDay`), with the owner's energy that morning, after the
- * start of the day and at the close; never mutates `morning`. Cash may go
- * negative.
+ * `recordChallengeDay`), with the owner's lowest energy since the last
+ * close, the start of the day's effects included, and at this one; never
+ * mutates `morning`. Cash may go negative.
  */
 export function playDay(
   morning: GameState,
@@ -412,11 +412,7 @@ export function playDay(
   )
   return {
     ...recorded,
-    challenge: recordChallengeDay(recorded, defi, entriesOf(opening).length, [
-      morning.energy,
-      state.energy,
-      closingEnergy,
-    ]),
+    challenge: recordChallengeDay(recorded, defi, entriesOf(opening).length),
   }
 }
 

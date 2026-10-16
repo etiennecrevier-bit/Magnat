@@ -2473,6 +2473,64 @@ describe('a Défi', () => {
     EVENTS,
   )
 
+  // « Le remontant », forced on the first morning, a closed Monday, at 30
+  // energy: « Maintenant » takes 20 of the owner's energy and gives it back
+  // at once, « Demain » takes 70 and gives it back at the start of Tuesday.
+  // Either way, the Défi of that name falls to its minimum energy.
+  const PICK_ME_UP = loadEventContent({
+    pacing: { firstDay: 0, minDaysBetween: 0, dailyChance: 0 },
+    events: [
+      {
+        id: 'remontant',
+        weight: 1,
+        character: { id: 'gerant', name: 'Le gérant', role: 'Gérant' },
+        title: 'Un remontant',
+        situation: 'Un café bien serré?',
+        choices: [
+          ['maintenant', 0],
+          ['demain', 1],
+        ].map(([id, inDays]) => ({
+          id,
+          label: id,
+          tags: ['Énergie'],
+          outcomes: [
+            {
+              chance: 1,
+              result: 'Ouf.',
+              effects: [-1, 1].map((sign) => ({
+                kind: 'energy',
+                amount: sign * (inDays === 0 ? 20 : 70),
+                ...(inDays === 0 ? {} : { inDays }),
+              })),
+            },
+          ],
+        })),
+      },
+    ],
+  })
+  const PICK_ME_UP_DEFIS = loadDefiContent(
+    {
+      defis: [
+        ['maintenant', 1],
+        ['demain', 2],
+      ].map(([id, lengthDays]) =>
+        defi({
+          id,
+          difficulty: 'facile',
+          lengthDays,
+          setup: { energy: 30, daysOpen: [3] },
+          events: [{ day: 0, event: 'remontant', choices: [id] }],
+          goal: {
+            metric: 'lowestEnergy',
+            medals: { or: 30, argent: 25, bronze: 20 },
+          },
+          conditions: [{ kind: 'minEnergy', amount: 25 }],
+        }),
+      ),
+    },
+    PICK_ME_UP,
+  )
+
   /** `state` saved and loaded with the Défis of these tests. */
   const reloaded = (state: GameState, defis = SAVE_DEFIS) =>
     deserialize(serialize(state), FOOD_TRUCK, EVENTS, DIFFICULTIES, defis)
@@ -2602,10 +2660,15 @@ describe('a Défi', () => {
       }
     })
 
-    it('keeps its progress to the last close while a choice made that morning moved the cash and the energy', () => {
+    it('keeps its progress to the last close while a choice made that morning moved the cash and the energy, and the energy that choice took', () => {
       const money = chosenOn(9)
-      expect(money.challenge).toStrictEqual(closeOf(8).challenge)
-      expect(reloaded(money).challenge).toStrictEqual(closeOf(8).challenge)
+      const before = closeOf(8).challenge
+      expect(money.energy).toBeLessThan(before?.lowestEnergySinceClose ?? 0)
+      expect(money.challenge).toStrictEqual({
+        ...before,
+        lowestEnergySinceClose: money.energy,
+      })
+      expect(reloaded(money).challenge).toStrictEqual(money.challenge)
     })
 
     it('gives back a Défi that starts in July and pays the loan on August 1st, and goes on the same', () => {
@@ -2629,6 +2692,75 @@ describe('a Défi', () => {
       expect(may[0]?.day).toBe(0)
       for (const state of may) expect(reloaded(state)).toStrictEqual(state)
       expect(playedOut(reloaded(may[0] as GameState))).toStrictEqual(may.at(-1))
+    })
+
+    it('gives back the energy a choice took and gave back, after the choice and after each day, and goes on the same', () => {
+      const loaded = (state: GameState) =>
+        deserialize(
+          serialize(state),
+          FOOD_TRUCK,
+          PICK_ME_UP,
+          DIFFICULTIES,
+          PICK_ME_UP_DEFIS,
+        )
+      const morningAfter = (state: GameState, id: string) =>
+        tick(
+          state.events.pending === null
+            ? state
+            : resolveEvent(state, id, PICK_ME_UP, FOOD_TRUCK, PICK_ME_UP_DEFIS),
+          FOOD_TRUCK,
+          CUSTOMERS,
+          DIFFICULTIES,
+          PERSONAL,
+          ENERGY,
+          PICK_ME_UP,
+          PICK_ME_UP_DEFIS,
+        )
+      for (const id of ['maintenant', 'demain']) {
+        // The first morning, its choice, then each close and morning after.
+        let state = startChallenge(id, SEED, FOOD_TRUCK, PICK_ME_UP_DEFIS)
+        const all = [state]
+        state = resolveEvent(
+          state,
+          id,
+          PICK_ME_UP,
+          FOOD_TRUCK,
+          PICK_ME_UP_DEFIS,
+        )
+        all.push(state)
+        while (state.challenge?.status === 'enCours') {
+          all.push(
+            playDay(
+              state,
+              FOOD_TRUCK,
+              CUSTOMERS,
+              DIFFICULTIES,
+              PERSONAL,
+              ENERGY,
+              PICK_ME_UP_DEFIS,
+            ),
+          )
+          state = morningAfter(state, id)
+          all.push(state)
+        }
+        expect(all[1]?.challenge?.lowestEnergySinceClose).toBe(
+          id === 'maintenant' ? 10 : 30,
+        )
+        expect(state.challenge).toMatchObject({
+          progress: { lowestEnergy: 10 },
+          status: 'echoue',
+          medal: null,
+        })
+        for (const saved of all) {
+          expect(loaded(saved)).toStrictEqual(saved)
+          if (saved.lastDay?.day === saved.day) continue
+          let played = loaded(saved)
+          while (played.challenge?.status === 'enCours') {
+            played = morningAfter(played, id)
+          }
+          expect(played).toStrictEqual(state)
+        }
+      }
     })
   })
 
@@ -2774,6 +2906,34 @@ describe('a Défi', () => {
       ])
       expectRejected(at(WEEK[0] as GameState, 'lowestEnergy', 50), [
         'challenge.progress.lowestEnergy is 50 before its first day is played, not 100',
+      ])
+    })
+
+    it('with a lowest energy since the last close the game could not leave', () => {
+      const at = (state: GameState, value: number) => {
+        const json = save(state)
+        ;(json.challenge as Json).lowestEnergySinceClose = value
+        return json
+      }
+      // With no choice made since, the last close's, or the starting energy.
+      const mid = morningOf(12)
+      const closing = mid.lastDay?.energy ?? 0
+      expectRejected(at(mid, closing - 1), [
+        `challenge.lowestEnergySinceClose is ${closing - 1}, not the ${closing} of the last close`,
+      ])
+      expectRejected(at(closeOf(12), 0), [
+        `challenge.lowestEnergySinceClose is 0, not the ${closeOf(12).lastDay?.energy} of the last close`,
+      ])
+      expectRejected(at(WEEK[0] as GameState, 99), [
+        'challenge.lowestEnergySinceClose is 99, not the 100 of its first morning',
+      ])
+      // A choice made that morning can only have lowered it, to the
+      // owner's energy now or below.
+      const tired = chosenOn(11)
+      const limit = Math.min(closeOf(10).lastDay?.energy ?? 0, tired.energy)
+      expect(tired.challenge?.lowestEnergySinceClose).toBe(limit)
+      expectRejected(at(tired, limit + 1), [
+        `challenge.lowestEnergySinceClose is ${limit + 1}, above ${limit}`,
       ])
     })
 

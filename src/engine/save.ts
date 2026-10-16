@@ -359,6 +359,7 @@ const challengeSchema = z.strictObject({
     unitsSpoiled: count,
     lowestEnergy: energyLevel,
   }),
+  lowestEnergySinceClose: energyLevel,
   status: challengeStatus,
   medal: medalSchema.nullable(),
 })
@@ -1318,6 +1319,10 @@ function defiOf(save: Parsed, defis: DefiContent): Defi | null {
  * - before its first day is played, nothing is counted and the owner's
  *   lowest energy is the Défi's starting energy; once it is, the lowest is
  *   no higher than that, nor than `lastDay`'s;
+ * - the owner's lowest energy since the last close is that close's, or the
+ *   starting energy before the first, unless a choice was made that
+ *   morning, which can only have lowered it, and to no higher than the
+ *   owner's energy now;
  * - it is under way before its first day is played, and otherwise as
  *   `verdict()` has it, with the medal it gives;
  * - once it is over, no event came after it or waits, and the Défi's
@@ -1402,6 +1407,19 @@ function checkChallenge(
   ) {
     invalid(
       `challenge.progress.lowestEnergy is ${progress.lowestEnergy}, above ${Math.min(energy, lastDay.energy)}`,
+    )
+  }
+  const { lowestEnergySinceClose: sinceClose } = challenge
+  const closed = lastDay?.energy ?? energy
+  if (lastDay?.day === day || !chosenThatMorning(save)) {
+    if (sinceClose !== closed) {
+      invalid(
+        `challenge.lowestEnergySinceClose is ${sinceClose}, not the ${closed} of ${lastDay === null ? 'its first morning' : 'the last close'}`,
+      )
+    }
+  } else if (sinceClose > Math.min(closed, save.energy)) {
+    invalid(
+      `challenge.lowestEnergySinceClose is ${sinceClose}, above ${Math.min(closed, save.energy)}`,
     )
   }
 

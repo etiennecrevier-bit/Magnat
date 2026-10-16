@@ -16,6 +16,7 @@ import {
   otherCharge,
 } from '../finance/receivables.ts'
 import { toCalendar } from './calendar.ts'
+import { withEnergyAt } from './challenge.ts'
 import { clampEnergy } from './energy.ts'
 import { takeFifo } from './inventory.ts'
 import { cents, mulInt, type Cents } from './money.ts'
@@ -90,7 +91,8 @@ export function untimed(effect: TimedEventEffect): EventEffect {
  *   what they cost: « Coût des marchandises vendues », Dr 5000 / Cr 1200,
  *   for an order, or « Marchandises offertes », Dr 6300 Marketing / Cr 1200,
  *   for a giveaway.
- * - `energy`: the owner's energy moves by `amount`, held between 0 and 100.
+ * - `energy`: the owner's energy moves by `amount`, held between 0 and 100,
+ *   and a Défi counts where it ends (see `withEnergyAt`).
  * - `personal`: a movement of the owner's own account, with no entry.
  * - `followUp`: the event comes back `days` later, if one draw comes in
  *   below its `chance`; a chance of 1 draws nothing.
@@ -183,8 +185,14 @@ export function applyEffect(
           : transfer(day, MEMO.giveaway, MARKETING, INVENTORY, cost)
       return { ...state, inventory: lots, journal: post(state.journal, entry) }
     }
-    case 'energy':
-      return { ...state, energy: clampEnergy(state.energy + effect.amount) }
+    case 'energy': {
+      const energy = clampEnergy(state.energy + effect.amount)
+      return {
+        ...state,
+        energy,
+        challenge: withEnergyAt(state.challenge, energy),
+      }
+    }
     case 'personal':
       return {
         ...state,

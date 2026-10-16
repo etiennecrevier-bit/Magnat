@@ -265,6 +265,7 @@ describe('startChallenge', () => {
           unitsSpoiled: 0,
           lowestEnergy: 80,
         },
+        lowestEnergySinceClose: 80,
         status: 'enCours',
         medal: null,
       },
@@ -313,6 +314,7 @@ describe('startChallenge', () => {
           unitsSpoiled: 0,
           lowestEnergy: 100,
         },
+        lowestEnergySinceClose: 100,
         status: 'enCours',
         medal: null,
       },
@@ -488,6 +490,95 @@ describe('the progress of a Défi', () => {
     const thursday = close(state, order)
     expect(thursday.lastDay?.energy).toBeGreaterThan(state.energy - 15)
     expect(thursday.challenge?.progress.lowestEnergy).toBe(state.energy - 15)
+  })
+
+  // « Le remontant », forced on a closed Monday at 30 energy: « Maintenant »
+  // takes 20 of the owner's energy and gives it back at once, « Demain »
+  // takes 70 and gives it back at the start of the next day.
+  const PICK_ME_UP: EventContent = loadEventContent({
+    pacing: { firstDay: 0, minDaysBetween: 0, dailyChance: 0 },
+    events: [
+      card('remontant', {
+        maintenant: [
+          { kind: 'energy', amount: -20 },
+          { kind: 'energy', amount: 20 },
+        ],
+        demain: [
+          { kind: 'energy', amount: -70, inDays: 1 },
+          { kind: 'energy', amount: 70, inDays: 1 },
+        ],
+      }),
+    ],
+  })
+  const pickMeUp = (choice: string, lengthDays: number): DefiContent =>
+    defis(
+      [
+        defi({
+          id: 'remontant',
+          lengthDays,
+          setup: { energy: 30, daysOpen: [3] },
+          events: [{ day: 0, event: 'remontant', choices: [choice] }],
+          goal: {
+            metric: 'lowestEnergy',
+            medals: { or: 30, argent: 25, bronze: 20 },
+          },
+          conditions: [{ kind: 'minEnergy', amount: 25 }],
+        }),
+      ],
+      PICK_ME_UP,
+    )
+
+  it("keeps the energy a choice's effects took, though the next effect gives it back at once", () => {
+    const content = pickMeUp('maintenant', 1)
+    const morning = resolveEvent(
+      startChallenge('remontant', SEED, FOOD_TRUCK, content),
+      'maintenant',
+      PICK_ME_UP,
+      FOOD_TRUCK,
+      content,
+    )
+    expect(morning.energy).toBe(30)
+    expect(morning.challenge).toMatchObject({
+      progress: { daysPlayed: 0, lowestEnergy: 30 },
+      lowestEnergySinceClose: 10,
+      status: 'enCours',
+    })
+    const after = next(morning, content, PICK_ME_UP)
+    expect(after.lastDay?.energy).toBeGreaterThan(30)
+    expect(after.challenge).toMatchObject({
+      progress: { daysPlayed: 1, lowestEnergy: 10 },
+      lowestEnergySinceClose: after.lastDay?.energy,
+      status: 'echoue',
+      medal: null,
+    })
+  })
+
+  it('keeps the energy the start of a day took, though the next effect gives it back at once', () => {
+    const content = pickMeUp('demain', 2)
+    let state = resolveEvent(
+      startChallenge('remontant', SEED, FOOD_TRUCK, content),
+      'demain',
+      PICK_ME_UP,
+      FOOD_TRUCK,
+      content,
+    )
+    expect(state.challenge?.lowestEnergySinceClose).toBe(30)
+    // Monday closes at 75, and Tuesday opens at 80.
+    state = next(state, content, PICK_ME_UP)
+    expect(state.energy).toBe(80)
+    expect(state.challenge).toMatchObject({
+      progress: { daysPlayed: 1, lowestEnergy: 30 },
+      lowestEnergySinceClose: state.lastDay?.energy,
+      status: 'enCours',
+    })
+    const tuesday = close(state, content)
+    expect(tuesday.lastDay?.energy).toBeGreaterThanOrEqual(80)
+    expect(tuesday.challenge).toMatchObject({
+      progress: { daysPlayed: 2, lowestEnergy: 10 },
+      lowestEnergySinceClose: tuesday.lastDay?.energy,
+      status: 'echoue',
+      medal: null,
+    })
   })
 
   it('counts the loan and the truck from the Défi’s first day, so a Défi that starts in July pays its first loan payment on August 1st, as the books hold it', () => {

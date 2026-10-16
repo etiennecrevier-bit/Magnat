@@ -116,7 +116,7 @@ export function startingEnergy(defi: Defi): number {
 
 /**
  * A Défi under way with no day played yet: its books open with `cash` in
- * Encaisse and the owner with `energy`.
+ * Encaisse and the owner with `energy`, the lowest so far.
  */
 export function openingChallenge(
   defi: Defi,
@@ -136,9 +136,25 @@ export function openingChallenge(
       unitsSpoiled: 0,
       lowestEnergy: energy,
     },
+    lowestEnergySinceClose: energy,
     status: 'enCours',
     medal: null,
   }
+}
+
+/**
+ * `challenge` with the owner's energy, now at `energy`, counted in its
+ * lowest since the last close; null in a game that is not a Défi. Every
+ * effect that moves the energy calls it (see `applyEffect`).
+ */
+export function withEnergyAt(
+  challenge: ChallengeState | null,
+  energy: number,
+): ChallengeState | null {
+  if (challenge === null || energy >= challenge.lowestEnergySinceClose) {
+    return challenge
+  }
+  return { ...challenge, lowestEnergySinceClose: energy }
 }
 
 /**
@@ -259,15 +275,17 @@ export function verdict(
  * from the Défi's first day, the lowest Encaisse since the books opened
  * with their first `openingEntries` entries (see `lowestCashSince`), the
  * visits that reached the counter, the units sold and written off, and the
- * lowest of the owner's energy so far and of `energies`, the levels the day
- * went through. Then its status and medal (see `verdict`). Null in a game
- * that is not a Défi. Throws an Error unless a day was played.
+ * owner's lowest energy so far, with the lowest since the last close and
+ * the close's own, from which the next lowest counts. Before the close,
+ * the energy only went up from the lowest since the last close, or down
+ * by an effect that counted, so no level of the day is missed. Then its
+ * status and medal (see `verdict`). Null in a game that is not a Défi.
+ * Throws an Error unless a day was played.
  */
 export function recordChallengeDay(
   closing: GameState,
   defi: Defi,
   openingEntries: number,
-  energies: readonly number[],
 ): ChallengeState | null {
   const { challenge, lastDay, journal } = closing
   if (challenge === null) return null
@@ -282,9 +300,18 @@ export function recordChallengeDay(
     customersServed: progress.customersServed + customersServed(lastDay),
     unitsSold: progress.unitsSold + units(lastDay.sold),
     unitsSpoiled: progress.unitsSpoiled + units(lastDay.spoiled),
-    lowestEnergy: Math.min(progress.lowestEnergy, ...energies),
+    lowestEnergy: Math.min(
+      progress.lowestEnergy,
+      challenge.lowestEnergySinceClose,
+      closing.energy,
+    ),
   }
-  return { ...challenge, progress: next, ...verdict(next, defi) }
+  return {
+    ...challenge,
+    progress: next,
+    lowestEnergySinceClose: closing.energy,
+    ...verdict(next, defi),
+  }
 }
 
 /**
