@@ -571,22 +571,27 @@ function effectSchemas<Extra extends z.core.$ZodShape>(extra: Extra) {
       client: frenchText(),
       ...extra,
     }),
-    /** Buys `units` of `product` at its unit cost, paid now. */
+    /**
+     * Buys `units` of `product`, paid now, at its unit cost or at
+     * `unitCostCents`.
+     */
     z.strictObject({
       kind: z.literal('buyStock'),
       product: productIdSchema,
       units: z.int().positive(),
+      unitCostCents: positiveMoney.optional(),
       ...extra,
     }),
     /**
      * Takes up to `units` of `product` out of the stock, oldest first: sold
-     * in an `order`, or given away to 6300 Marketing.
+     * in an `order`, given away to 6300 Marketing, or lost to 5100 Pertes
+     * sur stocks.
      */
     z.strictObject({
       kind: z.literal('useStock'),
       product: productIdSchema,
       units: z.int().positive(),
-      to: z.enum(['order', 'giveaway']),
+      to: z.enum(['order', 'giveaway', 'loss']),
       ...extra,
     }),
     /** Changes the owner's energy, which stays between 0 and 100. */
@@ -675,6 +680,14 @@ const timedEffectSchema = z
     (effect) =>
       effect.inDays === undefined || effect.onNextWeekday === undefined,
     { message: 'an effect starts after inDays or onNextWeekday, not both' },
+  )
+  // What a card shows of a later purchase reads the product's own cost.
+  .refine(
+    (effect) =>
+      effect.kind !== 'buyStock' ||
+      effect.unitCostCents === undefined ||
+      (effect.inDays === undefined && effect.onNextWeekday === undefined),
+    { message: 'a purchase at its own unit cost happens now' },
   )
 
 export type TimedEventEffect = z.output<typeof timedEffectSchema>
@@ -891,6 +904,14 @@ const calendarDateSchema = z
     { message: 'no such day in that month', path: ['dayOfMonth'] },
   )
 
+/** A choice of an event, as the history records it. */
+const eventChoiceRefSchema = z.strictObject({
+  event: idSchema,
+  choice: idSchema,
+})
+
+export type EventChoiceRef = z.output<typeof eventChoiceRefSchema>
+
 /**
  * When an event may be drawn: every condition given must hold on the
  * morning of the draw.
@@ -913,8 +934,14 @@ const eventConditionsSchema = z.strictObject({
   cashBelowCents: z.int().optional(),
   /** Never drawn again once it has come up. */
   oncePerGame: z.boolean().optional(),
+  /** Never drawn again once it has come up this many times. */
+  maxPerGame: z.int().positive().optional(),
   /** Days after it last came up before it may be drawn again. */
   cooldownDays: z.int().positive().optional(),
+  /** The player made one of these choices before. */
+  chosen: z.array(eventChoiceRefSchema).min(1).optional(),
+  /** The player never made any of these choices. */
+  notChosen: z.array(eventChoiceRefSchema).min(1).optional(),
   /** The product's restock rule buys some. */
   productOnMenu: productIdSchema.optional(),
   /**
@@ -1063,8 +1090,11 @@ export const eventContentSchema = z
   })
   .superRefine(({ events }, ctx) => {
     const ids = new Set(events.map(({ id }) => id))
+    const choicesOf = new Map(
+      events.map(({ id, choices }) => [id, choices.map((c) => c.id)]),
+    )
     const seen = new Set<string>()
-    events.forEach(({ id, choices }, e) => {
+    events.forEach(({ id, choices, conditions }, e) => {
       if (seen.has(id)) {
         ctx.addIssue({
           code: 'custom',
@@ -1073,6 +1103,20 @@ export const eventContentSchema = z
         })
       }
       seen.add(id)
+      for (const key of ['chosen', 'notChosen'] as const) {
+        conditions?.[key]?.forEach(({ event, choice }, r) => {
+          const known = choicesOf.get(event)
+          if (known?.includes(choice) === true) return
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              known === undefined
+                ? `no event has the id ${event}`
+                : `the event ${event} has no choice ${choice}`,
+            path: ['events', e, 'conditions', key, r],
+          })
+        })
+      }
       const choiceIds = new Set<string>()
       choices.forEach((choice, c) => {
         if (choiceIds.has(choice.id)) {

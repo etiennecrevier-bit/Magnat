@@ -2,6 +2,7 @@ import {
   loadEventContent,
   type DefiContent,
   type EventCard,
+  type EventChoiceRef,
   type EventConditions,
   type EventContent,
   type FoodTruckContent,
@@ -69,22 +70,29 @@ export function noEvents(): EventsState {
  * One morning brings one event at most: nothing changes while one waits, or
  * once one was chosen that morning. Otherwise, in this order:
  * 1. The first queued follow-up due that day or before whose event is in
- *    `content` comes up, with no draw. It ignores the conditions, the first
- *    day and the gap, and leaves `lastDrawnDay` as it is; any other one due
- *    waits for a later morning.
- * 2. Otherwise nothing comes before `pacing.firstDay`, nor less than
- *    `pacing.minDaysBetween` days after `lastDrawnDay`.
- * 3. Otherwise the events that may come are those with a weight above 0,
- *    not `followUpOnly`, whose conditions all hold that morning (see
- *    `conditionsHold`). With none, nothing is drawn. At a difficulty of
- *    `adaptiveDraw`, but in a Défi, an event's weight is its
- *    `weightByStanding` for the player's standing that morning against
- *    `percentiles` (see `standingOf`), if it sets one.
- * 4. Otherwise one draw against `pacing.dailyChance`, then one draw to pick
- *    among them by weight, and the event picked comes up with
- *    `lastDrawnDay` set to the day. A chance of 1, or a single event to
- *    pick, takes no draw.
- * Returns a new state; never mutates `state`.
+ *    `content` and only comes as a follow-up (`followUpOnly`) comes up: the
+ *    rest of a story, such as a payment due that morning, keeps its day.
+ * 2. Otherwise nothing new comes before `pacing.firstDay`, nor with a
+ *    `pacing.dailyChance` of 0. The events that may come are those with a
+ *    weight above 0, not `followUpOnly`, whose conditions all hold that
+ *    morning (see `conditionsHold`). At a difficulty of `adaptiveDraw`, but
+ *    in a Défi, an event's weight is its `weightByStanding` for the
+ *    player's standing that morning against `percentiles` (see
+ *    `standingOf`), if it sets one.
+ * 3. Otherwise an event dated that day that may come comes up, whatever
+ *    the gap and with no draw against the chance; one draw picks by weight
+ *    among several. `lastDrawnDay` is set to the day.
+ * 4. Otherwise the first queued follow-up due that day or before whose
+ *    event is in `content` comes up: a card coming back can wait a morning
+ *    for a dated one.
+ * 5. Otherwise nothing comes less than `pacing.minDaysBetween` days after
+ *    `lastDrawnDay`, nor when no event may come. Then one draw against
+ *    `pacing.dailyChance`, then one draw to pick by weight, and the event
+ *    picked comes up with `lastDrawnDay` set to the day. A chance of 1, or a
+ *    single event to pick, takes no draw.
+ * A follow-up takes no draw, ignores the conditions, the first day and the
+ * gap, and leaves `lastDrawnDay` as it is; any other one due waits for a
+ * later morning. Returns a new state; never mutates `state`.
  */
 export function drawEvent(
   state: GameState,
@@ -96,45 +104,80 @@ export function drawEvent(
     return state
   }
 
-  const known = new Set(content.events.map(({ id }) => id))
-  const due = events.followUps.findIndex(
-    (followUp) => followUp.day <= day && known.has(followUp.event),
+  const cards = new Map(content.events.map((event) => [event.id, event]))
+  const story = events.followUps.findIndex(
+    ({ day: due, event }) =>
+      due <= day && cards.get(event)?.conditions?.followUpOnly === true,
   )
-  const followUp = events.followUps[due]
-  if (followUp !== undefined) {
-    return {
-      ...state,
-      events: {
-        ...events,
-        pending: { event: followUp.event, followUp: true },
-        followUps: events.followUps.filter((_, index) => index !== due),
-      },
-    }
-  }
+  if (story !== -1) return withFollowUp(state, story)
 
   const { firstDay, minDaysBetween, dailyChance } = content.pacing
-  if (day < firstDay || dailyChance === 0) return state
+  const drawing = day >= firstDay && dailyChance > 0
+  const seen = lastSeen(events.history)
+  const weightOf = weighing(state, content, percentiles)
+  const mayCome = (event: EventCard) =>
+    event.conditions?.followUpOnly !== true &&
+    conditionsHold(event, state, seen) &&
+    weightOf(event) > 0
+
+  if (drawing) {
+    const today = toCalendar(day)
+    const dated = content.events.filter(
+      (event) =>
+        event.conditions?.date?.month === today.month &&
+        event.conditions.date.dayOfMonth === today.dayOfMonth &&
+        mayCome(event),
+    )
+    if (dated.length > 0) return picking(state, dated, weightOf, 1)
+  }
+
+  const due = events.followUps.findIndex(
+    ({ day: from, event }) => from <= day && cards.has(event),
+  )
+  if (due !== -1) return withFollowUp(state, due)
+
   if (
-    events.lastDrawnDay !== null &&
-    day - events.lastDrawnDay < minDaysBetween
+    !drawing ||
+    (events.lastDrawnDay !== null && day - events.lastDrawnDay < minDaysBetween)
   ) {
     return state
   }
-  const seen = lastSeen(events.history)
-  const weightOf = weighing(state, content, percentiles)
-  const eligible = content.events.filter(
-    (event) =>
-      event.conditions?.followUpOnly !== true &&
-      conditionsHold(event, state, seen) &&
-      weightOf(event) > 0,
-  )
+  const eligible = content.events.filter(mayCome)
   if (eligible.length === 0) return state
+  return picking(state, eligible, weightOf, dailyChance)
+}
 
+/** `state` with its follow-up at `index` waiting, out of the queue. */
+function withFollowUp(state: GameState, index: number): GameState {
+  const { events } = state
+  const followUp = events.followUps[index]
+  if (followUp === undefined) return state
+  return {
+    ...state,
+    events: {
+      ...events,
+      pending: { event: followUp.event, followUp: true },
+      followUps: events.followUps.filter((_, at) => at !== index),
+    },
+  }
+}
+
+/**
+ * `state` with one of `eligible`, which holds at least one, waiting as drawn
+ * that day: one draw against `chance`, unless it is 1, then one draw to
+ * pick by weight, unless there is a single event.
+ */
+function picking(
+  state: GameState,
+  eligible: readonly EventCard[],
+  weightOf: (event: EventCard) => number,
+  chance: number,
+): GameState {
   let { rngState } = state
-  if (dailyChance < 1) {
+  if (chance < 1) {
     const [value, after] = next(rngState)
     rngState = after
-    if (value >= dailyChance) return { ...state, rngState }
+    if (value >= chance) return { ...state, rngState }
   }
   let [picked] = eligible
   if (eligible.length > 1) {
@@ -147,9 +190,9 @@ export function drawEvent(
     ...state,
     rngState,
     events: {
-      ...events,
+      ...state.events,
       pending: { event: picked.id, followUp: false },
-      lastDrawnDay: day,
+      lastDrawnDay: state.day,
     },
   }
 }
@@ -162,7 +205,9 @@ export function drawEvent(
  * below `energyBelow`; the product of `productOnMenu` has a restock rule
  * that buys some; the truck opens the next day, or stays closed, as
  * `openTomorrow` says (see `opensOn`); the event never came up, for
- * `oncePerGame`, or came up at least `cooldownDays` days ago; and Encaisse
+ * `oncePerGame`, came up fewer than `maxPerGame` times, or came up at least
+ * `cooldownDays` days ago, follow-ups included; the history holds one of the
+ * choices `chosen` lists, and none of those `notChosen` lists; and Encaisse
  * is above `cashAboveCents` and below `cashBelowCents`, read from the books
  * only when every other condition holds. `followUpOnly` is `drawEvent`'s,
  * not checked here.
@@ -183,7 +228,10 @@ export function conditionsHold(
     productOnMenu,
     openTomorrow,
     oncePerGame,
+    maxPerGame,
     cooldownDays,
+    chosen,
+    notChosen,
     cashAboveCents,
     cashBelowCents,
   }: EventConditions = conditions
@@ -222,6 +270,15 @@ export function conditionsHold(
   ) {
     return false
   }
+  const { history } = state.events
+  if (
+    maxPerGame !== undefined &&
+    history.filter(({ event }) => event === id).length >= maxPerGame
+  ) {
+    return false
+  }
+  if (chosen !== undefined && !madeOneOf(history, chosen)) return false
+  if (notChosen !== undefined && madeOneOf(history, notChosen)) return false
   if (cashAboveCents === undefined && cashBelowCents === undefined) return true
   const cash = balance(state.journal, CASH, { toDay: day })
   return (
@@ -323,6 +380,18 @@ function lastSeen(history: readonly EventRecord[]): Map<string, Day> {
   const seen = new Map<string, Day>()
   for (const { event, day } of history) seen.set(event, day)
   return seen
+}
+
+/** Whether `history` records one of the `choices`, each of its event. */
+function madeOneOf(
+  history: readonly EventRecord[],
+  choices: readonly EventChoiceRef[],
+): boolean {
+  return choices.some(({ event, choice }) =>
+    history.some(
+      (record) => record.event === event && record.choice === choice,
+    ),
+  )
 }
 
 /** Whether a restock rule buys some of its product. */

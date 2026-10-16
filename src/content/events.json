@@ -1,6 +1,6 @@
 {
-  "_note": "Pacing from issue #91. The twelve cards of issue #93 keep a weight of 1; P3-13 (#101) tuned their amounts, chances and effects at Moyen with `npm run balance -- --percentiles`, until no choice wins too often or too seldom: see docs/balance/phase-3.md. P3-13b (#137) scales what a choice gives and takes by difficulty, gives every Difficile choice a cost, adds four cards that Facile draws by the player's standing, and tuned the cards at each difficulty with the same report. A card's text writes its amounts as {montant:name}, so they follow the scaling too. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
-  "pacing": { "firstDay": 7, "minDaysBetween": 5, "dailyChance": 0.15 },
+  "_note": "Pacing from issue #155 (R-06): from day 10, 14 days apart, 8 % a morning, about one event every 3 to 4 weeks; an event dated that day comes whatever the gap and the chance. The twelve cards of issue #93 keep a weight of 1; P3-13 (#101) tuned their amounts, chances and effects at Moyen with `npm run balance -- --percentiles`, until no choice wins too often or too seldom: see docs/balance/phase-3.md. P3-13b (#137) scales what a choice gives and takes by difficulty, gives every Difficile choice a cost, adds four cards that Facile draws by the player's standing, and tuned the cards at each difficulty with the same report. R-06 (#155) caps the cards that came too often with maxPerGame, lets the chalet come on any tired summer morning, and adds thirteen cards whose amounts are starting values, not yet tuned. A card's text writes its amounts as {montant:name}, so they follow the scaling too. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
+  "pacing": { "firstDay": 10, "minDaysBetween": 14, "dailyChance": 0.08 },
   "scaling": {
     "_note": "Tuned at each difficulty with the event report of npm run balance -- --percentiles (#137): Facile keeps the gains and softens the losses, Moyen raises both, Difficile gives less and takes more. The issue's starting values (1 and 0.7, 1.3 and 1.3, 0.7 and 1.2) pushed choices off their targets, since a choice's money scales but the days it closes the truck or stops a product do not: see docs/balance/phase-3.md.",
     "lowestFactor": 0.1,
@@ -550,7 +550,9 @@
       "conditions": {
         "fromDay": 30,
         "cooldownDays": 120,
-        "productOnMenu": "cafe"
+        "maxPerGame": 3,
+        "productOnMenu": "cafe",
+        "notChosen": [{ "event": "camionVoisin", "choice": "machine" }]
       },
       "choices": [
         {
@@ -768,6 +770,7 @@
       "conditions": {
         "fromDay": 14,
         "cooldownDays": 90,
+        "maxPerGame": 2,
         "productOnMenu": "croissant"
       },
       "choices": [
@@ -864,7 +867,7 @@
       "title": "La Patate Pressée",
       "situation": "Un camion à poutine se gare de l'autre côté de la rue. Son propriétaire traverse pour se présenter, une barquette fumante à la main.",
       "quote": "Je me stationne en face pour deux semaines. Rien de personnel : la poutine pis le croissant, c'est pas la même clientèle.",
-      "conditions": { "fromDay": 28, "cooldownDays": 150 },
+      "conditions": { "fromDay": 28, "cooldownDays": 150, "maxPerGame": 2 },
       "choices": [
         {
           "id": "allerLuiParler",
@@ -992,7 +995,7 @@
     },
     {
       "id": "chalet",
-      "weight": 1,
+      "weight": 4,
       "character": {
         "id": "martine",
         "name": "Martine",
@@ -1002,9 +1005,8 @@
       "situation": "Votre téléphone vibre. C'est Martine, votre amie d'enfance, qui vous écrit en majuscules depuis son quai.",
       "quote": "Viens au chalet pour la longue fin de semaine! Le lac est chaud, les maringouins sont gentils cette année.",
       "conditions": {
-        "energyBelow": 60,
+        "energyBelow": 100,
         "months": [6, 7, 8, 9],
-        "weekdays": [1, 2, 3],
         "cooldownDays": 60
       },
       "choices": [
@@ -1642,6 +1644,1015 @@
                   "days": 14,
                   "difficulties": ["difficile"],
                   "name": "chic"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "panneCourant",
+      "weight": 1,
+      "character": {
+        "id": "meteorologue",
+        "name": "Le météorologue",
+        "role": "Météo de La Presse-Citron"
+      },
+      "title": "La panne de courant",
+      "situation": "À la radio, le météorologue de La Presse-Citron raconte l'orage de la nuit. Le quartier est sans courant, votre entrepôt aussi : le frigo est éteint, et le lait de vos cafés et de vos chocolats chauds tournera avant midi.",
+      "quote": "La compagnie d'électricité promet le courant pour ce soir. Ou demain. Elle promet beaucoup de choses.",
+      "conditions": { "fromDay": 20, "months": [6, 7, 8], "cooldownDays": 365 },
+      "choices": [
+        {
+          "id": "generatrice",
+          "label": "Louer une génératrice",
+          "tags": [
+            { "text": "Génératrice −{montant}", "effect": "generatrice" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "La génératrice tousse, crache, puis démarre. Votre frigo est sauvé. Les voisins, eux, l'entendent jusqu'au soir.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 15000,
+                  "description": "Location d'une génératrice",
+                  "account": "6200",
+                  "name": "generatrice"
+                },
+                { "kind": "headline", "id": "panneCourant" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "jeter",
+          "label": "Tout jeter et racheter",
+          "tags": ["Réserves de café et de chocolat perdues"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Vous videz le frigo dans le conteneur. Le prochain achat remplira les tablettes. Les goélands du quartier, eux, festoient.",
+              "effects": [
+                {
+                  "kind": "useStock",
+                  "product": "cafe",
+                  "units": 300,
+                  "to": "loss"
+                },
+                {
+                  "kind": "useStock",
+                  "product": "chocolat",
+                  "units": 150,
+                  "to": "loss"
+                },
+                { "kind": "headline", "id": "panneCourant" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stagiaire",
+      "weight": 1,
+      "character": {
+        "id": "normand",
+        "name": "Normand",
+        "role": "Votre voisin"
+      },
+      "title": "Le stagiaire",
+      "situation": "Normand arrive avec un grand adolescent qui fixe ses souliers. C'est Jérémie, son neveu, qui doit faire un stage d'été pour l'école.",
+      "quote": "Deux semaines, gratis. Il est travaillant. Enfin, il est là, c'est un début.",
+      "conditions": { "fromDay": 30, "cooldownDays": 180 },
+      "choices": [
+        {
+          "id": "prendre",
+          "label": "Le prendre en stage",
+          "tags": [
+            { "text": "Énergie +{montant}", "effect": "energie" },
+            {
+              "text": "Clients −{montant} pendant 2 semaines",
+              "effect": "lent"
+            },
+            "Risqué"
+          ],
+          "outcomes": [
+            {
+              "chance": 0.7,
+              "result": "Jérémie lave, range et sort les poubelles. Au comptoir, il est lent, mais il dit « bonne journée » à tout le monde.",
+              "effects": [
+                { "kind": "energy", "amount": 15, "name": "energie" },
+                {
+                  "kind": "walkIns",
+                  "factor": 0.92,
+                  "days": 14,
+                  "name": "lent"
+                },
+                { "kind": "headline", "id": "stagiaire" }
+              ]
+            },
+            {
+              "chance": 0.3,
+              "result": "Jérémie a découvert le chocolat chaud. Il s'en sert un entre chaque client. Il y a moins de clients, et beaucoup moins de chocolat.",
+              "effects": [
+                { "kind": "energy", "amount": 15, "name": "energie" },
+                {
+                  "kind": "walkIns",
+                  "factor": 0.92,
+                  "days": 14,
+                  "name": "lent"
+                },
+                {
+                  "kind": "useStock",
+                  "product": "chocolat",
+                  "units": 40,
+                  "to": "loss"
+                },
+                { "kind": "headline", "id": "stagiaire" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Refuser",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Normand comprend. Jérémie aussi : il sourit pour la première fois de la matinée.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "feteQuartier",
+      "weight": 1,
+      "character": {
+        "id": "jeanPhilippe",
+        "name": "Jean-Philippe",
+        "role": "Bénévole en chef, comité de quartier"
+      },
+      "title": "La fête de quartier",
+      "situation": "Jean-Philippe, en dossard jaune, vous tend un dépliant couvert de ballons. La fête de quartier approche, et il manque encore un commanditaire pour la grande bannière.",
+      "quote": "{montant:banniere}, et votre nom est sur la bannière, en gros. Tout le quartier va la voir pendant un mois.",
+      "conditions": {
+        "fromDay": 20,
+        "months": [5, 6, 7, 8, 9],
+        "cooldownDays": 365
+      },
+      "choices": [
+        {
+          "id": "commanditer",
+          "label": "Commanditer la bannière",
+          "tags": [
+            { "text": "Commandite −{montant}", "effect": "banniere" },
+            {
+              "text": "Habitués +{montant} pendant 1 mois",
+              "effect": "habitues"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Votre nom trône sur la bannière, entre le dépanneur et le club de bingo. Les voisins vous saluent par votre prénom.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 30000,
+                  "description": "Commandite de la fête de quartier",
+                  "account": "6300",
+                  "name": "banniere"
+                },
+                {
+                  "kind": "walkIns",
+                  "factor": 1.15,
+                  "segment": "habitue",
+                  "days": 30,
+                  "name": "habitues"
+                },
+                { "kind": "headline", "id": "feteQuartier" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "nonMerci",
+          "label": "Non merci",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Jean-Philippe trouve un autre commanditaire. La bannière dira « Merci à La Patate Pressée », en lettres de fromage.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fournisseurRetard",
+      "weight": 1,
+      "character": {
+        "id": "rejeanLalonde",
+        "name": "Réjean Lalonde",
+        "role": "Contremaître pour la Ville"
+      },
+      "title": "Le fournisseur en retard",
+      "situation": "Réjean passe vous avertir, son café à la main : demain matin, la rue sera fermée pour les travaux. Le camion de la Meunerie Bonpain ne pourra pas vous livrer vos croissants.",
+      "quote": "On rouvre à midi. Ou à quatre heures. Disons demain soir, pour être certain.",
+      "conditions": {
+        "fromDay": 20,
+        "cooldownDays": 120,
+        "productOnMenu": "croissant",
+        "openTomorrow": true
+      },
+      "choices": [
+        {
+          "id": "fermer",
+          "label": "Fermer demain",
+          "tags": ["Fermé demain"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Vous accrochez une affiche : « Fermé pour travaux (pas les nôtres) ». Une journée de congé forcé.",
+              "effects": [
+                { "kind": "closed", "days": 1, "inDays": 1 },
+                { "kind": "headline", "id": "fournisseurRetard" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "depanneur",
+          "label": "Acheter au dépanneur",
+          "tags": [
+            {
+              "text": "Croissants du dépanneur −{montant}",
+              "effect": "depanneur"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Le dépanneur a des croissants. Emballés un par un, au double du prix, mais ce sont des croissants.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 8000,
+                  "description": "Supplément, croissants du dépanneur",
+                  "inDays": 1,
+                  "name": "depanneur"
+                },
+                { "kind": "headline", "id": "fournisseurRetard" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "sansCroissants",
+          "label": "Ouvrir sans croissants",
+          "tags": ["Pas de croissants demain"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Demain, pas de croissants. Vos clients prendront un café en fixant la vitrine vide avec nostalgie.",
+              "effects": [
+                {
+                  "kind": "unavailable",
+                  "product": "croissant",
+                  "days": 1,
+                  "inDays": 1
+                },
+                { "kind": "headline", "id": "fournisseurRetard" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "carteFidelite",
+      "weight": 1,
+      "character": {
+        "id": "gillesLacasse",
+        "name": "Gilles Lacasse",
+        "role": "Traiteur, imprimeur à ses heures"
+      },
+      "title": "La carte de fidélité",
+      "situation": "Gilles Lacasse, du Congrès québécois des optimistes, s'est trouvé une nouvelle passion : l'imprimerie. Il étale sur le comptoir des cartes de fidélité à votre nom.",
+      "quote": "Dix cafés, le onzième est gratuit! Les clients reviennent pour le onzième. Ils ne le réclament jamais, faites-moi confiance.",
+      "conditions": { "fromDay": 45, "oncePerGame": true },
+      "choices": [
+        {
+          "id": "imprimer",
+          "label": "Imprimer les cartes",
+          "tags": [
+            { "text": "Impression −{montant}", "effect": "cartes" },
+            {
+              "text": "Clients +{montant} pendant 2 mois",
+              "effect": "clients"
+            },
+            {
+              "text": "Chasseurs d'aubaines prêts à payer −{montant}",
+              "effect": "aubaine"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Gilles livre les cartes le jour même, encore chaudes. Les clients reviennent pour le onzième café. Les chasseurs d'aubaines, eux, comptent.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 12000,
+                  "description": "Cartes de fidélité",
+                  "account": "6300",
+                  "name": "cartes"
+                },
+                {
+                  "kind": "walkIns",
+                  "factor": 1.1,
+                  "days": 60,
+                  "name": "clients"
+                },
+                {
+                  "kind": "willingness",
+                  "factor": 0.95,
+                  "segment": "aubaine",
+                  "days": 60,
+                  "name": "aubaine"
+                },
+                { "kind": "headline", "id": "carteFidelite" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "nonMerci",
+          "label": "Non merci",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Gilles range ses cartes, pas découragé du tout. « Je vais les proposer au camion à poutine. Une poutine sur dix, gratuite! »",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "inspection",
+      "weight": 1,
+      "character": {
+        "id": "liseTremblayCote",
+        "name": "Lise Tremblay-Côté",
+        "role": "Inspectrice au Bureau des permis et des formulaires"
+      },
+      "title": "L'inspection surprise",
+      "situation": "Lise Tremblay-Côté enfile des gants blancs devant votre camion. Elle annonce une inspection d'hygiène surprise, dès qu'elle aura trouvé le bon formulaire.",
+      "quote": "Je reviens à midi avec le formulaire 31-H. D'ici là, je n'ai rien vu. Surtout pas votre frigo.",
+      "conditions": { "fromDay": 30, "cooldownDays": 150 },
+      "choices": [
+        {
+          "id": "nettoyer",
+          "label": "Tout nettoyer",
+          "tags": [{ "text": "Énergie −{montant}", "effect": "energie" }],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Vous frottez tout, même le dessous du comptoir. Lise passe le doigt partout et ne trouve rien. Elle a l'air déçue.",
+              "effects": [
+                { "kind": "energy", "amount": -10, "name": "energie" },
+                { "kind": "headline", "id": "inspection" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "croiserDoigts",
+          "label": "Croiser les doigts",
+          "tags": [
+            { "text": "Peut-être une amende de {montant}", "effect": "amende" },
+            { "text": "Énergie −{montant}", "effect": "energie" },
+            "Risqué"
+          ],
+          "outcomes": [
+            {
+              "chance": 0.6,
+              "result": "Lise inspecte, plisse les yeux, puis tamponne votre permis. Le frigo a tenu bon. Vous aussi.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                },
+                { "kind": "headline", "id": "inspection" }
+              ]
+            },
+            {
+              "chance": 0.4,
+              "result": "Lise ouvre le frigo, le referme, puis sort son carnet. Le formulaire 31-H prévoit une amende pour « odeur suspecte ».",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 50000,
+                  "description": "Amende, formulaire 31-H",
+                  "name": "amende"
+                },
+                { "kind": "headline", "id": "inspection" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pluie",
+      "weight": 1,
+      "character": {
+        "id": "meteorologue",
+        "name": "Le météorologue",
+        "role": "Météo de La Presse-Citron"
+      },
+      "title": "La pluie de trois jours",
+      "situation": "À la radio, le météorologue de La Presse-Citron annonce trois jours de pluie. Il a l'air de s'en réjouir.",
+      "quote": "Pluie forte et rafales pour trois jours. Restez chez vous, à moins de vendre des parapluies.",
+      "conditions": {
+        "fromDay": 14,
+        "months": [4, 5, 6, 7, 8, 9, 10],
+        "cooldownDays": 90,
+        "notChosen": [{ "event": "pluie", "choice": "auvent" }]
+      },
+      "choices": [
+        {
+          "id": "auvent",
+          "label": "Acheter un auvent",
+          "tags": [
+            { "text": "Auvent −{montant}", "effect": "auvent" },
+            { "text": "Clients −{montant} pendant 3 jours", "effect": "pluie" },
+            "La prochaine pluie fera moins mal"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "L'auvent est installé avant midi. Les passants s'abritent dessous, et certains prennent un café pour ne pas avoir l'air de s'abriter.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 40000,
+                  "description": "Auvent pour le camion",
+                  "name": "auvent"
+                },
+                {
+                  "kind": "walkIns",
+                  "factor": 0.8,
+                  "days": 3,
+                  "name": "pluie"
+                },
+                { "kind": "headline", "id": "pluie" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "attendre",
+          "label": "Attendre le soleil",
+          "tags": [
+            { "text": "Clients −{montant} pendant 3 jours", "effect": "pluie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Trois jours de pluie. Vos rares clients arrivent trempés et repartent trempés, avec un café.",
+              "effects": [
+                {
+                  "kind": "walkIns",
+                  "factor": 0.6,
+                  "days": 3,
+                  "name": "pluie"
+                },
+                { "kind": "headline", "id": "pluie" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pluieAuvent",
+      "weight": 1,
+      "character": {
+        "id": "meteorologue",
+        "name": "Le météorologue",
+        "role": "Météo de La Presse-Citron"
+      },
+      "title": "La pluie, sous l'auvent",
+      "situation": "Le météorologue de La Presse-Citron annonce encore trois jours de pluie. Cette fois, vous avez un auvent.",
+      "quote": "Pluie forte, vents faibles. Une belle semaine pour les auvents, pour ceux qui en ont un.",
+      "conditions": {
+        "months": [4, 5, 6, 7, 8, 9, 10],
+        "cooldownDays": 90,
+        "chosen": [{ "event": "pluie", "choice": "auvent" }]
+      },
+      "choices": [
+        {
+          "id": "ouvrir",
+          "label": "Ouvrir sous l'auvent",
+          "tags": [
+            { "text": "Clients −{montant} pendant 3 jours", "effect": "pluie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Sous l'auvent, on est au sec. Les passants s'y arrêtent le temps d'une accalmie, et repartent avec un café.",
+              "effects": [
+                {
+                  "kind": "walkIns",
+                  "factor": 0.8,
+                  "days": 3,
+                  "name": "pluie"
+                },
+                { "kind": "headline", "id": "pluieAuvent" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "fermer",
+          "label": "Fermer trois jours",
+          "tags": ["Fermé 3 jours"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Trois jours au sec, en pantoufles. L'auvent, lui, prend la pluie tout seul.",
+              "effects": [
+                { "kind": "closed", "days": 3 },
+                { "kind": "headline", "id": "pluieAuvent" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "clientMystere",
+      "weight": 1,
+      "character": {
+        "id": "coralieLumiere",
+        "name": "Coralie Lumière",
+        "role": "Influenceuse, 48 000 abonnés"
+      },
+      "title": "Le client mystère",
+      "situation": "Coralie Lumière s'arrête au comptoir, l'air de quelqu'un qui sait quelque chose. Du menton, elle désigne un homme en béret qui lit votre menu depuis vingt minutes.",
+      "quote": "C'est le critique incognito du Guide du bon goût. Je le reconnais : il porte le même béret que sur sa photo officielle.",
+      "conditions": {
+        "fromDay": 45,
+        "cooldownDays": 180,
+        "productOnMenu": "croissant"
+      },
+      "choices": [
+        {
+          "id": "grandJeu",
+          "label": "Sortir le grand jeu",
+          "tags": [
+            "Peut-être une bonne critique",
+            { "text": "Énergie −{montant}", "effect": "energie" },
+            "Risqué"
+          ],
+          "outcomes": [
+            {
+              "chance": 0.6,
+              "result": "Croissant tiède, café parfait, sourire de concours. L'homme au béret prend des notes. Le Guide vous adore, et la clientèle chic accourt.",
+              "effects": [
+                { "kind": "energy", "amount": -10, "name": "energie" },
+                {
+                  "kind": "walkIns",
+                  "factor": 1.2,
+                  "segment": "chic",
+                  "days": 21
+                },
+                { "kind": "headline", "id": "clientMystereEloge" }
+              ]
+            },
+            {
+              "chance": 0.4,
+              "result": "Vous sortez le grand jeu. L'homme au béret paie, puis demande où est l'arrêt d'autobus. C'était un touriste.",
+              "effects": [
+                { "kind": "energy", "amount": -10, "name": "energie" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "habitude",
+          "label": "Faire comme d'habitude",
+          "tags": [
+            "Peut-être une bonne critique",
+            { "text": "Énergie −{montant}", "effect": "energie" },
+            "Risqué"
+          ],
+          "outcomes": [
+            {
+              "chance": 0.3,
+              "result": "L'homme au béret commande deux fois. Le Guide du bon goût vous trouve « sans prétention ». C'est un compliment, paraît-il.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                },
+                {
+                  "kind": "walkIns",
+                  "factor": 1.1,
+                  "segment": "chic",
+                  "days": 14
+                },
+                { "kind": "headline", "id": "clientMystereTiede" }
+              ]
+            },
+            {
+              "chance": 0.7,
+              "result": "L'homme au béret mange, paie et part sans un mot. Vous ne saurez jamais.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "camionVoisin",
+      "weight": 1,
+      "character": {
+        "id": "sylvain",
+        "name": "Sylvain",
+        "role": "Camion à poutine La Patate Pressée"
+      },
+      "title": "Le camion voisin ferme",
+      "situation": "Sylvain, de La Patate Pressée, traverse la rue la mine basse. Son beau-frère ferme son camion à café et vend tout avant de partir en Floride.",
+      "quote": "Il liquide son café pour presque rien, pis sa machine à espresso. Elle est quasiment neuve. Elle a juste un peu voyagé.",
+      "conditions": {
+        "fromDay": 60,
+        "oncePerGame": true,
+        "productOnMenu": "cafe"
+      },
+      "choices": [
+        {
+          "id": "stock",
+          "label": "Racheter son café",
+          "tags": [
+            "Du café à rabais",
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Vous traversez la rue les bras pleins de sacs de café. Le beau-frère vous remercie en vous montrant ses billets d'avion.",
+              "effects": [
+                {
+                  "kind": "buyStock",
+                  "product": "cafe",
+                  "units": 300,
+                  "unitCostCents": 20
+                },
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                },
+                { "kind": "headline", "id": "camionVoisin" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "machine",
+          "label": "Acheter sa machine",
+          "tags": [
+            { "text": "Machine −{montant}", "effect": "machine" },
+            { "text": "Café +{montant} pendant 3 mois", "effect": "cafe" },
+            "Fini la machine qui tousse"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "La machine du beau-frère fait un espresso digne de l'Italie. Bertrand, de Bertrand Répare Tout, vient de perdre un client.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 120000,
+                  "description": "Machine à espresso du beau-frère de Sylvain",
+                  "account": "6200",
+                  "name": "machine"
+                },
+                {
+                  "kind": "appeal",
+                  "product": "cafe",
+                  "factor": 1.1,
+                  "days": 90,
+                  "name": "cafe"
+                },
+                { "kind": "headline", "id": "camionVoisin" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "nonMerci",
+          "label": "Lui souhaiter bonne chance",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Sylvain soupire. « Il va s'ennuyer, en Floride. Il n'y a même pas de nids-de-poule. »",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "commandite",
+      "weight": 1,
+      "character": {
+        "id": "martine",
+        "name": "Martine",
+        "role": "Entraîneuse des Castors du Plateau"
+      },
+      "title": "La demande de commandite",
+      "situation": "Martine, votre amie d'enfance, entraîne maintenant les Castors du Plateau, l'équipe de hockey pee-wee du quartier. Elle arrive avec un chandail à votre taille et un sourire de vendeuse.",
+      "quote": "{montant:commandite}, et votre camion est sur nos chandails toute la saison. Les parents des joueurs boivent beaucoup de café. Beaucoup.",
+      "conditions": { "months": [9, 10, 11, 12, 1, 2, 3], "cooldownDays": 365 },
+      "choices": [
+        {
+          "id": "commanditer",
+          "label": "Commanditer les Castors",
+          "tags": [
+            { "text": "Commandite −{montant}", "effect": "commandite" },
+            {
+              "text": "Habitués +{montant} pendant 3 mois",
+              "effect": "habitues"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Votre camion brille sur douze chandails trop grands. Les parents passent prendre un café avant chaque match, et après chaque défaite.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 20000,
+                  "description": "Commandite des Castors du Plateau",
+                  "account": "6300",
+                  "name": "commandite"
+                },
+                {
+                  "kind": "walkIns",
+                  "factor": 1.05,
+                  "segment": "habitue",
+                  "days": 90,
+                  "name": "habitues"
+                },
+                { "kind": "headline", "id": "commandite" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Refuser",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Martine comprend. Elle ira voir le camion à poutine. Les Castors joueront avec une frite sur la poitrine.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "volCaisse",
+      "weight": 1,
+      "character": {
+        "id": "bertrand",
+        "name": "Bertrand",
+        "role": "Bertrand Répare Tout"
+      },
+      "title": "Le vol de la caisse",
+      "situation": "Ce matin, la serrure du camion pend de travers et la caisse est vide : {montant:vol} envolés. Bertrand, venu pour l'entretien, examine la porte d'un œil expert.",
+      "quote": "Du travail d'amateur. Avec un coffre-fort, ils repartent bredouilles. Sinon, ils reviennent toujours. Enfin, souvent.",
+      "conditions": { "fromDay": 30, "oncePerGame": true },
+      "choices": [
+        {
+          "id": "coffre",
+          "label": "Acheter un coffre-fort",
+          "tags": [
+            { "text": "Vol −{montant}", "effect": "vol" },
+            { "text": "Coffre-fort −{montant}", "effect": "coffre" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Bertrand boulonne un coffre-fort au plancher. Il vous donne la combinaison, puis l'oublie aussitôt. Vous aussi, presque.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 30000,
+                  "description": "Vol de la caisse",
+                  "name": "vol"
+                },
+                {
+                  "kind": "charge",
+                  "amountCents": 25000,
+                  "description": "Coffre-fort",
+                  "name": "coffre"
+                },
+                { "kind": "headline", "id": "volCaisse" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "risque",
+          "label": "Prendre le risque",
+          "tags": [
+            { "text": "Vol −{montant}", "effect": "vol" },
+            "Peut-être un autre vol dans un mois",
+            "Risqué"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Vous changez la serrure et gardez la caisse où elle est. Bertrand hoche la tête lentement, comme un médecin devant une radiographie.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 30000,
+                  "description": "Vol de la caisse",
+                  "name": "vol"
+                },
+                {
+                  "kind": "followUp",
+                  "event": "volCaisse",
+                  "days": 30,
+                  "chance": 0.1
+                },
+                { "kind": "headline", "id": "volCaisse" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "reportage",
+      "weight": 1,
+      "character": {
+        "id": "solangeBeaulieuFortin",
+        "name": "Solange Beaulieu-Fortin",
+        "role": "Journaliste à La Presse-Citron"
+      },
+      "title": "Le reportage",
+      "situation": "Solange Beaulieu-Fortin prépare un grand reportage sur les camions de rue pour La Presse-Citron. Elle veut vous suivre toute la journée de demain, photographe compris.",
+      "quote": "Une journée dans la vie d'un camion de rue. On ferme pour les photos, évidemment : la lumière est meilleure sans les clients.",
+      "conditions": {
+        "fromDay": 60,
+        "cooldownDays": 240,
+        "openTomorrow": true
+      },
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Accepter l'entrevue",
+          "tags": [
+            "Fermé demain",
+            { "text": "Énergie −{montant}", "effect": "energie" },
+            "Peut-être des clients chics en plus",
+            "Risqué"
+          ],
+          "outcomes": [
+            {
+              "chance": 0.7,
+              "result": "Solange vous suit toute la journée, carnet en main. Son reportage paraît le surlendemain, élogieux. La clientèle chic accourt.",
+              "effects": [
+                { "kind": "closed", "days": 1, "work": true, "inDays": 1 },
+                {
+                  "kind": "energy",
+                  "amount": -10,
+                  "inDays": 1,
+                  "name": "energie"
+                },
+                {
+                  "kind": "walkIns",
+                  "factor": 1.2,
+                  "segment": "chic",
+                  "days": 21,
+                  "inDays": 2
+                },
+                { "kind": "headline", "id": "reportageElogieux", "inDays": 2 }
+              ]
+            },
+            {
+              "chance": 0.3,
+              "result": "Solange vous suit toute la journée. Son reportage paraît le surlendemain sous le titre « Le croissant et l'ennui ». Ça aurait pu être pire.",
+              "effects": [
+                { "kind": "closed", "days": 1, "work": true, "inDays": 1 },
+                {
+                  "kind": "energy",
+                  "amount": -10,
+                  "inDays": 1,
+                  "name": "energie"
+                },
+                { "kind": "headline", "id": "reportageMoqueur", "inDays": 2 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "decliner",
+          "label": "Décliner",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Solange range son carnet. « Tant pis. Je ferai le camion à poutine. Il a plus de personnalité. »",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
                 }
               ]
             }

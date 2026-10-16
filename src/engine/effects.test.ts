@@ -306,6 +306,25 @@ describe('applyEffect', () => {
     ])
   })
 
+  it('buys stock at its own unit cost when it gives one', () => {
+    const after = apply({
+      kind: 'buyStock',
+      product: 'cafe',
+      units: 300,
+      unitCostCents: cents(20),
+    })
+    expect(after.inventory.at(-1)).toEqual({
+      product: 'cafe',
+      quantity: 300,
+      unitCost: 20,
+      boughtOnDay: 1,
+    })
+    const [entry] = posted(MORNING, after)
+    expect(entry?.memo).toBe('Achat de marchandises')
+    expect(lines(entry)).toEqual(['1200 6000/0', '1000 0/6000'])
+    expect(balanceOf(after, '1200')).toBe(inventoryValue(after.inventory))
+  })
+
   describe('using stock', () => {
     // 5 croissants at 1 $, then 10 at 1,20 $, oldest first, with café
     // between them, as the books carry them.
@@ -366,6 +385,17 @@ describe('applyEffect', () => {
       const [entry] = posted(stocked, after)
       expect(entry?.memo).toBe('Marchandises offertes')
       expect(lines(entry)).toEqual(['6300 620/0', '1200 0/620'])
+    })
+
+    it('loses stock to Pertes sur stocks', () => {
+      const after = apply(
+        { kind: 'useStock', product: 'croissant', units: 6, to: 'loss' },
+        stocked,
+      )
+      const [entry] = posted(stocked, after)
+      expect(entry?.memo).toBe('Marchandises perdues')
+      expect(lines(entry)).toEqual(['5100 620/0', '1200 0/620'])
+      expect(balanceOf(after, '1200')).toBe(inventoryValue(after.inventory))
     })
 
     it('takes only what is on hand', () => {

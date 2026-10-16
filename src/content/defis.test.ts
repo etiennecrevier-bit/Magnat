@@ -523,10 +523,12 @@ describe('the six Défis, scripted', () => {
   })
 
   describe('« Payé dans 60 jours »', () => {
-    const careful: Script = { start: [pay(30_000), croissants(45)] }
+    // With rarer events (#155), seed 42 meets only « Le 1er juillet » after
+    // Gilles's order: the starting pay of 700 $ a week leaves a middle medal.
+    const careful: Script = { start: [pay(70_000), croissants(45)] }
     const gilles = 'Gilles Lacasse'
 
-    it('argent with a smaller pay, Gilles paying on the last day; lost when 1 500 $ a week to the owner leaves the cash below zero', () => {
+    it('argent at the starting pay, Gilles paying on the last day; lost when 1 500 $ a week to the owner leaves the cash below zero', () => {
       const ended = played('payeDans60Jours', 42, careful)
       expect(outcome(ended)).toEqual({
         status: 'reussi',
