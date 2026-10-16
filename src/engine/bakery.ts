@@ -104,6 +104,58 @@ export function supplyRule(
   return baked ? decisions.bake : decisions.restock[product]
 }
 
+/**
+ * The bakery once the morning of `day` has put `plan` in effect, as
+ * `bakeryMorning` leaves it, with no entry posted: a notice whose last day
+ * is over closes it, keeping the oven it bought; a plan opens a bakery that
+ * does not run, on `day`, buying its oven when it buys one and the business
+ * owns none yet, or takes a notice back; no plan gives a running bakery its
+ * notice, to the end of the month `noticeMonths` after this one. Never
+ * mutates `bakery`. Throws an Error if `plan` gives a bakery that holds its
+ * premises other oven terms, or leases an oven when the business owns one,
+ * which `applyDecision()` never lets happen.
+ */
+export function morningBakery(
+  bakery: BakeryState,
+  plan: BakeryPlan | null,
+  day: Day,
+  content: BakeryContent = BAKERY,
+): BakeryState {
+  const state =
+    bakery.closesAfterDay !== null && day > bakery.closesAfterDay
+      ? { ...closedBakery(), ovenBoughtOnDay: bakery.ovenBoughtOnDay }
+      : bakery
+  if (plan === null) {
+    if (state.oven === null || state.closesAfterDay !== null) return state
+    return { ...state, closesAfterDay: endOfMonth(day, content.noticeMonths) }
+  }
+  if (state.oven !== null) {
+    if (plan.oven !== state.oven) {
+      throw new Error(
+        `Day ${day}: the bakery runs with its oven ${state.oven}, not ${plan.oven}`,
+      )
+    }
+    return state.closesAfterDay === null
+      ? state
+      : { ...state, closesAfterDay: null }
+  }
+  const { ovenBoughtOnDay } = state
+  if (plan.oven === 'louer' && ovenBoughtOnDay !== null) {
+    throw new Error(
+      `Day ${day}: the bakery cannot lease an oven, the business owns one since day ${ovenBoughtOnDay}`,
+    )
+  }
+  return {
+    openedOnDay: day,
+    oven: plan.oven,
+    closesAfterDay: null,
+    ovenBoughtOnDay:
+      plan.oven === 'acheter' && ovenBoughtOnDay === null
+        ? day
+        : ovenBoughtOnDay,
+  }
+}
+
 /** The books and the bakery after the bakery's part of a morning. */
 export interface BakeryMorning {
   readonly journal: Journal
@@ -113,27 +165,22 @@ export interface BakeryMorning {
 /**
  * The bakery's part of the start of business day `day`, open or closed, with
  * `plan` the bakery the player wants and `prices` those of the game's
- * difficulty. Every entry is dated `day`:
- * 1. A notice whose last day is over closes the bakery. The oven it bought
- *    stays on the books.
- * 2. On the 1st of the month, a bakery that runs pays its rent, « Loyer du
- *    fournil » (Dr 6100 / Cr 1000), and, with a leased oven, the lease,
- *    « Location du four » (Dr 6130 / Cr 1000). An oven the business bought
- *    is depreciated on each 1st after the day it was bought, running or not,
- *    over `oven.usefulLifeMonths` (see `depreciate`), as « Amortissement du
- *    four ».
- * 3. A plan with no bakery running opens it: the move, « Déménagement du
- *    fournil » (Dr 6900 / Cr 1000), then, for an oven bought when the
- *    business owns none yet, « Achat du four » (Dr 1500 / Cr 1000), then the
- *    month's rent and lease in full, whatever the day. No plan with the
- *    bakery running gives notice, unless it already has: the bakery keeps
- *    its premises to the end of the month `noticeMonths` after this one, so
- *    their rent stays due on each 1st until then. A plan with the bakery
- *    under notice takes the notice back, at no cost.
+ * difficulty. The bakery ends as `morningBakery` leaves it, and every entry
+ * is dated `day`:
+ * 1. On the 1st of the month, a bakery that still holds its premises pays
+ *    its rent, « Loyer du fournil » (Dr 6100 / Cr 1000), and, with a leased
+ *    oven, the lease, « Location du four » (Dr 6130 / Cr 1000). An oven the
+ *    business bought is depreciated on each 1st after the day it was
+ *    bought, running or not, over `oven.usefulLifeMonths` (see
+ *    `depreciate`), as « Amortissement du four ».
+ * 2. A bakery the plan opens pays the move, « Déménagement du fournil »
+ *    (Dr 6900 / Cr 1000), then, for an oven bought when the business owns
+ *    none yet, « Achat du four » (Dr 1500 / Cr 1000), then the month's rent
+ *    and lease in full, whatever the day. Giving notice, or taking it back,
+ *    costs nothing: the rent stays due on each 1st to the notice's end.
  *
- * Returns the new books and bakery; never mutates its arguments. Throws an
- * Error if `plan` gives a running bakery other oven terms, or leases an oven
- * when the business owns one, which `applyDecision()` never lets happen.
+ * Returns the new books and bakery; never mutates its arguments. Throws as
+ * `morningBakery` does.
  */
 export function bakeryMorning(
   journal: Journal,
@@ -143,17 +190,13 @@ export function bakeryMorning(
   prices: BakeryPrices,
   content: BakeryContent = BAKERY,
 ): BakeryMorning {
+  const next = morningBakery(bakery, plan, day, content)
   let books = journal
-  let state = bakery
-  if (state.closesAfterDay !== null && day > state.closesAfterDay) {
-    state = { ...closedBakery(), ovenBoughtOnDay: state.ovenBoughtOnDay }
-  }
-
   if (toCalendar(day).dayOfMonth === 1) {
-    if (state.oven !== null) {
-      books = premisesCharges(books, day, state.oven, prices, content)
+    if (holdsPremises(bakery, day) && bakery.oven !== null) {
+      books = premisesCharges(books, day, bakery.oven, prices, content)
     }
-    const bought = state.ovenBoughtOnDay
+    const bought = bakery.ovenBoughtOnDay
     if (bought !== null && day > bought) {
       const month = monthsSinceStart(day) - monthsSinceStart(bought) - 1
       books = depreciate(
@@ -165,34 +208,8 @@ export function bakeryMorning(
       )
     }
   }
-
-  if (plan === null) {
-    if (state.oven === null || state.closesAfterDay !== null) {
-      return { journal: books, bakery: state }
-    }
-    const closesAfterDay = endOfMonth(day, content.noticeMonths)
-    return { journal: books, bakery: { ...state, closesAfterDay } }
-  }
-  if (state.oven !== null) {
-    if (plan.oven !== state.oven) {
-      throw new Error(
-        `Day ${day}: the bakery runs with its oven ${state.oven}, not ${plan.oven}`,
-      )
-    }
-    return {
-      journal: books,
-      bakery:
-        state.closesAfterDay === null
-          ? state
-          : { ...state, closesAfterDay: null },
-    }
-  }
-
-  let { ovenBoughtOnDay } = state
-  if (plan.oven === 'louer' && ovenBoughtOnDay !== null) {
-    throw new Error(
-      `Day ${day}: the bakery cannot lease an oven, the business owns one since day ${ovenBoughtOnDay}`,
-    )
+  if (holdsPremises(bakery, day) || next.oven === null) {
+    return { journal: books, bakery: next }
   }
   books = pay(
     books,
@@ -201,7 +218,7 @@ export function bakeryMorning(
     OTHER_CHARGES,
     content.movingCostCents,
   )
-  if (plan.oven === 'acheter' && ovenBoughtOnDay === null) {
+  if (next.ovenBoughtOnDay !== bakery.ovenBoughtOnDay) {
     books = pay(
       books,
       day,
@@ -209,18 +226,9 @@ export function bakeryMorning(
       EQUIPMENT,
       content.oven.priceCents,
     )
-    ovenBoughtOnDay = day
   }
-  books = premisesCharges(books, day, plan.oven, prices, content)
-  return {
-    journal: books,
-    bakery: {
-      openedOnDay: day,
-      oven: plan.oven,
-      closesAfterDay: null,
-      ovenBoughtOnDay,
-    },
-  }
+  books = premisesCharges(books, day, next.oven, prices, content)
+  return { journal: books, bakery: next }
 }
 
 /** The rent, then the lease of a leased oven. */

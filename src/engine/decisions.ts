@@ -12,12 +12,12 @@ import {
   type ProductId,
   type RestockRule,
 } from '../content/schema.ts'
-import { BAKERY, holdsPremises } from './bakery.ts'
+import { BAKERY, holdsPremises, morningBakery } from './bakery.ts'
 import { isLocked } from './challenge.ts'
 import { DEFIS, FOOD_TRUCK } from './day.ts'
 import { PRODUCTS } from './inventory.ts'
 import type { Cents } from './money.ts'
-import type { BakeryPlan, Decisions, GameState } from './types.ts'
+import type { BakeryPlan, BakeryState, Decisions, GameState } from './types.ts'
 
 // The player's decisions: how the truck runs, from its prices to the days it
 // opens, and the bakery that makes its croissants. A change waits in
@@ -99,17 +99,19 @@ export function latestDecisions(state: GameState): Decisions {
  *
  * `openBakery` plans a bakery and how its oven comes, and `closeBakery`
  * drops the plan, so the next morning opens the bakery or gives its notice
- * (see `bakeryMorning`). A bakery that still holds its premises keeps the
- * oven it has until it closes: planning it again takes a notice back.
+ * (see `bakeryMorning`). A bakery that still holds its premises that
+ * morning, one the day under way opens included, keeps the oven it has
+ * until it closes: planning it again takes a notice back.
  *
  * Throws a RangeError, naming the field, if the change names an unknown
  * kind or product, gives a product another kind of restock rule than it has,
  * or leaves the decisions outside the limits of `content` and `bakery` (see
  * `validateDecisions`); one if `openBakery` comes with a bakery already
- * planned, leases an oven when the business owns one, or gives a bakery that
- * holds its premises other oven terms, or if `closeBakery` comes with none
- * planned; and one naming the kind if the game's Défi, one of `defis`, locks
- * it. A Défi locks none of the bakery's changes.
+ * planned, leases an oven when the business owns one or buys one that day,
+ * or gives a bakery that holds its premises the next morning other oven
+ * terms, or if `closeBakery` comes with none planned; and one naming the
+ * kind if the game's Défi, one of `defis`, locks it. A Défi locks none of
+ * the bakery's changes.
  */
 export function applyDecision(
   state: GameState,
@@ -123,7 +125,7 @@ export function applyDecision(
       `Invalid decision: the Défi ${state.challenge?.id} locks ${change.kind}`,
     )
   }
-  const decisions = changed(state, latestDecisions(state), change)
+  const decisions = changed(state, latestDecisions(state), change, bakery)
   validateDecisions(decisions, content.decisionLimits, bakery)
   return { ...state, pendingDecisions: decisions }
 }
@@ -189,6 +191,7 @@ function changed(
   state: GameState,
   decisions: Decisions,
   change: DecisionChange,
+  bakery: BakeryContent,
 ): Decisions {
   switch (change.kind) {
     case 'price':
@@ -216,7 +219,10 @@ function changed(
     case 'marketingDaily':
       return { ...decisions, marketingDaily: change.budget }
     case 'openBakery':
-      return { ...decisions, bakery: opening(state, decisions, change.oven) }
+      return {
+        ...decisions,
+        bakery: opening(state, decisions, change.oven, bakery),
+      }
     case 'closeBakery':
       if (decisions.bakery === null) {
         throw new RangeError('Invalid decision: no bakery is planned to close')
@@ -234,30 +240,43 @@ function changed(
 }
 
 /**
- * The bakery `oven` plans, on top of `decisions`: none may be planned yet,
- * the business leases no oven while it owns one, and a bakery that holds its
- * premises keeps its oven terms until it closes.
+ * The bakery `oven` plans, on top of `decisions`: none may be planned yet.
+ * The plan takes effect the next morning, on the bakery the day under way
+ * leaves (see `bakeryTomorrow`): the business leases no oven while it owns
+ * one, bought that day included, and a bakery that still holds its premises
+ * that morning keeps its oven terms until it closes.
  */
 function opening(
   state: GameState,
   decisions: Decisions,
   oven: OvenTerms,
+  content: BakeryContent,
 ): BakeryPlan {
   if (decisions.bakery !== null) {
     throw new RangeError('Invalid decision: a bakery is already planned')
   }
-  const { bakery } = state
+  const bakery = bakeryTomorrow(state, content)
   if (oven === 'louer' && bakery.ovenBoughtOnDay !== null) {
     throw new RangeError(
       `Invalid decision: bakery.oven cannot be louer, the business owns an oven since day ${bakery.ovenBoughtOnDay}`,
     )
   }
-  if (holdsPremises(bakery, state.day) && bakery.oven !== oven) {
+  if (holdsPremises(bakery, state.day + 1) && bakery.oven !== oven) {
     throw new RangeError(
       `Invalid decision: bakery.oven must stay ${bakery.oven} until the bakery closes: ${oven}`,
     )
   }
   return { oven }
+}
+
+/**
+ * The bakery the next morning finds, before its plan takes effect: the
+ * bakery of the last close once the day under way has put its own plan in
+ * effect (see `morningBakery`). A bakery that day opens, or whose oven it
+ * buys, already counts. At the close of the day, the bakery already is.
+ */
+function bakeryTomorrow(state: GameState, content: BakeryContent): BakeryState {
+  return morningBakery(state.bakery, state.decisions.bakery, state.day, content)
 }
 
 function known(product: ProductId): ProductId {

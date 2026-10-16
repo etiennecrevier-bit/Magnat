@@ -3186,6 +3186,26 @@ describe('the bakery', () => {
   const NOTICE_OVER = playedWith(61, LEASED_PLAN)
   const BOUGHT = playedWith(20, { 0: [OPEN_BOUGHT, MADE] })
   const OWNED = playedWith(70, { 0: [OPEN_BOUGHT, MADE], 5: [CLOSE] })
+  const PLANNED_BOUGHT = playedWith(1, { 0: [OPEN_BOUGHT, MADE] })
+  // Closed and planned again on the morning it opens, with the same oven.
+  const PLANNED_AGAIN = applyDecision(
+    applyDecision(PLANNED, CLOSE),
+    OPEN_LEASED,
+  )
+  // On the last day of its notice, the next bakery planned with a bought oven.
+  const NOTICE_LAST_DAY = applyDecision(
+    playedWith(60, LEASED_PLAN),
+    OPEN_BOUGHT,
+  )
+
+  /** The save of `state` with its plan pending for the next morning. */
+  function pendingBakery(plan: unknown, state: GameState): string {
+    return withValue(
+      'pendingDecisions',
+      { ...state.decisions, bakery: plan },
+      serialize(state),
+    )
+  }
 
   it('holds the bakery each state needs', () => {
     expect(PLANNED.bakery).toEqual(closedBakery())
@@ -3194,14 +3214,25 @@ describe('the bakery', () => {
     expect(NOTICE_OVER.bakery.closesAfterDay).toBe(60)
     expect(BOUGHT.bakery.ovenBoughtOnDay).toBe(1)
     expect(OWNED.bakery).toEqual({ ...closedBakery(), ovenBoughtOnDay: 1 })
+    expect(PLANNED_BOUGHT.decisions.bakery).toEqual({ oven: 'acheter' })
+    expect(PLANNED_AGAIN.pendingDecisions?.bakery).toEqual({ oven: 'louer' })
+    expect(NOTICE_LAST_DAY.bakery.closesAfterDay).toBe(60)
+    expect(NOTICE_LAST_DAY.pendingDecisions?.bakery).toEqual({
+      oven: 'acheter',
+    })
   })
 
   it.each([
     ['planned, before it opens', PLANNED],
+    ['closed and planned again on the morning it opens', PLANNED_AGAIN],
     ['running with a leased oven', LEASED],
     ['at the close of a day it ran', LEASED_CLOSE],
     ['under notice', NOTICE],
     ['on the morning after its notice, before it closes', NOTICE_OVER],
+    [
+      'on the last day of its notice, the next one planned with other terms',
+      NOTICE_LAST_DAY,
+    ],
     ['running with a bought oven', BOUGHT],
     ['closed, with the oven it bought', OWNED],
   ])('loads back %s, and plays on as if it had never stopped', (_, state) => {
@@ -3283,7 +3314,22 @@ describe('the bakery', () => {
     [
       'a plan with other oven terms than the running bakery',
       withValue('decisions.bakery', { oven: 'acheter' }, LEASED_SAVE),
-      'decisions.bakery.oven is acheter, but the bakery runs with louer',
+      'decisions.bakery.oven is acheter on day 20, but the bakery runs with louer',
+    ],
+    [
+      'a plan pending with other oven terms than the bakery opening that day',
+      pendingBakery({ oven: 'acheter' }, PLANNED),
+      'pendingDecisions.bakery.oven is acheter on day 2, but the bakery runs with louer',
+    ],
+    [
+      'a plan pending to lease an oven bought that day',
+      pendingBakery({ oven: 'louer' }, PLANNED_BOUGHT),
+      'pendingDecisions.bakery leases an oven, but the business owns one since day 1',
+    ],
+    [
+      'a plan pending with other oven terms than the bakery under notice',
+      pendingBakery({ oven: 'acheter' }, NOTICE),
+      'pendingDecisions.bakery.oven is acheter on day 26, but the bakery runs with louer',
     ],
     [
       'a close with a running bakery and none planned',

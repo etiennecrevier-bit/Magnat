@@ -545,6 +545,34 @@ describe('the bakery', () => {
     expect(pendingAfter(OPEN_LEASED, notice).bakery).toEqual({ oven: 'louer' })
   })
 
+  it('counts the bakery the day under way opens, and the oven it buys', () => {
+    // The morning of day 1, when the bakery planned on day 0 opens.
+    const leasing = applyDecision(after(monday(), OPEN_LEASED), CLOSE)
+    expect(leasing.bakery.openedOnDay).toBeNull()
+    expectRejected(OPEN_BOUGHT, 'must stay louer', leasing)
+    expect(pendingAfter(OPEN_LEASED, leasing).bakery).toEqual({
+      oven: 'louer',
+    })
+    const buying = applyDecision(after(monday(), OPEN_BOUGHT), CLOSE)
+    expect(buying.bakery.ovenBoughtOnDay).toBeNull()
+    expectRejected(OPEN_LEASED, 'owns an oven since day 1', buying)
+    expect(pendingAfter(OPEN_BOUGHT, buying).bakery).toEqual({
+      oven: 'acheter',
+    })
+  })
+
+  it('takes other oven terms on the last day of a notice', () => {
+    let state = tick(after(opened('louer'), CLOSE))
+    const last = state.bakery.closesAfterDay ?? 0
+    while (state.day < last) {
+      expectRejected(OPEN_BOUGHT, 'must stay louer', state)
+      state = tick(state)
+    }
+    expect(pendingAfter(OPEN_BOUGHT, state).bakery).toEqual({
+      oven: 'acheter',
+    })
+  })
+
   it('takes either source and either kind of bake rule, within capacity', () => {
     const fabriquer = pendingAfter({
       kind: 'croissantSource',

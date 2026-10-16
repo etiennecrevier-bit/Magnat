@@ -24,6 +24,7 @@ import {
   closedBakery,
   holdsPremises,
   isBakeryRunning,
+  morningBakery,
   runsOn,
   supplyRule,
 } from './bakery.ts'
@@ -36,6 +37,7 @@ import {
   ENERGY,
   FOOD_TRUCK,
   PERSONAL,
+  playDay,
 } from './day.ts'
 import { applyDecision, type DecisionChange } from './decisions.ts'
 import { NO_EVENTS, conditionsHold } from './events.ts'
@@ -398,6 +400,117 @@ describe('closing the bakery', () => {
   })
 })
 
+describe('the oven terms of a bakery planned again', () => {
+  /** The game of `plan` on the morning of `day`, with `changes` made then. */
+  function morningOf(
+    day: Day,
+    plan: Plan,
+    ...changes: DecisionChange[]
+  ): GameState {
+    return changes.reduce(
+      (state, change) => applyDecision(state, change),
+      playTo(day, plan),
+    )
+  }
+
+  /**
+   * `state` played to the morning of `toDay`, after checking that it loads
+   * back as it was and plays on from the save as it does without one.
+   */
+  function playedOn(state: GameState, toDay: Day): GameState {
+    const back = deserialize(serialize(state))
+    expect(back).toStrictEqual(state)
+    const on = playTo(toDay, {}, BAKERY, state)
+    expect(serialize(playTo(toDay, {}, BAKERY, back))).toBe(serialize(on))
+    return on
+  }
+
+  function moves(state: GameState): number {
+    return state.journal.entries.filter(
+      ({ memo }) => memo === BAKERY_MEMO.moving,
+    ).length
+  }
+
+  const OTHER: Record<OvenTerms, [OvenTerms, string]> = {
+    louer: ['acheter', 'must stay louer'],
+    acheter: ['louer', 'cannot be louer'],
+  }
+
+  it.each<OvenTerms>(['louer', 'acheter'])(
+    'stay %s on the morning the bakery opens, closed and planned again',
+    (oven) => {
+      // Planned on day 0, the bakery opens on the morning of day 1.
+      const closed = morningOf(1, { 0: [OPEN[oven]] }, CLOSE)
+      const [other, reason] = OTHER[oven]
+      expect(() => applyDecision(closed, OPEN[other])).toThrow(RangeError)
+      expect(() => applyDecision(closed, OPEN[other])).toThrow(reason)
+
+      const state = playedOn(applyDecision(closed, OPEN[oven]), JUNE_1 + 1)
+      expect(state.bakery).toEqual({
+        openedOnDay: 1,
+        oven,
+        closesAfterDay: null,
+        ovenBoughtOnDay: oven === 'acheter' ? 1 : null,
+      })
+      expect(moves(state)).toBe(1)
+      expect(debited(state, JUNE_1, BAKERY_MEMO.rent)).toBe(
+        PRICES.monthlyRentCents,
+      )
+    },
+  )
+
+  it.each<OvenTerms>(['louer', 'acheter'])(
+    'stay %s on the morning the bakery opens again, closed and planned again',
+    (oven) => {
+      // Under notice from day 11 to June 30th, closed on July 1st, planned
+      // again on day 70 and open again on day 71.
+      const plan: Plan = { 0: [OPEN[oven]], 10: [CLOSE], 70: [OPEN[oven]] }
+      const closed = morningOf(71, plan, CLOSE)
+      const [other, reason] = OTHER[oven]
+      expect(() => applyDecision(closed, OPEN[other])).toThrow(RangeError)
+      expect(() => applyDecision(closed, OPEN[other])).toThrow(reason)
+
+      const state = playedOn(applyDecision(closed, OPEN[oven]), AUGUST_1 + 1)
+      expect(state.bakery).toEqual({
+        openedOnDay: 71,
+        oven,
+        closesAfterDay: null,
+        ovenBoughtOnDay: oven === 'acheter' ? 1 : null,
+      })
+      expect(moves(state)).toBe(2)
+    },
+  )
+
+  it('may change from the last day of a notice, for the bakery opened the morning after', () => {
+    // Under notice from day 11 to June 30th, the day before July 1st.
+    const plan: Plan = { 0: [OPEN.louer], 10: [CLOSE] }
+    expect(() => applyDecision(playTo(JULY_1 - 2, plan), OPEN.acheter)).toThrow(
+      'must stay louer',
+    )
+
+    const lastDay = morningOf(JULY_1 - 1, plan, OPEN.acheter)
+    expect(lastDay.bakery.closesAfterDay).toBe(JULY_1 - 1)
+    const state = playedOn(lastDay, JULY_1 + 1)
+    expect(state.bakery).toEqual({
+      openedOnDay: JULY_1,
+      oven: 'acheter',
+      closesAfterDay: null,
+      ovenBoughtOnDay: JULY_1,
+    })
+    expect(memosOn(state, JULY_1)).toEqual(
+      expect.arrayContaining([
+        BAKERY_MEMO.moving,
+        BAKERY_MEMO.ovenBought,
+        BAKERY_MEMO.rent,
+      ]),
+    )
+    expect(debited(state, JULY_1, BAKERY_MEMO.rent)).toBe(
+      PRICES.monthlyRentCents,
+    )
+    expect(debited(state, JULY_1, BAKERY_MEMO.lease)).toBe(0)
+  })
+})
+
 describe('baking', () => {
   const MADE_PLAN: Plan = { 0: [OPEN.louer, MADE] }
   const BOUGHT_PLAN: Plan = { 0: [OPEN.louer] }
@@ -652,6 +765,38 @@ describe('bakeryMorning', () => {
     expect(() =>
       bakeryMorning(emptyJournal(), owned, { oven: 'louer' }, 5, PRICES),
     ).toThrow('cannot lease an oven')
+  })
+
+  it('leaves the bakery as morningBakery does, which finds it again at the close', () => {
+    // The morning the bakery opens, gives notice, takes it back, closes,
+    // and opens again with the oven it bought, each played to its close.
+    const plan: Plan = {
+      0: [OPEN.louer],
+      10: [CLOSE],
+      20: [OPEN.louer],
+      25: [CLOSE],
+      70: [OPEN.acheter],
+    }
+    for (const day of [1, 11, 21, 26, JULY_1, 71]) {
+      const morning = playTo(day, plan)
+      const closing = playDay(morning)
+      const { bakery } = bakeryMorning(
+        morning.journal,
+        morning.bakery,
+        morning.decisions.bakery,
+        day,
+        PRICES,
+      )
+      expect(bakery, `day ${day}`).toEqual(closing.bakery)
+      expect(
+        morningBakery(morning.bakery, morning.decisions.bakery, day),
+        `day ${day}`,
+      ).toEqual(closing.bakery)
+      expect(
+        morningBakery(closing.bakery, closing.decisions.bakery, day),
+        `day ${day}, at the close`,
+      ).toEqual(closing.bakery)
+    }
   })
 
   it('never mutates what it is given', () => {

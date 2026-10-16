@@ -28,7 +28,13 @@ import {
   type JournalEntry,
 } from '../finance/journal.ts'
 import { incomeStatement } from '../finance/statements.ts'
-import { BAKERY, BAKERY_MEMO, closedBakery, holdsPremises } from './bakery.ts'
+import {
+  BAKERY,
+  BAKERY_MEMO,
+  closedBakery,
+  holdsPremises,
+  morningBakery,
+} from './bakery.ts'
 import { endOfMonth, mondayOf, sundayOf } from './calendar.ts'
 import {
   challengeDifficulties,
@@ -56,6 +62,7 @@ import { LABELS, isKept } from './personal.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
 import type {
+  BakeryPlan,
   BakeryState,
   ChallengeStatus,
   Day,
@@ -1024,10 +1031,13 @@ function checkDecisions(
  * - the business owns an oven exactly when the books hold one « Achat du
  *   four », on the day it was bought, Dr 1500 Équipement / Cr 1000 for the
  *   oven's price;
- * - the bakery planned, in the decisions and in those pending, leases no
- *   oven when the business owns one, and keeps the oven terms of a bakery
- *   that holds its premises on the save's day;
- * - at a close, the bakery runs with no notice exactly when one is planned.
+ * - the bakery planned in the decisions leases no oven when the business
+ *   owns one, and keeps the oven terms of a bakery that holds its premises
+ *   on the save's day; at a close, the bakery runs with no notice exactly
+ *   when one is planned;
+ * - the bakery planned in those pending does the same on the next morning,
+ *   with the bakery the decisions' plan leaves (see `morningBakery`): an
+ *   oven bought, or a bakery opened, on the save's day already counts.
  */
 function checkBakery(
   save: Save,
@@ -1109,23 +1119,7 @@ function checkBakery(
     )
   }
 
-  for (const [field, planned] of [
-    ['decisions', decisions],
-    ['pendingDecisions', pendingDecisions],
-  ] as const) {
-    const plan = planned?.bakery ?? null
-    if (plan === null) continue
-    if (plan.oven === 'louer' && ovenBoughtOnDay !== null) {
-      invalid(
-        `${field}.bakery leases an oven, but the business owns one since day ${ovenBoughtOnDay}`,
-      )
-    }
-    if (holdsPremises(bakery, day) && plan.oven !== oven) {
-      invalid(
-        `${field}.bakery.oven is ${plan.oven}, but the bakery runs with ${oven}`,
-      )
-    }
-  }
+  checkPlan('decisions', decisions.bakery, bakery, day)
   if (
     lastDay?.day === day &&
     (decisions.bakery !== null) !==
@@ -1133,6 +1127,39 @@ function checkBakery(
   ) {
     invalid(
       `the bakery ${openedOnDay === null ? 'does not run' : closesAfterDay === null ? 'runs' : 'is under notice'} at the close of day ${day}, with ${decisions.bakery === null ? 'none' : 'one'} planned`,
+    )
+  }
+  if (pendingDecisions !== null) {
+    checkPlan(
+      'pendingDecisions',
+      pendingDecisions.bakery,
+      morningBakery(bakery, decisions.bakery, day, content),
+      day + 1,
+    )
+  }
+}
+
+/**
+ * The bakery `plan` wants on the morning of `day`, which finds `bakery`:
+ * it leases no oven when the business owns one, and keeps the oven terms
+ * of a bakery that still holds its premises.
+ */
+function checkPlan(
+  field: string,
+  plan: BakeryPlan | null,
+  bakery: BakeryState,
+  day: Day,
+): void {
+  if (plan === null) return
+  const { oven, ovenBoughtOnDay } = bakery
+  if (plan.oven === 'louer' && ovenBoughtOnDay !== null) {
+    invalid(
+      `${field}.bakery leases an oven, but the business owns one since day ${ovenBoughtOnDay}`,
+    )
+  }
+  if (holdsPremises(bakery, day) && plan.oven !== oven) {
+    invalid(
+      `${field}.bakery.oven is ${plan.oven} on day ${day}, but the bakery runs with ${oven}`,
     )
   }
 }
