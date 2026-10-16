@@ -19,6 +19,7 @@ import { PERCENTILES } from './percentiles.ts'
 import { next } from './rng.ts'
 import { effectsAt } from './scaling.ts'
 import { standingOf } from './standing.ts'
+import { streetOn } from './street.ts'
 import type { Day, EventRecord, EventsState, GameState } from './types.ts'
 
 // The event cards: a morning may bring a dilemma, which waits for the
@@ -159,10 +160,12 @@ export function drawEvent(
  * `fromDay`; the game's difficulty, the month, the date (month and day of
  * the month) and the weekday are among those listed; the owner's energy is
  * below `energyBelow`; the product of `productOnMenu` has a restock rule
- * that buys some; the event never came up, for `oncePerGame`, or came up at
- * least `cooldownDays` days ago; and Encaisse is above `cashAboveCents` and
- * below `cashBelowCents`, read from the books only when every other
- * condition holds. `followUpOnly` is `drawEvent`'s, not checked here.
+ * that buys some; the truck opens the next day, or stays closed, as
+ * `openTomorrow` says (see `opensOn`); the event never came up, for
+ * `oncePerGame`, or came up at least `cooldownDays` days ago; and Encaisse
+ * is above `cashAboveCents` and below `cashBelowCents`, read from the books
+ * only when every other condition holds. `followUpOnly` is `drawEvent`'s,
+ * not checked here.
  */
 export function conditionsHold(
   { id, conditions = {} }: EventCard,
@@ -178,6 +181,7 @@ export function conditionsHold(
     weekdays,
     energyBelow,
     productOnMenu,
+    openTomorrow,
     oncePerGame,
     cooldownDays,
     cashAboveCents,
@@ -204,6 +208,9 @@ export function conditionsHold(
     productOnMenu !== undefined &&
     !onMenu(state.decisions.restock[productOnMenu])
   ) {
+    return false
+  }
+  if (openTomorrow !== undefined && opensOn(state, day + 1) !== openTomorrow) {
     return false
   }
   const last = seen.get(id)
@@ -321,6 +328,24 @@ function lastSeen(history: readonly EventRecord[]): Map<string, Day> {
 /** Whether a restock rule buys some of its product. */
 function onMenu(rule: RestockRule): boolean {
   return rule.kind === 'buyDaily' ? rule.quantity > 0 : rule.upTo > 0
+}
+
+/**
+ * Whether the truck opens on `day`, as the morning of `state` sees it: the
+ * days open hold its weekday, and no change to the street closes it, among
+ * those in effect and those the delayed effects will make.
+ */
+function opensOn(state: GameState, day: Day): boolean {
+  const { daysOpen } = state.decisions
+  const { modifiers, delayed } = state.events
+  return (
+    daysOpen.includes(toCalendar(day).weekday) &&
+    !streetOn(modifiers, day).closed &&
+    !delayed.some(
+      ({ day: from, effect }) =>
+        effect.kind === 'closed' && from <= day && day < from + effect.days,
+    )
+  )
 }
 
 /**

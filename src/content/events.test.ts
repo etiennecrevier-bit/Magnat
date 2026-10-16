@@ -408,6 +408,7 @@ describe('events.json', () => {
       oncePerGame: true,
       cooldownDays: 60,
       productOnMenu: 'chocolat',
+      openTomorrow: true,
       followUpOnly: false,
     }
     const loaded = loadEventContent(file([card({ conditions })]))
@@ -567,6 +568,7 @@ describe('loadEventContent rejects', () => {
     [{ cooldownDays: 0 }, 'cooldownDays'],
     [{ productOnMenu: 'poutine' }, 'productOnMenu'],
     [{ oncePerGame: 'oui' }, 'oncePerGame'],
+    [{ openTomorrow: 1 }, 'openTomorrow'],
   ])('the condition %j', (conditions, field) => {
     rejects(file([card({ conditions })]), `→ at events[0].conditions.${field}`)
   })

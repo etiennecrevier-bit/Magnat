@@ -347,6 +347,53 @@ describe('drawEvent', () => {
       ).toBeNull()
     })
 
+    it('openTomorrow: the days open and the changes to the street, made or queued', () => {
+      const opens = content([card('a', { conditions: { openTomorrow: true } })])
+      const closes = content([
+        card('a', { conditions: { openTomorrow: false } }),
+      ])
+      // Day 6 is a Sunday, and the shipped truck is closed on Mondays.
+      expect(toCalendar(7).weekday).toBe(1)
+      expect(draws(on(5), opens)).toBe('a')
+      expect(draws(on(6), opens)).toBeNull()
+      expect(draws(on(5), closes)).toBeNull()
+      expect(draws(on(6), closes)).toBe('a')
+      const everyDay = {
+        ...MORNING,
+        decisions: { ...MORNING.decisions, daysOpen: [1, 2, 3, 4, 5, 6, 7] },
+      }
+      expect(draws(on(6, everyDay), opens)).toBe('a')
+
+      // Day 2, a Wednesday: Thursday opens unless a change closes it.
+      const street = (events: Partial<GameState['events']>) =>
+        on(2, { ...MORNING, events: { ...MORNING.events, ...events } })
+      const made = (fromDay: number, lastDay: number) =>
+        street({
+          modifiers: [
+            { event: 'b', change: { kind: 'closed' }, fromDay, lastDay },
+          ],
+        })
+      const queued = (day: number, kind: 'closed' | 'walkIns') =>
+        street({
+          delayed: [
+            {
+              day,
+              event: 'b',
+              effect:
+                kind === 'closed'
+                  ? { kind, days: 2 }
+                  : { kind, factor: 0.5, days: 2 },
+            },
+          ],
+        })
+      expect(draws(made(2, 3), opens)).toBeNull()
+      expect(draws(made(1, 2), opens)).toBe('a')
+      expect(draws(queued(2, 'closed'), opens)).toBeNull()
+      expect(draws(queued(3, 'closed'), opens)).toBeNull()
+      expect(draws(queued(4, 'closed'), opens)).toBe('a')
+      expect(draws(queued(3, 'walkIns'), opens)).toBe('a')
+    })
+
     it('cashAboveCents and cashBelowCents: Encaisse that morning', () => {
       const cash = balance(MORNING.journal, '1000', { toDay: 1 })
       const at = (conditions: Record<string, number>) =>

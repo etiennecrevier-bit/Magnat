@@ -63,6 +63,7 @@ const conditionValues = fc.record({
   oncePerGame: fc.boolean(),
   cooldownDays: fc.integer({ min: 1, max: 120 }),
   productOnMenu: fc.constantFrom('cafe', 'chocolat', 'croissant'),
+  openTomorrow: fc.boolean(),
   followUpOnly: fc.boolean(),
 })
 
@@ -82,6 +83,7 @@ const CONDITION_KEYS: readonly ConditionKey[] = [
   'oncePerGame',
   'cooldownDays',
   'productOnMenu',
+  'openTomorrow',
   'followUpOnly',
 ]
 
@@ -208,6 +210,19 @@ function heldBackBy(
     const rule = state.decisions.restock[product]
     return rule.kind === 'buyDaily' ? rule.quantity > 0 : rule.upTo > 0
   }
+  // Tomorrow, the days open and the changes to the street, made or queued.
+  const tomorrow = state.day + 1
+  const closes = (from: Day, days: number) =>
+    from <= tomorrow && tomorrow < from + days
+  const opensTomorrow =
+    state.decisions.daysOpen.includes(toCalendar(tomorrow).weekday) &&
+    !state.events.modifiers.some(
+      ({ change, fromDay, lastDay }) =>
+        change.kind === 'closed' && closes(fromDay, lastDay - fromDay + 1),
+    ) &&
+    !state.events.delayed.some(
+      ({ day, effect }) => effect.kind === 'closed' && closes(day, effect.days),
+    )
   const rules: Record<string, boolean> = {
     weight: card.weight > 0,
     followUpOnly: c.followUpOnly !== true,
@@ -227,6 +242,8 @@ function heldBackBy(
       last === undefined ||
       state.day - last >= c.cooldownDays,
     productOnMenu: c.productOnMenu === undefined || onMenu(c.productOnMenu),
+    openTomorrow:
+      c.openTomorrow === undefined || c.openTomorrow === opensTomorrow,
   }
   return Object.keys(rules).filter((rule) => !rules[rule])
 }
