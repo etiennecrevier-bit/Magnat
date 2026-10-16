@@ -92,7 +92,7 @@
     {
       "id": "payeDans60Jours",
       "title": "Payé dans 60 jours",
-      "story": "Mercredi, Gilles Lacasse viendra vous commander 200 croissants pour le Congrès québécois des optimistes : 750 $, payables à 60 jours. Vous allez accepter. Il vous reste 4 000 $ en banque, et d'ici à ce que le chèque arrive, il faudra payer les croissants, la paie, le permis et l'emprunt. L'encaisse ne doit jamais passer sous zéro.",
+      "story": "Mercredi, Gilles Lacasse viendra vous commander 400 croissants pour le Congrès québécois des optimistes : 750 $, payables à 60 jours. Vous allez accepter. Il vous reste 4 000 $ en banque, et d'ici à ce que le chèque arrive, il faudra payer les croissants, la paie, le permis et l'emprunt. L'encaisse ne doit jamais passer sous zéro.",
       "difficulty": "moyen",
       "start": { "month": 5, "dayOfMonth": 8 },
       "lengthDays": 64,
