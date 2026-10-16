@@ -337,6 +337,26 @@ describe('startStreet: the customers', () => {
     )
   })
 
+  it("hides the avatar's legs, outlines and all, behind the counter", async () => {
+    const app = createFakeApp()
+    await startStreet(
+      app,
+      wednesdayStore(),
+      createLoaders(),
+      ASSETS,
+      busyCrowd(),
+    )
+    const counter = piece(app, 'counter')
+    const { width, height } = ASSETS.pieces.find((p) => p.id === 'counter')!
+    const left = counter.toGlobal({ x: 0, y: 0 })
+    const bottom = counter.toGlobal({ x: width, y: height })
+    const legs = piece(app, 'avatar:femme').getChildByLabel('legs')!
+    const { minX, maxX, maxY } = legs.getBounds()
+    expect(minX).toBeGreaterThanOrEqual(left.x)
+    expect(maxX).toBeLessThanOrEqual(bottom.x)
+    expect(maxY).toBeLessThanOrEqual(bottom.y)
+  })
+
   it('brings customers on at x1, up to the cap and never more, across days', async () => {
     const app = createFakeApp()
     const store = wednesdayStore(true)
