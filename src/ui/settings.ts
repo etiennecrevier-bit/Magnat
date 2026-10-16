@@ -15,14 +15,24 @@ export type VisualEffects = 'full' | 'simple'
 
 export const VISUAL_EFFECTS: readonly VisualEffects[] = ['full', 'simple']
 
+/**
+ * How often the « Bilan » comes once the first weeks of a game are over:
+ * every Monday (`week`), or on the 1st of each month (`month`).
+ */
+export type ReportCadence = 'week' | 'month'
+
+export const REPORT_CADENCES: readonly ReportCadence[] = ['week', 'month']
+
 /** What the player sets. */
 export interface Settings {
   readonly visualEffects: VisualEffects
   /**
-   * Whether the « Bilan de la semaine » opens in full every week, not only
-   * for the first weeks of a game.
+   * Whether the « Bilan » opens in full each time it comes, every week or
+   * every month, not only for the first weeks of a game.
    */
   readonly openReportEveryWeek: boolean
+  /** How often the « Bilan » comes after the first weeks of a game. */
+  readonly reportCadence: ReportCadence
   /** The best medal won in each Défi, by its id, in any game. */
   readonly bestMedals: Readonly<Record<string, Medal>>
 }
@@ -30,6 +40,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   visualEffects: 'full',
   openReportEveryWeek: false,
+  reportCadence: 'week',
   bestMedals: {},
 }
 
@@ -43,6 +54,7 @@ export type SettingsStorage = Pick<Storage, 'getItem' | 'setItem'>
 export interface SettingsState extends Settings {
   setVisualEffects: (visualEffects: VisualEffects) => void
   setOpenReportEveryWeek: (openReportEveryWeek: boolean) => void
+  setReportCadence: (reportCadence: ReportCadence) => void
   /**
    * Keeps `medal` as the best won in the Défi `defiId` unless a better one,
    * or the same, already is.
@@ -74,10 +86,8 @@ export function readSettings(storage: SettingsStorage | null): Settings {
     return DEFAULT_SETTINGS
   }
   if (typeof stored !== 'object' || stored === null) return DEFAULT_SETTINGS
-  const { visualEffects, openReportEveryWeek, bestMedals } = stored as Record<
-    string,
-    unknown
-  >
+  const { visualEffects, openReportEveryWeek, reportCadence, bestMedals } =
+    stored as Record<string, unknown>
   return {
     visualEffects: VISUAL_EFFECTS.includes(visualEffects as VisualEffects)
       ? (visualEffects as VisualEffects)
@@ -86,6 +96,9 @@ export function readSettings(storage: SettingsStorage | null): Settings {
       typeof openReportEveryWeek === 'boolean'
         ? openReportEveryWeek
         : DEFAULT_SETTINGS.openReportEveryWeek,
+    reportCadence: REPORT_CADENCES.includes(reportCadence as ReportCadence)
+      ? (reportCadence as ReportCadence)
+      : DEFAULT_SETTINGS.reportCadence,
     bestMedals: readMedals(bestMedals),
   }
 }
@@ -152,14 +165,20 @@ export function createSettingsStore(
         settings.bestMedals ?? get().bestMedals,
       )
       set({ ...settings, bestMedals })
-      const { visualEffects, openReportEveryWeek } = get()
-      writeSettings(storage, { visualEffects, openReportEveryWeek, bestMedals })
+      const { visualEffects, openReportEveryWeek, reportCadence } = get()
+      writeSettings(storage, {
+        visualEffects,
+        openReportEveryWeek,
+        reportCadence,
+        bestMedals,
+      })
     }
     return {
       ...readSettings(storage),
       setVisualEffects: (visualEffects) => change({ visualEffects }),
       setOpenReportEveryWeek: (openReportEveryWeek) =>
         change({ openReportEveryWeek }),
+      setReportCadence: (reportCadence) => change({ reportCadence }),
       recordMedal: (defiId, medal) => {
         const { bestMedals } = get()
         const best = bestMedals[defiId]

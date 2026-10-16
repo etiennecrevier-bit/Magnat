@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createSettingsStore,
+  type ReportCadence,
   type SettingsStorage,
   type VisualEffects,
 } from './settings.ts'
@@ -30,18 +31,22 @@ afterEach(() => {
 
 interface ViewOptions {
   visualEffects?: VisualEffects
+  cadence?: ReportCadence
   everyWeek?: boolean
   importError?: string | null
 }
 
 function props({
   visualEffects = 'full',
+  cadence = 'week',
   everyWeek = false,
   importError = null,
 }: ViewOptions = {}) {
   return {
     visualEffects,
     onVisualEffectsChange: vi.fn<(visualEffects: VisualEffects) => void>(),
+    cadence,
+    onCadenceChange: vi.fn<(cadence: ReportCadence) => void>(),
     everyWeek,
     onEveryWeekChange: vi.fn<(everyWeek: boolean) => void>(),
     onExport: vi.fn<() => void>(),
@@ -55,10 +60,15 @@ function render(options: ViewOptions = {}) {
   return renderToStaticMarkup(<SettingsPanelView {...props(options)} />)
 }
 
-/** Each radio button of the visual effects: its value and whether checked. */
-function radios(html: string) {
+/**
+ * Each radio button of the visual effects, or of the setting `name`: its
+ * value and whether checked.
+ */
+function radios(html: string, name = 'visualEffects') {
   return [
-    ...html.matchAll(/<input type="radio" name="visualEffects"[^>]*>/g),
+    ...html.matchAll(
+      new RegExp(`<input type="radio" name="${name}"[^>]*>`, 'g'),
+    ),
   ].map(([tag]) => ({
     value: /value="([^"]*)"/.exec(tag)?.[1],
     checked: tag.includes('checked=""'),
@@ -107,15 +117,40 @@ describe('SettingsPanelView', () => {
     },
   )
 
+  it.each<ReportCadence>(['week', 'month'])(
+    'offers the « Bilan » « Chaque semaine » or « Chaque mois », %s checked',
+    (cadence) => {
+      const html = render({ cadence })
+      expect(html).toContain(
+        '<fieldset class="settings-panel__setting"><legend>Bilan</legend><div class="settings-panel__options">',
+      )
+      expect(radios(html, 'reportCadence')).toEqual([
+        { value: 'week', checked: cadence === 'week' },
+        { value: 'month', checked: cadence === 'month' },
+      ])
+      expect(html).toMatch(/>Chaque semaine<\/label>.*>Chaque mois<\/label>/)
+    },
+  )
+
   it.each([false, true])(
     'has the « Ouvrir le bilan chaque semaine » switch, on: %s',
     (everyWeek) => {
       const checked = everyWeek ? ' checked=""' : ''
-      expect(render({ everyWeek })).toContain(
-        `<legend>Bilan de la semaine</legend><label class="settings-panel__switch"><input type="checkbox" role="switch"${checked}/>Ouvrir le bilan chaque semaine</label>`,
+      const html = render({ everyWeek })
+      expect(html).toContain(
+        `>Chaque mois</label></div><label class="settings-panel__switch"><input type="checkbox" role="switch"${checked}/>Ouvrir le bilan chaque semaine</label></fieldset>`,
       )
     },
   )
+
+  it('names the switch « Ouvrir le bilan chaque mois » with the monthly report, and says the first weeks stay weekly', () => {
+    const html = render({ cadence: 'month', everyWeek: true })
+    expect(html).toContain(
+      '<input type="checkbox" role="switch" checked=""/>Ouvrir le bilan chaque mois</label>' +
+        '<p class="settings-panel__hint">Les 4 premières semaines d&#x27;une partie, le bilan vient quand même chaque semaine.</p></fieldset>',
+    )
+    expect(render()).not.toContain('premières semaines')
+  })
 
   it('exports and imports the game last, the import taking a JSON file', () => {
     expect(render()).toMatch(
@@ -157,6 +192,14 @@ describe('SettingsPanelView', () => {
     toggle.onChange({ target: { checked: true } })
     toggle.onChange({ target: { checked: false } })
     expect(wired.onEveryWeekChange.mock.calls).toEqual([[true], [false]])
+    for (const cadence of ['month', 'week'] as const) {
+      find<{ name: string; value: string; onChange: () => void }>(
+        view,
+        'input',
+        (input) => input.name === 'reportCadence' && input.value === cadence,
+      ).props.onChange()
+    }
+    expect(wired.onCadenceChange.mock.calls).toEqual([['month'], ['week']])
   })
 })
 
@@ -204,6 +247,10 @@ describe('SettingsPanel', () => {
       { value: 'simple', checked: false },
     ])
     expect(html).toContain('<input type="checkbox" role="switch"/>')
+    expect(radios(html, 'reportCadence')).toEqual([
+      { value: 'week', checked: true },
+      { value: 'month', checked: false },
+    ])
   })
 
   it('keeps each setting the player changes for the next visit', () => {
@@ -211,6 +258,7 @@ describe('SettingsPanel', () => {
     const now = createSettingsStore(storage)
     now.getState().setVisualEffects('simple')
     now.getState().setOpenReportEveryWeek(true)
+    now.getState().setReportCadence('month')
 
     const html = renderToStaticMarkup(
       <SettingsPanel settings={createSettingsStore(storage)} />,
@@ -220,6 +268,10 @@ describe('SettingsPanel', () => {
       { value: 'simple', checked: true },
     ])
     expect(html).toContain('<input type="checkbox" role="switch" checked=""/>')
+    expect(radios(html, 'reportCadence')).toEqual([
+      { value: 'week', checked: false },
+      { value: 'month', checked: true },
+    ])
 
     now.getState().setVisualEffects('full')
     now.getState().setOpenReportEveryWeek(false)
