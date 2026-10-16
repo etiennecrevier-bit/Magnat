@@ -283,7 +283,7 @@ describe('grosseCommande', () => {
   })
 
   it.each([0, 1])(
-    '« Accepter » bakes and sells 200 croissants on credit on Thursday, outcome %i',
+    '« Accepter » bakes and sells 400 croissants on credit on Thursday, outcome %i',
     (outcome) => {
       const chosen = choose(morning, 'grosseCommande', 'accepter', outcome)
       expect(chosen.journal).toBe(morning.journal)
@@ -294,7 +294,7 @@ describe('grosseCommande', () => {
       ])
       const order = entries(end, 'Coût des marchandises vendues').filter(
         (entry) =>
-          entry.day === thursday && amountOf(entry) === 200 * CROISSANT_COST,
+          entry.day === thursday && amountOf(entry) === 400 * CROISSANT_COST,
       )
       expect(order).toHaveLength(1)
       expect(balance(end.journal, RECEIVABLES, { toDay: thursday - 1 })).toBe(0)
@@ -305,7 +305,7 @@ describe('grosseCommande', () => {
   it('« Accepter » is paid on the due day, 60 days after Thursday, at 85 %', () => {
     const chosen = choose(morning, 'grosseCommande', 'accepter', 0)
     expect(chosen.events.delayed.map(({ day }) => day)).toEqual(
-      Array<Day>(4).fill(thursday),
+      Array<Day>(5).fill(thursday),
     )
     const end = last(playOut(chosen, { minDays: due - morning.day + 1 }))
     expect(entries(end, `Encaissement · ${GILLES}`).map(shape)).toEqual([
@@ -331,6 +331,20 @@ describe('grosseCommande', () => {
     expect({ ...chosen, events: morning.events }).toEqual(morning)
     expect(chosen.events.delayed).toEqual([])
   })
+
+  it.each([
+    ['accepter', [thursday]],
+    ['payeLivraison', [thursday]],
+    ['refuser', []],
+  ] as const)(
+    '« %s » closes the truck on Thursday only when the order is taken',
+    (choiceId, closed) => {
+      const days = playOut(choose(morning, 'grosseCommande', choiceId))
+      expect(
+        daysWhen(days, morning.day, thursday + 3, ({ closed }) => closed),
+      ).toEqual(closed)
+    },
+  )
 })
 
 describe('chequeDansLaMalle', () => {
@@ -357,7 +371,7 @@ describe('chequeDansLaMalle', () => {
     )
   })
 
-  it('« Patienter » collects the 750 $ 30 days later, once', () => {
+  it('« Patienter » collects the 750 $ 30 days later, once, at 60 %', () => {
     const chosen = choose(dueMorning, 'chequeDansLaMalle', 'patienter', 0, true)
     expect(chosen.receivables).toEqual([
       { client: GILLES, amount: 75_000, soldOnDay: thursday, dueDay: due + 30 },
@@ -367,10 +381,30 @@ describe('chequeDansLaMalle', () => {
     expect(entries(end, `Encaissement · ${GILLES}`).map(shape)).toEqual([
       { day: due + 30, debited: CASH, credited: RECEIVABLES, amount: 75_000 },
     ])
+    expect(entries(end, `Mauvaise créance · ${GILLES}`)).toEqual([])
     expect(balance(end.journal, RECEIVABLES, { toDay: due + 30 })).toBe(0)
   })
 
-  it('« Aller le voir au bureau » collects the 750 $ at once at 70 %, once', () => {
+  it('« Patienter » writes the 750 $ off 30 days later at 40 %, never collected', () => {
+    const chosen = choose(dueMorning, 'chequeDansLaMalle', 'patienter', 1, true)
+    expect(chosen.receivables).toEqual([
+      { client: GILLES, amount: 75_000, soldOnDay: thursday, dueDay: due + 30 },
+    ])
+    const end = last(playOut(chosen, { minDays: 40 }))
+    expect(balance(end.journal, RECEIVABLES, { toDay: due + 29 })).toBe(75_000)
+    expect(entries(end, `Mauvaise créance · ${GILLES}`).map(shape)).toEqual([
+      {
+        day: due + 30,
+        debited: BAD_DEBTS,
+        credited: RECEIVABLES,
+        amount: 75_000,
+      },
+    ])
+    expect(entries(end, `Encaissement · ${GILLES}`)).toEqual([])
+    expect(balance(end.journal, RECEIVABLES, { toDay: end.day })).toBe(0)
+  })
+
+  it('« Aller le voir au bureau » pays the taxi and collects the 750 $ at once at 80 %, once', () => {
     const chosen = choose(
       dueMorning,
       'chequeDansLaMalle',
@@ -380,6 +414,9 @@ describe('chequeDansLaMalle', () => {
     )
     expect(chosen.energy).toBe(dueMorning.energy - 5)
     expect(chosen.receivables).toEqual([])
+    expect(
+      entries(chosen, 'Taxi aller-retour au bureau de Gilles').map(shape),
+    ).toEqual([{ day: due, debited: '6900', credited: CASH, amount: 4000 }])
     const end = last(playOut(chosen, { minDays: 40 }))
     expect(entries(end, `Encaissement · ${GILLES}`).map(shape)).toEqual([
       { day: due, debited: CASH, credited: RECEIVABLES, amount: 75_000 },
@@ -387,7 +424,7 @@ describe('chequeDansLaMalle', () => {
     expect(entries(end, `Mauvaise créance · ${GILLES}`)).toEqual([])
   })
 
-  it('« Aller le voir au bureau » writes the 750 $ off at 30 %, never collected', () => {
+  it('« Aller le voir au bureau » writes the 750 $ off at 20 %, never collected', () => {
     const chosen = choose(
       dueMorning,
       'chequeDansLaMalle',
@@ -442,14 +479,27 @@ describe('the croissants given away', () => {
 })
 
 describe('the changes to the street', () => {
+  it.each(['patienter', 'vacances'])(
+    'conesOrange: « %s » takes 55 %% of the walk-ins for a week, then 20 %% for two',
+    (choiceId) => {
+      const morning = firstMorning('conesOrange')
+      const { day } = morning
+      const days = playOut(choose(morning, 'conesOrange', choiceId))
+      const factor = (factor: number) =>
+        daysWhen(days, day, day + 22, (s) => s.walkIns.chic === factor)
+      expect(factor(0.45)).toEqual(Array.from({ length: 7 }, (_, d) => day + d))
+      expect(factor(0.8)).toEqual(
+        Array.from({ length: 14 }, (_, d) => day + 7 + d),
+      )
+    },
+  )
+
   it('conesOrange: « Prendre une semaine de vacances » closes 7 days and fills the energy', () => {
     const morning = firstMorning('conesOrange')
     const { day } = morning
     const days = playOut(choose(morning, 'conesOrange', 'vacances'))
     const closed = daysWhen(days, day, day + 21, ({ closed }) => closed)
     expect(closed).toEqual([0, 1, 2, 3, 4, 5, 6].map((d) => day + d))
-    const fewer = daysWhen(days, day, day + 22, (s) => s.walkIns.chic === 0.65)
-    expect(fewer).toEqual(Array.from({ length: 21 }, (_, d) => day + d))
     const lastClosed = days.find(({ lastDay }) => lastDay?.day === day + 6)
     expect(lastClosed?.lastDay?.energy).toBe(100)
   })
@@ -461,7 +511,7 @@ describe('the changes to the street', () => {
     expect(
       entries(chosen, 'Formulaire 22-C, changement de coin de rue').map(shape),
     ).toEqual([
-      { day, debited: RENT_AND_PERMIT, credited: CASH, amount: 25_000 },
+      { day, debited: RENT_AND_PERMIT, credited: CASH, amount: 100_000 },
     ])
     const days = playOut(chosen)
     expect(daysWhen(days, day, day + 21, ({ closed }) => closed)).toEqual([
@@ -484,14 +534,15 @@ describe('the changes to the street', () => {
     ])
   })
 
-  it('chalet: « Y aller » closes the truck on Saturday and Sunday', () => {
+  it('chalet: « Y aller » closes the truck from Friday to Sunday', () => {
     const morning = firstMorning('chalet')
     const { day } = morning
-    const saturday = nextWeekday(day, 6)
+    const friday = nextWeekday(day, 5)
     const days = playOut(choose(morning, 'chalet', 'yAller'))
     expect(daysWhen(days, day, day + 7, ({ closed }) => closed)).toEqual([
-      saturday,
-      saturday + 1,
+      friday,
+      friday + 1,
+      friday + 2,
     ])
   })
 

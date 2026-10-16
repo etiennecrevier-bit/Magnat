@@ -29,6 +29,7 @@ import type {
   Day,
   DaySummary,
   EventRecord,
+  GameState,
   PerProduct,
 } from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
@@ -177,38 +178,16 @@ export function simulate(
     throw new RangeError(`Days to play must be a whole number from 1: ${days}`)
   }
 
-  let state = createInitialState(seed, FOOD_TRUCK, {
-    ...defaultProfile(),
-    difficulty,
-  })
-  for (const change of changes) state = applyDecision(state, change)
-  // What tick() does each morning, before day 0 is played.
-  state = {
-    ...state,
-    decisions: latestDecisions(state),
-    pendingDecisions: null,
-  }
+  let state = startGame(seed, difficulty, changes)
   const content = events === 'none' ? NO_EVENTS : eventContent
   const choose = events === 'none' ? null : eventChooser(events, seed)
   const daySummaries: DaySummary[] = []
   const morningEnergy: number[] = []
   const unpaidRents: Day[] = []
   for (let day = 0; day < days; day += 1) {
-    const { pending } = state.events
-    const card = content.events.find(({ id }) => id === pending?.event)
-    if (choose !== null && card !== undefined) {
-      state = resolveEvent(state, choose(card), content)
-    }
+    state = answerEvent(state, content, choose)
     morningEnergy.push(state.energy)
-    state = tick(
-      state,
-      FOOD_TRUCK,
-      CUSTOMERS,
-      DIFFICULTIES,
-      PERSONAL,
-      ENERGY,
-      content,
-    )
+    state = playMorning(state, content, null)
     if (state.lastDay === null) throw new Error(`Day ${day} left no summary`)
     daySummaries.push(state.lastDay)
     if (state.personal.unpaidRents.at(-1) === day) unpaidRents.push(day)
@@ -227,6 +206,68 @@ export function simulate(
     eventHistory: state.events.history,
     modifierDays: modifierDays(daySummaries),
   }
+}
+
+/**
+ * A new game from `seed` at `difficulty`, by default the new game screen's,
+ * on the morning of day 0, with `changes` made to the starting decisions, in
+ * order, and already in effect, where the player's would wait for the next
+ * morning. Throws a RangeError unless `seed` and `difficulty` are ones
+ * `createInitialState` accepts and every change is one `applyDecision`
+ * accepts.
+ */
+export function startGame(
+  seed: number,
+  difficulty: DifficultyId = defaultProfile().difficulty,
+  changes: readonly DecisionChange[] = [],
+): GameState {
+  let state = createInitialState(seed, FOOD_TRUCK, {
+    ...defaultProfile(),
+    difficulty,
+  })
+  for (const change of changes) state = applyDecision(state, change)
+  // What tick() does each morning, before day 0 is played.
+  return {
+    ...state,
+    decisions: latestDecisions(state),
+    pendingDecisions: null,
+  }
+}
+
+/**
+ * `state` with the event waiting that morning, if `content` holds it,
+ * answered by `choose`; `state` itself when none waits or `choose` is null.
+ */
+export function answerEvent(
+  state: GameState,
+  content: EventContent,
+  choose: ((event: EventCard) => string) | null,
+): GameState {
+  const { pending } = state.events
+  const card = content.events.find(({ id }) => id === pending?.event)
+  if (choose === null || card === undefined) return state
+  return resolveEvent(state, choose(card), content)
+}
+
+/**
+ * Answers the event waiting on `state`'s morning, if any, with `choose` (see
+ * `answerEvent`), then plays the day with the shipped content and the event
+ * cards of `content`, and returns the next morning.
+ */
+export function playMorning(
+  state: GameState,
+  content: EventContent,
+  choose: ((event: EventCard) => string) | null,
+): GameState {
+  return tick(
+    answerEvent(state, content, choose),
+    FOOD_TRUCK,
+    CUSTOMERS,
+    DIFFICULTIES,
+    PERSONAL,
+    ENERGY,
+    content,
+  )
 }
 
 /**

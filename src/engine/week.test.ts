@@ -348,10 +348,12 @@ describe('the week of « La grosse commande »', () => {
   })
 
   it('counts the order in Thursday’s ventes, not in its cash received', () => {
-    const cashSales = cashSalesOn(journal, THURSDAY)
-    expect(cashSales).toBeGreaterThan(0)
-    expect(thursday?.sales).toBe(cashSales + 75_000)
-    expect(thursday?.cashReceived).toBe(cashSales)
+    // The truck stays closed on Thursday to deliver the order: it sells
+    // nothing else that day.
+    expect(thursday?.open).toBe(false)
+    expect(cashSalesOn(journal, THURSDAY)).toBe(0)
+    expect(thursday?.sales).toBe(75_000)
+    expect(thursday?.cashReceived).toBe(0)
     // The other days, cash sales alone.
     for (const { day, sales, cashReceived, open } of report.days) {
       if (day === THURSDAY) continue

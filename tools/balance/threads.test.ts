@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { DifficultyId } from '../../src/content/schema.ts'
 import { cents } from '../../src/engine/money.ts'
+import { runOwners } from './owners.ts'
 import { runBalance, type DifficultyRun } from './play.ts'
 import type { Strategy } from './strategies.ts'
 import {
   jobOptions,
   playAll,
   playInWorker,
+  type GridJob,
   type Playing,
-  type WorkerJob,
 } from './threads.ts'
 
 // Playing each difficulty on its own worker thread: that it plays what
@@ -35,8 +36,8 @@ function controlled() {
   return { playing: { run, stop } satisfies Playing, resolve, reject, stop }
 }
 
-function job(difficulty: DifficultyId): WorkerJob {
-  return { years: 1, games: 1, difficulty }
+function job(difficulty: DifficultyId): GridJob {
+  return { kind: 'grid', years: 1, games: 1, difficulty }
 }
 
 function difficultyRun(difficulty: DifficultyId): DifficultyRun {
@@ -86,6 +87,7 @@ describe('jobOptions', () => {
   it("is what runBalance plays for the job's one difficulty, its events policy included", () => {
     expect(
       jobOptions({
+        kind: 'grid',
         years: 2,
         games: 3,
         difficulty: 'moyen',
@@ -112,6 +114,7 @@ describe('jobOptions', () => {
 describe('playInWorker', () => {
   it('plays on its thread what runBalance plays on this one', async () => {
     const { run, stop } = playInWorker({
+      kind: 'grid',
       years: 1,
       games: 2,
       difficulty: 'difficile',
@@ -131,8 +134,25 @@ describe('playInWorker', () => {
     }
   }, 30_000)
 
+  it('plays the owners on its thread as runOwners plays them on this one', async () => {
+    const { run, stop } = playInWorker({
+      kind: 'owners',
+      years: 1,
+      games: 1,
+      difficulty: 'moyen',
+    })
+    try {
+      expect(await run).toEqual(
+        runOwners({ years: 1, games: 1, difficulty: 'moyen' }),
+      )
+    } finally {
+      await stop()
+    }
+  }, 30_000)
+
   it('rejects with what the game throws on its thread', async () => {
     const { run, stop } = playInWorker({
+      kind: 'grid',
       years: 1,
       games: 0,
       difficulty: 'moyen',

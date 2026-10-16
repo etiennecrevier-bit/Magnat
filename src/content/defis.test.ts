@@ -538,7 +538,7 @@ describe('the six Défis, scripted', () => {
       ).toEqual({
         status: 'echoue',
         medal: null,
-        daysPlayed: 55,
+        daysPlayed: 26,
         broken: 'minCash',
       })
     })
