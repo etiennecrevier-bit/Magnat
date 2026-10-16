@@ -305,6 +305,7 @@ describe('cashFlowStatement', () => {
         lines: [
           row('Emprunts bancaires', 1_400_000),
           row('Capital-actions', 2_000_000),
+          row('Dividendes versés', 0),
         ],
         total: row(
           'Flux de trésorerie liés aux activités de financement',
@@ -335,6 +336,7 @@ describe('cashFlowStatement', () => {
     expect(statement.financing.lines).toEqual([
       row('Emprunts bancaires', -100_000),
       row('Capital-actions', 0),
+      row('Dividendes versés', 0),
     ])
     expect(statement.netChange).toEqual(
       row("Diminution nette de l'encaisse", -186_000),
@@ -554,7 +556,7 @@ describe('cashFlowStatement', () => {
     },
     { account: '2500', activity: 'financing', label: 'Emprunts bancaires' },
     { account: '3000', activity: 'financing', label: 'Capital-actions' },
-    { account: '3100', activity: 'financing', label: 'Capital-actions' },
+    { account: '3100', activity: 'financing', label: 'Dividendes versés' },
     {
       account: '4000',
       activity: 'operating',

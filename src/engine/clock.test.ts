@@ -9,16 +9,20 @@ import * as calendar from './calendar.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
 import {
   CUSTOMERS,
+  DEFIS,
   DIFFICULTIES,
   ENERGY,
+  EVENTS,
   FOOD_TRUCK,
   PERSONAL,
   openingJournal,
   playDay,
 } from './day.ts'
+import { applyEffect } from './effects.ts'
 import { startingDecisions } from './decisions.ts'
 import { FULL_ENERGY } from './energy.ts'
 import { noEvents } from './events.ts'
+import { FINANCING } from './financing.ts'
 import { cents } from './money.ts'
 import { openingAccount } from './personal.ts'
 import { defaultProfile } from './profile.ts'
@@ -38,7 +42,7 @@ const DEFAULT_ACCOUNT = openingAccount(
 )
 
 describe('createInitialState', () => {
-  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile, the owner at full energy, no event, nobody owing anything, a first week to come, partial, from the opening cash, no Défi, no bakery, no contract, nobody on staff and the owner at work", () => {
+  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile, the owner at full energy, no event, nobody owing anything, a first week to come, partial, from the opening cash, no Défi, no bakery, no contract, nobody on staff, the owner at work and no financing", () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
@@ -78,6 +82,12 @@ describe('createInitialState', () => {
       contracts: { running: [], deliveries: [], missed: [], away: {} },
       staff: [],
       ownerAway: false,
+      financing: {
+        loans: [],
+        shareSales: [],
+        belowZeroSince: null,
+        lastLoanRequestDay: null,
+      },
     })
     expect(FULL_ENERGY).toBe(100)
   })
@@ -238,6 +248,47 @@ describe('tick', () => {
     expect(after.ownerAway).toBe(false)
     expect(after.lastDay?.visits.length).toBeGreaterThan(0)
     expect(after.lastDay?.energy).toBeLessThan(next.energy)
+  })
+
+  it('brings the card of the financing rules it is given the morning after a close below zero (#159)', () => {
+    const morning = tick(createInitialState(42))
+    const billed = applyEffect(
+      morning,
+      {
+        kind: 'charge',
+        amountCents: cents(
+          balance(morning.journal, '1000', { toDay: 1 }) + 500_000,
+        ),
+        description: 'Facture',
+      },
+      FOOD_TRUCK,
+      'test',
+    )
+    const next = (rules = FINANCING) =>
+      tick(
+        billed,
+        FOOD_TRUCK,
+        CUSTOMERS,
+        DIFFICULTIES,
+        PERSONAL,
+        ENERGY,
+        EVENTS,
+        DEFIS,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        rules,
+      ).events.pending?.event
+    expect(next()).toBe('pretUrgence')
+    expect(
+      next({
+        ...FINANCING,
+        loanEvent: 'offreDuvent',
+        investorEvent: 'pretUrgence',
+      }),
+    ).toBe('offreDuvent')
+    expect(tick(billed).events.pending).toBeNull()
   })
 
   it('counts one day per tick and keeps the seed and the profile', () => {

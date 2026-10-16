@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import financingJson from '../content/financing.json'
 import grocersJson from '../content/grocers.json'
 import {
   loadDefiContent,
   loadDifficultyContent,
   loadEventContent,
+  loadFinancingContent,
   loadFoodTruckContent,
   loadGrocerContent,
   type DifficultyContent,
@@ -38,13 +40,16 @@ import {
   playDay,
 } from './day.ts'
 import { applyDecision, type DecisionChange } from './decisions.ts'
+import { applyEffect } from './effects.ts'
 import { FULL_ENERGY } from './energy.ts'
 import { drawEvent, noEvents, resolveEvent } from './events.ts'
+import { FINANCING } from './financing.ts'
 import { inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
 import { LABELS } from './personal.ts'
 import { PROFILE_CONTENT } from './profile.ts'
 import { SAVE_VERSION, deserialize, serialize } from './save.ts'
+import { STAFF } from './staff.ts'
 import type { GameState, Profile } from './types.ts'
 
 const SEED = 42
@@ -191,12 +196,28 @@ function without(path: string): string {
   })
 }
 
-/** The shipped essai card alone, drawn every morning from day 1. */
+/**
+ * The shipped essai card alone, drawn every morning from day 1, without its
+ * emergency loan and share sale: those came in version 15, and have tests
+ * of their own, so the games it plays still save as older versions.
+ */
 const ESSAI: EventContent = {
   pacing: { firstDay: 1, minDaysBetween: 0, dailyChance: 1 },
   events: EVENTS.events
     .filter(({ id }) => id === 'essai')
-    .map((event) => ({ ...event, weight: 1 })),
+    .map((event) => ({
+      ...event,
+      weight: 1,
+      choices: event.choices.map((choice) => ({
+        ...choice,
+        outcomes: choice.outcomes.map((outcome) => ({
+          ...outcome,
+          effects: outcome.effects.filter(
+            ({ kind }) => kind !== 'emergencyLoan' && kind !== 'shareSale',
+          ),
+        })),
+      })),
+    })),
 }
 
 function withEvents(state: GameState, events = ESSAI): GameState {
@@ -305,11 +326,34 @@ function withoutWeek(save: Json): void {
 }
 
 /**
+ * Takes the financing out of `save`, as version 14 wrote it: the save of a
+ * game that never took an emergency loan nor sold shares, and that nobody
+ * came to lend to. Whether its encaisse closed below zero comes from its
+ * books.
+ */
+function withoutFinancing(save: Json): void {
+  expect(save.financing).toMatchObject({
+    loans: [],
+    shareSales: [],
+    lastLoanRequestDay: null,
+  })
+  delete save.financing
+}
+
+/** `state`, with no financing, saved as version 14, before the financing. */
+function v14(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutFinancing(save)
+  return JSON.stringify({ ...save, saveVersion: 14 })
+}
+
+/**
  * Takes the staff out of `save`, as version 13 wrote it: the save of a game
  * that never hired anyone, with the owner at work, no strike and nothing
- * missed.
+ * missed, nor any financing, which came later.
  */
 function withoutStaff(save: Json): void {
+  withoutFinancing(save)
   expect(save.staff).toEqual([])
   expect(save.ownerAway).toBe(false)
   delete save.staff
@@ -446,8 +490,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(14)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 14 })
+    expect(SAVE_VERSION).toBe(15)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 15 })
   })
 
   it.each<Profile>([
@@ -984,14 +1028,26 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 6, 15, '14', '13', '12', '11', '10', '9', '8', '7', null])(
-    'saveVersion %j',
-    (version) => {
-      expectInvalid(withValue('saveVersion', version), [
-        `unsupported saveVersion ${JSON.stringify(version)}`,
-      ])
-    },
-  )
+  it.each([
+    0,
+    1,
+    6,
+    16,
+    '15',
+    '14',
+    '13',
+    '12',
+    '11',
+    '10',
+    '9',
+    '8',
+    '7',
+    null,
+  ])('saveVersion %j', (version) => {
+    expectInvalid(withValue('saveVersion', version), [
+      `unsupported saveVersion ${JSON.stringify(version)}`,
+    ])
+  })
 
   describe('a key the game does not know', () => {
     it('in the save', () => {
@@ -3861,6 +3917,315 @@ describe('the staff and the missed deliveries', () => {
       STRUCK_SAVE,
       'contract 1 has 1 strikes, after 1 deliveries missed since day 0, and fewer than 1 keep it running',
       loadGrocerContent({ ...grocersJson, maxStrikes: 1 }, EVENTS),
+    )
+  })
+})
+
+describe('the emergency loans and the share sales', () => {
+  /** The shipped cards with only the financing's two, which no draw brings. */
+  const CARDS: EventContent = {
+    ...EVENTS,
+    events: EVENTS.events.filter(
+      ({ id }) => id === FINANCING.loanEvent || id === FINANCING.investorEvent,
+    ),
+  }
+  const LENDER = 'Caisse populaire Saint-Prudent'
+
+  /** The next morning, with the financing's cards in play. */
+  function next(state: GameState): GameState {
+    return tick(
+      state,
+      FOOD_TRUCK,
+      CUSTOMERS,
+      DIFFICULTIES,
+      PERSONAL,
+      ENERGY,
+      CARDS,
+    )
+  }
+
+  /** `days` days played from `state`, every card refused. */
+  function playOn(state: GameState, days: number): GameState {
+    let played = state
+    for (let day = 0; day < days; day += 1) {
+      if (played.events.pending !== null) {
+        played = resolveEvent(played, 'refuser', CARDS)
+      }
+      played = next(played)
+    }
+    return played
+  }
+
+  /** `state` with `event` waiting that morning, as if drawn. */
+  function offering(state: GameState, event: string): GameState {
+    return {
+      ...state,
+      events: {
+        ...state.events,
+        pending: { event, followUp: false },
+        lastDrawnDay: state.day,
+      },
+    }
+  }
+
+  // Seed 42 at Moyen: a bill on the morning of day 59 leaves Encaisse
+  // 3 000 $ below zero, so the morning of day 60, June 30, brings the
+  // emergency loan, taken. Max Duvent buys shares on the morning of July
+  // 1st, day 61, then the game plays to the morning of day 161, past the
+  // loan's first payments and the dividend of October 1st, day 153.
+  const BILLED = applyEffect(
+    played(59),
+    {
+      kind: 'charge',
+      amountCents: cents(
+        balance(played(59).journal, '1000', { toDay: 59 }) + 300_000,
+      ),
+      description: 'Facture imprévue',
+    },
+    FOOD_TRUCK,
+    'test',
+  )
+  const OFFERED = next(BILLED)
+  const LOANED = resolveEvent(OFFERED, 'accepter', CARDS)
+  const SOLD = resolveEvent(
+    offering(next(LOANED), 'offreDuvent'),
+    'accepter',
+    CARDS,
+  )
+  const FINANCED = playOn(SOLD, 100)
+  const FINANCED_SAVE = serialize(FINANCED)
+  const [LOAN] = FINANCED.financing.loans
+  const [SALE] = FINANCED.financing.shareSales
+
+  it('give back a game with an emergency loan, shares sold, payments and dividends, which then plays on the same', () => {
+    expect(OFFERED.events.pending?.event).toBe('pretUrgence')
+    expect(FINANCED.financing).toMatchObject({
+      loans: [{ day: 60, lender: LENDER }],
+      shareSales: [{ day: 61, investor: 'Duvent Capital', share: 0.2 }],
+      lastLoanRequestDay: 60,
+    })
+    const memos = new Set(entriesOf(FINANCED.journal).map(({ memo }) => memo))
+    for (const memo of [
+      `Intérêts · ${LENDER}`,
+      `Remboursement · ${LENDER}`,
+      'Dividende · Duvent Capital',
+    ]) {
+      expect(memos.has(memo), memo).toBe(true)
+    }
+    for (const state of [OFFERED, LOANED, SOLD, FINANCED]) {
+      const back = reloaded(state)
+      expect(back).toStrictEqual(state)
+      expect(serialize(back)).toBe(serialize(state))
+      expect(serialize(playOn(back, 40))).toBe(serialize(playOn(state, 40)))
+    }
+  })
+
+  it('load a version 14 game as one with no financing, the closes below zero read from its books', () => {
+    // The bill's day closed below zero with no event content in play, so
+    // nobody came.
+    const below = tick(BILLED)
+    expect(below.financing.belowZeroSince).toBe(59)
+    expect(below.financing.lastLoanRequestDay).toBeNull()
+    for (const state of [
+      createInitialState(SEED),
+      BILLED,
+      below,
+      played(10, below),
+      DAY_400,
+    ]) {
+      expect(deserialize(v14(state))).toStrictEqual(state)
+    }
+  })
+
+  /** The load of `text` fails, naming `reason`. */
+  function rejects(text: string, reason: string, rules = FINANCING): void {
+    expect(() =>
+      deserialize(
+        text,
+        FOOD_TRUCK,
+        EVENTS,
+        DIFFICULTIES,
+        DEFIS,
+        BAKERY,
+        loadGrocerContent(grocersJson, EVENTS),
+        STAFF,
+        rules,
+      ),
+    ).toThrow(reason)
+  }
+
+  const { day } = FINANCED
+  it.each([
+    [
+      'a loan taken after the save',
+      withValue('financing.loans.0.day', day + 1, FINANCED_SAVE),
+      `emergency loan 1 is on day ${day + 1}, not a morning from day 0 to day ${day}`,
+    ],
+    [
+      'a loan taken while the one before it was still open',
+      withValue('financing.loans', [LOAN, { ...LOAN, day: 90 }], FINANCED_SAVE),
+      'emergency loan 2 was taken on day 90, while the one before it was still open',
+    ],
+    [
+      'a fee above what was lent',
+      withValue(
+        'financing.loans.0.fee',
+        (LOAN?.principal ?? 0) + 1,
+        FINANCED_SAVE,
+      ),
+      `emergency loan 1 charged a fee of ${(LOAN?.principal ?? 0) + 1}, more than the ${LOAN?.principal} it lent`,
+    ],
+    [
+      'a loan of another amount than the journal holds',
+      withValue(
+        'financing.loans.0.principal',
+        (LOAN?.principal ?? 0) + 100,
+        FINANCED_SAVE,
+      ),
+      `the journal holds « Emprunt d'urgence · ${LENDER} » on day 60, which the financing does not owe`,
+    ],
+    [
+      'a loan the save forgot',
+      withValue('financing.loans', [], FINANCED_SAVE),
+      `the journal holds « Emprunt d'urgence · ${LENDER} » on day 60, which the financing does not owe`,
+    ],
+    [
+      'a fee the journal does not hold',
+      withValue('financing.loans.0.fee', (LOAN?.fee ?? 0) + 1, FINANCED_SAVE),
+      `the journal holds « Frais de dossier · ${LENDER} » on day 60, which the financing does not owe`,
+    ],
+    [
+      'a loan at another rate than its payments',
+      withValue('financing.loans.0.annualRateBasisPoints', 1700, FINANCED_SAVE),
+      `the journal holds « Intérêts · ${LENDER} » on day 61, which the financing does not owe`,
+    ],
+    [
+      'a loan of another term than its payments',
+      withValue('financing.loans.0.termMonths', 6, FINANCED_SAVE),
+      `the journal holds « Remboursement · ${LENDER} » on day 61, which the financing does not owe`,
+    ],
+    [
+      'a loan with no fee whose fee the journal holds',
+      withValue('financing.loans.0.fee', 0, FINANCED_SAVE),
+      `the journal holds « Frais de dossier · ${LENDER} » on day 60, which the financing does not owe`,
+    ],
+    [
+      'shares sold for another amount than the journal holds',
+      withValue(
+        'financing.shareSales.0.amount',
+        (SALE?.amount ?? 0) + 1,
+        FINANCED_SAVE,
+      ),
+      "the journal holds « Émission d'actions · Duvent Capital » on day 61, which the financing does not owe",
+    ],
+    [
+      'another share than its dividends',
+      withValue('financing.shareSales.0.share', 0.3, FINANCED_SAVE),
+      'the journal holds « Dividende · Duvent Capital » on day 153, which the financing does not owe',
+    ],
+    [
+      'a share sale the journal does not hold',
+      withValue(
+        'financing.shareSales',
+        [SALE, { ...SALE, day: 155 }],
+        FINANCED_SAVE,
+      ),
+      "the journal does not hold « Émission d'actions · Duvent Capital » on day 155 as the financing owes it",
+    ],
+    [
+      'share sales out of order',
+      withValue(
+        'financing.shareSales',
+        [SALE, { ...SALE, day: 10 }],
+        FINANCED_SAVE,
+      ),
+      'share sale 2 comes before the one before it: day 10 < day 61',
+    ],
+    [
+      'more rounds than a game may sell',
+      withValue('financing.shareSales', [SALE, SALE, SALE], FINANCED_SAVE),
+      '3 rounds of shares were sold, more than the 2 a game may sell',
+    ],
+    [
+      'the whole business sold',
+      withValue('financing.shareSales.0.share', 1, FINANCED_SAVE),
+      '→ at financing.shareSales[0].share',
+    ],
+    [
+      'a loan of nothing',
+      withValue('financing.loans.0.principal', 0, FINANCED_SAVE),
+      '→ at financing.loans[0].principal',
+    ],
+    [
+      'closes below zero the books do not give',
+      withValue('financing.belowZeroSince', 10, FINANCED_SAVE),
+      `financing.belowZeroSince is 10, but the closes in the books give ${FINANCED.financing.belowZeroSince}`,
+    ],
+    [
+      'a lender who came after the save',
+      withValue('financing.lastLoanRequestDay', day + 1, FINANCED_SAVE),
+      `financing.lastLoanRequestDay is on day ${day + 1}, not a morning from day 0 to day ${day}`,
+    ],
+    [
+      'shares sold on a later day',
+      withValue(
+        'events.delayed',
+        [
+          {
+            day: day + 5,
+            event: 'offreDuvent',
+            effect: {
+              kind: 'shareSale',
+              investor: 'Duvent Capital',
+              amountCents: 2_000_000,
+              share: 0.2,
+            },
+          },
+        ],
+        FINANCED_SAVE,
+      ),
+      'delayed effect 1 is a shareSale, which never waits',
+    ],
+    [
+      'a key a loan does not have',
+      withValue('financing.loans.0.cheat', 1, FINANCED_SAVE),
+      'Unrecognized key: "cheat"',
+    ],
+    [
+      'no financing at all',
+      edited(
+        'financing',
+        (parent, key) => {
+          delete parent[key]
+        },
+        FINANCED_SAVE,
+      ),
+      'financing',
+    ],
+    [
+      'a version 14 game with financing',
+      v14(createInitialState(SEED)).replace(
+        '"saveVersion":14',
+        `"saveVersion":14,"financing":${JSON.stringify(FINANCED.financing)}`,
+      ),
+      'Unrecognized key: "financing"',
+    ],
+  ])('rejects %s', (_, text, reason) => {
+    rejects(text, reason)
+  })
+
+  it('rejects a second loan at a difficulty that lends once, or rounds the rules no longer allow', () => {
+    // A first loan of one payment, paid back on June 1st, day 31.
+    const paidBack = { ...LOAN, day: 0, termMonths: 1 }
+    rejects(
+      withValue('financing.loans', [paidBack, LOAN], FINANCED_SAVE),
+      'emergency loan 2 is a second emergency loan at moyen',
+      loadFinancingContent({ ...financingJson, noSecondLoanAt: ['moyen'] }),
+    )
+    rejects(
+      FINANCED_SAVE,
+      '1 rounds of shares were sold, more than the 0 a game may sell',
+      loadFinancingContent({ ...financingJson, maxShareRounds: 0 }),
     )
   })
 })

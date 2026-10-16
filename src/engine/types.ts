@@ -343,6 +343,61 @@ export interface GameState {
    * next morning.
    */
   readonly ownerAway: boolean
+  /**
+   * The emergency loans and the shares sold, and since when Encaisse has
+   * closed below zero.
+   */
+  readonly financing: FinancingState
+}
+
+/** The ways out of a negative encaisse a game took (#159). */
+export interface FinancingState {
+  /** Every emergency loan taken, oldest first, paid back or not. */
+  readonly loans: readonly EmergencyLoan[]
+  /** Every round of shares sold, oldest first; a sale is for good. */
+  readonly shareSales: readonly ShareSale[]
+  /**
+   * The first of the closes in a row, the last one included, at which
+   * Encaisse was below zero; null when it was not at the last close, or
+   * before the first.
+   */
+  readonly belowZeroSince: Day | null
+  /**
+   * The last morning the lender of the emergency loan came, to lend or to
+   * refuse; null until she does. She comes once a game year at most.
+   */
+  readonly lastLoanRequestDay: Day | null
+}
+
+/** An emergency loan, on the terms it was taken on. */
+export interface EmergencyLoan {
+  /** The morning it was taken; the first payment is on the next 1st. */
+  readonly day: Day
+  /** Who lent it, as the journal names them. */
+  readonly lender: string
+  /** What was lent; above zero. */
+  readonly principal: Cents
+  /** The yearly rate, in basis points: 1800 for 18 %. */
+  readonly annualRateBasisPoints: number
+  /** The monthly payments, one each 1st from the month after the loan. */
+  readonly termMonths: number
+  /** What the lender charged up front, the « Frais de dossier ». */
+  readonly fee: Cents
+}
+
+/** A round of shares sold, on the terms it was sold on. */
+export interface ShareSale {
+  /** The morning it was sold. */
+  readonly day: Day
+  /** Who bought it, as the journal names them. */
+  readonly investor: string
+  /** What they paid; above zero. */
+  readonly amount: Cents
+  /**
+   * The share of the business sold, above 0 and below 1: the investor's
+   * share of the profit of each quarter from then on.
+   */
+  readonly share: number
 }
 
 /** The grocers' contracts of a game. */

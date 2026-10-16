@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   dayOfDate,
   endOfMonth,
+  gameYearOf,
   mondayOf,
   monthsSinceStart,
+  startOfQuarter,
   sundayOf,
   toCalendar,
   type CalendarDate,
@@ -233,5 +235,56 @@ describe('endOfMonth', () => {
 
   it('rejects a day outside the game', () => {
     expect(() => endOfMonth(-1)).toThrow(RangeError)
+  })
+})
+
+describe('gameYearOf', () => {
+  it.each([
+    [0, 1],
+    [364, 1],
+    [365, 2],
+    [729, 2],
+    [730, 3],
+    [3649, 10],
+  ])('puts day %i in year %i of the game', (day, year) => {
+    expect(gameYearOf(day)).toBe(year)
+  })
+
+  it.each([-1, 1.5, Number.NaN])('rejects day %d', (day) => {
+    expect(() => gameYearOf(day)).toThrow(RangeError)
+  })
+})
+
+describe('startOfQuarter', () => {
+  it.each([
+    // May 1st and June 30th of year 1: April 1st, before the game.
+    [0, -30],
+    [60, -30],
+    // July 1st and September 30th: July 1st.
+    [61, 61],
+    [152, 61],
+    // October 1st and December 31st: October 1st.
+    [153, 153],
+    [244, 153],
+    // January 1st and March 31st of year 2: January 1st.
+    [245, 245],
+    [334, 245],
+    // April 1st of year 2.
+    [335, 335],
+  ])('starts the quarter of day %i on day %i', (day, start) => {
+    expect(startOfQuarter(day)).toBe(start)
+  })
+
+  it('starts each quarter on the 1st of January, April, July or October, for ten years', () => {
+    let start = startOfQuarter(0)
+    for (let day = 0; day < 3650; day += 1) {
+      const { month, dayOfMonth } = toCalendar(day)
+      if (dayOfMonth === 1 && (month - 1) % 3 === 0) start = day
+      expect(startOfQuarter(day), `day ${day}`).toBe(start)
+    }
+  })
+
+  it('rejects a day outside the game', () => {
+    expect(() => startOfQuarter(-1)).toThrow(RangeError)
   })
 })

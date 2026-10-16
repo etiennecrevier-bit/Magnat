@@ -7,6 +7,7 @@ const MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const
 const MONTHS_PER_YEAR = MONTH_LENGTHS.length
 const DAYS_PER_YEAR = MONTH_LENGTHS.reduce((total, length) => total + length, 0)
 const DAYS_PER_WEEK = 7
+const MONTHS_PER_QUARTER = 3
 const START_YEAR = 1
 const START_MONTH = 5
 const START_WEEKDAY = 1
@@ -129,6 +130,34 @@ export function endOfMonth(day: Day, months: number = 0): Day {
     end += lengthOf(((month - 1 + ahead) % MONTHS_PER_YEAR) + 1)
   }
   return end
+}
+
+/**
+ * The year of the game `day` falls in, counted in years of 365 days from
+ * day 0, as the headless runs count them: 1 from day 0 to day 364, 2 from
+ * day 365. Throws a RangeError unless `day` is a non-negative safe integer.
+ */
+export function gameYearOf(day: Day): number {
+  if (!Number.isSafeInteger(day) || day < 0) {
+    throw new RangeError(`Invalid game day: ${day}`)
+  }
+  return Math.floor(day / DAYS_PER_YEAR) + 1
+}
+
+/**
+ * The first day of the calendar quarter of `day`, January 1st, April 1st,
+ * July 1st or October 1st: negative for a day of year 1 before July, whose
+ * quarter started before May 1st, day 0. Throws a RangeError unless `day`
+ * is a non-negative safe integer.
+ */
+export function startOfQuarter(day: Day): Day {
+  const { month, dayOfMonth } = toCalendar(day)
+  const first = month - ((month - 1) % MONTHS_PER_QUARTER)
+  let start = day - (dayOfMonth - 1)
+  for (let earlier = first; earlier < month; earlier += 1) {
+    start -= lengthOf(earlier)
+  }
+  return start
 }
 
 function lengthOf(month: number): number {

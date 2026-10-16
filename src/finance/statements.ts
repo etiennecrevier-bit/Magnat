@@ -207,6 +207,7 @@ const CASH_FLOW_ROWS = [
   { key: 'equipment', activity: 'investing', label: 'Équipement' },
   { key: 'loans', activity: 'financing', label: 'Emprunts bancaires' },
   { key: 'shareCapital', activity: 'financing', label: 'Capital-actions' },
+  { key: 'dividends', activity: 'financing', label: 'Dividendes versés' },
 ] as const satisfies readonly {
   key: string
   activity: Activity
@@ -228,7 +229,9 @@ type CashFlowRow = (typeof CASH_FLOW_ROWS)[number]['key']
 // and it cancels out against Amortissement cumulé. Créances irrécouvrables
 // goes with the customers likewise: a write-off never moves cash, and it
 // cancels out against Comptes clients, so an entry that collects part of a
-// debt and writes off the rest shows only the cash collected.
+// debt and writes off the rest shows only the cash collected. The only cash
+// Bénéfices non répartis moves is a dividend paid, a financing flow as ASPE
+// section 1540 has it, on a row of its own beside the shares sold.
 const CASH_FLOW_ROW: Record<Exclude<AccountCode, typeof CASH>, CashFlowRow> = {
   '1100': 'customers',
   '1200': 'suppliers',
@@ -237,7 +240,7 @@ const CASH_FLOW_ROW: Record<Exclude<AccountCode, typeof CASH>, CashFlowRow> = {
   '2000': 'suppliers',
   '2500': 'loans',
   '3000': 'shareCapital',
-  '3100': 'shareCapital',
+  '3100': 'dividends',
   '4000': 'customers',
   '5000': 'suppliers',
   '5100': 'suppliers',

@@ -66,6 +66,13 @@ const GROCER_CARDS = [
   'renouvellementDepanneur',
 ]
 
+/**
+ * The cards of issue #159, which the engine brings when the encaisse
+ * closes below zero: Mme Prudhomme's emergency loan, then Max Duvent's
+ * offer.
+ */
+const FINANCING_CARDS = ['pretUrgence', 'offreDuvent']
+
 /** The portraits of issue #95, one per character but the silhouette. */
 const PORTRAITS = [
   'gillesLacasse',
@@ -80,6 +87,9 @@ const PORTRAITS = [
   'jeanPhilippe',
   'meteorologue',
 ]
+
+/** The characters of issue #159, whose portraits came before their cards. */
+const FINANCING_PORTRAITS = ['mmePrudhomme', 'maxDuvent']
 
 /** The characters of issues #137 and #156, who have no portrait yet. */
 const WITHOUT_PORTRAITS = [
@@ -101,6 +111,25 @@ function offersContract({ choices }: EventCard): boolean {
       effects.some(({ kind }) => kind === 'contract'),
     ),
   )
+}
+
+/** An emergency loan on the shipped terms, as a card writes it. */
+const LOAN: Json = {
+  kind: 'emergencyLoan',
+  lender: 'Caisse populaire Saint-Prudent',
+  monthsOfFixedCosts: 1,
+  maxCents: 1_500_000,
+  annualRateBasisPoints: 1800,
+  termMonths: 12,
+  feeShare: 0.02,
+}
+
+/** A round of shares on the shipped terms, as a card writes it. */
+const SHARES: Json = {
+  kind: 'shareSale',
+  investor: 'Duvent Capital',
+  amountCents: 2_000_000,
+  share: 0.2,
 }
 
 /** A copy of the shipped file to break, as plain JSON. */
@@ -174,11 +203,15 @@ function appliesAt(
  * the owner's own cash going down, a change to the street below 1, the
  * truck closed or a product it cannot sell, stock given away or lost, a
  * client who pays late or never, or a grocer's contract, whose deliveries
- * take cash and energy each week, or a grocer walking away (#156).
+ * take cash and energy each week, or a grocer walking away (#156), or an
+ * emergency loan, whose fee and interest are paid, or shares sold, whose
+ * buyer takes a share of the profit for good (#159).
  */
 function costs(effect: TimedEventEffect): boolean {
   switch (effect.kind) {
     case 'charge':
+    case 'emergencyLoan':
+    case 'shareSale':
     case 'closed':
     case 'unavailable':
     case 'delayReceivable':
@@ -278,13 +311,14 @@ describe('events.json', () => {
     expect(essai?.weight).toBe(0)
   })
 
-  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, then the six of #156, in order', () => {
+  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, the six of #156, then the two of #159, in order', () => {
     expect(content.events.map(({ id }) => id)).toEqual([
       'essai',
       ...CARDS,
       ...STANDING_CARDS,
       ...R06_CARDS,
       ...GROCER_CARDS,
+      ...FINANCING_CARDS,
     ])
   })
 
@@ -295,9 +329,10 @@ describe('events.json', () => {
     expect(dated).toEqual([['premierJuillet', { month: 6, dayOfMonth: 30 }]])
   })
 
-  it('may draw every card but essai, unless it only comes as a follow-up', () => {
+  it('may draw every card but essai and those of #159, which the engine brings, unless it only comes as a follow-up', () => {
     for (const { id, weight, conditions } of content.events.slice(1)) {
-      if (conditions?.followUpOnly !== true)
+      if (FINANCING_CARDS.includes(id)) expect(weight, id).toBe(0)
+      else if (conditions?.followUpOnly !== true)
         expect(weight, id).toBeGreaterThan(0)
     }
   })
@@ -409,15 +444,19 @@ describe('events.json', () => {
     }
   })
 
-  it('writes no amount into a tag by hand: the effect it names gives it', () => {
-    const typed = content.events.flatMap(({ id, choices }) =>
-      choices.flatMap(({ id: choice, tags }) =>
-        tags
-          .map((tag) => (typeof tag === 'string' ? tag : tag.text))
-          .filter((text) => /\d\s*[$%]|Énergie [+−]\d/.test(text))
-          .map((text) => `${id}, ${choice}: ${text}`),
-      ),
-    )
+  it('writes no amount into a tag by hand, the terms of #159 aside: the effect it names gives it', () => {
+    // A loan's rate, term and fee, and the share sold, are no amount a tag
+    // can show: financing.test.ts holds the text to the effect.
+    const typed = content.events
+      .filter(({ id }) => !FINANCING_CARDS.includes(id))
+      .flatMap(({ id, choices }) =>
+        choices.flatMap(({ id: choice, tags }) =>
+          tags
+            .map((tag) => (typeof tag === 'string' ? tag : tag.text))
+            .filter((text) => /\d\s*[$%]|Énergie [+−]\d/.test(text))
+            .map((text) => `${id}, ${choice}: ${text}`),
+        ),
+      )
     expect(typed).toEqual([])
   })
 
@@ -439,12 +478,12 @@ describe('events.json', () => {
     expect(typed).toEqual([])
   })
 
-  it('names the characters by the ids of their portraits in issue #95, or of #137 and #156', () => {
+  it('names the characters by the ids of their portraits in issue #95 and #159, or of #137 and #156', () => {
     const characters = new Set(
       content.events.slice(1).map(({ character }) => character.id),
     )
     expect([...characters].sort()).toEqual(
-      [...PORTRAITS, ...WITHOUT_PORTRAITS].sort(),
+      [...PORTRAITS, ...FINANCING_PORTRAITS, ...WITHOUT_PORTRAITS].sort(),
     )
   })
 
@@ -735,6 +774,52 @@ describe('loadEventContent rejects', () => {
     rejects(
       file([card({ conditions: { grocer: 'costco' } })]),
       '→ at events[0].conditions.grocer',
+    )
+  })
+
+  it('an emergency loan, or a share sale, on a later day', () => {
+    for (const effect of [LOAN, SHARES]) {
+      for (const timing of [{ inDays: 1 }, { onNextWeekday: 1 }]) {
+        rejects(
+          withEffects({ ...effect, ...timing }),
+          'an emergency loan, or a share sale, happens now',
+        )
+      }
+    }
+  })
+
+  it.each<[string, Json, string]>([
+    [
+      'a loan of no months',
+      { ...LOAN, monthsOfFixedCosts: 0 },
+      'monthsOfFixedCosts',
+    ],
+    ['a loan with no cap', { ...LOAN, maxCents: 0 }, 'maxCents'],
+    [
+      'a loan at a rate below zero',
+      { ...LOAN, annualRateBasisPoints: -1 },
+      'annualRateBasisPoints',
+    ],
+    [
+      'a loan at a rate that is not whole',
+      { ...LOAN, annualRateBasisPoints: 18.5 },
+      'annualRateBasisPoints',
+    ],
+    ['a loan of no term', { ...LOAN, termMonths: 0 }, 'termMonths'],
+    [
+      'a loan whose fee is more than it lends',
+      { ...LOAN, feeShare: 1.5 },
+      'feeShare',
+    ],
+    ['a loan from nobody', { ...LOAN, lender: '' }, 'lender'],
+    ['shares sold for nothing', { ...SHARES, amountCents: 0 }, 'amountCents'],
+    ['no share of the business', { ...SHARES, share: 0 }, 'share'],
+    ['the whole business', { ...SHARES, share: 1 }, 'share'],
+    ['shares sold to nobody', { ...SHARES, investor: ' Duvent' }, 'investor'],
+  ])('%s', (_, effect, key) => {
+    rejects(
+      withEffects(effect),
+      `→ at events[0].choices[0].outcomes[0].effects[0].${key}`,
     )
   })
 

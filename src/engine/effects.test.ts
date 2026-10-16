@@ -16,8 +16,10 @@ import {
   whenDue,
 } from './effects.ts'
 import { FULL_ENERGY } from './energy.ts'
+import { FINANCING } from './financing.ts'
+import { monthlyFixedCosts } from './fixedCosts.ts'
 import { inventoryValue } from './inventory.ts'
-import { cents } from './money.ts'
+import { cents, mulRatio } from './money.ts'
 import { next } from './rng.ts'
 import type { GameState, Lot } from './types.ts'
 
@@ -558,6 +560,67 @@ describe('applyEffect', () => {
         lastDay: 6,
       },
     ])
+  })
+
+  describe('the financing (#159)', () => {
+    const loan: EventEffect = {
+      kind: 'emergencyLoan',
+      lender: 'Caisse populaire Saint-Prudent',
+      monthsOfFixedCosts: 1,
+      maxCents: cents(1_500_000),
+      annualRateBasisPoints: 1800,
+      termMonths: 12,
+      feeShare: 0.02,
+    }
+    const shares: EventEffect = {
+      kind: 'shareSale',
+      investor: 'Duvent Capital',
+      amountCents: cents(2_000_000),
+      share: 0.2,
+    }
+    // The morning with Encaisse 1 000 $ below zero.
+    const broke = apply({
+      kind: 'charge',
+      amountCents: cents(balanceOf(MORNING, '1000') + 100_000),
+      description: 'Facture',
+    })
+
+    it('takes an emergency loan up to a month of fixed costs, then its fee', () => {
+      const after = apply(loan, broke)
+      const principal = monthlyFixedCosts(1, 'moyen') + 100_000
+      const fee = mulRatio(cents(principal), 0.02)
+      expect(posted(broke, after).map(lines)).toEqual([
+        [`1000 ${principal}/0`, `2500 0/${principal}`],
+        [`6500 ${fee}/0`, `1000 0/${fee}`],
+      ])
+      expect(after.financing.loans).toHaveLength(1)
+      expect(apply(loan, after)).toBe(after)
+    })
+
+    it('sells shares, for two rounds at most', () => {
+      const once = apply(shares)
+      expect(posted(MORNING, once).map(lines)).toEqual([
+        ['1000 2000000/0', '3000 0/2000000'],
+      ])
+      const twice = apply(shares, once)
+      expect(apply(shares, twice)).toBe(twice)
+      expect(twice.financing.shareSales).toHaveLength(2)
+    })
+
+    it('follows the rules it is given', () => {
+      const once = applyEffect(
+        MORNING,
+        shares,
+        FOOD_TRUCK,
+        'essai',
+        undefined,
+        {
+          ...FINANCING,
+          maxShareRounds: 0,
+        },
+      )
+      expect(once).toBe(MORNING)
+    })
   })
 
   it('never mutates the state', () => {

@@ -1,5 +1,6 @@
 import type {
   EventEffect,
+  FinancingContent,
   FoodTruckContent,
   GrocerContent,
   TimedEventEffect,
@@ -20,6 +21,7 @@ import { toCalendar } from './calendar.ts'
 import { withEnergyAt } from './challenge.ts'
 import { GROCERS, grocerAway, startContract } from './contracts.ts'
 import { clampEnergy } from './energy.ts'
+import { FINANCING, sellShares, takeEmergencyLoan } from './financing.ts'
 import { takeFifo } from './inventory.ts'
 import { cents, mulInt, type Cents } from './money.ts'
 import { addMovement } from './personal.ts'
@@ -127,6 +129,10 @@ export function untimed(effect: TimedEventEffect): EventEffect {
  *   of theirs runs or the most at once do.
  * - `grocerAway`: the grocer offers nothing for `days` days, that day
  *   included (see `grocerAway`).
+ * - `emergencyLoan`: the loan, if its lender may lend under `financing`'s
+ *   rules (see `takeEmergencyLoan`).
+ * - `shareSale`: the shares sold, while `financing` leaves a round (see
+ *   `sellShares`).
  */
 export function applyEffect(
   state: GameState,
@@ -134,6 +140,7 @@ export function applyEffect(
   content: FoodTruckContent,
   event: string,
   grocers: GrocerContent = GROCERS,
+  financing: FinancingContent = FINANCING,
 ): GameState {
   const { day } = state
   switch (effect.kind) {
@@ -293,6 +300,10 @@ export function applyEffect(
         ...state,
         contracts: grocerAway(state.contracts, day, effect.grocer, effect.days),
       }
+    case 'emergencyLoan':
+      return takeEmergencyLoan(state, effect, content, financing)
+    case 'shareSale':
+      return sellShares(state, effect, financing)
   }
 }
 

@@ -77,8 +77,9 @@ const AS_WRITTEN: EventContent = { ...EVENTS, scaling: undefined }
 
 describe('choiceChanges', () => {
   it("reads the shipped essai card's « Tout essayer », as written", () => {
-    // Now: −100 $ + 200 $ − 20 croissants at 1,10 $ in Encaisse; 750 $ and
-    // 100 $ on credit, the 100 $ written off; 20 croissants in, 18 out.
+    // Now: −100 $ + 200 $ − 20 croissants at 1,10 $ + 1 000 $ of shares
+    // sold in Encaisse, and no emergency loan with that much cash; 750 $
+    // and 100 $ on credit, the 100 $ written off; 20 croissants in, 18 out.
     // Later: 50 $ in 3 days, and Client d'essai collected next Thursday,
     // which keeps their due day off the line.
     expect(
@@ -88,7 +89,7 @@ describe('choiceChanges', () => {
         AS_WRITTEN,
       ),
     ).toEqual([
-      `Encaisse +78${S}$`,
+      `Encaisse +1${S}078${S}$`,
       `Comptes clients +750${S}$`,
       `Stocks +2,20${S}$`,
       `Énergie ${M}10`,
