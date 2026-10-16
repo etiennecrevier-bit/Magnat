@@ -108,6 +108,19 @@ export function betterMedal(a: Medal, b: Medal): Medal {
   return options.indexOf(a) <= options.indexOf(b) ? a : b
 }
 
+/** The better medal of `a` and `b` in each Défi either holds one for. */
+export function mergeMedals(
+  a: Readonly<Record<string, Medal>>,
+  b: Readonly<Record<string, Medal>>,
+): Readonly<Record<string, Medal>> {
+  const merged: Record<string, Medal> = { ...a }
+  for (const [defiId, medal] of Object.entries(b)) {
+    const kept = merged[defiId]
+    merged[defiId] = kept === undefined ? medal : betterMedal(kept, medal)
+  }
+  return merged
+}
+
 /** Keeps `settings` in `storage`. Returns whether it did; never throws. */
 export function writeSettings(
   storage: SettingsStorage | null,
@@ -125,15 +138,21 @@ export function writeSettings(
 
 /**
  * A settings store that starts from `storage` and writes each change to it,
- * with every setting, so changing one keeps the others.
+ * with every setting, so changing one keeps the others. Another tab may
+ * have kept medals since this one read them, so each write keeps the better
+ * of the stored and this tab's medal in each Défi: no tab loses one.
  */
 export function createSettingsStore(
   storage: SettingsStorage | null,
 ): SettingsStore {
   return createStore<SettingsState>()((set, get) => {
     const change = (settings: Partial<Settings>) => {
-      set(settings)
-      const { visualEffects, openReportEveryWeek, bestMedals } = get()
+      const bestMedals = mergeMedals(
+        readSettings(storage).bestMedals,
+        settings.bestMedals ?? get().bestMedals,
+      )
+      set({ ...settings, bestMedals })
+      const { visualEffects, openReportEveryWeek } = get()
       writeSettings(storage, { visualEffects, openReportEveryWeek, bestMedals })
     }
     return {

@@ -3,11 +3,13 @@ import {
   betterMedal,
   createSettingsStore,
   DEFAULT_SETTINGS,
+  mergeMedals,
   readSettings,
   SETTINGS_KEY,
   settingsStore,
   writeSettings,
   type SettingsStorage,
+  type SettingsStore,
 } from './settings.ts'
 
 /** A storage holding `items`, which the test can read back. */
@@ -203,6 +205,103 @@ describe('the settings', () => {
     expect(readSettings(storage).bestMedals).toEqual({
       travauxSaintDenis: 'or',
     })
+  })
+
+  describe('in two tabs open at once', () => {
+    /** Two stores on one storage, both read before either writes. */
+    function twoTabs() {
+      const storage = memory()
+      return {
+        storage,
+        a: createSettingsStore(storage),
+        b: createSettingsStore(storage),
+      }
+    }
+
+    it.each([
+      [
+        'the effects',
+        (b: SettingsStore) => b.getState().setVisualEffects('simple'),
+      ],
+      [
+        'the weekly report',
+        (b: SettingsStore) => b.getState().setOpenReportEveryWeek(true),
+      ],
+    ])(
+      'keep the medals one won when the other changes %s',
+      (_, changeSetting) => {
+        const { storage, a, b } = twoTabs()
+        a.getState().recordMedal('travauxSaintDenis', 'or')
+        a.getState().recordMedal('zeroGaspillage', 'bronze')
+        changeSetting(b)
+        expect(readSettings(storage).bestMedals).toEqual({
+          travauxSaintDenis: 'or',
+          zeroGaspillage: 'bronze',
+        })
+        expect(b.getState().bestMedals).toEqual({
+          travauxSaintDenis: 'or',
+          zeroGaspillage: 'bronze',
+        })
+      },
+    )
+
+    it('keep the better medal when the other wins a worse one', () => {
+      const { storage, a, b } = twoTabs()
+      a.getState().recordMedal('travauxSaintDenis', 'or')
+      b.getState().recordMedal('travauxSaintDenis', 'bronze')
+      expect(readSettings(storage).bestMedals).toEqual({
+        travauxSaintDenis: 'or',
+      })
+      expect(b.getState().bestMedals).toEqual({ travauxSaintDenis: 'or' })
+
+      a.getState().recordMedal('travauxSaintDenis', 'argent')
+      expect(readSettings(storage).bestMedals).toEqual({
+        travauxSaintDenis: 'or',
+      })
+    })
+
+    it('keep the better medal when the other wins one in the meantime', () => {
+      const { storage, a, b } = twoTabs()
+      a.getState().recordMedal('travauxSaintDenis', 'bronze')
+      b.getState().recordMedal('travauxSaintDenis', 'or')
+      a.getState().setVisualEffects('simple')
+      expect(readSettings(storage)).toEqual({
+        visualEffects: 'simple',
+        openReportEveryWeek: false,
+        bestMedals: { travauxSaintDenis: 'or' },
+      })
+      expect(a.getState().bestMedals).toEqual({ travauxSaintDenis: 'or' })
+    })
+
+    it('keep the medals each won in different Défis', () => {
+      const { storage, a, b } = twoTabs()
+      a.getState().recordMedal('travauxSaintDenis', 'or')
+      b.getState().recordMedal('zeroGaspillage', 'argent')
+      a.getState().recordMedal('festivalDuPasPire', 'bronze')
+      expect(readSettings(storage).bestMedals).toEqual({
+        travauxSaintDenis: 'or',
+        zeroGaspillage: 'argent',
+        festivalDuPasPire: 'bronze',
+      })
+    })
+  })
+
+  it('merge two sets of medals, keeping the better in each Défi', () => {
+    expect(
+      mergeMedals(
+        { travauxSaintDenis: 'bronze', zeroGaspillage: 'or' },
+        {
+          travauxSaintDenis: 'argent',
+          zeroGaspillage: 'bronze',
+          moisSansConge: 'or',
+        },
+      ),
+    ).toEqual({
+      travauxSaintDenis: 'argent',
+      zeroGaspillage: 'or',
+      moisSansConge: 'or',
+    })
+    expect(mergeMedals({}, {})).toEqual({})
   })
 
   it('rank the medals: or, then argent, then bronze', () => {
