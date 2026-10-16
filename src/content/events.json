@@ -1,5 +1,5 @@
 {
-  "_note": "Pacing from issue #155 (R-06): from day 10, 14 days apart, 8 % a morning, about one event every 3 to 4 weeks; an event dated that day comes whatever the gap and the chance. The twelve cards of issue #93 keep a weight of 1; P3-13 (#101) tuned their amounts, chances and effects at Moyen with `npm run balance -- --percentiles`, until no choice wins too often or too seldom: see docs/balance/phase-3.md. P3-13b (#137) scales what a choice gives and takes by difficulty, gives every Difficile choice a cost, adds four cards that Facile draws by the player's standing, and tuned the cards at each difficulty with the same report. R-06 (#155) caps the cards that came too often with maxPerGame, lets the chalet come on any tired summer morning, and adds thirteen cards whose amounts are starting values, not yet tuned. A card's text writes its amounts as {montant:name}, so they follow the scaling too. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
+  "_note": "Pacing from issue #155 (R-06): from day 10, 14 days apart, 8 % a morning, about one event every 3 to 4 weeks; an event dated that day comes whatever the gap and the chance. The twelve cards of issue #93 keep a weight of 1; P3-13 (#101) tuned their amounts, chances and effects at Moyen with `npm run balance -- --percentiles`, until no choice wins too often or too seldom: see docs/balance/phase-3.md. P3-13b (#137) scales what a choice gives and takes by difficulty, gives every Difficile choice a cost, adds four cards that Facile draws by the player's standing, and tuned the cards at each difficulty with the same report. R-06 (#155) caps the cards that came too often with maxPerGame, lets the chalet come on any tired summer morning, and adds thirteen cards whose amounts are starting values, not yet tuned. A card's text writes its amounts as {montant:name}, so they follow the scaling too. P4-01 (#156) adds the three grocers' offers, at a weight of 0.5 each, and their renewals, which come as follow-ups the morning after a contract's last delivery; their prices are grocers.json's, which no difficulty scales, so their text writes them out. With them in the draw, the chalet's weight goes from 4 to 5 to keep it in 80 % of the games, and the median gap between two events stays at 20 days. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
   "pacing": { "firstDay": 10, "minDaysBetween": 14, "dailyChance": 0.08 },
   "scaling": {
     "_note": "Tuned at each difficulty with the event report of npm run balance -- --percentiles (#137): Facile keeps the gains and softens the losses, Moyen raises both, Difficile gives less and takes more. The issue's starting values (1 and 0.7, 1.3 and 1.3, 0.7 and 1.2) pushed choices off their targets, since a choice's money scales but the days it closes the truck or stops a product do not: see docs/balance/phase-3.md.",
@@ -131,7 +131,13 @@
                   "inDays": 1
                 },
                 { "kind": "unavailable", "product": "cafe", "days": 2 },
-                { "kind": "closed", "days": 1, "inDays": 2 }
+                { "kind": "closed", "days": 1, "inDays": 2 },
+                {
+                  "kind": "contract",
+                  "grocer": "chezNormand",
+                  "priceFactor": 1.1
+                },
+                { "kind": "grocerAway", "grocer": "depanneur2424", "days": 30 }
               ]
             }
           ]
@@ -995,7 +1001,7 @@
     },
     {
       "id": "chalet",
-      "weight": 4,
+      "weight": 5,
       "character": {
         "id": "martine",
         "name": "Martine",
@@ -2647,6 +2653,494 @@
             {
               "chance": 1,
               "result": "Solange range son carnet. « Tant pis. Je ferai le camion à poutine. Il a plus de personnalité. »",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contratNormand",
+      "weight": 0.5,
+      "character": {
+        "id": "normand",
+        "name": "Normand",
+        "role": "Votre voisin, Épicerie Chez Normand"
+      },
+      "title": "Les croissants de Normand",
+      "situation": "Normand a repeint l'enseigne de son épicerie. En dessous, il a ajouté au crayon : « Croissants frais tous les jours ». Il ne manque que les croissants.",
+      "quote": "750 croissants par semaine, livrés le lundi, à 2,10 $ chacun. Je te paie à 60 jours, comme les grandes chaînes. On commence par 12 semaines.",
+      "conditions": {
+        "fromDay": 30,
+        "cooldownDays": 90,
+        "grocer": "chezNormand"
+      },
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Accepter",
+          "tags": [
+            "Ventes chaque lundi",
+            "Payé dans 60 jours",
+            "Une livraison chaque lundi"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Marché conclu. Normand vous serre la main et repart mesurer sa tablette. Première livraison lundi prochain.",
+              "effects": [{ "kind": "contract", "grocer": "chezNormand" }]
+            }
+          ]
+        },
+        {
+          "id": "negocier",
+          "label": "Négocier à 2,31 $",
+          "tags": ["Ventes chaque lundi", "Payé dans 60 jours", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.5,
+              "result": "Normand soupire, puis signe. « Entre voisins… » Première livraison lundi prochain.",
+              "effects": [
+                {
+                  "kind": "contract",
+                  "grocer": "chezNormand",
+                  "priceFactor": 1.1
+                }
+              ]
+            },
+            {
+              "chance": 0.5,
+              "result": "Normand range son crayon. « Je vais voir ce que la boulangerie industrielle peut faire. » Il ne vous en reparlera pas avant six mois.",
+              "effects": [
+                { "kind": "grocerAway", "grocer": "chezNormand", "days": 180 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Refuser",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Normand efface « frais tous les jours » de son enseigne. Il laisse « Croissants », au cas où.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contratBioLogique",
+      "weight": 0.5,
+      "character": {
+        "id": "solangeTremblayLevesque",
+        "name": "Solange Tremblay-Lévesque",
+        "role": "Propriétaire du Marché Bio-Logique"
+      },
+      "title": "Le Marché Bio-Logique",
+      "situation": "Une femme en lin naturel examine vos croissants à la loupe. Elle tient le Marché Bio-Logique, où même les sacs de papier sont équitables.",
+      "quote": "1 250 croissants par semaine, à 2,25 $, payés à 60 jours, pendant 12 semaines. Des vrais, faits avec la farine de la Meunerie Bonpain. S'ils sortent de votre propre fournil, je paie 0,40 $ de plus chacun.",
+      "conditions": {
+        "fromDay": 30,
+        "cooldownDays": 90,
+        "grocer": "marcheBioLogique"
+      },
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Accepter",
+          "tags": [
+            "Ventes chaque lundi",
+            "Payé dans 60 jours",
+            "Une livraison chaque lundi"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Solange signe avec une plume recyclée. « Je goûterai la différence », prévient-elle. Première livraison lundi prochain.",
+              "effects": [{ "kind": "contract", "grocer": "marcheBioLogique" }]
+            }
+          ]
+        },
+        {
+          "id": "negocier",
+          "label": "Négocier à 2,48 $",
+          "tags": ["Ventes chaque lundi", "Payé dans 60 jours", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.5,
+              "result": "Solange compte sur un boulier en bois. « C'est cher, mais c'est éthique. » Elle signe. Première livraison lundi prochain.",
+              "effects": [
+                {
+                  "kind": "contract",
+                  "grocer": "marcheBioLogique",
+                  "priceFactor": 1.1
+                }
+              ]
+            },
+            {
+              "chance": 0.5,
+              "result": "« Le marchandage, c'est tellement pas zen. » Solange s'en va. Elle ne reviendra pas avant six mois.",
+              "effects": [
+                {
+                  "kind": "grocerAway",
+                  "grocer": "marcheBioLogique",
+                  "days": 180
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Refuser",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Solange repart, déçue. Elle vendra des galettes de riz soufflé, comme d'habitude.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contratDepanneur",
+      "weight": 0.5,
+      "character": {
+        "id": "monsieurKim",
+        "name": "M. Kim",
+        "role": "Propriétaire du Dépanneur 24/24"
+      },
+      "title": "Le dépanneur qui ne ferme jamais",
+      "situation": "M. Kim, du Dépanneur 24/24, n'a pas dormi depuis 2019. Ses clients de 3 h du matin cherchent un croissant entre les billets de loterie et le lait.",
+      "quote": "500 croissants par semaine, 1,95 $ chacun, payés à 45 jours. On essaie 8 semaines. Ici, rien ne ferme, mais tout se négocie.",
+      "conditions": {
+        "fromDay": 30,
+        "cooldownDays": 90,
+        "grocer": "depanneur2424"
+      },
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Accepter",
+          "tags": [
+            "Ventes chaque lundi",
+            "Payé dans 45 jours",
+            "Une livraison chaque lundi"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "M. Kim hoche la tête et retourne à son comptoir. Il est 14 h, l'heure de pointe des billets de loterie. Première livraison lundi prochain.",
+              "effects": [{ "kind": "contract", "grocer": "depanneur2424" }]
+            }
+          ]
+        },
+        {
+          "id": "negocier",
+          "label": "Négocier à 2,15 $",
+          "tags": ["Ventes chaque lundi", "Payé dans 45 jours", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.5,
+              "result": "M. Kim sourit pour la première fois depuis 2019. « Bien joué. » Il signe. Première livraison lundi prochain.",
+              "effects": [
+                {
+                  "kind": "contract",
+                  "grocer": "depanneur2424",
+                  "priceFactor": 1.1
+                }
+              ]
+            },
+            {
+              "chance": 0.5,
+              "result": "M. Kim retourne à son comptoir sans un mot. Il a six mois de lait à vendre avant de vous reparler.",
+              "effects": [
+                { "kind": "grocerAway", "grocer": "depanneur2424", "days": 180 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Refuser",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "M. Kim hausse les épaules. Il restera aux chips au vinaigre.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "renouvellementNormand",
+      "weight": 1,
+      "character": {
+        "id": "normand",
+        "name": "Normand",
+        "role": "Votre voisin, Épicerie Chez Normand"
+      },
+      "title": "Normand en redemande",
+      "situation": "La dernière livraison est partie. Normand passe au camion avec son cahier de commandes et un crayon fraîchement taillé.",
+      "quote": "On repart pour 12 semaines? Même chose : 750 croissants par semaine, à 2,10 $ chacun, payés à 60 jours.",
+      "conditions": { "followUpOnly": true },
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Renouveler",
+          "tags": [
+            "Ventes chaque lundi",
+            "Payé dans 60 jours",
+            "Une livraison chaque lundi"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Normand note la commande dans son cahier. La prochaine livraison part lundi prochain.",
+              "effects": [{ "kind": "contract", "grocer": "chezNormand" }]
+            }
+          ]
+        },
+        {
+          "id": "negocier",
+          "label": "Négocier à 2,31 $",
+          "tags": ["Ventes chaque lundi", "Payé dans 60 jours", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.5,
+              "result": "Normand fait semblant de réfléchir, puis signe. « Les clients en redemandent. » La prochaine livraison part lundi prochain.",
+              "effects": [
+                {
+                  "kind": "contract",
+                  "grocer": "chezNormand",
+                  "priceFactor": 1.1
+                }
+              ]
+            },
+            {
+              "chance": 0.5,
+              "result": "« Tu me prends pour une grande chaîne? » Normand ferme son cahier. Il ne vous en reparlera pas avant six mois.",
+              "effects": [
+                { "kind": "grocerAway", "grocer": "chezNormand", "days": 180 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Arrêter là",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Normand referme son cahier. Les clients se contenteront de biscuits soda.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "renouvellementBioLogique",
+      "weight": 1,
+      "character": {
+        "id": "solangeTremblayLevesque",
+        "name": "Solange Tremblay-Lévesque",
+        "role": "Propriétaire du Marché Bio-Logique"
+      },
+      "title": "Solange renouvelle?",
+      "situation": "La dernière livraison au Marché Bio-Logique est partie. Solange arrive, une tisane à la main et une plainte dans l'autre.",
+      "quote": "Mes clientes demandent si vos croissants sont vraiment artisanaux. Je leur dis que oui. On repart pour 12 semaines : 1 250 par semaine, 2,25 $, payés à 60 jours, et 0,40 $ de plus pour ceux de votre fournil.",
+      "conditions": { "followUpOnly": true },
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Renouveler",
+          "tags": [
+            "Ventes chaque lundi",
+            "Payé dans 60 jours",
+            "Une livraison chaque lundi"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Solange signe. « Ne me faites pas mentir. » La prochaine livraison part lundi prochain.",
+              "effects": [{ "kind": "contract", "grocer": "marcheBioLogique" }]
+            }
+          ]
+        },
+        {
+          "id": "negocier",
+          "label": "Négocier à 2,48 $",
+          "tags": ["Ventes chaque lundi", "Payé dans 60 jours", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.5,
+              "result": "Solange inspire profondément, expire lentement et signe. La prochaine livraison part lundi prochain.",
+              "effects": [
+                {
+                  "kind": "contract",
+                  "grocer": "marcheBioLogique",
+                  "priceFactor": 1.1
+                }
+              ]
+            },
+            {
+              "chance": 0.5,
+              "result": "« Je sens une énergie négative. » Solange s'en va méditer. Elle ne reviendra pas avant six mois.",
+              "effects": [
+                {
+                  "kind": "grocerAway",
+                  "grocer": "marcheBioLogique",
+                  "days": 180
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Arrêter là",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Solange retourne à ses galettes de riz soufflé. Ses clientes, elles, regrettent vos croissants.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "renouvellementDepanneur",
+      "weight": 1,
+      "character": {
+        "id": "monsieurKim",
+        "name": "M. Kim",
+        "role": "Propriétaire du Dépanneur 24/24"
+      },
+      "title": "M. Kim reprend des croissants?",
+      "situation": "La dernière livraison au Dépanneur 24/24 est partie. M. Kim vous attend au camion, un café de machine à la main.",
+      "quote": "Les croissants partent bien, surtout à 3 h du matin. On refait 8 semaines? 500 par semaine, 1,95 $ chacun, payés à 45 jours.",
+      "conditions": { "followUpOnly": true },
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Renouveler",
+          "tags": [
+            "Ventes chaque lundi",
+            "Payé dans 45 jours",
+            "Une livraison chaque lundi"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "M. Kim hoche la tête. Pas besoin de papier, il se souvient de tout. La prochaine livraison part lundi prochain.",
+              "effects": [{ "kind": "contract", "grocer": "depanneur2424" }]
+            }
+          ]
+        },
+        {
+          "id": "negocier",
+          "label": "Négocier à 2,15 $",
+          "tags": ["Ventes chaque lundi", "Payé dans 45 jours", "Risqué"],
+          "outcomes": [
+            {
+              "chance": 0.5,
+              "result": "M. Kim plisse les yeux, puis vous tend la main. « D'accord. » La prochaine livraison part lundi prochain.",
+              "effects": [
+                {
+                  "kind": "contract",
+                  "grocer": "depanneur2424",
+                  "priceFactor": 1.1
+                }
+              ]
+            },
+            {
+              "chance": 0.5,
+              "result": "M. Kim retourne à son comptoir. Il a six mois de billets de loterie à vendre avant de vous reparler.",
+              "effects": [
+                { "kind": "grocerAway", "grocer": "depanneur2424", "days": 180 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Arrêter là",
+          "tags": [
+            { "text": "Rien ne change", "difficulties": ["facile", "moyen"] },
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "M. Kim hausse les épaules. Les clients de 3 h du matin mangeront des chips.",
               "effects": [
                 {
                   "kind": "energy",

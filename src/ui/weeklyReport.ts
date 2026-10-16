@@ -208,6 +208,12 @@ const FACT_VALUES: {
   }),
   lostToLine: ({ visits }) => ({ visits: String(visits) }),
   daysOpenInARow: ({ days }) => ({ days: String(days) }),
+  contractsReceivable: ({ amount, grocers }) => ({
+    amount: formatBriefMoney(amount),
+    grocers: new Intl.ListFormat('fr-CA', { type: 'conjunction' }).format(
+      grocers,
+    ),
+  }),
 }
 
 /** The numbers of `fact` as its text writes them, by placeholder. */

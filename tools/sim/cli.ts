@@ -6,12 +6,15 @@ import {
   difficultyIdSchema,
   type DifficultyId,
 } from '../../src/content/schema.ts'
+import { DIFFICULTIES, EVENTS } from '../../src/engine/day.ts'
 import type { Cents } from '../../src/engine/money.ts'
 import { defaultProfile } from '../../src/engine/profile.ts'
 import { MODIFIER_KINDS } from '../../src/engine/street.ts'
 import {
+  CONTRACT_POLICIES,
   EVENT_POLICIES,
   simulate,
+  type ContractPolicy,
   type EventPolicy,
   type SimulationResult,
 } from './simulate.ts'
@@ -26,6 +29,11 @@ export interface SimArgs {
   readonly difficulty: DifficultyId
   /** How the event cards are answered. */
   readonly events: EventPolicy
+  /**
+   * How the grocers' cards are answered; null when the event policy answers
+   * them like any other.
+   */
+  readonly contracts: ContractPolicy | null
   /** Absolute path of the folder the result goes to. */
   readonly out: string
 }
@@ -38,14 +46,15 @@ const DEFAULTS = {
   out: fileURLToPath(new URL('../../out', import.meta.url)),
 }
 
-export const USAGE = `Usage: npm run sim -- [--days <n>] [--seed <n>] [--difficulty ${difficultyIdSchema.options.join('|')}] [--events ${EVENT_POLICIES.join('|')}] [--out <folder>]`
+export const USAGE = `Usage: npm run sim -- [--days <n>] [--seed <n>] [--difficulty ${difficultyIdSchema.options.join('|')}] [--events ${EVENT_POLICIES.join('|')}] [--contracts ${CONTRACT_POLICIES.join('|')}] [--out <folder>]`
 
 /**
  * Reads `--days` (a whole number from 1), `--seed` (a whole number from 0),
  * `--difficulty` (a difficulty's id, by default the new game screen's),
- * `--events` (how the event cards are answered, by default `random`) and
- * `--out` (resolved from the current folder). Throws on anything else,
- * including positional arguments.
+ * `--events` (how the event cards are answered, by default `random`),
+ * `--contracts` (how the grocers' cards are answered, by default as the
+ * other cards) and `--out` (resolved from the current folder). Throws on
+ * anything else, including positional arguments.
  */
 export function parseSimArgs(argv: readonly string[]): SimArgs {
   const { values } = parseArgs({
@@ -55,6 +64,7 @@ export function parseSimArgs(argv: readonly string[]): SimArgs {
       seed: { type: 'string' },
       difficulty: { type: 'string' },
       events: { type: 'string' },
+      contracts: { type: 'string' },
       out: { type: 'string' },
     },
     strict: true,
@@ -65,6 +75,7 @@ export function parseSimArgs(argv: readonly string[]): SimArgs {
     seed: wholeNumber('--seed', values.seed, DEFAULTS.seed, 0),
     difficulty: difficultyOf(values.difficulty),
     events: eventPolicy(values.events, DEFAULTS.events),
+    contracts: contractPolicy(values.contracts),
     out: resolve(values.out ?? DEFAULTS.out),
   }
 }
@@ -99,7 +110,7 @@ export function formatReport(result: SimulationResult): string[] {
     Math.max(...rows.map((row) => row[column]?.length ?? 0)),
   )
   return [
-    `Seed ${result.seed}, ${result.days} days, difficulty ${result.difficulty}, events ${result.events}`,
+    `Seed ${result.seed}, ${result.days} days, difficulty ${result.difficulty}, events ${result.events}${result.contracts === null ? '' : `, contracts ${result.contracts}`}`,
     ...rows.map((row) =>
       row.map((cell, column) => cell.padStart(widths[column] ?? 0)).join('  '),
     ),
@@ -126,8 +137,18 @@ export function formatDollars(amount: Cents): string {
  */
 export function main(argv: readonly string[]): number {
   try {
-    const { days, seed, difficulty, events, out } = parseSimArgs(argv)
-    const result = simulate(seed, days, difficulty, [], events)
+    const { days, seed, difficulty, events, contracts, out } =
+      parseSimArgs(argv)
+    const result = simulate(
+      seed,
+      days,
+      difficulty,
+      [],
+      events,
+      EVENTS,
+      DIFFICULTIES,
+      contracts,
+    )
     for (const line of formatReport(result)) console.log(line)
 
     mkdirSync(out, { recursive: true })
@@ -166,6 +187,23 @@ export function eventPolicy(
   if (known === undefined) {
     throw new RangeError(
       `--events must be one of ${EVENT_POLICIES.join(', ')}: ${text}`,
+    )
+  }
+  return known
+}
+
+/**
+ * Reads `text`, the value of `--contracts`, as a policy, or null when the
+ * option is absent. Throws a RangeError naming the option on anything else.
+ */
+export function contractPolicy(
+  text: string | undefined,
+): ContractPolicy | null {
+  if (text === undefined) return null
+  const known = CONTRACT_POLICIES.find((policy) => policy === text)
+  if (known === undefined) {
+    throw new RangeError(
+      `--contracts must be one of ${CONTRACT_POLICIES.join(', ')}: ${text}`,
     )
   }
   return known

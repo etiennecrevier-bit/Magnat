@@ -15,6 +15,7 @@ import {
   type EnergyContent,
   type EventContent,
   type FoodTruckContent,
+  type GrocerContent,
   type PersonalContent,
   type ProductId,
 } from '../content/schema.ts'
@@ -34,6 +35,7 @@ import {
   defiById,
   recordChallengeDay,
 } from './challenge.ts'
+import { GROCERS, deliverContracts } from './contracts.ts'
 import {
   dayTypeOf,
   noWithdrawals,
@@ -199,10 +201,13 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * `monthlyCharges`), the truck's counted in months from the game's first day,
  * day 0 or a Défi's first day, as if the truck came to the business then. Then,
  * open or closed, the bakery's morning with `bakeryContent` and the prices of
- * the game's difficulty (see `bakeryMorning`). On a day the truck opens, one of
+ * the game's difficulty (see `bakeryMorning`), then the deliveries of the
+ * contracts with `grocers`, the bakery making their croissants first when it
+ * makes the truck's (see `deliverContracts`). On a day the truck opens, one of
  * the days open the street does not close: the morning restock of every product
  * the street leaves on sale, but the croissants when they come from the bakery
- * and it runs, which then makes them (see `bake`), then the walk-in customers,
+ * and it runs, which then makes them with the capacity the deliveries left
+ * (see `bake`), then the walk-in customers,
  * with those the marketing of the days before brings on top (see
  * `marketingCrowd`) and as the street changes them, lining up at the counter,
  * where `servers()` serve them from the stock on hand, none of a product that
@@ -214,10 +219,11 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * spoilage at the close. Every entry is dated `morning.day`. Then the owner's
  * own day, outside the books, with `personal` as their living costs (see
  * `livePersonalDay`), and what the day did to their energy, with `energy` as
- * what tires them, and a day of baking taking `bakingEnergyCost` more (see
- * `energyAtClose`). Returns a new state on the same day with the books, the
- * bakery, the stock, the generator, the marketing history, `lastDay`, with the
- * changes to the street in effect that day, the owner's personal account, their
+ * what tires them, a day of baking taking `bakingEnergyCost` more and each
+ * delivery `deliveryEnergyCost` (see `energyAtClose`). Returns a new state on
+ * the same day with the books, the bakery, the contracts, the stock, the
+ * generator, the marketing history, `lastDay`, with the changes to the street
+ * in effect that day and the deliveries, the owner's personal account, their
  * energy, the events, without the changes whose last day it was, the
  * receivables brought up to the close, the day added to the week under way,
  * summed up on a Sunday (see `recordDay`), and, in a Défi of `defis`, the day
@@ -234,6 +240,7 @@ export function playDay(
   energy: EnergyContent = ENERGY,
   defis: DefiContent = DEFIS,
   bakeryContent: BakeryContent = BAKERY,
+  grocers: GrocerContent = GROCERS,
 ): GameState {
   const { pending } = morning.events
   if (pending !== null) {
@@ -247,40 +254,48 @@ export function playDay(
       `Day ${morning.day} cannot be played: the Défi ${challenge.id} is over`,
     )
   }
-  const state = startOfDay(morning, content)
-  const { day, decisions } = state
+  const started = startOfDay(morning, content, grocers)
+  const { day, decisions } = started
   const { dayOfMonth, weekday } = toCalendar(day)
-  const { modifiers } = state.events
+  const { modifiers } = started.events
   const street = streetOn(modifiers, day)
   const open = decisions.daysOpen.includes(weekday) && !street.closed
-  let journal = state.journal
-  let lots = state.inventory
-  let served = closed(state.rngState)
-  let revenue = ZERO
-  let marketingSpent = ZERO
+  let journal = started.journal
 
   if (dayOfMonth === 1) {
-    const { truck } = difficulties.difficulties[state.profile.difficulty]
-    const month = monthsSinceStart(day) - monthsSinceStart(firstDay(state))
+    const { truck } = difficulties.difficulties[started.profile.difficulty]
+    const month = monthsSinceStart(day) - monthsSinceStart(firstDay(started))
     journal = monthlyCharges(journal, day, month, content, truck)
   }
-  const prices = difficulties.bakery[state.profile.difficulty]
+  const prices = difficulties.bakery[started.profile.difficulty]
   const bakery = bakeryMorning(
     journal,
-    state.bakery,
+    started.bakery,
     decisions.bakery,
     day,
     prices,
     bakeryContent,
   )
-  journal = bakery.journal
-  let baked = 0
+  const making =
+    decisions.croissantSource === 'fabriquer' && isBakeryRunning(bakery.bakery)
+  const delivered = deliverContracts(
+    { ...started, journal: bakery.journal },
+    making,
+    prices,
+    content,
+    bakeryContent,
+    grocers,
+  )
+  const state = delivered.state
+  journal = state.journal
+  let lots = state.inventory
+  let served = closed(state.rngState)
+  let revenue = ZERO
+  let marketingSpent = ZERO
+  let baked = delivered.baked
 
   if (open) {
-    const baking =
-      decisions.croissantSource === 'fabriquer' &&
-      isBakeryRunning(bakery.bakery) &&
-      !street.unavailable[BAKED]
+    const baking = making && !street.unavailable[BAKED]
     const restocked = restock(
       lots,
       day,
@@ -300,10 +315,11 @@ export function playDay(
           decisions.bake,
           prices,
           bakeryContent,
+          bakeryContent.capacityPerDay - delivered.baked,
         )
       : { journal, lots: restocked.lots, quantity: 0 }
     journal = made.journal
-    baked = made.quantity
+    baked += made.quantity
 
     const price = (product: ProductId) => currentPrice(state, product)
     served = serveWalkIns(
@@ -388,6 +404,7 @@ export function playDay(
       ).length,
       stressed: weekday === content.ownerPayWeekday && inDebt(account),
       bakingCost: baked > 0 ? bakeryContent.bakingEnergyCost : 0,
+      deliveryCost: delivered.deliveries.length * grocers.deliveryEnergyCost,
     },
     energy,
   )
@@ -420,6 +437,7 @@ export function playDay(
         0,
       ),
       modifiers: inEffect(modifiers, day),
+      deliveries: delivered.deliveries,
     },
     personal: account,
     energy: closingEnergy,

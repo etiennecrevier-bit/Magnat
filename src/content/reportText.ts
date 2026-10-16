@@ -24,6 +24,7 @@ export const REPORT_PLACEHOLDERS = {
   bestWeek: ['sales', 'previousBest'],
   lostToLine: ['visits'],
   daysOpenInARow: ['days'],
+  contractsReceivable: ['amount', 'grocers'],
 } as const satisfies Record<WeekFactId, readonly string[]>
 
 /** What the chart's note on a sale on credit names. */

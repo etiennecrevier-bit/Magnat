@@ -26,6 +26,7 @@ const OPEN: Workday = {
   customersServed: 0,
   stressed: false,
   bakingCost: 0,
+  deliveryCost: 0,
 }
 const CLOSED: Workday = { ...OPEN, worked: false }
 

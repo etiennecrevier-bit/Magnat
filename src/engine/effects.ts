@@ -1,6 +1,7 @@
 import type {
   EventEffect,
   FoodTruckContent,
+  GrocerContent,
   TimedEventEffect,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
@@ -17,6 +18,7 @@ import {
 } from '../finance/receivables.ts'
 import { toCalendar } from './calendar.ts'
 import { withEnergyAt } from './challenge.ts'
+import { GROCERS, grocerAway, startContract } from './contracts.ts'
 import { clampEnergy } from './energy.ts'
 import { takeFifo } from './inventory.ts'
 import { cents, mulInt, type Cents } from './money.ts'
@@ -120,12 +122,18 @@ export function untimed(effect: TimedEventEffect): EventEffect {
  *   to the street, kept in `events.modifiers` after the others, with
  *   `event`, in effect from `state.day` for `days` days, that day included.
  *   No draw.
+ * - `contract`: a contract with the grocer of `grocers`, signed that day at
+ *   their price times `priceFactor` (see `startContract`); nothing while one
+ *   of theirs runs or the most at once do.
+ * - `grocerAway`: the grocer offers nothing for `days` days, that day
+ *   included (see `grocerAway`).
  */
 export function applyEffect(
   state: GameState,
   effect: EventEffect,
   content: FoodTruckContent,
   event: string,
+  grocers: GrocerContent = GROCERS,
 ): GameState {
   const { day } = state
   switch (effect.kind) {
@@ -269,19 +277,36 @@ export function applyEffect(
         },
       }
     }
+    case 'contract':
+      return {
+        ...state,
+        contracts: startContract(
+          state.contracts,
+          day,
+          effect.grocer,
+          effect.priceFactor,
+          grocers,
+        ),
+      }
+    case 'grocerAway':
+      return {
+        ...state,
+        contracts: grocerAway(state.contracts, day, effect.grocer, effect.days),
+      }
   }
 }
 
 /**
  * The start of business day `state.day`, before the restock: first the
- * delayed effects due that day, in order (see `applyEffect`), then each
- * receivable due, collected in full in its own « Encaissement » entry, Dr
- * 1000 Encaisse / Cr 1100 Comptes clients. Returns a new state; never
- * mutates `state`.
+ * delayed effects due that day, in order (see `applyEffect`, with
+ * `grocers`), then each receivable due, collected in full in its own
+ * « Encaissement » entry, Dr 1000 Encaisse / Cr 1100 Comptes clients.
+ * Returns a new state; never mutates `state`.
  */
 export function startOfDay(
   state: GameState,
   content: FoodTruckContent,
+  grocers: GrocerContent = GROCERS,
 ): GameState {
   const { day } = state
   const { delayed } = state.events
@@ -293,7 +318,7 @@ export function startOfDay(
       events: { ...state.events, delayed: delayed.slice(due) },
     }
     for (const { event, effect } of delayed.slice(0, due)) {
-      started = applyEffect(started, effect, content, event)
+      started = applyEffect(started, effect, content, event, grocers)
     }
   }
 

@@ -27,6 +27,7 @@ describe('parseBalanceArgs', () => {
       years: 1,
       games: 30,
       events: 'none',
+      contracts: null,
       out: join(root, 'docs', 'balance', 'phase-2.md'),
     })
   })
@@ -39,6 +40,8 @@ describe('parseBalanceArgs', () => {
         '--games=5',
         '--events',
         'random',
+        '--contracts',
+        'first',
         '--out',
         'tmp/b.md',
       ]),
@@ -47,6 +50,7 @@ describe('parseBalanceArgs', () => {
       years: 2,
       games: 5,
       events: 'random',
+      contracts: 'first',
       out: resolve('tmp/b.md'),
     })
   })
@@ -82,10 +86,13 @@ describe('parseBalanceArgs', () => {
     })
   })
 
-  it('rejects --events with --percentiles, and --json without it', () => {
+  it('rejects --events and --contracts with --percentiles, and --json without it', () => {
     expect(() =>
       parseBalanceArgs(['--percentiles', '--events', 'random']),
     ).toThrow('--events does not go with --percentiles')
+    expect(() =>
+      parseBalanceArgs(['--percentiles', '--contracts', 'all']),
+    ).toThrow('--contracts does not go with --percentiles')
     expect(() => parseBalanceArgs(['--json', 'p.json'])).toThrow(
       '--json goes only with --percentiles or --defis',
     )
@@ -132,6 +139,9 @@ describe('parseBalanceArgs', () => {
     expect(() => parseBalanceArgs(['--defis', '--events', 'random'])).toThrow(
       '--events does not go with --defis',
     )
+    expect(() => parseBalanceArgs(['--defis', '--contracts', 'all'])).toThrow(
+      '--contracts does not go with --defis',
+    )
     expect(() => parseBalanceArgs(['--search', '3'])).toThrow(
       '--search goes only with --defis',
     )
@@ -176,6 +186,7 @@ describe('parseBalanceArgs', () => {
     ['--years', '1'],
     ['--search', '1'],
     ['--events', 'random'],
+    ['--contracts', 'all'],
     ['--json', 'tmp/f.json'],
   ])('rejects %s with --bakery', (option, ...value) => {
     expect(() => parseBalanceArgs(['--bakery', option, ...value])).toThrow(
@@ -208,6 +219,19 @@ describe('parseBalanceArgs', () => {
   it.each(['', 'all', 'Random'])('rejects the events policy %j', (text) => {
     expect(() => parseBalanceArgs(['--events', text])).toThrow(
       `--events must be one of first, random, none: ${text}`,
+    )
+  })
+
+  it.each(['all', 'none', 'first'])('reads the contracts policy %s', (id) => {
+    expect(parseBalanceArgs([`--contracts=${id}`])).toMatchObject({
+      mode: 'grid',
+      contracts: id,
+    })
+  })
+
+  it.each(['', 'random', 'All'])('rejects the contracts policy %j', (text) => {
+    expect(() => parseBalanceArgs(['--contracts', text])).toThrow(
+      `--contracts must be one of all, none, first: ${text}`,
     )
   })
 

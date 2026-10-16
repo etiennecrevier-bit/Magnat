@@ -4,8 +4,13 @@ import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { difficultyIdSchema } from '../../src/content/schema.ts'
 import { DEFIS, DIFFICULTIES } from '../../src/engine/day.ts'
-import { eventPolicy, wholeNumber } from '../sim/cli.ts'
-import { EVENT_POLICIES, type EventPolicy } from '../sim/simulate.ts'
+import { contractPolicy, eventPolicy, wholeNumber } from '../sim/cli.ts'
+import {
+  CONTRACT_POLICIES,
+  EVENT_POLICIES,
+  type ContractPolicy,
+  type EventPolicy,
+} from '../sim/simulate.ts'
 import { TRUCK_STRATEGIES, type BakeryJob } from './bakery.ts'
 import { formatBakeryReport } from './bakeryReport.ts'
 import {
@@ -41,6 +46,8 @@ export interface GridArgs {
   readonly games: number
   /** How the event cards are answered. */
   readonly events: EventPolicy
+  /** How the grocers' cards are answered; null for as the others. */
+  readonly contracts: ContractPolicy | null
   /** Absolute path of the report. */
   readonly out: string
 }
@@ -114,7 +121,7 @@ const BAKERY_DEFAULTS = {
 }
 
 export const USAGE = [
-  `Usage: npm run balance -- [--years <n>] [--games <n>] [--events ${EVENT_POLICIES.join('|')}] [--out <file>]`,
+  `Usage: npm run balance -- [--years <n>] [--games <n>] [--events ${EVENT_POLICIES.join('|')}] [--contracts ${CONTRACT_POLICIES.join('|')}] [--out <file>]`,
   '       npm run balance -- --percentiles [--years <n>] [--games <n>] [--out <file>] [--json <file>]',
   '       npm run balance -- --defis [--games <n>] [--search <n>] [--out <file>] [--json <file>]',
   '       npm run balance -- --bakery [--games <n>] [--months <n>] [--out <file>]',
@@ -124,13 +131,14 @@ export const USAGE = [
  * Reads `--years` and `--games` (whole numbers from 1) and `--out`
  * (resolved from the current folder). Without `--percentiles`, also
  * `--events` (how the event cards are answered, by default `none`, so the
- * report stays the economy without events); with it, `--json` (resolved the
+ * report stays the economy without events) and `--contracts` (how the
+ * grocers' cards are answered, by default as the others); with it, `--json` (resolved the
  * same way), and other defaults. With `--defis`, `--games`, `--search` (a
  * whole number from 1), `--out` and `--json`, and defaults of their own.
  * With `--bakery`, `--games`, `--months` (a whole number from 1) and
  * `--out`, and defaults of their own. Throws on anything else, including
  * positional arguments, `--events` with `--percentiles` or `--defis`, whose
- * owners always answer at random, `--years` or `--percentiles` with
+ * owners always answer at random, `--contracts` with either, `--years` or `--percentiles` with
  * `--defis`, `--search` without it, `--json` with neither, any other option
  * with `--bakery`, and `--months` without it.
  */
@@ -146,6 +154,7 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
       search: { type: 'string' },
       games: { type: 'string' },
       events: { type: 'string' },
+      contracts: { type: 'string' },
       out: { type: 'string' },
       json: { type: 'string' },
     },
@@ -159,6 +168,7 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
       ['--years', values.years],
       ['--search', values.search],
       ['--events', values.events],
+      ['--contracts', values.contracts],
       ['--json', values.json],
     ] as const) {
       if (value !== undefined) {
@@ -181,6 +191,7 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
       ['--percentiles', values.percentiles],
       ['--years', values.years],
       ['--events', values.events],
+      ['--contracts', values.contracts],
     ] as const) {
       if (value !== undefined) {
         throw new RangeError(`${option} does not go with --defis`)
@@ -199,10 +210,15 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
     throw new RangeError('--search goes only with --defis')
   }
   if (values.percentiles === true) {
-    if (values.events !== undefined) {
-      throw new RangeError(
-        '--events does not go with --percentiles: the owners answer at random',
-      )
+    for (const [option, value] of [
+      ['--events', values.events],
+      ['--contracts', values.contracts],
+    ] as const) {
+      if (value !== undefined) {
+        throw new RangeError(
+          `${option} does not go with --percentiles: the owners answer at random`,
+        )
+      }
     }
     const defaults = PERCENTILE_DEFAULTS
     return {
@@ -221,6 +237,7 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
     years: wholeNumber('--years', values.years, DEFAULTS.years, 1),
     games: wholeNumber('--games', values.games, DEFAULTS.games, 1),
     events: eventPolicy(values.events, DEFAULTS.events),
+    contracts: contractPolicy(values.contracts),
     out: resolve(values.out ?? DEFAULTS.out),
   }
 }
@@ -265,9 +282,10 @@ export async function main(argv: readonly string[]): Promise<number> {
 }
 
 async function writeGrid(
-  { years, games, events, out }: GridArgs,
+  { years, games, events, contracts, out }: GridArgs,
   started: number,
 ): Promise<void> {
+  const policy = contracts === null ? {} : { contracts }
   const difficulties = await playAll(
     difficultyIdSchema.options.map((difficulty): GridJob => ({
       kind: 'grid',
@@ -275,6 +293,7 @@ async function writeGrid(
       games,
       difficulty,
       events,
+      ...policy,
     })),
     ({ difficulty, strategies }) => {
       console.log(
@@ -282,7 +301,10 @@ async function writeGrid(
       )
     },
   )
-  writeReport(out, formatReport({ years, games, events, difficulties }))
+  writeReport(
+    out,
+    formatReport({ years, games, events, ...policy, difficulties }),
+  )
   console.log(`Wrote ${out} in ${seconds(performance.now() - started)}`)
 }
 

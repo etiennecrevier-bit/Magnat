@@ -1,13 +1,17 @@
 import { createHash } from 'node:crypto'
-import type {
-  DifficultyContent,
-  DifficultyId,
-  EventCard,
-  EventContent,
-  PercentileContent,
-  StreetModifierKind,
+import {
+  grocerIdSchema,
+  type DifficultyContent,
+  type DifficultyId,
+  type EventCard,
+  type EventContent,
+  type GrocerContent,
+  type GrocerId,
+  type PercentileContent,
+  type StreetModifierKind,
 } from '../../src/content/schema.ts'
 import { createInitialState, tick, toCalendar } from '../../src/engine/clock.ts'
+import { GROCERS } from '../../src/engine/contracts.ts'
 import {
   CUSTOMERS,
   DEFIS,
@@ -98,6 +102,103 @@ function idOf(choices: EventCard['choices'], index: number): string {
 }
 
 /**
+ * How the headless player answers the grocers' cards (#156), whatever the
+ * event policy: accepts every contract (`all`), refuses them all (`none`),
+ * or accepts the `first` grocer to offer one, then that grocer's renewals,
+ * and refuses the others.
+ */
+export type ContractPolicy = 'all' | 'none' | 'first'
+
+export const CONTRACT_POLICIES: readonly ContractPolicy[] = [
+  'all',
+  'none',
+  'first',
+]
+
+/**
+ * The grocer of `grocers` whose contract `card` offers, by its `grocer`
+ * condition, or renews, as their `renewalEvent`; null for any other card.
+ */
+export function grocerOf(
+  card: EventCard,
+  grocers: GrocerContent = GROCERS,
+): GrocerId | null {
+  const offered = card.conditions?.grocer
+  if (offered !== undefined) return offered
+  const renewing = grocerIdSchema.options.find(
+    (id) => grocers.grocers[id].renewalEvent === card.id,
+  )
+  return renewing ?? null
+}
+
+/**
+ * The choices of a grocer's card that accept, every outcome signing the
+ * contract, and that refuse, no outcome signing it. Throws a RangeError
+ * unless `card` has exactly one of each.
+ */
+export function contractChoices(card: EventCard): {
+  accept: string
+  refuse: string
+} {
+  const signs = (outcome: EventCard['choices'][number]['outcomes'][number]) =>
+    outcome.effects.some(({ kind }) => kind === 'contract')
+  const accept = card.choices.filter(({ outcomes }) => outcomes.every(signs))
+  const refuse = card.choices.filter(({ outcomes }) => !outcomes.some(signs))
+  const [accepted] = accept
+  const [refused] = refuse
+  if (
+    accept.length !== 1 ||
+    refuse.length !== 1 ||
+    accepted === undefined ||
+    refused === undefined
+  ) {
+    throw new RangeError(
+      `${card.id} needs one choice that signs the contract and one that does not`,
+    )
+  }
+  return { accept: accepted.id, refuse: refused.id }
+}
+
+/**
+ * Answers each grocer's card by `policy` (see `ContractPolicy`) and every
+ * other card with `fallback`. Throws a RangeError on a card that is not a
+ * grocer's when `fallback` is null.
+ */
+export function contractChooser(
+  policy: ContractPolicy,
+  fallback: ((event: EventCard) => string) | null,
+): (event: EventCard) => string {
+  let first: GrocerId | null = null
+  return (card) => {
+    const grocer = grocerOf(card)
+    if (grocer === null) {
+      if (fallback === null) {
+        throw new RangeError(`Only the grocers' cards come up: ${card.id}`)
+      }
+      return fallback(card)
+    }
+    const { accept, refuse } = contractChoices(card)
+    switch (policy) {
+      case 'all':
+        return accept
+      case 'none':
+        return refuse
+      case 'first':
+        first ??= grocer
+        return grocer === first ? accept : refuse
+    }
+  }
+}
+
+/** `content` with the grocers' cards only, at its pacing. */
+export function grocerCards(content: EventContent): EventContent {
+  return {
+    ...content,
+    events: content.events.filter((card) => grocerOf(card) !== null),
+  }
+}
+
+/**
  * One year of play. Years count from the first day of the game, so year 1
  * runs from day 0 to the day before its first anniversary; the last year
  * stops early when the run does.
@@ -152,6 +253,11 @@ export interface SimulationResult {
   readonly owner: OwnerSummary
   /** How the event cards were answered. */
   readonly events: EventPolicy
+  /**
+   * How the grocers' cards were answered; null when the event policy
+   * answered them like any other.
+   */
+  readonly contracts: ContractPolicy | null
   /** Every event that came up and the choice made, oldest first. */
   readonly eventHistory: readonly EventRecord[]
   /** See `modifierDays`. */
@@ -165,10 +271,13 @@ export interface SimulationResult {
  * where the player's would wait for the next morning. With an `events`
  * policy other than `none`, the event cards of `eventContent` come up, and
  * each morning one does, before the owner's energy is read, `eventChooser`
- * answers it for the game's seed. The game opens, and plays every day, with
- * `difficulties`, by default the shipped ones. Throws a RangeError unless
- * `days` is a safe integer of at least 1, `seed` and `difficulty` are ones
- * `createInitialState` accepts and every change is one `applyDecision`
+ * answers it for the game's seed. With a `contracts` policy, it answers the
+ * grocers' cards instead (see `contractChooser`), and with `events` at
+ * `none`, the grocers' cards of `eventContent` still come up, alone at its
+ * pacing, unless `contracts` is `none` too. The game opens, and plays every
+ * day, with `difficulties`, by default the shipped ones. Throws a RangeError
+ * unless `days` is a safe integer of at least 1, `seed` and `difficulty` are
+ * ones `createInitialState` accepts and every change is one `applyDecision`
  * accepts.
  */
 export function simulate(
@@ -179,14 +288,25 @@ export function simulate(
   events: EventPolicy = 'none',
   eventContent: EventContent = EVENTS,
   difficulties: DifficultyContent = DIFFICULTIES,
+  contracts: ContractPolicy | null = null,
 ): SimulationResult {
   if (!Number.isSafeInteger(days) || days < 1) {
     throw new RangeError(`Days to play must be a whole number from 1: ${days}`)
   }
 
   let state = startGame(seed, difficulty, changes, difficulties)
-  const content = events === 'none' ? NO_EVENTS : eventContent
-  const choose = events === 'none' ? null : eventChooser(events, seed)
+  const grocersOnly =
+    events === 'none' && contracts !== null && contracts !== 'none'
+  const content = grocersOnly
+    ? grocerCards(eventContent)
+    : events === 'none'
+      ? NO_EVENTS
+      : eventContent
+  const answer = events === 'none' ? null : eventChooser(events, seed)
+  const choose =
+    contracts === null || content === NO_EVENTS
+      ? answer
+      : contractChooser(contracts, answer)
   const daySummaries: DaySummary[] = []
   const morningEnergy: number[] = []
   const unpaidRents: Day[] = []
@@ -209,6 +329,7 @@ export function simulate(
     journal: state.journal.entries,
     owner: { morningEnergy, personalCash: state.personal.cash, unpaidRents },
     events,
+    contracts,
     eventHistory: state.events.history,
     modifierDays: modifierDays(daySummaries),
   }

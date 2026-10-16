@@ -6,6 +6,7 @@ import {
   type EventConditions,
   type EventContent,
   type FoodTruckContent,
+  type GrocerContent,
   type PercentileContent,
   type RestockRule,
   type Standing,
@@ -15,6 +16,7 @@ import { balance } from '../finance/journal.ts'
 import { supplyRule } from './bakery.ts'
 import { toCalendar } from './calendar.ts'
 import { allowedChoices } from './challenge.ts'
+import { GROCERS, mayOffer } from './contracts.ts'
 import { DEFIS, EVENTS, FOOD_TRUCK } from './day.ts'
 import { applyEffect, insertByDay, untimed, whenDue } from './effects.ts'
 import { PERCENTILES } from './percentiles.ts'
@@ -93,12 +95,14 @@ export function noEvents(): EventsState {
  *    single event to pick, takes no draw.
  * A follow-up takes no draw, ignores the conditions, the first day and the
  * gap, and leaves `lastDrawnDay` as it is; any other one due waits for a
- * later morning. Returns a new state; never mutates `state`.
+ * later morning. The conditions read the contracts against `grocers`.
+ * Returns a new state; never mutates `state`.
  */
 export function drawEvent(
   state: GameState,
   content: EventContent,
   percentiles: PercentileContent = PERCENTILES,
+  grocers: GrocerContent = GROCERS,
 ): GameState {
   const { day, events } = state
   if (events.pending !== null || events.history.at(-1)?.day === day) {
@@ -118,7 +122,7 @@ export function drawEvent(
   const weightOf = weighing(state, content, percentiles)
   const mayCome = (event: EventCard) =>
     event.conditions?.followUpOnly !== true &&
-    conditionsHold(event, state, seen) &&
+    conditionsHold(event, state, seen, grocers) &&
     weightOf(event) > 0
 
   if (drawing) {
@@ -210,15 +214,17 @@ function picking(
  * never came up, for
  * `oncePerGame`, came up fewer than `maxPerGame` times, or came up at least
  * `cooldownDays` days ago, follow-ups included; the history holds one of the
- * choices `chosen` lists, and none of those `notChosen` lists; and Encaisse
- * is above `cashAboveCents` and below `cashBelowCents`, read from the books
- * only when every other condition holds. `followUpOnly` is `drawEvent`'s,
- * not checked here.
+ * choices `chosen` lists, and none of those `notChosen` lists; the
+ * `grocer` may offer a contract (see `mayOffer`, with `grocers`); and
+ * Encaisse is above `cashAboveCents` and below `cashBelowCents`, read from
+ * the books only when every other condition holds. `followUpOnly` is
+ * `drawEvent`'s, not checked here.
  */
 export function conditionsHold(
   { id, conditions = {} }: EventCard,
   state: GameState,
   seen: ReadonlyMap<string, Day>,
+  grocers: GrocerContent = GROCERS,
 ): boolean {
   const { day } = state
   const {
@@ -235,6 +241,7 @@ export function conditionsHold(
     cooldownDays,
     chosen,
     notChosen,
+    grocer,
     cashAboveCents,
     cashBelowCents,
   }: EventConditions = conditions
@@ -282,6 +289,12 @@ export function conditionsHold(
   }
   if (chosen !== undefined && !madeOneOf(history, chosen)) return false
   if (notChosen !== undefined && madeOneOf(history, notChosen)) return false
+  if (
+    grocer !== undefined &&
+    !mayOffer(state.contracts, day, grocer, grocers)
+  ) {
+    return false
+  }
   if (cashAboveCents === undefined && cashBelowCents === undefined) return true
   const cash = balance(state.journal, CASH, { toDay: day })
   return (
@@ -297,11 +310,12 @@ export function conditionsHold(
  * scaled as the game scales them (see `scalingOf` and `effectsAt`), those
  * that start now applied at once (see `applyEffect`, with `foodTruck`'s
  * unit costs) and the others queued for their day (see `whenDue`), as they
- * will run. The event goes into the history and no longer waits. Returns a new state; never mutates `state`. Throws
- * an Error when no event waits, and a RangeError when `content` does not
- * hold the event, the event has no such choice, or the game's Défi, one of
- * `defis`, forces the event that morning without allowing the choice (see
- * `allowedChoices`).
+ * will run, a contract with one of `grocers`. The event goes into the
+ * history and no longer waits. Returns a new state; never mutates `state`.
+ * Throws an Error when no event waits, and a RangeError when `content` does
+ * not hold the event, the event has no such choice, or the game's Défi, one
+ * of `defis`, forces the event that morning without allowing the choice
+ * (see `allowedChoices`).
  */
 export function resolveEvent(
   state: GameState,
@@ -309,6 +323,7 @@ export function resolveEvent(
   content: EventContent = EVENTS,
   foodTruck: FoodTruckContent = FOOD_TRUCK,
   defis: DefiContent = DEFIS,
+  grocers: GrocerContent = GROCERS,
 ): GameState {
   const { pending } = state.events
   if (pending === null) {
@@ -362,7 +377,7 @@ export function resolveEvent(
     const effect = untimed(timed)
     resolved =
       day === state.day
-        ? applyEffect(resolved, effect, foodTruck, event.id)
+        ? applyEffect(resolved, effect, foodTruck, event.id, grocers)
         : {
             ...resolved,
             events: {

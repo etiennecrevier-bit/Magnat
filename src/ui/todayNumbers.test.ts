@@ -48,6 +48,7 @@ const DAY: DaySummary = {
   energy: 100,
   botched: 0,
   modifiers: [],
+  deliveries: [],
 }
 
 describe('todayNumbers', () => {

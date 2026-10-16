@@ -1,0 +1,38 @@
+{
+  "_note": "The three grocers of #156, as Étienne decided them on October 16, 2026, their weekly volumes five times the issue's so that the cash trap holds (#998): each offers a weekly croissant contract through an event card, at a lower price, paid at 45 or 60 days, so a contract raises sales and ties up cash until its first payment. The croissants cost what foodtruck.json sets, or, when the bakery makes them, its ingredients (difficulty.json); Marché Bio-Logique pays artisanalPremiumCents more for each one the bakery made. Deliveries come every deliveryWeekday morning, the truck open or closed, at most maxContracts contracts at once, each delivery taking deliveryEnergyCost from the owner. renewalEvent is the card that comes the morning after a contract's last delivery.",
+  "maxContracts": 3,
+  "deliveryWeekday": 1,
+  "deliveryEnergyCost": 4,
+  "grocers": {
+    "chezNormand": {
+      "name": "Épicerie Chez Normand",
+      "owner": "Normand",
+      "unitsPerWeek": 750,
+      "unitPriceCents": 210,
+      "paymentDays": 60,
+      "weeks": 12,
+      "artisanalPremiumCents": 0,
+      "renewalEvent": "renouvellementNormand"
+    },
+    "marcheBioLogique": {
+      "name": "Marché Bio-Logique",
+      "owner": "Solange Tremblay-Lévesque",
+      "unitsPerWeek": 1250,
+      "unitPriceCents": 225,
+      "paymentDays": 60,
+      "weeks": 12,
+      "artisanalPremiumCents": 40,
+      "renewalEvent": "renouvellementBioLogique"
+    },
+    "depanneur2424": {
+      "name": "Dépanneur 24/24",
+      "owner": "M. Kim",
+      "unitsPerWeek": 500,
+      "unitPriceCents": 195,
+      "paymentDays": 45,
+      "weeks": 8,
+      "artisanalPremiumCents": 0,
+      "renewalEvent": "renouvellementDepanneur"
+    }
+  }
+}

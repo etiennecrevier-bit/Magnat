@@ -165,20 +165,22 @@ function choose(
 }
 
 /** Whether nothing an event started is left in `state`. */
-function settled({ events, receivables }: GameState): boolean {
+function settled({ events, receivables, contracts }: GameState): boolean {
   return (
     events.pending === null &&
     events.delayed.length === 0 &&
     events.followUps.length === 0 &&
     events.modifiers.length === 0 &&
-    receivables.length === 0
+    receivables.length === 0 &&
+    contracts.running.length === 0
   )
 }
 
 /**
  * Plays `state` on with no event drawn, until it has `settled` and at least
  * `minDays` days are played, a month by default, answering each follow-up
- * with `answer`, or with its first choice when it has none so named.
+ * with `answer`, or with its last choice when it has none so named, which
+ * lets a grocer's contract end.
  * Returns the morning after each day played, in order: its `lastDay` sums
  * up that day.
  */
@@ -195,7 +197,7 @@ function playOut(
       const known = choices.some(({ id }) => id === answer)
       current = resolveEvent(
         current,
-        known ? answer : (choices[0]?.id ?? answer),
+        known ? answer : (choices.at(-1)?.id ?? answer),
         AS_WRITTEN,
       )
     }

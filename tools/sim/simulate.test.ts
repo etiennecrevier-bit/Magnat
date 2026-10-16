@@ -25,7 +25,11 @@ import type { DaySummary, PerProduct } from '../../src/engine/types.ts'
 import { getAccount } from '../../src/finance/accounts.ts'
 import { emptyJournal, postEntry } from '../../src/finance/journal.ts'
 import {
+  contractChoices,
+  contractChooser,
   eventChooser,
+  grocerCards,
+  grocerOf,
   journalHash,
   modifierDays,
   simulate,
@@ -536,5 +540,180 @@ describe('eventChooser', () => {
 
   it('answers nothing for none', () => {
     expect(() => eventChooser('none', 1)).toThrow(RangeError)
+  })
+})
+
+describe("the grocers' cards", () => {
+  const card = (id: string) => {
+    const found = EVENTS.events.find((event) => event.id === id)
+    if (found === undefined) throw new Error(`No card ${id}`)
+    return found
+  }
+  const OFFERS = ['contratNormand', 'contratBioLogique', 'contratDepanneur']
+  const RENEWALS = [
+    'renouvellementNormand',
+    'renouvellementBioLogique',
+    'renouvellementDepanneur',
+  ]
+
+  it('names the grocer of each offer and renewal, and of no other card', () => {
+    expect([...OFFERS, ...RENEWALS].map((id) => grocerOf(card(id)))).toEqual([
+      'chezNormand',
+      'marcheBioLogique',
+      'depanneur2424',
+      'chezNormand',
+      'marcheBioLogique',
+      'depanneur2424',
+    ])
+    expect(grocerCards(EVENTS).events.map(({ id }) => id)).toEqual([
+      ...OFFERS,
+      ...RENEWALS,
+    ])
+    expect(grocerCards(EVENTS).pacing).toEqual(EVENTS.pacing)
+    // The essai card signs a contract too, among everything it tries.
+    expect(grocerOf(card('essai'))).toBeNull()
+    expect(grocerOf(card('chalet'))).toBeNull()
+  })
+
+  it.each([...OFFERS, ...RENEWALS])(
+    'finds the one choice of %s that accepts and the one that refuses',
+    (id) => {
+      expect(contractChoices(card(id))).toEqual({
+        accept: 'accepter',
+        refuse: 'refuser',
+      })
+    },
+  )
+
+  it('refuses a card without one choice of each', () => {
+    expect(() => contractChoices(card('chalet'))).toThrow(RangeError)
+  })
+
+  it('accepts every contract, refuses them all, or accepts the first grocer only', () => {
+    const fallback = () => 'autre'
+    const all = contractChooser('all', fallback)
+    const none = contractChooser('none', fallback)
+    const first = contractChooser('first', fallback)
+    expect(OFFERS.map((id) => all(card(id)))).toEqual([
+      'accepter',
+      'accepter',
+      'accepter',
+    ])
+    expect(OFFERS.map((id) => none(card(id)))).toEqual([
+      'refuser',
+      'refuser',
+      'refuser',
+    ])
+    expect(
+      [
+        'contratBioLogique',
+        'contratNormand',
+        'renouvellementBioLogique',
+        'contratDepanneur',
+        'renouvellementNormand',
+      ].map((id) => first(card(id))),
+    ).toEqual(['accepter', 'refuser', 'accepter', 'refuser', 'refuser'])
+    expect(all(card('chalet'))).toBe('autre')
+  })
+
+  it('throws on a card that is not a grocer’s with no fallback', () => {
+    expect(() => contractChooser('all', null)(card('chalet'))).toThrow(
+      "Only the grocers' cards come up: chalet",
+    )
+  })
+})
+
+describe('simulate with contracts', () => {
+  const DAYS = 200
+
+  it('with no other event, brings the grocers’ offers and accepts them all', () => {
+    const played = simulate(
+      9,
+      DAYS,
+      'moyen',
+      [],
+      'none',
+      EVENTS,
+      DIFFICULTIES,
+      'all',
+    )
+    expect(played.contracts).toBe('all')
+    expect(played.eventHistory.length).toBeGreaterThan(0)
+    for (const { event, choice } of played.eventHistory) {
+      expect(event).toMatch(/^(contrat|renouvellement)/)
+      expect(choice).toBe('accepter')
+    }
+    const delivered = played.daySummaries.flatMap(
+      ({ deliveries }) => deliveries,
+    )
+    expect(delivered.length).toBeGreaterThan(0)
+  })
+
+  it('with no other event and none accepted, plays as with no event at all', () => {
+    const refused = simulate(
+      9,
+      DAYS,
+      'moyen',
+      [],
+      'none',
+      EVENTS,
+      DIFFICULTIES,
+      'none',
+    )
+    expect(refused.eventHistory).toEqual([])
+    expect(refused.journalHash).toBe(simulate(9, DAYS, 'moyen').journalHash)
+  })
+
+  it('answers the grocers by the policy and the other cards by the event policy', () => {
+    const played = simulate(
+      9,
+      DAYS * 2,
+      'moyen',
+      [],
+      'first',
+      EVENTS,
+      DIFFICULTIES,
+      'none',
+    )
+    const grocers = played.eventHistory.filter(({ event }) =>
+      /^(contrat|renouvellement)/.test(event),
+    )
+    expect(grocers.length).toBeGreaterThan(0)
+    expect(grocers.every(({ choice }) => choice === 'refuser')).toBe(true)
+    const others = played.eventHistory.filter(
+      (record) => !grocers.includes(record),
+    )
+    for (const { event, choice } of others) {
+      expect(choice, event).toBe(
+        EVENTS.events.find(({ id }) => id === event)?.choices[0]?.id,
+      )
+    }
+    expect(played.daySummaries.flatMap(({ deliveries }) => deliveries)).toEqual(
+      [],
+    )
+  })
+
+  it('with no contracts policy, answers the grocers by the event policy', () => {
+    const played = simulate(9, DAYS * 2, 'moyen', [], 'first')
+    expect(played.contracts).toBeNull()
+    const grocers = played.eventHistory.filter(({ event }) =>
+      /^contrat/.test(event),
+    )
+    expect(grocers.length).toBeGreaterThan(0)
+    expect(grocers.every(({ choice }) => choice === 'accepter')).toBe(true)
+  })
+
+  it('plays the same game twice', () => {
+    const args = [
+      9,
+      DAYS,
+      'moyen',
+      [],
+      'random',
+      EVENTS,
+      DIFFICULTIES,
+      'first',
+    ] as const
+    expect(simulate(...args).journalHash).toBe(simulate(...args).journalHash)
   })
 })

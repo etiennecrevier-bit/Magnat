@@ -450,10 +450,15 @@ describe('a year of weeks', () => {
       startedAs(),
       7 * 53,
       EVENTS,
-      // The order taken on credit, so that some week sells on credit; every
-      // other card answered at random.
+      // The order taken on credit, and the grocers' contracts, so that some
+      // week sells on credit; every other card answered at random.
       (state) =>
-        state.events.pending?.event === 'grosseCommande'
+        [
+          'grosseCommande',
+          'contratNormand',
+          'contratBioLogique',
+          'contratDepanneur',
+        ].includes(state.events.pending?.event ?? '')
           ? 'accepter'
           : random(state),
       (state) => {
@@ -718,6 +723,7 @@ describe('weekFacts', () => {
       bestWeek: { weight: 60 },
       lostToLine: { weight: 50, aboveVisits: 20 },
       daysOpenInARow: { weight: 40, atLeast: 10 },
+      contractsReceivable: { weight: 85, aboveCents: 100_000 },
     },
   })
 
@@ -763,6 +769,12 @@ describe('weekFacts', () => {
     receivables: [
       { ...OWED, dueDay: 62 },
       { ...OWED, client: 'Client douteux', dueDay: 62 },
+      {
+        client: 'Marché Bio-Logique',
+        amount: cents(281_250),
+        soldOnDay: 21,
+        dueDay: 81,
+      },
     ],
     unpaidRents: [31],
   }
@@ -774,6 +786,11 @@ describe('weekFacts', () => {
       numbers: { netIncome: cents(100_000), cashChange: cents(-10_000) },
     },
     { id: 'unpaidRent', weight: 90, numbers: { day: 31 } },
+    {
+      id: 'contractsReceivable',
+      weight: 85,
+      numbers: { amount: cents(281_250), grocers: ['Marché Bio-Logique'] },
+    },
     {
       id: 'receivableDue',
       weight: 80,
@@ -798,7 +815,7 @@ describe('weekFacts', () => {
 
   it('tells at most maxFacts, most important first', () => {
     expect(weekFacts(LOUD, RULES)).toEqual(ALL.slice(0, 4))
-    expect(weekFacts(LOUD, { ...RULES, maxFacts: 7 })).toEqual(ALL)
+    expect(weekFacts(LOUD, { ...RULES, maxFacts: 8 })).toEqual(ALL)
     expect(weekFacts(LOUD, { ...RULES, maxFacts: 1 })).toEqual(ALL.slice(0, 1))
   })
 
@@ -933,15 +950,15 @@ describe('weekFacts', () => {
     expect(weekFacts(LOUD, rules).map(({ id }) => id)).toEqual([
       'profitUpCashDown',
       'unpaidRent',
+      'contractsReceivable',
       'receivableDue',
-      'spoilage',
     ])
   })
 
   it('tells the others by weight, a tie in the order of the ids', () => {
     const rules: ReportContent = {
       ...RULES,
-      maxFacts: 7,
+      maxFacts: 8,
       facts: {
         ...RULES.facts,
         daysOpenInARow: { ...RULES.facts.daysOpenInARow, weight: 95 },
@@ -952,6 +969,7 @@ describe('weekFacts', () => {
       'profitUpCashDown',
       'daysOpenInARow',
       'unpaidRent',
+      'contractsReceivable',
       'receivableDue',
       'lostToLine',
       'spoilage',
@@ -959,7 +977,7 @@ describe('weekFacts', () => {
     ])
     const ties: ReportContent = {
       ...RULES,
-      maxFacts: 7,
+      maxFacts: 8,
       facts: Object.fromEntries(
         Object.entries(RULES.facts).map(([id, rule]) => [
           id,

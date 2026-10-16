@@ -4,13 +4,17 @@ import {
   type StreetModifierKind,
 } from '../../src/content/schema.ts'
 import { SEGMENTS } from '../../src/engine/customers.ts'
-import { ENERGY } from '../../src/engine/day.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
 import type { Day, DaySummary, PerProduct } from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import type { JournalEntry } from '../../src/finance/journal.ts'
-import { simulate, type EventPolicy } from '../sim/simulate.ts'
+import { DIFFICULTIES, ENERGY, EVENTS } from '../../src/engine/day.ts'
+import {
+  simulate,
+  type ContractPolicy,
+  type EventPolicy,
+} from '../sim/simulate.ts'
 import { STRATEGIES, strategyChanges, type Strategy } from './strategies.ts'
 
 // Plays the strategies headless and sums up each game, with no I/O: report.ts
@@ -87,6 +91,10 @@ export interface BalanceRun {
   readonly games: number
   /** How the event cards were answered; by default none came up. */
   readonly events?: EventPolicy
+  /**
+   * How the grocers' cards were answered; by default as the other cards.
+   */
+  readonly contracts?: ContractPolicy
   readonly difficulties: readonly DifficultyRun[]
 }
 
@@ -99,14 +107,19 @@ export interface BalanceOptions {
   readonly difficulties?: readonly DifficultyId[]
   /** How the event cards are answered; by default none come up. */
   readonly events?: EventPolicy
+  /**
+   * How the grocers' cards are answered (see `simulate`); by default as the
+   * other cards.
+   */
+  readonly contracts?: ContractPolicy
   /** Called after each difficulty is played. */
   readonly onProgress?: (run: DifficultyRun) => void
 }
 
 /**
  * Plays `strategy` from `seed` at `difficulty` for `days` days, from day 0,
- * answering the event cards by `events`, and sums up the game. Throws what
- * `simulate` throws.
+ * answering the event cards by `events` and the grocers' by `contracts`, if
+ * any (see `simulate`), and sums up the game. Throws what `simulate` throws.
  */
 export function playStrategy(
   strategy: Strategy,
@@ -114,6 +127,7 @@ export function playStrategy(
   seed: number,
   days: number,
   events: EventPolicy = 'none',
+  contracts: ContractPolicy | null = null,
 ): GameResult {
   const result = simulate(
     seed,
@@ -121,6 +135,9 @@ export function playStrategy(
     difficulty,
     strategyChanges(strategy),
     events,
+    EVENTS,
+    DIFFICULTIES,
+    contracts,
   )
   const { daySummaries, years } = result
   const lastYear = years.at(-1)
@@ -158,8 +175,9 @@ export function playStrategy(
 
 /**
  * Plays every strategy at every difficulty on seeds 1 to `games`, for
- * `years` years each, answering the event cards by `events`. Throws a
- * RangeError unless both are whole numbers from 1.
+ * `years` years each, answering the event cards by `events` and the
+ * grocers' by `contracts`, if any. Throws a RangeError unless both are
+ * whole numbers from 1.
  */
 export function runBalance({
   years,
@@ -167,6 +185,7 @@ export function runBalance({
   strategies = STRATEGIES,
   difficulties = difficultyIdSchema.options,
   events = 'none',
+  contracts,
   onProgress,
 }: BalanceOptions): BalanceRun {
   for (const [name, value] of [
@@ -184,13 +203,21 @@ export function runBalance({
     years,
     games,
     events,
+    ...(contracts === undefined ? {} : { contracts }),
     difficulties: difficulties.map((difficulty) => {
       const run: DifficultyRun = {
         difficulty,
         strategies: strategies.map((strategy) => ({
           strategy,
           games: seeds.map((seed) =>
-            playStrategy(strategy, difficulty, seed, days, events),
+            playStrategy(
+              strategy,
+              difficulty,
+              seed,
+              days,
+              events,
+              contracts ?? null,
+            ),
           ),
         })),
       }

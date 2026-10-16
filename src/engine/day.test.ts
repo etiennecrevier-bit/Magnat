@@ -650,6 +650,7 @@ describe('tick', () => {
       energy: FULL_ENERGY,
       botched: 0,
       modifiers: [],
+      deliveries: [],
     })
     expect(visits).toHaveLength(10)
     for (const visit of visits) {
@@ -1769,6 +1770,7 @@ describe('cash', () => {
       energy: FULL_ENERGY,
       botched: 0,
       modifiers: [],
+      deliveries: [],
     })
     expect(visits.map(({ outcome }) => outcome)).toEqual(
       Array.from({ length: 10 }, () => 'soldOut'),

@@ -18,6 +18,7 @@ import { incomeStatement } from '../finance/statements.ts'
 import { BAKERY, closedBakery } from './bakery.ts'
 import { endOfMonth } from './calendar.ts'
 import { allowedChoices } from './challenge.ts'
+import { noContracts } from './contracts.ts'
 import {
   createInitialState,
   startChallenge,
@@ -257,7 +258,8 @@ function pocketCard(label: string, amount: number, firstDay = 1): EventContent {
 // energy, « Cadeau d'essai » in their pocket, a headline, and the street
 // changed: fewer walk-ins to day 15, more chic ones to day 3, less chocolat
 // to day 5 and no café to day 2, with what customers will pay raised on day
-// 2 alone and the truck closed on day 3, both queued.
+// 2 alone and the truck closed on day 3, both queued, a contract signed with
+// Épicerie Chez Normand and Dépanneur 24/24 away to day 30.
 const WAITING = withEvents(createInitialState(SEED))
 const CHOSEN = resolveEvent(WAITING, 'toutEssayer', ESSAI)
 const CHOSEN_SAVE = serialize(CHOSEN)
@@ -301,10 +303,32 @@ function withoutWeek(save: Json): void {
 }
 
 /**
+ * Takes the contracts out of `save`, as version 12 wrote it: the save of a
+ * game that never signed one.
+ */
+function withoutContracts(save: Json): void {
+  expect(save.contracts).toEqual(noContracts())
+  delete save.contracts
+  const lastDay = save.lastDay as Json | null
+  if (lastDay === null) return
+  expect(lastDay.deliveries).toEqual([])
+  delete lastDay.deliveries
+}
+
+/** `state`, with no contract, saved as version 12, before the contracts. */
+function v12(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutContracts(save)
+  return JSON.stringify({ ...save, saveVersion: 12 })
+}
+
+/**
  * Takes the bakery out of `save`, as version 11 wrote it: the save of a game
- * that never planned one, with the croissants bought.
+ * that never planned one, with the croissants bought, nor signed a
+ * contract, which came later.
  */
 function withoutBakery(save: Json): void {
+  withoutContracts(save)
   expect(save.bakery).toEqual(closedBakery())
   delete save.bakery
   for (const key of ['decisions', 'pendingDecisions']) {
@@ -383,8 +407,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(12)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 12 })
+    expect(SAVE_VERSION).toBe(13)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 13 })
   })
 
   it.each<Profile>([
@@ -651,6 +675,7 @@ describe('serialize and deserialize', () => {
         ),
         modifiers: [],
       },
+      contracts: noContracts(),
     }
     expect(deserialize(v8(owed))).toEqual(sinceLoaded(owed))
     expect(deserialize(v8(createInitialState(SEED)))).toEqual(
@@ -749,12 +774,29 @@ describe('serialize and deserialize', () => {
       pending,
       SUNDAY_CLOSE,
       DAY_400,
-      CHOSEN,
+      { ...CHOSEN, contracts: noContracts() },
     ]) {
       expect(deserialize(v11(state))).toStrictEqual(state)
     }
     const defi = startChallenge('travauxSaintDenis', SEED)
     expect(deserialize(v11(played(5, defi)))).toStrictEqual(played(5, defi))
+  })
+
+  it('load a version 12 game as one with no contract and no delivery', () => {
+    const pending = applyDecision(THURSDAY, {
+      kind: 'marketingDaily',
+      budget: cents(1_000),
+    })
+    for (const state of [
+      createInitialState(SEED),
+      THURSDAY,
+      pending,
+      SUNDAY_CLOSE,
+      DAY_400,
+      { ...CHOSEN, contracts: noContracts() },
+    ]) {
+      expect(deserialize(v12(state))).toStrictEqual(state)
+    }
   })
 
   it('load a version 10 game as one that is not a Défi', () => {
@@ -903,7 +945,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 6, 13, '12', '11', '10', '9', '8', '7', null])(
+  it.each([0, 1, 6, 14, '13', '12', '11', '10', '9', '8', '7', null])(
     'saveVersion %j',
     (version) => {
       expectInvalid(withValue('saveVersion', version), [
@@ -1785,6 +1827,30 @@ describe('deserialize rejects', () => {
         }),
         ['→ at receivables[0].client'],
       )
+    })
+  })
+
+  describe('a version 12 game', () => {
+    it.each(['contracts', 'lastDay.deliveries'])(
+      'with %s, which came in version 13',
+      (path) => {
+        const save = JSON.parse(v12(FORTNIGHT)) as Json
+        const keys = path.split('.')
+        const key = keys.pop() ?? ''
+        const at = keys.reduce((json, k) => json[k] as Json, save)
+        const now = keys.reduce(
+          (json, k) => json[k] as Json,
+          JSON.parse(serialize(FORTNIGHT)) as Json,
+        )
+        at[key] = now[key]
+        expectInvalid(JSON.stringify(save), [`Unrecognized key: "${key}"`])
+      },
+    )
+
+    it('with a field it breaks', () => {
+      const save = JSON.parse(v12(FORTNIGHT)) as Json
+      save.energy = 101
+      expectInvalid(JSON.stringify(save), ['→ at energy'])
     })
   })
 

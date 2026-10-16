@@ -3,7 +3,9 @@ import eventsJson from './events.json'
 import {
   eventEffectSchema,
   loadEventContent,
+  loadGrocerContent,
   type DifficultyId,
+  type EventCard,
   type TimedEventEffect,
 } from './schema.ts'
 
@@ -54,6 +56,16 @@ const R06_CARDS = [
   'reportage',
 ]
 
+/** The grocers' offers of issue #156, then their renewals. */
+const GROCER_CARDS = [
+  'contratNormand',
+  'contratBioLogique',
+  'contratDepanneur',
+  'renouvellementNormand',
+  'renouvellementBioLogique',
+  'renouvellementDepanneur',
+]
+
 /** The portraits of issue #95, one per character but the silhouette. */
 const PORTRAITS = [
   'gillesLacasse',
@@ -69,13 +81,27 @@ const PORTRAITS = [
   'meteorologue',
 ]
 
-/** The characters of issue #137, who have no portrait yet. */
+/** The characters of issues #137 and #156, who have no portrait yet. */
 const WITHOUT_PORTRAITS = [
   'mmeOuellette',
   'rosaireGagnon',
   'stevieDuvent',
   'ginettePelletier',
+  'solangeTremblayLevesque',
+  'monsieurKim',
 ]
+
+/**
+ * Whether `card` offers a grocer's contract: its prices are the grocer's in
+ * grocers.json, which no difficulty scales (see grocerCards.test.ts).
+ */
+function offersContract({ choices }: EventCard): boolean {
+  return choices.some(({ outcomes }) =>
+    outcomes.some(({ effects }) =>
+      effects.some(({ kind }) => kind === 'contract'),
+    ),
+  )
+}
 
 /** A copy of the shipped file to break, as plain JSON. */
 function shipped(): Json {
@@ -146,8 +172,9 @@ function appliesAt(
 /**
  * Whether `effect` costs the player something (#137): a charge, energy or
  * the owner's own cash going down, a change to the street below 1, the
- * truck closed or a product it cannot sell, stock given away or lost, or a
- * client who pays late or never.
+ * truck closed or a product it cannot sell, stock given away or lost, a
+ * client who pays late or never, or a grocer's contract, whose deliveries
+ * take cash and energy each week, or a grocer walking away (#156).
  */
 function costs(effect: TimedEventEffect): boolean {
   switch (effect.kind) {
@@ -156,6 +183,8 @@ function costs(effect: TimedEventEffect): boolean {
     case 'unavailable':
     case 'delayReceivable':
     case 'writeOff':
+    case 'contract':
+    case 'grocerAway':
       return true
     case 'energy':
       return effect.amount < 0
@@ -205,9 +234,9 @@ describe('events.json', () => {
     expect(caps).toEqual({ machineTousse: 3, influenceuse: 2, concurrence: 2 })
   })
 
-  it('brings the chalet on any tired summer morning, four times as often as a card of weight 1', () => {
+  it('brings the chalet on any tired summer morning, five times as often as a card of weight 1, with the grocers’ offers (#156)', () => {
     const chalet = content.events.find(({ id }) => id === 'chalet')
-    expect(chalet?.weight).toBe(4)
+    expect(chalet?.weight).toBe(5)
     expect(chalet?.conditions).toEqual({
       energyBelow: 100,
       months: [6, 7, 8, 9],
@@ -249,12 +278,13 @@ describe('events.json', () => {
     expect(essai?.weight).toBe(0)
   })
 
-  it('holds the essai card, the twelve cards of issue #93, the four of #137, then the thirteen of #155, in order', () => {
+  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, then the six of #156, in order', () => {
     expect(content.events.map(({ id }) => id)).toEqual([
       'essai',
       ...CARDS,
       ...STANDING_CARDS,
       ...R06_CARDS,
+      ...GROCER_CARDS,
     ])
   })
 
@@ -272,8 +302,11 @@ describe('events.json', () => {
     }
   })
 
-  it('brings each follow-up-only card as the follow-up of another, and only those', () => {
+  it("brings each follow-up-only card as the follow-up of another or a grocer's renewal, and only those", () => {
     // A card that may come back by itself, as the theft does, aside.
+    const renewals = Object.values(loadGrocerContent().grocers).map(
+      ({ renewalEvent }) => renewalEvent,
+    )
     const followUps = new Set(
       content.events.flatMap(({ id, choices }) =>
         choices.flatMap(({ outcomes }) =>
@@ -290,7 +323,7 @@ describe('events.json', () => {
     const followUpOnly = content.events
       .filter(({ conditions }) => conditions?.followUpOnly === true)
       .map(({ id }) => id)
-    expect([...followUps]).toEqual(followUpOnly)
+    expect([...followUps, ...renewals].sort()).toEqual(followUpOnly.sort())
   })
 
   it('tags a choice « Risqué » exactly when it leaves something to chance', () => {
@@ -388,23 +421,25 @@ describe('events.json', () => {
     expect(typed).toEqual([])
   })
 
-  it('writes no amount of money into a card’s text by hand: the effects it names give it', () => {
-    const typed = content.events.flatMap((event) =>
-      [
-        event.situation,
-        event.quote ?? '',
-        ...event.choices.flatMap(({ label, outcomes }) => [
-          label,
-          ...outcomes.map(({ result }) => result),
-        ]),
-      ]
-        .filter((text) => /\d\s*\$/.test(text))
-        .map((text) => `${event.id}: ${text}`),
-    )
+  it('writes no amount of money into a card’s text by hand, a grocer’s prices aside: the effects it names give it', () => {
+    const typed = content.events
+      .filter((event) => !offersContract(event))
+      .flatMap((event) =>
+        [
+          event.situation,
+          event.quote ?? '',
+          ...event.choices.flatMap(({ label, outcomes }) => [
+            label,
+            ...outcomes.map(({ result }) => result),
+          ]),
+        ]
+          .filter((text) => /\d\s*\$/.test(text))
+          .map((text) => `${event.id}: ${text}`),
+      )
     expect(typed).toEqual([])
   })
 
-  it('names the characters by the ids of their portraits in issue #95, or of #137', () => {
+  it('names the characters by the ids of their portraits in issue #95, or of #137 and #156', () => {
     const characters = new Set(
       content.events.slice(1).map(({ character }) => character.id),
     )

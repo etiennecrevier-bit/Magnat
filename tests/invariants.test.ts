@@ -13,6 +13,7 @@ import {
   FOOD_TRUCK,
   PERSONAL,
 } from '../src/engine/day.ts'
+import { GROCERS } from '../src/engine/contracts.ts'
 import { resolveEvent } from '../src/engine/events.ts'
 import { inventoryValue } from '../src/engine/inventory.ts'
 import { add, cents, sub, type Cents } from '../src/engine/money.ts'
@@ -28,6 +29,7 @@ import {
 } from '../src/finance/journal.ts'
 import { balanceSheet, cashFlowStatement } from '../src/finance/statements.ts'
 import {
+  contractChooser,
   eventChooser,
   journalHash,
   simulate,
@@ -37,10 +39,12 @@ import {
 // The safety net of issue #18: ten years of play for each seed, each at one
 // of the three difficulties, with the books checked against the game at the
 // close of every day, and the same game played twice to prove the engine
-// deterministic. The event cards come up as in a real game, answered at
-// random as `npm run sim -- --events random` does. The whole file must stay
-// under BUDGET_MS in CI; if it gets slower, make the slow part faster rather
-// than checking fewer days or seeds.
+// deterministic. The event cards come up as in a real game, answered as
+// `npm run sim -- --events random --contracts all` answers them: the
+// grocers' offers and renewals all accepted (#156), so the contracts deliver
+// and the grocers pay through the ten years, and every other card at random.
+// The whole file must stay under BUDGET_MS in CI; if it gets slower, make
+// the slow part faster rather than checking fewer days or seeds.
 
 const GAMES: readonly { seed: number; difficulty: DifficultyId }[] = [
   { seed: 1, difficulty: 'facile' },
@@ -68,10 +72,11 @@ const ZERO = cents(0)
 
 /**
  * The essai card's weight in play: since events grew rarer and the cards
- * more numerous (#155), enough for every kind of change to the street and
- * a follow-up to come up in ten years.
+ * more numerous (#155), and the grocers' contracts came in (#156), enough
+ * for every kind of change to the street and a follow-up to come up in ten
+ * years.
  */
-const ESSAI_WEIGHT = 4
+const ESSAI_WEIGHT = 8
 /**
  * The shipped events with the essai card in play: it never comes up in a
  * real game, and it tries every effect.
@@ -84,6 +89,11 @@ const EVENTS_IN_PLAY: EventContent = {
 }
 /** Fewer events than this over ten years would leave them untested. */
 const MIN_EVENTS = 100
+/**
+ * Fewer deliveries than this over ten years, and fewer payments from the
+ * grocers, would leave the contracts untested: a year of one contract.
+ */
+const MIN_DELIVERIES = 50
 /**
  * Fewer days than this of any kind of change to the street over ten years
  * would leave it untested.
@@ -111,6 +121,9 @@ interface Checked {
   drawn: number
   /** The days each kind of change to the street was in effect. */
   modifierDays: Record<StreetModifierKind, number>
+  /** Deliveries made to the grocers, and their payments collected. */
+  deliveries: number
+  grocerPayments: number
   /** Milliseconds each day took to play, then to check, in day order. */
   playMs: number[]
   checkMs: number[]
@@ -199,6 +212,8 @@ function check(seed: number, difficulty: DifficultyId): Checked {
     modifierDays: Object.fromEntries(
       MODIFIER_KINDS.map((kind) => [kind, 0]),
     ) as Record<StreetModifierKind, number>,
+    deliveries: 0,
+    grocerPayments: 0,
     playMs: [],
     checkMs: [],
     checkedHash: '',
@@ -216,7 +231,10 @@ function check(seed: number, difficulty: DifficultyId): Checked {
   })
   const tally = new Tally()
   tally.count(state.journal)
-  const choose = eventChooser('random', seed)
+  const choose = contractChooser('all', eventChooser('random', seed))
+  const grocerPayments = new Set(
+    Object.values(GROCERS.grocers).map(({ name }) => `Encaissement · ${name}`),
+  )
   const { firstDay, minDaysBetween } = EVENTS_IN_PLAY.pacing
   let lastDrawn: Day | null = null
   let monthStart: Day = 0
@@ -300,9 +318,14 @@ function check(seed: number, difficulty: DifficultyId): Checked {
       )
     }
 
+    const played = state.lastDay
+    checked.deliveries += played?.deliveries.length ?? 0
+    checked.grocerPayments += entriesSince(journal, day).filter(
+      (entry) => entry.day === day && grocerPayments.has(entry.memo),
+    ).length
+
     // The street as the changes in effect left it: a closed truck sells
     // nothing, and a product that cannot be sold is not.
-    const played = state.lastDay
     const kinds = new Set(played?.modifiers.map(({ change }) => change.kind))
     for (const kind of kinds) checked.modifierDays[kind] += 1
     for (const { change } of played?.modifiers ?? []) {
@@ -359,7 +382,16 @@ function check(seed: number, difficulty: DifficultyId): Checked {
   }
 
   checked.checkedHash = journalHash(state.journal)
-  const replay = simulate(seed, DAYS, difficulty, [], 'random', EVENTS_IN_PLAY)
+  const replay = simulate(
+    seed,
+    DAYS,
+    difficulty,
+    [],
+    'random',
+    EVENTS_IN_PLAY,
+    DIFFICULTIES,
+    'all',
+  )
   checked.replayHash = replay.journalHash
   checked.replayYears = replay.years
   return checked
@@ -403,6 +435,11 @@ describe.each(GAMES)(
 
     it('keeps Comptes clients equal to what customers owe every day', () => {
       expect(checked.failures.receivables).toEqual([])
+    })
+
+    it('delivers to the grocers, who pay for what they got', () => {
+      expect(checked.deliveries).toBeGreaterThanOrEqual(MIN_DELIVERIES)
+      expect(checked.grocerPayments).toBeGreaterThanOrEqual(MIN_DELIVERIES)
     })
 
     it(`draws events from day ${EVENTS_IN_PLAY.pacing.firstDay} on, at least ${EVENTS_IN_PLAY.pacing.minDaysBetween} days apart, follow-ups and dated events aside`, () => {

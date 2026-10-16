@@ -283,6 +283,8 @@ function laterLine(
     case 'willingness':
     case 'unavailable':
     case 'closed':
+    case 'contract':
+    case 'grocerAway':
       return []
   }
 }

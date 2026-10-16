@@ -288,11 +288,15 @@ describe('modifiersToday', () => {
   // The world repeats the engine's start of the day, which it may not
   // call; this holds the two together. Every morning may bring an event, so
   // that a summer sees every card that changes the street; the cards are
-  // the shipped ones, and the choices are taken in turn.
+  // the shipped ones but the grocers', which never change it, and the
+  // choices are taken in turn.
   describe('agrees with the engine', () => {
     const OFTEN: EventContent = {
       ...EVENTS,
       pacing: { firstDay: 0, minDaysBetween: 1, dailyChance: 1 },
+      events: EVENTS.events.filter(
+        ({ conditions }) => conditions?.grocer === undefined,
+      ),
     }
     /** From the 1st of May to the end of September. */
     const DAYS = 153

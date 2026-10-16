@@ -267,12 +267,13 @@ export interface Baked {
 }
 
 /**
- * Makes the croissants `rule` calls for, with what is on hand, up to the
- * bakery's `capacityPerDay`, as a new lot after the others, each at what its
- * ingredients cost, `prices.ingredientCostCents`: the rent and the oven stay
- * out of the unit cost. Entry « Ingrédients du fournil »: Dr 1200 Stocks /
- * Cr 1000 for what they cost, dated `day`. Makes nothing, and posts nothing,
- * when the rule calls for none.
+ * Makes the croissants `rule` calls for, with what is on hand, up to
+ * `capacity`, by default the bakery's `capacityPerDay`, as a new lot after
+ * the others, each at what its ingredients cost,
+ * `prices.ingredientCostCents`: the rent and the oven stay out of the unit
+ * cost. Entry « Ingrédients du fournil »: Dr 1200 Stocks / Cr 1000 for what
+ * they cost, dated `day`. Makes nothing, and posts nothing, when the rule
+ * calls for none.
  */
 export function bake(
   journal: Journal,
@@ -281,11 +282,9 @@ export function bake(
   rule: RestockRule,
   prices: BakeryPrices,
   content: BakeryContent = BAKERY,
+  capacity: number = content.capacityPerDay,
 ): Baked {
-  const quantity = Math.min(
-    orderSize(rule, onHand(lots, BAKED)),
-    content.capacityPerDay,
-  )
+  const quantity = Math.min(orderSize(rule, onHand(lots, BAKED)), capacity)
   if (quantity === 0) return { journal, lots, quantity }
   const unitCost = prices.ingredientCostCents
   const cost = mulInt(unitCost, quantity)
