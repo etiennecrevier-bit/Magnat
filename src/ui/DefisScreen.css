@@ -1,0 +1,99 @@
+/* The Défis, one card each, two side by side; on a phone, one above the
+   other. */
+.defi-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  max-width: 40rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 559px) {
+  .defi-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+.defi-list > li {
+  display: flex;
+}
+
+.defi-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-height: 44px;
+  padding: 0.75rem;
+  border: 2px solid #9aa5b1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2933;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.defi-card:hover {
+  border-color: #1f2933;
+}
+
+.defi-card:focus-visible {
+  outline: 3px solid #2186eb;
+  outline-offset: 2px;
+}
+
+.defi-card__title {
+  font-weight: 700;
+}
+
+.defi-card__line,
+.defi-card__medal {
+  color: #52606d;
+  font-size: 0.875rem;
+}
+
+/* A medal won reads in ink, with a disc of its colour before it. */
+.defi-card__medal[class*='defi-medal--'] {
+  color: #1f2933;
+  font-weight: 600;
+}
+
+.defi-briefing {
+  max-width: 40rem;
+}
+
+.defi-briefing h2 {
+  margin: 1.25rem 0 0.25rem;
+  font-size: 1.125rem;
+}
+
+.defi-briefing p {
+  margin: 0 0 0.5rem;
+}
+
+.defi-briefing__story {
+  font-size: 1.0625rem;
+}
+
+.defi-briefing__setup,
+.defi-briefing__dates {
+  color: #52606d;
+}
+
+.defi-briefing__list {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.defi-briefing .defi-briefing__medal {
+  margin: 1.25rem 0 0.5rem;
+  font-weight: 600;
+}
+
+.defi-briefing .notice {
+  margin: 0.75rem 0 1rem;
+}

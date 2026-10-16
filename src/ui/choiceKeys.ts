@@ -35,6 +35,22 @@ export function choiceForKey(
 }
 
 /**
+ * The id of the choice among `choices` that `event` picks (see
+ * `choiceForKey`), unless `allowed`, the choices a Défi leaves, leaves it
+ * out; null for no choice. Null `allowed` leaves every choice.
+ */
+export function allowedChoiceForKey(
+  event: Parameters<typeof choiceForKey>[0],
+  choices: readonly { readonly id: string }[],
+  allowed: readonly string[] | null,
+): string | null {
+  const index = choiceForKey(event, choices.length)
+  const choice = index === null ? undefined : choices[index]
+  if (choice === undefined) return null
+  return allowed === null || allowed.includes(choice.id) ? choice.id : null
+}
+
+/**
  * Escape on an event card, which is never the browser's own (closing the
  * dialog): before the choice it does nothing, as the card has no way out;
  * once the result shows it does what « Continuer » does, with

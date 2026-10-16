@@ -5,7 +5,7 @@ import { createInitialState } from '../engine/clock.ts'
 import { EVENTS } from '../engine/day.ts'
 import type { GameState } from '../engine/types.ts'
 import EventCard, { EventCardView, type EventResult } from './EventCard.tsx'
-import { gameStore, type GameStoreState } from './store.ts'
+import { gameStore, newChallenge, type GameStoreState } from './store.ts'
 
 // A static render reads a Zustand store's initial state, so the connected
 // card reads the app store's current state through this stand-in.
@@ -64,12 +64,14 @@ function render(
   card: Card = ESSAI,
   result: EventResult | null = null,
   portrait: string | null = null,
+  allowed: readonly string[] | null = null,
 ) {
   return renderToStaticMarkup(
     <EventCardView
       card={card}
       portrait={portrait}
       result={result}
+      allowed={allowed}
       onChoose={() => {}}
       onContinue={() => {}}
     />,
@@ -154,6 +156,35 @@ describe('EventCardView', () => {
     )
   })
 
+  it('disables the choices a Défi leaves out, with the reason and no key', () => {
+    const html = render(ESSAI, null, null, ['toutEssayer'])
+    expect(
+      choices(html).map(({ shortcut, label }) => [shortcut, label]),
+    ).toEqual([
+      ['1', 'Tout essayer'],
+      [undefined, 'Relancer le client'],
+      [undefined, 'Ne rien faire'],
+    ])
+    const buttons = [...html.matchAll(/<button[^>]*>/g)].map(([tag]) => tag)
+    expect(buttons[0]).not.toContain('disabled')
+    for (const [tag, id] of [
+      [buttons[1], 'relancer'],
+      [buttons[2], 'rienFaire'],
+    ] as const) {
+      expect(tag).toContain(' disabled=""')
+      expect(tag).toContain(`aria-describedby="event-choice-${id}-reason"`)
+      expect(html).toContain(
+        `</button><p id="event-choice-${id}-reason" class="event-card__forbidden">Le Défi impose un autre choix.</p></li>`,
+      )
+    }
+  })
+
+  it('leaves every choice open outside a Défi', () => {
+    const html = render(ESSAI, null, null, null)
+    expect(html).not.toContain('disabled')
+    expect(html).not.toContain('event-card__forbidden')
+  })
+
   it('shows two choices, and no quote when there is none', () => {
     const html = render(TWO_CHOICES)
     expect(choices(html)).toEqual([
@@ -221,6 +252,25 @@ describe('EventCard', () => {
     expect(html).toContain(`<li>Encaisse +78${S}$</li>`)
     expect(html).toContain(`<li>Encaisse ${M}50${S}$ jeudi</li>`)
     expect(html).toContain('Continuer')
+  })
+
+  it('leaves only « Accepter » on « La grosse commande » of « Payé dans 60 jours »', () => {
+    // The Défi forces the card on its third morning, Wednesday, May 10.
+    gameStore.getState().startGame(newChallenge('?seed=7', 'payeDans60Jours'))
+    gameStore.getState().advance(5)
+    expect(gameStore.getState()).toMatchObject({
+      game: { day: 9, events: { pending: { event: 'grosseCommande' } } },
+      panel: 'event',
+    })
+    const html = renderToStaticMarkup(<EventCard />)
+    expect(
+      choices(html).map(({ shortcut, label }) => [shortcut, label]),
+    ).toEqual([
+      ['1', 'Accepter'],
+      [undefined, 'Accepter, mais payé à la livraison'],
+      [undefined, 'Refuser poliment'],
+    ])
+    expect(html.match(/ disabled=""/g)).toHaveLength(2)
   })
 
   it('shows nothing for an event the content does not hold', () => {

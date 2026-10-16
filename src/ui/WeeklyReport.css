@@ -50,6 +50,27 @@
   white-space: nowrap;
 }
 
+/* The Défi under way, set apart from the week's own numbers. */
+.weekly-report__defi {
+  margin: 0 0 1.25rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid #f0b429;
+  background: #fbe7c2;
+}
+
+.weekly-report__defi p {
+  margin: 0;
+}
+
+.weekly-report__defi-title {
+  font-weight: 700;
+}
+
+.weekly-report__defi-days {
+  color: #5c5048;
+  font-size: 0.875rem;
+}
+
 .weekly-report__facts {
   margin: 0 0 1rem;
   padding-left: 1.25rem;

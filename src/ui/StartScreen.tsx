@@ -1,8 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useStore } from 'zustand'
 import type { Avatar, DifficultyId } from '../content/schema.ts'
+import { defiById } from '../engine/challenge.ts'
+import { DEFIS } from '../engine/day.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
+import { DefiBriefingView, DefiListView } from './DefisScreen.tsx'
 import { formatGameDate } from './formatGameDate.ts'
 import { DIFFICULTIES, difficultyLine, readBusinessName } from './newGame.ts'
 import { browserStorage, readStoredSave, type StoredSave } from './saves.ts'
@@ -13,7 +16,7 @@ import {
   type VisualEffects,
 } from './settings.ts'
 import { createSaveImports, startMenuActions } from './startMenu.ts'
-import { newGame } from './store.ts'
+import { newChallenge, newGame } from './store.ts'
 import './StartScreen.css'
 
 const AVATARS: Record<Avatar, string> = { femme: 'Femme', homme: 'Homme' }
@@ -69,13 +72,14 @@ interface StartMenuViewProps {
   visualEffects: VisualEffects
   onContinue: () => void
   onNewGame: () => void
+  onDefis: () => void
   onImport: (file: File) => void
   onVisualEffectsChange: (visualEffects: VisualEffects) => void
 }
 
 /**
- * The first screen: continue the saved game, start one, or import one;
- * and the visual effects.
+ * The first screen: continue the saved game, start one, try a Défi, or
+ * import a game; and the visual effects.
  */
 export function StartMenuView({
   stored,
@@ -83,6 +87,7 @@ export function StartMenuView({
   visualEffects,
   onContinue,
   onNewGame,
+  onDefis,
   onImport,
   onVisualEffectsChange,
 }: StartMenuViewProps) {
@@ -129,6 +134,9 @@ export function StartMenuView({
           onClick={onNewGame}
         >
           Nouvelle partie
+        </button>
+        <button type="button" className="button" onClick={onDefis}>
+          Défis
         </button>
         <button
           type="button"
@@ -283,10 +291,13 @@ export function NewGameFormView({
   )
 }
 
+/** The start screen's pages: the menu, a form, a list, a briefing. */
+type Page = 'menu' | 'newGame' | 'defis' | { readonly briefing: string }
+
 /**
  * The start screen wired to the browser's saves and `settings`: the menu,
- * then the new game form. `onStart` gets the game to play, new, continued
- * or imported.
+ * then the new game form, or the Défis and a Défi's briefing. `onStart`
+ * gets the game to play, new, continued, imported or a Défi.
  */
 export default function StartScreen({
   onStart,
@@ -298,19 +309,21 @@ export default function StartScreen({
   const [stored] = useState(() => readStoredSave(browserStorage()))
   const [imports] = useState(() => createSaveImports())
   const [defaults] = useState(defaultProfile)
-  const [page, setPage] = useState<'menu' | 'newGame'>('menu')
+  const [page, setPage] = useState<Page>('menu')
   const [importError, setImportError] = useState<string | null>(null)
   const [difficulty, setDifficulty] = useState(defaults.difficulty)
   const [businessName, setBusinessName] = useState(defaults.businessName)
   const [avatar, setAvatar] = useState(defaults.avatar)
   const visualEffects = useStore(settings, (state) => state.visualEffects)
   const setVisualEffects = useStore(settings, (state) => state.setVisualEffects)
+  const bestMedals = useStore(settings, (state) => state.bestMedals)
   const actions = startMenuActions({
     readStored: () => readStoredSave(browserStorage()),
     imports,
     onStart,
     onImportError: setImportError,
     onNewGame: () => setPage('newGame'),
+    onDefis: () => setPage('defis'),
   })
 
   // Once the menu closes, a file still being read must not start its game.
@@ -342,6 +355,35 @@ export default function StartScreen({
     )
   }
 
+  if (page === 'defis') {
+    return (
+      <main>
+        <DefiListView
+          defis={DEFIS.defis}
+          bestMedals={bestMedals}
+          onOpen={(id) => setPage({ briefing: id })}
+          onBack={() => setPage('menu')}
+        />
+      </main>
+    )
+  }
+
+  if (typeof page === 'object') {
+    const defi = defiById(DEFIS, page.briefing)
+    return (
+      <main>
+        <DefiBriefingView
+          defi={defi}
+          bestMedal={bestMedals[defi.id]}
+          onStart={() =>
+            actions.start(newChallenge(window.location.search, defi.id))
+          }
+          onBack={() => setPage('defis')}
+        />
+      </main>
+    )
+  }
+
   return (
     <main>
       <StartMenuView
@@ -350,6 +392,7 @@ export default function StartScreen({
         visualEffects={visualEffects}
         onContinue={actions.continueGame}
         onNewGame={actions.newGame}
+        onDefis={actions.openDefis}
         onImport={(file) => void actions.importFile(file)}
         onVisualEffectsChange={setVisualEffects}
       />

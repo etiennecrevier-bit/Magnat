@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { choiceForKey, choiceKey, handleCardEscape } from './choiceKeys.ts'
+import {
+  allowedChoiceForKey,
+  choiceForKey,
+  choiceKey,
+  handleCardEscape,
+} from './choiceKeys.ts'
 
 const key = (name: string, extra: Record<string, boolean> = {}) => ({
   key: name,
@@ -35,6 +40,34 @@ describe('choiceForKey', () => {
       expect(choiceForKey(key('1', { [flag]: true }), 3)).toBeNull()
     },
   )
+})
+
+describe('allowedChoiceForKey', () => {
+  const choices = [
+    { id: 'accepter' },
+    { id: 'payeLivraison' },
+    { id: 'refuser' },
+  ]
+
+  it('picks any choice when nothing is forced', () => {
+    expect(allowedChoiceForKey(key('1'), choices, null)).toBe('accepter')
+    expect(allowedChoiceForKey(key('3'), choices, null)).toBe('refuser')
+  })
+
+  it('skips a choice a Défi leaves out', () => {
+    expect(allowedChoiceForKey(key('1'), choices, ['accepter'])).toBe(
+      'accepter',
+    )
+    expect(allowedChoiceForKey(key('2'), choices, ['accepter'])).toBeNull()
+    expect(allowedChoiceForKey(key('3'), choices, ['accepter'])).toBeNull()
+  })
+
+  it('ignores the keys choiceForKey ignores', () => {
+    expect(allowedChoiceForKey(key('4'), choices, null)).toBeNull()
+    expect(
+      allowedChoiceForKey(key('1', { ctrlKey: true }), choices, null),
+    ).toBeNull()
+  })
 })
 
 describe('choiceKey', () => {

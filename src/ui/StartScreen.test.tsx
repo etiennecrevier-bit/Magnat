@@ -46,6 +46,7 @@ function menu(
       visualEffects={visualEffects}
       onContinue={() => {}}
       onNewGame={() => {}}
+      onDefis={() => {}}
       onImport={() => {}}
       onVisualEffectsChange={() => {}}
     />,
@@ -103,12 +104,13 @@ function radios(html: string, name: string) {
 }
 
 describe('StartMenuView', () => {
-  it('offers a new game first when the browser has no save', () => {
+  it('offers a new game first when the browser has no save, then the Défis', () => {
     const html = menu({ status: 'none' })
     expect(html).toContain('<h1')
     expect(html).toContain('>Magnat</h1>')
     expect(buttons(html)).toEqual([
       { text: 'Nouvelle partie', primary: true },
+      { text: 'Défis', primary: false },
       { text: 'Importer une sauvegarde', primary: false },
     ])
     expect(html).not.toContain('Continuer')
@@ -121,6 +123,7 @@ describe('StartMenuView', () => {
     expect(buttons(html)).toEqual([
       { text: 'Continuer', primary: true },
       { text: 'Nouvelle partie', primary: false },
+      { text: 'Défis', primary: false },
       { text: 'Importer une sauvegarde', primary: false },
     ])
     const describedBy = /aria-describedby="([^"]+)"/.exec(html)?.[1]
@@ -317,6 +320,7 @@ describe('StartScreen', () => {
     expect(html).toContain('>Magnat</h1>')
     expect(buttons(html).map(({ text }) => text)).toEqual([
       'Nouvelle partie',
+      'Défis',
       'Importer une sauvegarde',
     ])
   })

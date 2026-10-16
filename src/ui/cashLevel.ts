@@ -18,15 +18,17 @@ export const LOW_BELOW_MONTHS = cashGauge.lowBelowMonthsOfFixedCosts
 
 /**
  * The cash the next 1st of the month takes, seen on the morning of `day`
- * (that very day, if it is a 1st), in a game of `difficulty`: the permit,
- * parking and commissary and the insurance, which every truck pays, then
- * the truck's own charge, the lease or that month's loan payment. A loan
- * has no payment the month it is taken, nor after the last one. The truck's
- * depreciation takes no cash.
+ * (that very day, if it is a 1st), in a game of `difficulty` whose truck
+ * came on `firstDay`, day 0 but in a Défi: the permit, parking and
+ * commissary and the insurance, which every truck pays, then the truck's
+ * own charge, the lease or that month's loan payment. A loan has no payment
+ * the month it is taken, nor after the last one. The truck's depreciation
+ * takes no cash.
  */
 export function monthlyFixedCosts(
   day: Day,
   difficulty: DifficultyId,
+  firstDay: Day = 0,
   content: FoodTruckContent = FOOD_TRUCK,
   difficulties: DifficultyContent = DIFFICULTIES,
 ): Cents {
@@ -39,10 +41,8 @@ export function monthlyFixedCosts(
     case 'lease':
       return add(everyTruck, truck.monthlyLeaseCents)
     case 'loan': {
-      const month =
-        toCalendar(day).dayOfMonth === 1
-          ? monthsSinceStart(day)
-          : monthsSinceStart(day) + 1
+      const months = monthsSinceStart(day) - monthsSinceStart(firstDay)
+      const month = toCalendar(day).dayOfMonth === 1 ? months : months + 1
       const { payments } = loanSchedule(
         truck.loanCents,
         truck.annualRateBasisPoints,

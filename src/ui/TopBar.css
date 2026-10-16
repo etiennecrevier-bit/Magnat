@@ -33,6 +33,31 @@
   white-space: nowrap;
 }
 
+/* The Défi's chip under the date: a pill in the gold of the speed pressed. */
+.top-bar__defi {
+  min-height: 2rem;
+  margin: 0.25rem 0 0;
+  padding: 0 0.75rem;
+  border: 1px solid #f0b429;
+  border-radius: 999px;
+  background: transparent;
+  color: #f0b429;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.top-bar__defi:hover {
+  background: #323f4b;
+}
+
+.top-bar__defi:focus-visible {
+  outline: 3px solid #7cc4fa;
+  outline-offset: 2px;
+}
+
 /* The encaisse and the owner's energy, side by side as long as they fit. */
 .top-bar__gauges {
   grid-area: gauges;

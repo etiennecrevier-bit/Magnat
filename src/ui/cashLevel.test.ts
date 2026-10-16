@@ -95,5 +95,34 @@ describe('monthlyFixedCosts', () => {
     ])('adds no payment on day $day, $when', ({ day }) => {
       expect(monthlyFixedCosts(day, 'moyen')).toBe(everyTruck)
     })
+
+    // A Défi's truck comes on its first day, from which the engine counts
+    // the loan's months.
+    describe('in a Défi', () => {
+      // July 10 and August 1st of year 1.
+      const july10 = 70
+      const august1 = 92
+      // June 1st of year 1.
+      const june1 = 31
+
+      it('counts the payments from the first day of the Défi', () => {
+        expect(toCalendar(july10)).toMatchObject({ month: 7, dayOfMonth: 10 })
+        expect(toCalendar(august1)).toMatchObject({ month: 8, dayOfMonth: 1 })
+        expect(monthlyFixedCosts(july10, 'moyen', july10)).toBe(
+          everyTruck + (payments[0]?.payment ?? NaN),
+        )
+        expect(monthlyFixedCosts(august1 + 1, 'moyen', july10)).toBe(
+          everyTruck + (payments[1]?.payment ?? NaN),
+        )
+      })
+
+      it('adds no payment on the 1st the Défi starts, as the loan is taken', () => {
+        expect(toCalendar(june1)).toMatchObject({ month: 6, dayOfMonth: 1 })
+        expect(monthlyFixedCosts(june1, 'moyen', june1)).toBe(everyTruck)
+        expect(monthlyFixedCosts(june1, 'moyen')).toBe(
+          everyTruck + (payments[0]?.payment ?? NaN),
+        )
+      })
+    })
   })
 })

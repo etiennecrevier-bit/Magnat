@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createInitialState, tick } from '../engine/clock.ts'
+import { createInitialState, startChallenge, tick } from '../engine/clock.ts'
 import {
   CUSTOMERS,
   DIFFICULTIES,
@@ -149,6 +149,42 @@ describe('WeeklyReportView', () => {
     )
   })
 
+  it('shows the Défi under way after the figures: its days and where it stands', () => {
+    const { challenge } = startChallenge('travauxSaintDenis', 7)
+    const html = renderToStaticMarkup(
+      <WeeklyReportView
+        report={WEEK}
+        everyWeek={false}
+        onEveryWeekChange={() => {}}
+        challenge={{
+          ...challenge!,
+          progress: {
+            ...challenge!.progress,
+            daysPlayed: 7,
+            lowestCash: cents(187_000),
+          },
+        }}
+      />,
+    )
+    expect(html).toContain(
+      `</dl><section class="weekly-report__defi" aria-label="Défi en cours"><p class="weekly-report__defi-title">Défi en cours${S}: Les travaux de la rue Saint-Denis</p><p class="weekly-report__defi-days">7 jours joués sur 21</p><ul class="defi-progress"><li>Encaisse la plus basse${S}: 1${S}870${S}$</li></ul></section><figure`,
+    )
+  })
+
+  it('shows no Défi outside one, nor once it is over', () => {
+    expect(render()).not.toContain('Défi')
+    const { challenge } = startChallenge('travauxSaintDenis', 7)
+    const html = renderToStaticMarkup(
+      <WeeklyReportView
+        report={WEEK}
+        everyWeek={false}
+        onEveryWeekChange={() => {}}
+        challenge={{ ...challenge!, status: 'reussi', medal: 'or' }}
+      />,
+    )
+    expect(html).not.toContain('Défi')
+  })
+
   it('has the « Ouvrir le bilan chaque semaine » switch, on or off', () => {
     expect(render(WEEK, false)).toContain(
       '<label class="weekly-report__switch"><input type="checkbox" role="switch"/>Ouvrir le bilan chaque semaine</label>',
@@ -237,6 +273,16 @@ describe('WeeklyReportPanel', () => {
       /^<dialog class="panel weekly-report-panel" aria-labelledby="weekly-report-title"><div class="panel__content"><div class="panel__header"><button type="button" class="toggle">Fermer<\/button><h2 id="weekly-report-title">Bilan de la semaine<\/h2><\/div><div class="weekly-report">/,
     )
     expect(html).toContain('Du 1er mai au 7 mai, an 1')
+  })
+
+  it("shows the app store's Défi under way, in « Bilans » too", () => {
+    // « Zéro gaspillage » runs two weeks from Monday, May 8 (day 7).
+    let game = startChallenge('zeroGaspillage', 7)
+    while (game.day < 14) game = tick(game)
+    gameStore.setState({ game })
+    expect(renderToStaticMarkup(<LastWeekReport />)).toContain(
+      `Défi en cours${S}: Zéro gaspillage`,
+    )
   })
 
   it('says there is no report before the first week closes', () => {

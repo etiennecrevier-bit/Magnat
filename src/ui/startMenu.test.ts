@@ -15,8 +15,9 @@ import {
   type SaveStorage,
   type StoredSave,
 } from './saves.ts'
+import { isChallengeOver } from './defis.ts'
 import { createSaveImports, startMenuActions } from './startMenu.ts'
-import { createGameStore, NORMAL_SPEED, PAUSED } from './store.ts'
+import { createGameStore, newChallenge, NORMAL_SPEED, PAUSED } from './store.ts'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -113,14 +114,16 @@ function menu(stored: StoredSave = { status: 'none' }) {
   const onStart = vi.fn<(game: GameState) => void>()
   const onImportError = vi.fn<(error: string | null) => void>()
   const onNewGame = vi.fn<() => void>()
+  const onDefis = vi.fn<() => void>()
   const actions = startMenuActions({
     readStored: () => stored,
     imports: createSaveImports(),
     onStart,
     onImportError,
     onNewGame,
+    onDefis,
   })
-  return { actions, onStart, onImportError, onNewGame }
+  return { actions, onStart, onImportError, onNewGame, onDefis }
 }
 
 /** A `localStorage` that every tab of the browser shares. */
@@ -167,6 +170,7 @@ function tab(storage: SaveStorage) {
     onStart,
     onImportError: () => {},
     onNewGame: () => {},
+    onDefis: () => {},
   })
   const hide = () => {
     hidden = true
@@ -212,6 +216,25 @@ describe('startMenuActions', () => {
     actions.newGame()
     expect(onNewGame).toHaveBeenCalledOnce()
     expect(onImportError.mock.calls).toEqual([[null]])
+  })
+
+  it('opens the Défis, clearing the last import error', () => {
+    const { actions, onDefis, onNewGame, onImportError } = menu()
+    actions.openDefis()
+    expect(onDefis).toHaveBeenCalledOnce()
+    expect(onNewGame).not.toHaveBeenCalled()
+    expect(onImportError.mock.calls).toEqual([[null]])
+  })
+
+  it('drops a file read while the player opened the Défis', async () => {
+    const { actions, onStart, onImportError } = menu()
+    const file = slowFile(serialize(IMPORTED))
+    const importing = actions.importFile(file.file)
+    actions.openDefis()
+    file.finish()
+    await importing
+    expect(onStart).not.toHaveBeenCalled()
+    expect(onImportError.mock.calls).toEqual([[null], [null]])
   })
 
   it('does not let a file read during Continuer replace the continued game', async () => {
@@ -312,5 +335,46 @@ describe('startMenuActions', () => {
       [null],
       [INVALID_SAVE_FILE],
     ])
+  })
+})
+
+describe('a Défi and the saved game', () => {
+  // Day 31 is June 1st.
+  const FIRST_OF_JUNE = 31
+
+  it('leaves the long game saved through a Défi, its replay and the way back to the menu', () => {
+    const items: Record<string, string> = { [SAVE_KEY]: serialize(CONTINUED) }
+    const storage = sharedStorage(items)
+    const { store, actions, hide, failed } = tab(storage)
+
+    // « Les travaux de la rue Saint-Denis » runs from May 15 to June 4.
+    actions.start(newChallenge('?seed=7', 'travauxSaintDenis'))
+    store.getState().advance(40)
+    expect(store.getState().game.day).toBeGreaterThan(FIRST_OF_JUNE)
+    expect(isChallengeOver(store.getState().game)).toBe(true)
+    hide()
+    // « Rejouer »
+    store.getState().startGame(newChallenge('?seed=8', 'travauxSaintDenis'))
+    store.getState().advance(40)
+    hide()
+
+    // Back on the menu, « Continuer » still finds the long game.
+    expect(readStoredSave(storage)).toEqual({
+      status: 'found',
+      game: CONTINUED,
+    })
+    expect(failed()).toBe(false)
+  })
+
+  it('still saves the long game played after a Défi', () => {
+    const items: Record<string, string> = { [SAVE_KEY]: serialize(CONTINUED) }
+    const { store, actions, hide } = tab(sharedStorage(items))
+    actions.start(newChallenge('?seed=7', 'travauxSaintDenis'))
+    store.getState().advance(3)
+    actions.continueGame()
+    store.getState().advance(FIRST_OF_JUNE)
+    hide()
+    expect(store.getState().game.day).toBe(FIRST_OF_JUNE)
+    expect(deserialize(items[SAVE_KEY]!)).toEqual(store.getState().game)
   })
 })

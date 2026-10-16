@@ -15,13 +15,18 @@ function monthOf(day: Day): string {
  * Hands the game in `store` to `write` now, again each time it reaches a new
  * game month, and whenever the page is hidden, so closing the tab or
  * switching away loses nothing. Days the loop plays in one go count once,
- * whatever months they cross. Returns a function that stops it.
+ * whatever months they cross. A Défi is never handed over: the browser
+ * keeps one game, and trying a Défi must not replace the long one. Returns
+ * a function that stops it.
  */
 export function startAutosave(
   store: GameStore,
-  write: (game: GameState) => void,
+  writeGame: (game: GameState) => void,
   host: AutosaveHost = browserHost,
 ): () => void {
+  const write = (game: GameState) => {
+    if (game.challenge === null) writeGame(game)
+  }
   let savedMonth = monthOf(store.getState().game.day)
   write(store.getState().game)
 

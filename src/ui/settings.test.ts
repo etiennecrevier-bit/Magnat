@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  betterMedal,
   createSettingsStore,
   DEFAULT_SETTINGS,
   readSettings,
@@ -41,6 +42,7 @@ describe('the settings', () => {
     expect(DEFAULT_SETTINGS).toEqual({
       visualEffects: 'full',
       openReportEveryWeek: false,
+      bestMedals: {},
     })
     expect(readSettings(null)).toEqual(DEFAULT_SETTINGS)
     expect(readSettings(memory())).toEqual(DEFAULT_SETTINGS)
@@ -54,6 +56,7 @@ describe('the settings', () => {
     expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
       visualEffects: 'simple',
       openReportEveryWeek: false,
+      bestMedals: {},
     })
     expect(createSettingsStore(storage).getState().visualEffects).toBe('simple')
   })
@@ -64,6 +67,7 @@ describe('the settings', () => {
     expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
       visualEffects: 'full',
       openReportEveryWeek: true,
+      bestMedals: {},
     })
     expect(createSettingsStore(storage).getState().openReportEveryWeek).toBe(
       true,
@@ -77,17 +81,20 @@ describe('the settings', () => {
     expect(readSettings(storage)).toEqual({
       visualEffects: 'simple',
       openReportEveryWeek: true,
+      bestMedals: {},
     })
 
     createSettingsStore(storage).getState().setVisualEffects('full')
     expect(readSettings(storage)).toEqual({
       visualEffects: 'full',
       openReportEveryWeek: true,
+      bestMedals: {},
     })
     createSettingsStore(storage).getState().setOpenReportEveryWeek(false)
     expect(readSettings(storage)).toEqual({
       visualEffects: 'full',
       openReportEveryWeek: false,
+      bestMedals: {},
     })
   })
 
@@ -98,17 +105,18 @@ describe('the settings', () => {
     expect(readSettings(storage)).toEqual({
       visualEffects: 'simple',
       openReportEveryWeek: false,
+      bestMedals: {},
     })
   })
 
   it.each([
     [
       { visualEffects: 'ultra', openReportEveryWeek: true },
-      { visualEffects: 'full', openReportEveryWeek: true },
+      { visualEffects: 'full', openReportEveryWeek: true, bestMedals: {} },
     ],
     [
       { visualEffects: 'simple', openReportEveryWeek: 'oui' },
-      { visualEffects: 'simple', openReportEveryWeek: false },
+      { visualEffects: 'simple', openReportEveryWeek: false, bestMedals: {} },
     ],
   ])('keep a valid setting beside an invalid one: %j', (stored, settings) => {
     const storage = memory({ [SETTINGS_KEY]: JSON.stringify(stored) })
@@ -149,6 +157,7 @@ describe('the settings', () => {
       writeSettings(BLOCKED, {
         visualEffects: 'simple',
         openReportEveryWeek: true,
+        bestMedals: {},
       }),
     ).toBe(false)
     const store = createSettingsStore(BLOCKED)
@@ -158,6 +167,76 @@ describe('the settings', () => {
     expect(store.getState().openReportEveryWeek).toBe(true)
     expect(warn).toHaveBeenCalled()
   })
+
+  it('keep no medal at first', () => {
+    expect(createSettingsStore(memory()).getState().bestMedals).toEqual({})
+  })
+
+  it('keep the best medal won in each Défi, with the other settings', () => {
+    const storage = memory()
+    const store = createSettingsStore(storage)
+    store.getState().setVisualEffects('simple')
+    store.getState().recordMedal('travauxSaintDenis', 'bronze')
+    store.getState().recordMedal('zeroGaspillage', 'argent')
+    expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
+      visualEffects: 'simple',
+      openReportEveryWeek: false,
+      bestMedals: { travauxSaintDenis: 'bronze', zeroGaspillage: 'argent' },
+    })
+    expect(createSettingsStore(storage).getState().bestMedals).toEqual({
+      travauxSaintDenis: 'bronze',
+      zeroGaspillage: 'argent',
+    })
+  })
+
+  it('replace a medal only with a better one', () => {
+    const storage = memory()
+    const store = createSettingsStore(storage)
+    store.getState().recordMedal('travauxSaintDenis', 'argent')
+    const heard: unknown[] = []
+    store.subscribe((state) => heard.push(state.bestMedals))
+    store.getState().recordMedal('travauxSaintDenis', 'bronze')
+    store.getState().recordMedal('travauxSaintDenis', 'argent')
+    expect(heard).toEqual([])
+    store.getState().recordMedal('travauxSaintDenis', 'or')
+    expect(store.getState().bestMedals).toEqual({ travauxSaintDenis: 'or' })
+    expect(readSettings(storage).bestMedals).toEqual({
+      travauxSaintDenis: 'or',
+    })
+  })
+
+  it('rank the medals: or, then argent, then bronze', () => {
+    expect(betterMedal('or', 'argent')).toBe('or')
+    expect(betterMedal('bronze', 'argent')).toBe('argent')
+    expect(betterMedal('bronze', 'or')).toBe('or')
+    expect(betterMedal('bronze', 'bronze')).toBe('bronze')
+  })
+
+  it.each([
+    ['not an object', 'or', {}],
+    ['a list', ['or'], {}],
+    [
+      'a medal that is not one',
+      { travauxSaintDenis: 'platine', zeroGaspillage: 'or', festival: 3 },
+      { zeroGaspillage: 'or' },
+    ],
+  ])(
+    'drop the medals stored when they are %s, keeping the other settings',
+    (_, bestMedals, kept) => {
+      const storage = memory({
+        [SETTINGS_KEY]: JSON.stringify({
+          visualEffects: 'simple',
+          openReportEveryWeek: true,
+          bestMedals,
+        }),
+      })
+      expect(readSettings(storage)).toEqual({
+        visualEffects: 'simple',
+        openReportEveryWeek: true,
+        bestMedals: kept,
+      })
+    },
+  )
 
   it('find no storage under Node, so the shared ones are the defaults', () => {
     expect(settingsStore.getState().visualEffects).toBe('full')

@@ -141,6 +141,26 @@
   border: 2px solid #a61b1b;
 }
 
+/* A Défi's locked controls: still readable, plainly out of reach. */
+.field__input:disabled {
+  border-color: #c9b48f;
+  background: #f6ecd9;
+  color: #4a3f37;
+  cursor: not-allowed;
+}
+
+.manage .toggle:disabled {
+  border-color: #c9b48f;
+  color: #7b6f63;
+  cursor: not-allowed;
+}
+
+.manage .toggle[aria-pressed='true']:disabled {
+  border-color: #5c5048;
+  background: #5c5048;
+  color: #fff7e8;
+}
+
 .field__unit {
   color: #52606d;
 }
@@ -148,5 +168,12 @@
 .field__error {
   margin: 0.25rem 0 0;
   color: #a61b1b;
+  font-weight: 600;
+}
+
+/* Why a Défi locks the section, under its title. */
+.manage__locked {
+  margin: 0 0 0.5rem;
+  color: #5c5048;
   font-weight: 600;
 }

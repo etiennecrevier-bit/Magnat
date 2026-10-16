@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { CUSTOMERS, FOOD_TRUCK } from '../engine/day.ts'
+import { decisionKindSchema, type DecisionKind } from '../content/schema.ts'
+import { isLocked } from '../engine/challenge.ts'
+import { CUSTOMERS, DEFIS, FOOD_TRUCK } from '../engine/day.ts'
 import { latestDecisions, type DecisionChange } from '../engine/decisions.ts'
 import { PRODUCTS } from '../engine/inventory.ts'
-import type { DaySummary, Decisions } from '../engine/types.ts'
+import type { DaySummary, Decisions, GameState } from '../engine/types.ts'
 import {
   PRICE_STEP_TEXT,
   RESTOCK_LABELS,
@@ -15,6 +17,7 @@ import {
   restockFields,
   stepPrice,
 } from './decisionInput.ts'
+import { lockReason } from './defis.ts'
 import { formatAmount } from './formatMoney.ts'
 import { NumberField } from './NumberField.tsx'
 import { segmentFacts, type SegmentFacts } from './segmentFacts.ts'
@@ -37,24 +40,55 @@ const WEEKDAYS = [
 
 type OnChange = (change: DecisionChange) => void
 
+/** The id of the line saying why the decisions of `kind` are locked. */
+function lockId(kind: DecisionKind): string {
+  return `manage-locked-${kind}`
+}
+
+/**
+ * Why the section's decisions cannot change, under its title, when the
+ * Défi locks them; nothing otherwise. The section's controls point to it.
+ */
+function LockNote({ kind, locked }: { kind: DecisionKind; locked: boolean }) {
+  if (!locked) return null
+  return (
+    <p id={lockId(kind)} className="manage__locked">
+      {lockReason(kind)}
+    </p>
+  )
+}
+
+/** What a locked section's controls get: disabled, and why. */
+function lockProps(kind: DecisionKind, locked: boolean) {
+  return locked
+    ? { disabled: true, describedBy: lockId(kind) }
+    : { disabled: false, describedBy: undefined }
+}
+
 interface ManagePanelViewProps {
   /** The decisions as the player last left them. */
   decisions: Decisions
   lastDay: DaySummary | null
+  /** The kinds of decision the Défi played locks; none outside a Défi. */
+  locked: readonly DecisionKind[]
   onChange: OnChange
   onClose: () => void
 }
 
 /**
  * What the player runs the truck with: prices, orders, days open, their pay
- * and marketing, beside yesterday's facts by segment.
+ * and marketing, beside yesterday's facts by segment. The decisions a Défi
+ * locks are disabled, with the reason under their section's title.
  */
 export function ManagePanelView({
   decisions,
   lastDay,
+  locked,
   onChange,
   onClose,
 }: ManagePanelViewProps) {
+  const payLocked = locked.includes('ownerWeeklyPay')
+  const marketingLocked = locked.includes('marketingDaily')
   return (
     <div className="panel__content">
       {/* Fermer comes first so it has the focus when the panel opens. */}
@@ -66,13 +100,27 @@ export function ManagePanelView({
       </div>
       <p className="manage__note">Les changements s'appliquent demain matin</p>
       <div className="manage__sections">
-        <PricesSection prices={decisions.prices} onChange={onChange} />
-        <OrdersSection restock={decisions.restock} onChange={onChange} />
+        <PricesSection
+          prices={decisions.prices}
+          locked={locked.includes('price')}
+          onChange={onChange}
+        />
+        <OrdersSection
+          restock={decisions.restock}
+          locked={locked.includes('restock')}
+          onChange={onChange}
+        />
         <FactsSection lastDay={lastDay} />
-        <DaysOpenSection daysOpen={decisions.daysOpen} onChange={onChange} />
+        <DaysOpenSection
+          daysOpen={decisions.daysOpen}
+          locked={locked.includes('daysOpen')}
+          onChange={onChange}
+        />
         <section className="manage__pay" aria-labelledby="manage-pay">
           <h3 id="manage-pay">Votre salaire</h3>
+          <LockNote kind="ownerWeeklyPay" locked={payLocked} />
           <NumberField
+            {...lockProps('ownerWeeklyPay', payLocked)}
             id="manage-pay-weekly"
             label="Salaire hebdomadaire"
             unit="$ par semaine"
@@ -87,7 +135,9 @@ export function ManagePanelView({
           aria-labelledby="manage-marketing"
         >
           <h3 id="manage-marketing">Marketing</h3>
+          <LockNote kind="marketingDaily" locked={marketingLocked} />
           <NumberField
+            {...lockProps('marketingDaily', marketingLocked)}
             id="manage-marketing-daily"
             label="Budget quotidien"
             unit="$ par jour"
@@ -104,19 +154,23 @@ export function ManagePanelView({
 
 function PricesSection({
   prices,
+  locked,
   onChange,
 }: {
   prices: Decisions['prices']
+  locked: boolean
   onChange: OnChange
 }) {
+  const lock = lockProps('price', locked)
   return (
     <section className="manage__prices" aria-labelledby="manage-prices">
       <h3 id="manage-prices">Prix</h3>
+      <LockNote kind="price" locked={locked} />
       {PRODUCTS.map((product) => {
         const { name } = FOOD_TRUCK.products[product]
         const price = prices[product]
         // aria-disabled rather than disabled, so a stepper that reaches a
-        // limit keeps the focus.
+        // limit keeps the focus. A locked one never had it.
         const stepper = (direction: 1 | -1, text: string, label: string) => {
           const next = stepPrice(price, direction)
           return (
@@ -124,6 +178,8 @@ function PricesSection({
               type="button"
               className="toggle manage__step"
               aria-label={`${name}\u00a0: ${label} le prix de ${PRICE_STEP_TEXT}`}
+              disabled={lock.disabled}
+              aria-describedby={lock.describedBy}
               aria-disabled={next === null}
               onClick={() => {
                 if (next !== null)
@@ -144,6 +200,7 @@ function PricesSection({
             value={formatAmount(price)}
             read={(text) => priceChange(product, text, price)}
             onChange={onChange}
+            {...lock}
             before={stepper(-1, '−', 'baisser')}
             after={stepper(1, '+', 'augmenter')}
           />
@@ -155,14 +212,17 @@ function PricesSection({
 
 function OrdersSection({
   restock,
+  locked,
   onChange,
 }: {
   restock: Decisions['restock']
+  locked: boolean
   onChange: OnChange
 }) {
   return (
     <section className="manage__orders" aria-labelledby="manage-orders">
       <h3 id="manage-orders">Commandes</h3>
+      <LockNote kind="restock" locked={locked} />
       {PRODUCTS.map((product) => {
         const rule = restock[product]
         return (
@@ -178,6 +238,7 @@ function OrdersSection({
                 value={String(units)}
                 read={(text) => restockChange(product, field, text, rule)}
                 onChange={onChange}
+                {...lockProps('restock', locked)}
               />
             ))}
           </fieldset>
@@ -278,15 +339,19 @@ function FactsRow({ label, facts }: { label: string; facts: SegmentFacts }) {
 
 function DaysOpenSection({
   daysOpen,
+  locked,
   onChange,
 }: {
   daysOpen: readonly number[]
+  locked: boolean
   onChange: OnChange
 }) {
   const [error, setError] = useState<string | null>(null)
+  const lock = lockProps('daysOpen', locked)
   return (
     <section className="manage__days" aria-labelledby="manage-days">
       <h3 id="manage-days">Horaire</h3>
+      <LockNote kind="daysOpen" locked={locked} />
       <div
         className="toggle-group"
         role="group"
@@ -300,6 +365,8 @@ function DaysOpenSection({
             className="toggle"
             aria-label={name}
             aria-pressed={daysOpen.includes(weekday)}
+            disabled={lock.disabled}
+            aria-describedby={lock.describedBy}
             onClick={() => {
               const result = daysOpenChange(weekday, daysOpen)
               if (result.kind === 'invalid') {
@@ -323,6 +390,13 @@ function DaysOpenSection({
   )
 }
 
+/** The kinds of decision the Défi `game` plays locks; none outside one. */
+function lockedKinds(game: GameState): DecisionKind[] {
+  return decisionKindSchema.options.filter((kind) =>
+    isLocked(game, kind, DEFIS),
+  )
+}
+
 /**
  * The panel wired to the app store, in a modal dialog: the page behind it
  * is out of reach and Escape closes it. Fermer keeps what was typed, after
@@ -331,6 +405,7 @@ function DaysOpenSection({
  */
 export default function ManagePanel() {
   const decisions = useGame((state) => latestDecisions(state.game))
+  const game = useGame((state) => state.game)
   const lastDay = useGame((state) => state.game.lastDay)
   const decide = useGame((state) => state.decide)
   const closePanel = useGame((state) => state.closePanel)
@@ -381,6 +456,7 @@ export default function ManagePanel() {
       <ManagePanelView
         decisions={decisions}
         lastDay={lastDay}
+        locked={lockedKinds(game)}
         onChange={onChange}
         onClose={close}
       />

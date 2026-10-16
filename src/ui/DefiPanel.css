@@ -1,0 +1,32 @@
+/* The card itself is the shared .panel (panel.css). Text colours keep at
+   least 4.5:1 against its cream #fff7e8. */
+.defi-panel {
+  --panel-width: 32rem;
+}
+
+.defi-panel h3 {
+  margin: 1rem 0 0.25rem;
+}
+
+.defi-panel p {
+  margin: 0;
+}
+
+.defi-panel__week {
+  color: #5c5048;
+  font-weight: 600;
+}
+
+.defi-progress {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 1.125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.defi-panel__list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
