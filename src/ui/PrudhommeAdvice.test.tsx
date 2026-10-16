@@ -33,6 +33,21 @@ describe('PrudhommeAdvice', () => {
     )
   })
 
+  it('says what her line is on when given, under her name', () => {
+    const html = renderToStaticMarkup(
+      <PrudhommeAdvice
+        advice="Rien à redire."
+        portrait={null}
+        about="Sur la semaine du 5 juin"
+      />,
+    )
+    expect(html).toContain(
+      '<p class="prudhomme-advice__title">Le conseil de Mme Prudhomme</p>' +
+        '<p class="prudhomme-advice__about">Sur la semaine du 5 juin</p>' +
+        '<p class="prudhomme-advice__text">',
+    )
+  })
+
   it('escapes her line', () => {
     expect(
       renderToStaticMarkup(

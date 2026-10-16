@@ -33,6 +33,11 @@
   font-weight: 700;
 }
 
+.prudhomme-advice__about {
+  color: #5c5048;
+  font-size: 0.875rem;
+}
+
 .prudhomme-advice__text {
   font-style: italic;
 }

@@ -10,7 +10,7 @@ import {
 import { NO_EVENTS } from '../engine/events.ts'
 import type { GameState } from '../engine/types.ts'
 import { createGameStore, type GameStore } from './store.ts'
-import { hideSlideInAfter, slideInWeek } from './weekSlideIn.ts'
+import { hideSlideInAfter, slideInReport } from './weekSlideIn.ts'
 
 const MS = 8000
 
@@ -41,6 +41,19 @@ function sliding(): GameStore {
   return store
 }
 
+/**
+ * A store with the monthly report, on June 1st (day 31) with the card of
+ * May sliding in.
+ */
+function monthSliding(): GameStore {
+  const store = createGameStore(playedTo(29), NO_EVENTS, {
+    everyWeek: () => false,
+    cadence: () => 'month',
+  })
+  store.getState().advance(10)
+  return store
+}
+
 beforeEach(() => {
   vi.useFakeTimers()
 })
@@ -49,21 +62,41 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('slideInWeek', () => {
+describe('slideInReport', () => {
   it('shows the last week while it slides in and no panel is open', () => {
     const store = sliding()
-    expect(slideInWeek(store.getState())).toBe(DAY_7.lastWeek)
+    expect(slideInReport(store.getState())).toBe(DAY_7.lastWeek)
     store.getState().openPanel('finances')
-    expect(slideInWeek(store.getState())).toBeNull()
+    expect(slideInReport(store.getState())).toBeNull()
     store.getState().closePanel()
-    expect(slideInWeek(store.getState())).toBe(DAY_7.lastWeek)
+    expect(slideInReport(store.getState())).toBe(DAY_7.lastWeek)
   })
 
   it('shows nothing when no card slides in, or for a week the game has left', () => {
-    expect(slideInWeek(createGameStore(DAY_7).getState())).toBeNull()
+    expect(slideInReport(createGameStore(DAY_7).getState())).toBeNull()
     const store = sliding()
     store.setState({ slideIn: 7 })
-    expect(slideInWeek(store.getState())).toBeNull()
+    expect(slideInReport(store.getState())).toBeNull()
+  })
+
+  it('shows the month while its card slides in and no panel is open', () => {
+    const store = monthSliding()
+    const { monthReport, game } = store.getState()
+    expect(monthReport).not.toBeNull()
+    expect(game.lastWeek?.firstDay).toBe(21)
+    expect(slideInReport(store.getState())).toBe(monthReport)
+    store.getState().openPanel('manage')
+    expect(slideInReport(store.getState())).toBeNull()
+    store.getState().closePanel()
+    expect(slideInReport(store.getState())).toBe(monthReport)
+  })
+
+  it('shows the week, not the month, once a week came after it', () => {
+    const store = monthSliding()
+    store.setState({ reportShown: 'week', slideIn: 21 })
+    expect(slideInReport(store.getState())).toBe(store.getState().game.lastWeek)
+    store.setState({ slideIn: 0 })
+    expect(slideInReport(store.getState())).toBeNull()
   })
 })
 
@@ -99,6 +132,21 @@ describe('hideSlideInAfter', () => {
     store.setState({ game: DAY_14, slideIn: 7 })
     vi.advanceTimersByTime(MS - 1)
     expect(store.getState().slideIn).toBe(7)
+    vi.advanceTimersByTime(1)
+    expect(store.getState().slideIn).toBeNull()
+  })
+
+  it('keeps counting while the days go on under the month’s card, a week closing included', () => {
+    const store = monthSliding()
+    hideSlideInAfter(store, MS)
+    vi.advanceTimersByTime(5000)
+    for (let day = 32; day <= 35; day += 1) store.getState().advance(1)
+    expect(store.getState()).toMatchObject({
+      game: { day: 35, lastWeek: { firstDay: 28 } },
+      slideIn: 0,
+    })
+    vi.advanceTimersByTime(MS - 5000 - 1)
+    expect(store.getState().slideIn).toBe(0)
     vi.advanceTimersByTime(1)
     expect(store.getState().slideIn).toBeNull()
   })

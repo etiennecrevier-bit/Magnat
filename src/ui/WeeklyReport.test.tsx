@@ -16,10 +16,7 @@ import type { GameState, WeekReport } from '../engine/types.ts'
 import { incomeStatement } from '../finance/statements.ts'
 import { formatBriefMoney, formatMoney } from './formatMoney.ts'
 import { gameStore, type GameStoreState } from './store.ts'
-import WeeklyReportPanel, {
-  LastWeekReport,
-  WeeklyReportView,
-} from './WeeklyReport.tsx'
+import { LastWeekReport, WeeklyReportView } from './WeeklyReport.tsx'
 import { BANKER, portraitUrl } from './portraits.ts'
 import { factLines, reportAdvice, reportHeadline } from './weeklyReport.ts'
 
@@ -278,16 +275,7 @@ describe('the week chart', () => {
   })
 })
 
-describe('WeeklyReportPanel', () => {
-  it("shows the app store's last week in a dialog, with Fermer first", () => {
-    gameStore.setState({ game: GAME, panel: 'report' })
-    const html = renderToStaticMarkup(<WeeklyReportPanel />)
-    expect(html).toMatch(
-      /^<dialog class="panel weekly-report-panel" aria-labelledby="weekly-report-title"><div class="panel__content"><div class="panel__header"><button type="button" class="toggle">Fermer<\/button><h2 id="weekly-report-title">Bilan de la semaine<\/h2><\/div><div class="weekly-report">/,
-    )
-    expect(html).toContain('Du 1er mai au 7 mai, an 1')
-  })
-
+describe('LastWeekReport', () => {
   it("shows the app store's Défi under way, in « Bilans » too", () => {
     // « Zéro gaspillage » runs two weeks from Monday, May 8 (day 7).
     let game = startChallenge('zeroGaspillage', 7)

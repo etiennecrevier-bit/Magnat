@@ -1,23 +1,29 @@
 import type { WeekRecord } from '../engine/types.ts'
 import { formatShortGameDate } from './formatGameDate.ts'
+import { LastMonthReport } from './MonthlyReport.tsx'
 import { useGame } from './store.ts'
 import { Amount, LastWeekReport } from './WeeklyReport.tsx'
 import { recentWeeks, WEEKS_LISTED } from './weeklyReport.ts'
 import './WeekReports.css'
 
 const LATEST_ID = 'week-reports-latest'
+const MONTH_ID = 'week-reports-month'
 const TABLE_ID = 'week-reports-table'
 
 /**
  * « Bilans »: the last weeks, newest first, with their ventes, bénéfice
  * and encaisse at the close of the Sunday, then the latest week's full
- * report. Before the first week closes, it says there is none yet.
+ * report, and the last « Bilan du mois » when one came. Before the first
+ * week closes, it says there is none yet.
  */
 export function WeekReportsView({
   history,
+  hasMonth = false,
 }: {
   /** The weeks the game keeps, oldest first. */
   history: readonly WeekRecord[]
+  /** Whether a « Bilan du mois » came, which it then shows last. */
+  hasMonth?: boolean
 }) {
   const weeks = recentWeeks(history)
   return (
@@ -75,6 +81,15 @@ export function WeekReportsView({
             <h2 id={LATEST_ID}>Bilan de la semaine</h2>
             <LastWeekReport />
           </section>
+          {hasMonth && (
+            <section
+              className="week-reports__latest"
+              aria-labelledby={MONTH_ID}
+            >
+              <h2 id={MONTH_ID}>Bilan du mois</h2>
+              <LastMonthReport />
+            </section>
+          )}
         </>
       )}
     </section>
@@ -84,5 +99,6 @@ export function WeekReportsView({
 /** « Bilans » for the app store's game. */
 export default function WeekReports() {
   const history = useGame((state) => state.game.weekHistory)
-  return <WeekReportsView history={history} />
+  const hasMonth = useGame((state) => state.monthReport !== null)
+  return <WeekReportsView history={history} hasMonth={hasMonth} />
 }

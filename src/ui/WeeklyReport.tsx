@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef } from 'react'
+import { useId, useMemo } from 'react'
 import type { ReportText } from '../content/reportText.ts'
 import { defiById } from '../engine/challenge.ts'
 import { DEFIS } from '../engine/day.ts'
@@ -30,7 +30,6 @@ import {
 import './panel.css'
 import './WeeklyReport.css'
 
-const TITLE_ID = 'weekly-report-title'
 // French puts a no-break space (U+00A0) before a colon and a percent sign.
 const COLON = ' :'
 const PERCENT = ' %'
@@ -46,11 +45,22 @@ export function Amount({ amount }: { amount: Cents }) {
   )
 }
 
+/** What a report's figures show: a week's, or a month's. */
+export interface Figures {
+  readonly sales: Cents
+  readonly netIncome: Cents
+  /** Encaisse at the start; null when the report does not have it. */
+  readonly cashAtStart: Cents | null
+  readonly cashAtEnd: Cents
+}
+
 /**
- * Encaisse from the start of the week to its end. A narrow card breaks the
- * line before the arrow, never after it.
+ * Encaisse from the start of the period to its end, or only at its end
+ * when the start is not known. A narrow card breaks the line before the
+ * arrow, never after it.
  */
-function CashChange({ report }: { report: WeekReport }) {
+function CashChange({ report }: { report: Figures }) {
+  if (report.cashAtStart === null) return <Amount amount={report.cashAtEnd} />
   return (
     <>
       <span className="weekly-report__from">
@@ -65,12 +75,12 @@ function CashChange({ report }: { report: WeekReport }) {
   )
 }
 
-/** Ventes, bénéfice and encaisse, as the report and the slide-in show them. */
+/** Ventes, bénéfice and encaisse, as the reports and the slide-in show them. */
 export function WeekFigures({
   report,
   className,
 }: {
-  report: WeekReport
+  report: Figures
   className: string
 }) {
   return (
@@ -108,10 +118,12 @@ const BOTTOM = 28
 const PLOT_WIDTH = WIDTH - LEFT - RIGHT
 const PLOT_HEIGHT = HEIGHT - TOP - BOTTOM
 const BASELINE = TOP + PLOT_HEIGHT
-const BAND = PLOT_WIDTH / DAYS_PER_WEEK
 // Thin bars with a 2-unit gap of the surface between a day's two, rounded
-// 4 units at the top and square on the baseline.
+// 4 units at the top and square on the baseline. A month's days are
+// narrower: its bars thin down to fill at most this share of a day's band,
+// so the days stay apart.
 const BAR_WIDTH = 24
+const BARS_SHARE_OF_BAND = 0.75
 const BAR_GAP = 2
 const BAR_RADIUS = 4
 const MARKER_RADIUS = 5
@@ -122,12 +134,15 @@ function at(value: number): number {
   return Math.round(value * 10) / 10
 }
 
-/** A bar from the baseline up to `top`, rounded at the top; null if flat. */
-function barPath(x: number, top: number): string | null {
+/**
+ * A bar `width` wide from the baseline up to `top`, rounded at the top;
+ * null if flat.
+ */
+function barPath(x: number, top: number, width: number): string | null {
   const height = BASELINE - top
   if (height <= 0) return null
-  const r = Math.min(BAR_RADIUS, height)
-  const right = x + BAR_WIDTH
+  const r = Math.min(BAR_RADIUS, height, width / 2)
+  const right = x + width
   return (
     `M${at(x)},${BASELINE}V${at(top + r)}` +
     `A${at(r)},${at(r)} 0 0 1 ${at(x + r)},${at(top)}` +
@@ -149,10 +164,10 @@ function dayText({ day, played, open, sales, cashReceived }: ChartDay): string {
 }
 
 /**
- * The week, day by day: ventes and argent reçu side by side on one axis,
- * and a marker above each day with a sale on credit, whose note follows
- * the chart. Each day tells its numbers when hovered, and the whole chart
- * to screen readers.
+ * The week, or the month, day by day: ventes and argent reçu side by side
+ * on one axis, and a marker above each day with a sale on credit, whose
+ * note follows the chart. Each day tells its numbers when hovered, and the
+ * whole chart to screen readers; a day with no label has none under it.
  */
 export function WeekChart({
   days,
@@ -163,6 +178,11 @@ export function WeekChart({
 }) {
   const id = useId()
   const { top, ticks } = chartScale(days)
+  const band = PLOT_WIDTH / days.length
+  const barWidth = Math.min(
+    BAR_WIDTH,
+    (band * BARS_SHARE_OF_BAND - BAR_GAP) / 2,
+  )
   const y = (amount: Cents) => TOP + PLOT_HEIGHT * (1 - amount / top)
   const noted = new Set(notes.map(({ day }) => day))
   return (
@@ -210,23 +230,23 @@ export function WeekChart({
             </g>
           ))}
           {days.map((day, index) => {
-            const center = LEFT + BAND * (index + 0.5)
+            const center = LEFT + band * (index + 0.5)
             const salesTop = y(day.sales)
             const cashTop = y(day.cashReceived)
             const sales = day.played
-              ? barPath(center - BAR_GAP / 2 - BAR_WIDTH, salesTop)
+              ? barPath(center - BAR_GAP / 2 - barWidth, salesTop, barWidth)
               : null
             const cash = day.played
-              ? barPath(center + BAR_GAP / 2, cashTop)
+              ? barPath(center + BAR_GAP / 2, cashTop, barWidth)
               : null
             return (
               <g key={day.day} className="week-chart__day" data-day={day.day}>
                 <title>{dayText(day)}</title>
                 <rect
                   className="week-chart__hit"
-                  x={at(center - BAND / 2)}
+                  x={at(center - band / 2)}
                   y={0}
-                  width={at(BAND)}
+                  width={at(band)}
                   height={HEIGHT}
                 />
                 {sales !== null && (
@@ -243,14 +263,16 @@ export function WeekChart({
                     r={MARKER_RADIUS}
                   />
                 )}
-                <text
-                  className="week-chart__label"
-                  x={at(center)}
-                  y={HEIGHT - 8}
-                  textAnchor="middle"
-                >
-                  {day.label}
-                </text>
+                {day.label !== '' && (
+                  <text
+                    className="week-chart__label"
+                    x={at(center)}
+                    y={HEIGHT - 8}
+                    textAnchor="middle"
+                  >
+                    {day.label}
+                  </text>
+                )}
               </g>
             )
           })}
@@ -273,8 +295,8 @@ export function WeekChart({
   )
 }
 
-/** The Défi under way, as the report shows it: where it stands. */
-function DefiInProgress({ challenge }: { challenge: ChallengeState }) {
+/** The Défi under way, as the reports show it: where it stands. */
+export function DefiInProgress({ challenge }: { challenge: ChallengeState }) {
   const defi = defiById(DEFIS, challenge.id)
   return (
     <section className="weekly-report__defi" aria-label="Défi en cours">
@@ -366,44 +388,5 @@ export function LastWeekReport() {
       challenge={challenge}
       percentile={percentile}
     />
-  )
-}
-
-/**
- * The report in a modal dialog: the page behind it is out of reach, and
- * Fermer or Escape closes it.
- */
-export default function WeeklyReportPanel() {
-  const closePanel = useGame((state) => state.closePanel)
-  const dialogRef = useRef<HTMLDialogElement>(null)
-
-  useEffect(() => {
-    const dialog = dialogRef.current
-    // StrictMode runs this twice; the second time, the dialog is open.
-    if (dialog !== null && !dialog.open) dialog.showModal()
-  }, [])
-
-  return (
-    <dialog
-      ref={dialogRef}
-      className="panel weekly-report-panel"
-      aria-labelledby={TITLE_ID}
-      onClose={closePanel}
-    >
-      <div className="panel__content">
-        {/* Fermer comes first so it has the focus when the panel opens. */}
-        <div className="panel__header">
-          <button
-            type="button"
-            className="toggle"
-            onClick={() => dialogRef.current?.close()}
-          >
-            Fermer
-          </button>
-          <h2 id={TITLE_ID}>Bilan de la semaine</h2>
-        </div>
-        <LastWeekReport />
-      </div>
-    </dialog>
   )
 }
