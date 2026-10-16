@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   dayOfDate,
+  endOfMonth,
   mondayOf,
   monthsSinceStart,
   sundayOf,
@@ -204,5 +205,33 @@ describe('dayOfDate', () => {
     { month: Number.NaN, dayOfMonth: 1 },
   ])('rejects $month-$dayOfMonth', (date) => {
     expect(() => dayOfDate(date)).toThrow(RangeError)
+  })
+})
+
+describe('endOfMonth', () => {
+  it.each([
+    // May 1st and May 31st of year 1 end on May 31st.
+    [0, 0, 30],
+    [30, 0, 30],
+    // A month on: June 30th, then July 31st.
+    [0, 1, 60],
+    [45, 1, 91],
+    // Across the new year: December, then January and February.
+    [214, 1, 275],
+    [244, 2, 303],
+    // A whole year on from May 1st: May 31st of year 2.
+    [0, 12, 395],
+  ])('from day %i, %i month(s) on, is day %i', (day, months, end) => {
+    expect(endOfMonth(day, months)).toBe(end)
+    expect(toCalendar(end + 1).dayOfMonth).toBe(1)
+    expect(monthsSinceStart(end)).toBe(monthsSinceStart(day) + months)
+  })
+
+  it.each([-1, 1.5, Number.NaN])('rejects %d months', (months) => {
+    expect(() => endOfMonth(0, months)).toThrow(RangeError)
+  })
+
+  it('rejects a day outside the game', () => {
+    expect(() => endOfMonth(-1)).toThrow(RangeError)
   })
 })

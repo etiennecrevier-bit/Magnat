@@ -21,8 +21,13 @@ const PLAIN: EnergyContent = loadEnergyContent({
   exhausted: { below: 25, serviceTimeIncrease: 0.4, botchedShare: 0.05 },
 })
 
-const OPEN: Workday = { worked: true, customersServed: 0, stressed: false }
-const CLOSED: Workday = { worked: false, customersServed: 0, stressed: false }
+const OPEN: Workday = {
+  worked: true,
+  customersServed: 0,
+  stressed: false,
+  bakingCost: 0,
+}
+const CLOSED: Workday = { ...OPEN, worked: false }
 
 describe('fatigueOf', () => {
   it.each([
@@ -83,6 +88,14 @@ describe('energyAtClose', () => {
     const busy = energyAtClose(90, { ...OPEN, customersServed: 90 }, ENERGY)
     expect(busy).toBeLessThan(quiet)
     expect(quiet - busy).toBeCloseTo(60 * ENERGY.costPerCustomerServed, 9)
+  })
+
+  it('takes a morning of baking on top of the open day', () => {
+    expect(energyAtClose(80, { ...OPEN, bakingCost: 8 }, PLAIN)).toBe(66)
+    expect(
+      energyAtClose(80, { ...OPEN, customersServed: 40, bakingCost: 8 }, PLAIN),
+    ).toBe(56)
+    expect(energyAtClose(5, { ...OPEN, bakingCost: 8 }, PLAIN)).toBe(0)
   })
 
   it('gives a closed day back, whoever would have come', () => {

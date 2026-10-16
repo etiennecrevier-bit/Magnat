@@ -113,3 +113,26 @@ export function monthsSinceStart(day: Day): number {
   const { year, month } = toCalendar(day)
   return (year - START_YEAR) * MONTHS_PER_YEAR + (month - START_MONTH)
 }
+
+/**
+ * The last day of the calendar month `months` after the month of `day`: of
+ * `day`'s own month for 0, of the next one for 1. Throws a RangeError unless
+ * `day` and `months` are non-negative safe integers.
+ */
+export function endOfMonth(day: Day, months: number = 0): Day {
+  if (!Number.isSafeInteger(months) || months < 0) {
+    throw new RangeError(`Invalid number of months: ${months}`)
+  }
+  const { month, dayOfMonth } = toCalendar(day)
+  let end = day + lengthOf(month) - dayOfMonth
+  for (let ahead = 1; ahead <= months; ahead += 1) {
+    end += lengthOf(((month - 1 + ahead) % MONTHS_PER_YEAR) + 1)
+  }
+  return end
+}
+
+function lengthOf(month: number): number {
+  const length = MONTH_LENGTHS[month - 1]
+  if (length === undefined) throw new RangeError(`Invalid month: ${month}`)
+  return length
+}

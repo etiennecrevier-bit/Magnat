@@ -1,4 +1,5 @@
 import type {
+  BakeryContent,
   CustomerContent,
   DefiContent,
   DifficultyContent,
@@ -10,6 +11,7 @@ import type {
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
+import { BAKERY, closedBakery } from './bakery.ts'
 import {
   challengeDifficulties,
   defiById,
@@ -58,7 +60,8 @@ export { toCalendar, type CalendarDate } from './calendar.ts'
  * `profile`, the owner's personal account holding the difficulty's
  * starting savings, the owner at full energy, no event yet, nobody owing
  * the business anything, a first week to come, partial, from the cash the
- * books open with (see `openingWeek`), and no Défi. Throws a RangeError
+ * books open with (see `openingWeek`), no Défi and no bakery, with the
+ * croissants bought. Throws a RangeError
  * unless `seed` is an integer in [0, 2^32), if the starting decisions break
  * the content's limits, if `profile` breaks `validateProfile()`, or if the
  * difficulty leaves a negative Mise de fonds.
@@ -96,6 +99,7 @@ export function createInitialState(
     lastWeek: null,
     weekHistory: [],
     challenge: null,
+    bakery: closedBakery(),
   }
 }
 
@@ -174,7 +178,8 @@ export function startChallenge(
 }
 
 /**
- * Plays business day `state.day` with `state.decisions` (see `playDay`), then
+ * Plays business day `state.day` with `state.decisions` (see `playDay`, with
+ * `bakery` as the bakery's content), then
  * moves on to the next morning, where the pending decisions, if any, take
  * effect, after a night that gives the owner some energy back (see
  * `nightRest`), and where an event of `events` may come up (see
@@ -197,6 +202,7 @@ export function tick(
   events: EventContent = NO_EVENTS,
   defis: DefiContent = DEFIS,
   percentiles: PercentileContent = PERCENTILES,
+  bakery: BakeryContent = BAKERY,
 ): GameState {
   const played = playDay(
     state,
@@ -206,6 +212,7 @@ export function tick(
     personal,
     energy,
     defis,
+    bakery,
   )
   const morning: GameState = {
     ...played,

@@ -271,6 +271,7 @@ function moyenLoan(
 ): DifficultyContent {
   const { moyen } = DIFFICULTIES.difficulties
   return loadDifficultyContent({
+    ...DIFFICULTIES,
     difficulties: {
       ...DIFFICULTIES.difficulties,
       moyen: { ...moyen, truck: { ...moyen.truck, ...change } },

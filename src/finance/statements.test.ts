@@ -122,6 +122,7 @@ describe('incomeStatement', () => {
           accountRow('6000', 'Salaires', 25_000),
           accountRow('6100', 'Loyer et permis', 0),
           accountRow('6120', 'Location du camion', 0),
+          accountRow('6130', 'Location du fournil', 0),
           accountRow('6150', 'Assurances', 0),
           accountRow('6200', 'Carburant et entretien', 6_000),
           accountRow('6300', 'Marketing', 0),
@@ -157,7 +158,7 @@ describe('incomeStatement', () => {
   it('shows every row at zero, with a Bénéfice net of zero, when nothing happened', () => {
     const empty = incomeStatement(emptyJournal(), 0, 10)
     expect(rowsOf(empty).every(({ amount }) => amount === 0)).toBe(true)
-    expect(empty.expenses.lines).toHaveLength(13)
+    expect(empty.expenses.lines).toHaveLength(14)
     expect(empty.netIncome).toEqual(row('Bénéfice net', 0))
     expect(incomeStatement(journal, -5, -1)).toEqual({
       ...empty,
@@ -577,6 +578,7 @@ describe('cashFlowStatement', () => {
     { account: '6000', activity: 'operating', label: 'Salaires' },
     { account: '6100', activity: 'operating', label: 'Autres charges' },
     { account: '6120', activity: 'operating', label: 'Autres charges' },
+    { account: '6130', activity: 'operating', label: 'Autres charges' },
     { account: '6150', activity: 'operating', label: 'Autres charges' },
     { account: '6200', activity: 'operating', label: 'Autres charges' },
     { account: '6300', activity: 'operating', label: 'Autres charges' },

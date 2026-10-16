@@ -575,6 +575,7 @@ describe('trialBalance', () => {
         row('6000'),
         row('6100'),
         row('6120'),
+        row('6130'),
         row('6150'),
         row('6200'),
         row('6300'),

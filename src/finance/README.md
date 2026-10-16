@@ -14,6 +14,7 @@ How the engine posts the startup and the running costs, so each cash entry feeds
 - Moyen's startup, three entries: the Mise de fonds (Dr 1000 / Cr 3000, Capital-actions in financing), the loan (Dr 1000 / Cr 2500, Emprunts bancaires in financing), and the truck bought (Dr 1500 / Cr 1000, Équipement in investing).
 - Each loan payment, two entries with the amounts of `loanSchedule`: the interest (Dr 7000 Intérêts / Cr 1000, Intérêts payés in operating) and the principal (Dr 2500 / Cr 1000, Emprunts bancaires in financing). `postEntry` rejects a line of zero, so a loan without interest posts no interest entry, and nor does a month the schedule pays nothing.
 - Difficile's truck lease: Dr 6120 Location du camion / Cr 1000, Autres charges in operating.
+- The bakery (le fournil), from `src/engine/bakery.ts`: its rent goes to 6100 Loyer et permis and its oven's lease to 6130 Location du fournil (Dr / Cr 1000, Autres charges in operating), and so does the moving cost, to 6900 Autres charges. Its ingredients go into stock, Dr 1200 Stocks / Cr 1000, with the suppliers. A bought oven is Équipement, Dr 1500 / Cr 1000 in investing, depreciated like the truck.
 - Packaging (5200 Emballages) goes with the suppliers, like stock. Card fees (6500 Frais bancaires et de cartes), insurance (6150 Assurances) and marketing (6300 Marketing) are Autres charges; the owner's pay is 6000 Salaires.
 
 How `receivables.ts` posts a sale on credit and the charges around it:

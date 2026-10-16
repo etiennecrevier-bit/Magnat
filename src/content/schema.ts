@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { cents } from '../engine/money.ts'
+import bakeryJson from './bakery.json'
 import defiPercentilesJson from './defis-percentiles.json'
 import defisJson from './defis.json'
 import difficultyJson from './difficulty.json'
@@ -360,12 +361,83 @@ const difficultySchema = z.strictObject({
 
 export type Difficulty = z.output<typeof difficultySchema>
 
+/** What the bakery costs at one difficulty. */
+const bakeryPricesSchema = z.strictObject({
+  /** The bakery's rent, due on the 1st of each month it holds its premises. */
+  monthlyRentCents: money,
+  /** What the ingredients of one croissant cost, from Meunerie Bonpain. */
+  ingredientCostCents: positiveMoney,
+})
+
+export type BakeryPrices = z.output<typeof bakeryPricesSchema>
+
 export const difficultyContentSchema = z.strictObject({
   _note: z.string().optional(),
   difficulties: z.record(difficultyIdSchema, difficultySchema),
+  /** The bakery's prices at each difficulty. */
+  bakery: z.record(difficultyIdSchema, bakeryPricesSchema),
 })
 
 export type DifficultyContent = z.output<typeof difficultyContentSchema>
+
+/**
+ * Where the truck's croissants come from: bought from the supplier
+ * (`acheter`) or made at the bakery (`fabriquer`).
+ */
+export const croissantSourceSchema = z.enum(['acheter', 'fabriquer'])
+
+export type CroissantSource = z.infer<typeof croissantSourceSchema>
+
+/** How the bakery's oven comes: leased by the month (`louer`) or bought (`acheter`). */
+export const ovenTermsSchema = z.enum(['louer', 'acheter'])
+
+export type OvenTerms = z.infer<typeof ovenTermsSchema>
+
+/** The bakery, le fournil: what it costs, what it makes and how it runs. */
+export const bakeryContentSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    /** The oven, bought or leased. */
+    oven: z.strictObject({
+      /** What buying it costs. The books carry it, depreciated. */
+      priceCents: positiveMoney,
+      /** Months it is depreciated over, straight line. */
+      usefulLifeMonths: z.int().positive(),
+      /** What leasing it costs on the 1st of each month. */
+      monthlyLeaseCents: money,
+    }),
+    /** The most croissants the bakery makes in a day. */
+    capacityPerDay: z.int().positive(),
+    /** What moving into the premises costs, the day the bakery opens. */
+    movingCostCents: money,
+    /**
+     * Whole months the rent is still due after the player closes the
+     * bakery: it keeps its premises to the end of the month this many
+     * months after the one it is closed in.
+     */
+    noticeMonths: z.int().nonnegative(),
+    /** What a day of baking takes from the owner's energy. */
+    bakingEnergyCost: energyAmount,
+    /** How the croissants come when a game starts, until the player changes it. */
+    startingDecisions: z.strictObject({
+      croissantSource: croissantSourceSchema,
+      /** How many croissants the bakery makes each morning the truck opens. */
+      bake: restockRuleSchema,
+    }),
+  })
+  .superRefine(({ capacityPerDay, startingDecisions }, ctx) => {
+    const { bake } = startingDecisions
+    const units = bake.kind === 'buyDaily' ? [bake.quantity] : [bake.upTo]
+    if (units.some((n) => n > capacityPerDay)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `the bake rule must stay within capacityPerDay: ${capacityPerDay}`,
+        path: ['startingDecisions', 'bake'],
+      })
+    }
+  })
+
+export type BakeryContent = z.output<typeof bakeryContentSchema>
 
 export const profileContentSchema = z.strictObject({
   _note: z.string().optional(),
@@ -1663,6 +1735,16 @@ export function loadDifficultyContent(
   raw: unknown = difficultyJson,
 ): DifficultyContent {
   return parsed(difficultyContentSchema, raw, 'difficulty.json')
+}
+
+/**
+ * Validates the bakery and returns it typed, with money as `Cents`. Throws
+ * an Error naming every invalid field: besides each field, the starting bake
+ * rule stays within the bakery's capacity. Pass `raw` only to check other
+ * data; by default it reads `bakery.json`.
+ */
+export function loadBakeryContent(raw: unknown = bakeryJson): BakeryContent {
+  return parsed(bakeryContentSchema, raw, 'bakery.json')
 }
 
 /**

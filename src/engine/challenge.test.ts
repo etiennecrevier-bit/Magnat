@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  decisionKindSchema,
   loadDefiContent,
   loadEventContent,
   type DefiContent,
@@ -230,6 +231,9 @@ describe('startChallenge', () => {
         daysOpen: [1, 2, 3, 4, 5, 6, 7],
         ownerWeeklyPay: 50_000,
         marketingDaily: 1_000,
+        bakery: null,
+        croissantSource: start.croissantSource,
+        bake: start.bake,
       },
       energy: 80,
       events: {
@@ -923,6 +927,30 @@ describe('a Défi in play', () => {
     ).toBe(2_000)
     expect(isLocked(state, 'restock', locked)).toBe(false)
     expect(isLocked(createInitialState(SEED), 'daysOpen', locked)).toBe(false)
+  })
+
+  it("locks none of the bakery's changes, even with every kind locked", () => {
+    const locked = defis([defi({ locked: [...decisionKindSchema.options] })])
+    const state = startChallenge('essai', SEED, FOOD_TRUCK, locked)
+    const apply = (change: Parameters<typeof applyDecision>[1]) =>
+      applyDecision(state, change, FOOD_TRUCK, locked)
+    expect(() => apply({ kind: 'marketingDaily', budget: cents(0) })).toThrow(
+      'the Défi essai locks marketingDaily',
+    )
+    const opened = apply({ kind: 'openBakery', oven: 'louer' })
+    expect(opened.pendingDecisions?.bakery).toEqual({ oven: 'louer' })
+    expect(
+      applyDecision(opened, { kind: 'closeBakery' }, FOOD_TRUCK, locked)
+        .pendingDecisions?.bakery,
+    ).toBeNull()
+    expect(
+      apply({ kind: 'croissantSource', source: 'fabriquer' }).pendingDecisions
+        ?.croissantSource,
+    ).toBe('fabriquer')
+    expect(
+      apply({ kind: 'bake', rule: { kind: 'buyDaily', quantity: 90 } })
+        .pendingDecisions?.bake,
+    ).toEqual({ kind: 'buyDaily', quantity: 90 })
   })
 
   it('plays the same from the same seed and choices', () => {

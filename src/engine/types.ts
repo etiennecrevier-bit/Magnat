@@ -4,9 +4,11 @@
 
 import type {
   Avatar,
+  CroissantSource,
   DifficultyId,
   EventEffect,
   Medal,
+  OvenTerms,
   ProductId,
   RestockRule,
   SegmentId,
@@ -144,6 +146,49 @@ export interface Decisions {
   readonly ownerWeeklyPay: Cents
   /** What the truck spends on marketing each day. */
   readonly marketingDaily: Cents
+  /**
+   * The bakery the player wants running, and how its oven comes; null when
+   * they want none. The morning it takes effect opens the bakery, or starts
+   * its notice.
+   */
+  readonly bakery: BakeryPlan | null
+  /**
+   * Where the croissants come from: bought, or made at the bakery while it
+   * runs. Bought when it does not.
+   */
+  readonly croissantSource: CroissantSource
+  /**
+   * How many croissants the bakery makes each morning the truck opens,
+   * when they are made there; either kind of rule, within its capacity.
+   */
+  readonly bake: RestockRule
+}
+
+/** The bakery the player wants running. */
+export interface BakeryPlan {
+  /** How its oven comes: leased by the month, or bought once. */
+  readonly oven: OvenTerms
+}
+
+/**
+ * The bakery, le fournil, as of the last close. It runs from the day it
+ * opens to the last day of its notice, if the player closes it.
+ */
+export interface BakeryState {
+  /** The day it opened; null while it does not run. */
+  readonly openedOnDay: Day | null
+  /** How its oven came; null exactly when `openedOnDay` is. */
+  readonly oven: OvenTerms | null
+  /**
+   * The last day it keeps its premises once the player closed it: the
+   * last day of a month. Null while it runs with no notice, or does not.
+   */
+  readonly closesAfterDay: Day | null
+  /**
+   * The day the business bought its oven, which the books carry from then
+   * on, the bakery closed or not; null while it owns none.
+   */
+  readonly ovenBoughtOnDay: Day | null
 }
 
 /**
@@ -253,6 +298,8 @@ export interface GameState {
   readonly weekHistory: readonly WeekRecord[]
   /** The Défi the game plays; null in a game that is not one. */
   readonly challenge: ChallengeState | null
+  /** The bakery, as of the last close. */
+  readonly bakery: BakeryState
 }
 
 /**

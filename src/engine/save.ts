@@ -1,12 +1,15 @@
 import { z } from 'zod'
 import {
   avatarSchema,
+  croissantSourceSchema,
   difficultyIdSchema,
   eventEffectSchema,
   medalSchema,
+  ovenTermsSchema,
   productIdSchema,
   segmentIdSchema,
   streetChangeSchema,
+  type BakeryContent,
   type Defi,
   type DefiContent,
   type DifficultyContent,
@@ -25,7 +28,8 @@ import {
   type JournalEntry,
 } from '../finance/journal.ts'
 import { incomeStatement } from '../finance/statements.ts'
-import { mondayOf, sundayOf } from './calendar.ts'
+import { BAKERY, BAKERY_MEMO, closedBakery, holdsPremises } from './bakery.ts'
+import { endOfMonth, mondayOf, sundayOf } from './calendar.ts'
 import {
   challengeDifficulties,
   forcedEventOn,
@@ -52,6 +56,7 @@ import { LABELS, isKept } from './personal.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
 import type {
+  BakeryState,
   ChallengeStatus,
   Day,
   Decisions,
@@ -70,7 +75,9 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 11 adds the
+ * change can no longer load (rule 8 in CLAUDE.md). Version 12 adds the
+ * bakery: a version 11 game still loads, with none planned, none running,
+ * no oven and the croissants bought. Version 11 adds the
  * Défis: a version 10 game still loads, as a game that is not a Défi.
  * Version 10 adds the week in numbers: a version 9 game still loads, with no week reported yet and
  * the week under way counted from its last close. Version 9 adds the
@@ -87,9 +94,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 11
+export const SAVE_VERSION = 12
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const BAKERYLESS_VERSION = 11
 const CHALLENGELESS_VERSION = 10
 const WEEKLESS_VERSION = 9
 const STREETLESS_VERSION = 8
@@ -98,6 +106,7 @@ const EVENTLESS_VERSION = 7
 const CASH: AccountCode = '1000'
 const RECEIVABLES: AccountCode = '1100'
 const STOCKS: AccountCode = '1200'
+const EQUIPMENT: AccountCode = '1500'
 
 // Calendar facts, not tunables: arrivals are minutes of one day, and the
 // weeks of the history start 7 days apart.
@@ -208,23 +217,30 @@ const daySummarySchema = z.strictObject({
   modifiers: z.array(modifierSchema),
 })
 
-// `validateDecisions()` checks the limits and the days open.
-const decisionsSchema = z.strictObject({
+const restockRuleSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('buyDaily'), quantity: count }),
+  z.strictObject({
+    kind: z.literal('topUp'),
+    whenBelow: count,
+    upTo: count,
+  }),
+])
+
+/** The decisions of a version 11 save, before the bakery. */
+const bakerylessDecisionsSchema = z.strictObject({
   prices: z.record(productIdSchema, money),
-  restock: z.record(
-    productIdSchema,
-    z.discriminatedUnion('kind', [
-      z.strictObject({ kind: z.literal('buyDaily'), quantity: count }),
-      z.strictObject({
-        kind: z.literal('topUp'),
-        whenBelow: count,
-        upTo: count,
-      }),
-    ]),
-  ),
+  restock: z.record(productIdSchema, restockRuleSchema),
   daysOpen: z.array(z.int()),
   ownerWeeklyPay: money,
   marketingDaily: money,
+})
+
+// `validateDecisions()` checks the limits and the days open, `checkBakery()`
+// the bakery planned against the bakery.
+const decisionsSchema = bakerylessDecisionsSchema.extend({
+  bakery: z.strictObject({ oven: ovenTermsSchema }).nullable(),
+  croissantSource: croissantSourceSchema,
+  bake: restockRuleSchema,
 })
 
 // `validateProfile()` checks the business name.
@@ -364,6 +380,16 @@ const challengeSchema = z.strictObject({
   medal: medalSchema.nullable(),
 })
 
+type SavedDecisions = z.output<typeof decisionsSchema>
+
+// `checkBakery()` checks the days, the oven and the books.
+const bakerySchema = z.strictObject({
+  openedOnDay: gameDay.nullable(),
+  oven: ovenTermsSchema.nullable(),
+  closesAfterDay: gameDay.nullable(),
+  ovenBoughtOnDay: gameDay.nullable(),
+})
+
 const saveSchema = z.strictObject({
   saveVersion: z.literal(SAVE_VERSION),
   day: gameDay,
@@ -384,6 +410,7 @@ const saveSchema = z.strictObject({
   lastWeek: weekReportSchema.nullable(),
   weekHistory: z.array(weekRecordSchema),
   challenge: challengeSchema.nullable(),
+  bakery: bakerySchema,
 })
 
 // The week under way may come from the books rather than the save.
@@ -399,8 +426,15 @@ type Parsed = Omit<Save, 'weekSoFar'> & {
   readonly weekSoFar: WeekSoFar | null
 }
 
-/** A version 10 save: no Défi. */
-const challengelessSchema = saveSchema
+/** A version 11 save: no bakery, and decisions without one. */
+const bakerylessSchema = saveSchema.omit({ bakery: true }).extend({
+  saveVersion: z.literal(BAKERYLESS_VERSION),
+  decisions: bakerylessDecisionsSchema,
+  pendingDecisions: bakerylessDecisionsSchema.nullable(),
+})
+
+/** A version 10 save: no Défi either. */
+const challengelessSchema = bakerylessSchema
   .omit({ challenge: true })
   .extend({ saveVersion: z.literal(CHALLENGELESS_VERSION) })
 
@@ -446,6 +480,7 @@ export function serialize(state: GameState): string {
     lastWeek: state.lastWeek,
     weekHistory: state.weekHistory,
     challenge: state.challenge,
+    bakery: state.bakery,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -505,8 +540,9 @@ export function deserialize(
   events: EventContent = EVENTS,
   difficulties: DifficultyContent = DIFFICULTIES,
   defis: DefiContent = DEFIS,
+  bakery: BakeryContent = BAKERY,
 ): GameState {
-  const loaded = parsed(text)
+  const loaded = parsed(text, bakery)
   const journal = rebuilt(loaded.journal)
   checkBooks(loaded, journal)
   const defi = defiOf(loaded, defis)
@@ -522,10 +558,11 @@ export function deserialize(
   checkEvents(save, events)
   checkEnergy(save, defi === null ? FULL_ENERGY : startingEnergy(defi))
   checkMarketingHistory(save, content)
-  checkDecisions('decisions', save.decisions, content)
+  checkDecisions('decisions', save.decisions, content, bakery)
   if (save.pendingDecisions !== null) {
-    checkDecisions('pendingDecisions', save.pendingDecisions, content)
+    checkDecisions('pendingDecisions', save.pendingDecisions, content, bakery)
   }
+  checkBakery(save, journal, bakery)
   attempt('profile', () => validateProfile(save.profile))
   checkDifficulty(save, journal, content, opening)
   checkPersonal(save, events)
@@ -551,10 +588,11 @@ export function deserialize(
     lastWeek: save.lastWeek,
     weekHistory: save.weekHistory,
     challenge: save.challenge,
+    bakery: save.bakery,
   }
 }
 
-function parsed(text: string): Parsed {
+function parsed(text: string, bakery: BakeryContent): Parsed {
   let raw: unknown
   try {
     raw = JSON.parse(text)
@@ -567,9 +605,12 @@ function parsed(text: string): Parsed {
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
   if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  if (saveVersion === BAKERYLESS_VERSION) {
+    return withBakery(checked(bakerylessSchema, raw), bakery)
+  }
   if (saveVersion === CHALLENGELESS_VERSION) {
     const save = checked(challengelessSchema, raw)
-    return { ...save, saveVersion: SAVE_VERSION, challenge: null }
+    return withBakery({ ...save, challenge: null }, bakery)
   }
   // An older version's own schema first, strict, so a key it did not know
   // still fails the load.
@@ -589,9 +630,9 @@ function parsed(text: string): Parsed {
     events?: object
     receivables?: unknown
   }
-  const save = checked(saveSchema.omit({ weekSoFar: true }), {
+  const save = checked(bakerylessSchema.omit({ weekSoFar: true }), {
     ...raw,
-    saveVersion: SAVE_VERSION,
+    saveVersion: BAKERYLESS_VERSION,
     lastDay: old.lastDay === null ? null : { modifiers: [], ...old.lastDay },
     events: { modifiers: [], ...(old.events ?? noEvents()) },
     receivables: old.receivables ?? [],
@@ -599,7 +640,43 @@ function parsed(text: string): Parsed {
     weekHistory: [],
     challenge: null,
   })
-  return { ...save, weekSoFar: null }
+  return withBakery({ ...save, weekSoFar: null }, bakery)
+}
+
+/**
+ * A save from before the bakery as the current version: with no bakery,
+ * none planned and the croissants as `bakery` starts them, in the decisions
+ * and those pending.
+ */
+function withBakery<
+  Old extends {
+    readonly decisions: z.output<typeof bakerylessDecisionsSchema>
+    readonly pendingDecisions: z.output<typeof bakerylessDecisionsSchema> | null
+  },
+>(
+  save: Old,
+  bakery: BakeryContent,
+): Omit<Old, 'saveVersion' | 'decisions' | 'pendingDecisions'> & {
+  readonly saveVersion: typeof SAVE_VERSION
+  readonly decisions: SavedDecisions
+  readonly pendingDecisions: SavedDecisions | null
+  readonly bakery: BakeryState
+} {
+  const { croissantSource, bake } = bakery.startingDecisions
+  const upgraded = (decisions: Old['decisions']): SavedDecisions => ({
+    ...decisions,
+    bakery: null,
+    croissantSource,
+    bake: { ...bake },
+  })
+  return {
+    ...save,
+    saveVersion: SAVE_VERSION,
+    decisions: upgraded(save.decisions),
+    pendingDecisions:
+      save.pendingDecisions === null ? null : upgraded(save.pendingDecisions),
+    bakery: closedBakery(),
+  }
 }
 
 function checked<T extends z.ZodType>(schema: T, raw: unknown): z.output<T> {
@@ -917,14 +994,146 @@ function checkDecisions(
   field: string,
   decisions: Decisions,
   content: FoodTruckContent,
+  bakery: BakeryContent,
 ): void {
-  attempt(field, () => validateDecisions(decisions, content.decisionLimits))
+  attempt(field, () =>
+    validateDecisions(decisions, content.decisionLimits, bakery),
+  )
   for (const product of PRODUCTS) {
     const { kind } = content.startingDecisions.restock[product]
     const saved = decisions.restock[product].kind
     if (saved !== kind) {
       invalid(`${field}.restock.${product} must be a ${kind} rule: ${saved}`)
     }
+  }
+}
+
+/**
+ * What the bakery could be at the save's day, with the books `journal`:
+ * - it runs exactly when it has oven terms, and only a bakery that runs is
+ *   under notice;
+ * - it opened, and its oven was bought, on a day played, no earlier than
+ *   the game's first day, so before the first day is played it neither runs
+ *   nor owns an oven;
+ * - a notice ends on the last day of a month after the bakery opened, no
+ *   earlier than the last day played, since the morning after its end
+ *   closes the bakery, and no later than the end of the month
+ *   `noticeMonths` after it;
+ * - a bought oven runs a bakery only when the business owns one, and a
+ *   leased one only when it owns none;
+ * - the business owns an oven exactly when the books hold one « Achat du
+ *   four », on the day it was bought, Dr 1500 Équipement / Cr 1000 for the
+ *   oven's price;
+ * - the bakery planned, in the decisions and in those pending, leases no
+ *   oven when the business owns one, and keeps the oven terms of a bakery
+ *   that holds its premises on the save's day;
+ * - at a close, the bakery runs with no notice exactly when one is planned.
+ */
+function checkBakery(
+  save: Save,
+  journal: Journal,
+  content: BakeryContent,
+): void {
+  const { day, lastDay, bakery, decisions, pendingDecisions } = save
+  const { openedOnDay, oven, closesAfterDay, ovenBoughtOnDay } = bakery
+  const first = firstDay(save)
+  const played = lastDay?.day ?? first - 1
+  if ((openedOnDay === null) !== (oven === null)) {
+    invalid(
+      `bakery.oven is ${oven} with bakery.openedOnDay ${openedOnDay}: both or neither`,
+    )
+  }
+  for (const [field, at] of [
+    ['openedOnDay', openedOnDay],
+    ['ovenBoughtOnDay', ovenBoughtOnDay],
+  ] as const) {
+    if (at !== null && (at < first || at > played)) {
+      invalid(
+        `bakery.${field} is day ${at}, not a day played from day ${first} to day ${played}`,
+      )
+    }
+  }
+  if (closesAfterDay !== null) {
+    if (openedOnDay === null) {
+      invalid(`bakery.closesAfterDay is day ${closesAfterDay}, with no bakery`)
+    }
+    const latest = endOfMonth(played, content.noticeMonths)
+    if (
+      endOfMonth(closesAfterDay) !== closesAfterDay ||
+      closesAfterDay <= openedOnDay ||
+      closesAfterDay < played ||
+      closesAfterDay > latest
+    ) {
+      invalid(
+        `bakery.closesAfterDay is day ${closesAfterDay}, not the last day of a month from day ${Math.max(openedOnDay + 1, played)} to day ${latest}`,
+      )
+    }
+  }
+  if (oven === 'acheter' && ovenBoughtOnDay === null) {
+    invalid('bakery.oven is acheter, but the business owns no oven')
+  }
+  if (oven === 'louer' && ovenBoughtOnDay !== null) {
+    invalid(
+      `bakery.oven is louer, but the business owns an oven since day ${ovenBoughtOnDay}`,
+    )
+  }
+
+  const bought = entriesOf(journal).filter(
+    ({ memo }) => memo === BAKERY_MEMO.ovenBought,
+  )
+  const purchase = bought[0]
+  const { priceCents } = content.oven
+  if (ovenBoughtOnDay === null) {
+    if (purchase !== undefined) {
+      invalid(
+        `the journal holds « ${BAKERY_MEMO.ovenBought} » on day ${purchase.day}, but the business owns no oven`,
+      )
+    }
+  } else if (
+    bought.length !== 1 ||
+    purchase === undefined ||
+    !sameEntry(
+      {
+        day: ovenBoughtOnDay,
+        memo: BAKERY_MEMO.ovenBought,
+        lines: [
+          { account: EQUIPMENT, debit: priceCents, credit: cents(0) },
+          { account: CASH, debit: cents(0), credit: priceCents },
+        ],
+      },
+      purchase,
+    )
+  ) {
+    invalid(
+      `the journal does not hold one « ${BAKERY_MEMO.ovenBought} » of ${priceCents} on day ${ovenBoughtOnDay}`,
+    )
+  }
+
+  for (const [field, planned] of [
+    ['decisions', decisions],
+    ['pendingDecisions', pendingDecisions],
+  ] as const) {
+    const plan = planned?.bakery ?? null
+    if (plan === null) continue
+    if (plan.oven === 'louer' && ovenBoughtOnDay !== null) {
+      invalid(
+        `${field}.bakery leases an oven, but the business owns one since day ${ovenBoughtOnDay}`,
+      )
+    }
+    if (holdsPremises(bakery, day) && plan.oven !== oven) {
+      invalid(
+        `${field}.bakery.oven is ${plan.oven}, but the bakery runs with ${oven}`,
+      )
+    }
+  }
+  if (
+    lastDay?.day === day &&
+    (decisions.bakery !== null) !==
+      (openedOnDay !== null && closesAfterDay === null)
+  ) {
+    invalid(
+      `the bakery ${openedOnDay === null ? 'does not run' : closesAfterDay === null ? 'runs' : 'is under notice'} at the close of day ${day}, with ${decisions.bakery === null ? 'none' : 'one'} planned`,
+    )
   }
 }
 

@@ -154,6 +154,7 @@ const PLACE: Record<AccountCode, Place> = {
   '6000': 'expenses',
   '6100': 'expenses',
   '6120': 'expenses',
+  '6130': 'expenses',
   '6150': 'expenses',
   '6200': 'expenses',
   '6300': 'expenses',
@@ -218,10 +219,11 @@ type CashFlowRow = (typeof CASH_FLOW_ROWS)[number]['key']
 // so a new account does not compile until it has a row. Interest paid is an
 // operating flow, as ASPE section 1540 has it, on a row of its own so the
 // cash the debt costs shows; the principal repaid goes with the loans, in
-// financing. The truck's lease is an operating charge like the rent, and
-// packaging is bought goods like stock. Stocks and Pertes sur stocks go with
-// the suppliers, so the cost of a sale and the stock it uses cancel out
-// within one row when the engine posts them with the sale. Amortissement
+// financing. The truck's lease, and the bakery oven's, are operating charges
+// like the rent, and packaging is bought goods like stock. Stocks and Pertes
+// sur stocks go with the suppliers, so the cost of a sale and the stock it
+// uses cancel out within one row when the engine posts them with the sale,
+// and the bakery's ingredients are paid to a supplier too. Amortissement
 // goes with the equipment for the same reason: depreciation never moves cash,
 // and it cancels out against Amortissement cumulé. Créances irrécouvrables
 // goes with the customers likewise: a write-off never moves cash, and it
@@ -243,6 +245,7 @@ const CASH_FLOW_ROW: Record<Exclude<AccountCode, typeof CASH>, CashFlowRow> = {
   '6000': 'wages',
   '6100': 'otherExpenses',
   '6120': 'otherExpenses',
+  '6130': 'otherExpenses',
   '6150': 'otherExpenses',
   '6200': 'otherExpenses',
   '6300': 'otherExpenses',

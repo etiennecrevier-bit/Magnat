@@ -6,6 +6,7 @@ import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { cents } from '../../src/engine/money.ts'
 import {
   gridOwnerChanges,
+  locks,
   medalCounts,
   playDefi,
   type DefiGame,
@@ -126,7 +127,7 @@ function playedWith(
 ): DefiGame[] {
   // The play ignores the strategy it is handed.
   const only = (_: Strategy, defi: Defi) =>
-    changes.filter(({ kind }) => !defi.locked.includes(kind))
+    changes.filter(({ kind }) => !locks(defi, kind))
   return games(seeds, (seed) => playDefi(id, seed, BEST[id]!, DEFIS, only))
 }
 

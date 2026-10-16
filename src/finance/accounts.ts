@@ -77,6 +77,12 @@ const CHART = [
     type: 'charge',
     normalBalance: 'debit',
   },
+  {
+    code: '6130',
+    name: 'Location du fournil',
+    type: 'charge',
+    normalBalance: 'debit',
+  },
   { code: '6150', name: 'Assurances', type: 'charge', normalBalance: 'debit' },
   {
     code: '6200',

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import bakeryJson from './bakery.json'
 import difficultyJson from './difficulty.json'
 import energyJson from './energy.json'
 import foodTruckJson from './foodtruck.json'
@@ -8,6 +9,7 @@ import reportJson from './report.json'
 import {
   dayTypeIdSchema,
   difficultyIdSchema,
+  loadBakeryContent,
   loadCustomerContent,
   loadDifficultyContent,
   loadEnergyContent,
@@ -639,6 +641,32 @@ describe('loadDifficultyContent', () => {
     reject(without(path, difficultyJson), path)
   })
 
+  it('gives each difficulty its bakery prices, in whole cents', () => {
+    const { bakery } = loadDifficultyContent()
+    expect(Object.keys(bakery).sort()).toEqual(
+      [...difficultyIdSchema.options].sort(),
+    )
+    for (const id of difficultyIdSchema.options) {
+      expect(Number.isSafeInteger(bakery[id].monthlyRentCents)).toBe(true)
+      expect(bakery[id].ingredientCostCents).toBeGreaterThan(0)
+    }
+  })
+
+  it.each([
+    ['bakery.facile.monthlyRentCents', 2400.5],
+    ['bakery.moyen.monthlyRentCents', -1],
+    ['bakery.difficile.ingredientCostCents', 0],
+    ['bakery.moyen.ingredientCostCents', 55.5],
+    ['bakery.moyen.ingredientCostCents', '55'],
+  ])('rejects %s = %s', (path, value) => {
+    reject(withDifficultyValue(path, value), path)
+  })
+
+  it('rejects a difficulty without its bakery prices', () => {
+    reject(without('bakery.difficile', difficultyJson), 'bakery.difficile')
+    reject(withDifficultyValue('bakery.moyen.rent', 1), 'bakery.moyen')
+  })
+
   it('accepts a loan without interest', () => {
     const raw = withDifficultyValue(
       'difficulties.moyen.truck.annualRateBasisPoints',
@@ -648,6 +676,73 @@ describe('loadDifficultyContent', () => {
       kind: 'loan',
       annualRateBasisPoints: 0,
     })
+  })
+})
+
+describe('loadBakeryContent', () => {
+  const loadBakery: Load = loadBakeryContent
+  const reject = (raw: unknown, path: string) =>
+    expectRejected(raw, path, loadBakery)
+  const withBakeryValue = (path: string, value: unknown) =>
+    withValue(path, value, bakeryJson)
+
+  it('loads the shipped bakery.json', () => {
+    const bakery = loadBakeryContent()
+    expect(bakery.capacityPerDay).toBeGreaterThan(0)
+    expect(bakery.startingDecisions.croissantSource).toBe('acheter')
+  })
+
+  it('names bakery.json in its error', () => {
+    expect(() => loadBakeryContent({})).toThrow(/^bakery\.json is invalid/)
+  })
+
+  it.each([
+    ['oven.priceCents', 0],
+    ['oven.priceCents', 25_000.5],
+    ['oven.usefulLifeMonths', 0],
+    ['oven.usefulLifeMonths', 1.5],
+    ['oven.monthlyLeaseCents', -1],
+    ['capacityPerDay', 0],
+    ['capacityPerDay', 2.5],
+    ['movingCostCents', 1_500.5],
+    ['noticeMonths', -1],
+    ['noticeMonths', 0.5],
+    ['bakingEnergyCost', -1],
+    ['bakingEnergyCost', 101],
+    ['startingDecisions.croissantSource', 'voler'],
+    ['startingDecisions.bake.quantity', -1],
+    ['startingDecisions.bake.kind', 'bakeWeekly'],
+  ])('rejects %s = %s', (path, value) => {
+    reject(withBakeryValue(path, value), path)
+  })
+
+  it('rejects a mistyped key', () => {
+    const raw = withBakeryValue('oven.leaseCents', 1)
+    reject(raw, 'oven')
+    expect(() => loadBakeryContent(raw)).toThrow(
+      'Unrecognized key: "leaseCents"',
+    )
+  })
+
+  it('rejects a starting bake rule beyond the capacity, of either kind', () => {
+    const { capacityPerDay } = bakeryJson
+    reject(
+      withBakeryValue('startingDecisions.bake.quantity', capacityPerDay + 1),
+      'startingDecisions.bake',
+    )
+    reject(
+      withBakeryValue('startingDecisions.bake', {
+        kind: 'topUp',
+        whenBelow: 10,
+        upTo: capacityPerDay + 1,
+      }),
+      'startingDecisions.bake',
+    )
+    expect(
+      loadBakeryContent(
+        withBakeryValue('startingDecisions.bake.quantity', capacityPerDay),
+      ).startingDecisions.bake,
+    ).toEqual({ kind: 'buyDaily', quantity: capacityPerDay })
   })
 })
 
