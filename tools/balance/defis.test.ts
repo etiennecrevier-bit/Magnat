@@ -9,6 +9,7 @@ import {
   defiOwnerChanges,
   defiTarget,
   finishedPercentiles,
+  gridOwnerChanges,
   medalCounts,
   outcomeAt,
   playDefi,
@@ -74,7 +75,10 @@ describe('defiOwnerChanges', () => {
   })
 
   it("scales the Défi's opening croissants as the grid scales the starting 70, rounded half up", () => {
-    const defi = defiById(DEFIS, 'zeroGaspillage')
+    const defi: Defi = {
+      ...defiById(DEFIS, 'zeroGaspillage'),
+      setup: { restock: { croissant: { kind: 'buyDaily', quantity: 30 } } },
+    }
     const croissants = (croissantsPerDay: number) =>
       defiOwnerChanges({ ...BASE, croissantsPerDay }, defi).find(
         (change) => change.kind === 'restock',
@@ -116,6 +120,19 @@ describe('defiOwnerChanges', () => {
   })
 })
 
+describe('gridOwnerChanges', () => {
+  it("is the grid's own values, P3-13's owners, less the kinds the Défi locks", () => {
+    const strategy = ownerStrategy(4)
+    const zero = defiById(DEFIS, 'zeroGaspillage')
+    expect(gridOwnerChanges(strategy, zero)).toEqual(strategyChanges(strategy))
+    expect(
+      gridOwnerChanges(strategy, defiById(DEFIS, 'moisSansConge')),
+    ).toEqual(
+      strategyChanges(strategy).filter(({ kind }) => kind !== 'daysOpen'),
+    )
+  })
+})
+
 describe('playDefi', () => {
   it('plays the same game from the same seed and strategy, to its end', () => {
     const strategy = ownerStrategy(3)
@@ -137,6 +154,16 @@ describe('playDefi', () => {
       playDefi('semaineDesMilleDollars', 5, strategy, days(lengthDays)).value
     expect(value(cheap, 1)).toBe(value(dear, 1))
     expect(value(cheap, 2)).not.toBe(value(dear, 2))
+  })
+
+  it("makes the changes it is given in place of the owner's", () => {
+    const strategy = ownerStrategy(2)
+    expect(
+      playDefi('zeroGaspillage', 2, strategy, DEFIS, gridOwnerChanges),
+    ).not.toEqual(playDefi('zeroGaspillage', 2, strategy))
+    expect(
+      playDefi('zeroGaspillage', 2, strategy, DEFIS, defiOwnerChanges),
+    ).toEqual(playDefi('zeroGaspillage', 2, strategy))
   })
 
   it('answers a forced card only with a choice the Défi allows', () => {

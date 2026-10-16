@@ -35,6 +35,7 @@ import { ownerStrategy, PERCENTILES, quantileCents } from './owners.ts'
 import {
   changedPrice,
   STRATEGIES,
+  strategyChanges,
   WEEKDAYS,
   type Strategy,
 } from './strategies.ts'
@@ -126,6 +127,24 @@ export function defiOwnerChanges(
   return changes.filter(({ kind }) => !defi.locked.includes(kind))
 }
 
+/**
+ * The changes P3-13's owners make (#101): the grid's own values, whatever
+ * the Défi opens on (see `strategyChanges`), less the kinds the Défi locks.
+ * `npm run balance -- --defis` does not play them; the tests keep them as a
+ * check that nothing moves unnoticed.
+ */
+export function gridOwnerChanges(
+  strategy: Strategy,
+  defi: Defi,
+): DecisionChange[] {
+  return strategyChanges(strategy).filter(
+    ({ kind }) => !defi.locked.includes(kind),
+  )
+}
+
+/** How an owner's strategy turns into the changes made in a Défi. */
+export type OwnerChanges = (strategy: Strategy, defi: Defi) => DecisionChange[]
+
 function dailyQuantity(
   rule: FoodTruckContent['startingDecisions']['restock']['croissant'],
 ): number {
@@ -155,10 +174,10 @@ export interface DefiGame {
 
 /**
  * Plays the Défi `defiId` of `defis` from seed `seed` as a player would:
- * `startChallenge()`, then the owner's changes (see `defiOwnerChanges`)
- * made with `applyDecision()` on the first morning, so they take effect
- * from the second day. Each morning, the card waiting is answered with a
- * choice drawn at random among those the Défi allows (see
+ * `startChallenge()`, then the owner's changes, by default those of
+ * `defiOwnerChanges`, made with `applyDecision()` on the first morning, so
+ * they take effect from the second day. Each morning, the card waiting is
+ * answered with a choice drawn at random among those the Défi allows (see
  * `allowedChoices`), from a stream seeded from `seed` of its own; then
  * `tick()` plays the day with the shipped event cards, until the Défi is
  * over.
@@ -168,10 +187,11 @@ export function playDefi(
   seed: number,
   strategy: Strategy,
   defis: DefiContent = DEFIS,
+  changes: OwnerChanges = defiOwnerChanges,
 ): DefiGame {
   const defi = defiById(defis, defiId)
   let state = startChallenge(defiId, seed, FOOD_TRUCK, defis)
-  for (const change of defiOwnerChanges(strategy, defi)) {
+  for (const change of changes(strategy, defi)) {
     state = applyDecision(state, change, FOOD_TRUCK, defis)
   }
   let choices = seedRng((seed ^ CHOICE_SALT) >>> 0)

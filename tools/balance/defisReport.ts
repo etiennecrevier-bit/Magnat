@@ -18,6 +18,7 @@ import {
   outcomeAt,
   suggestedThresholds,
   SUGGESTED_PERCENTILES,
+  type DefiGame,
   type DefiRun,
 } from './defis.ts'
 import { PERCENTILES } from './owners.ts'
@@ -154,6 +155,16 @@ export function formatDefisSection(run: DefisBalanceRun): string {
     row(['---', ...PERCENTILES.map(() => '---:'), '---:', '---:', '---:']),
     ...named.map(({ played, defi }) => outcomeRow(played, defi)),
     '',
+    '### Best strategy’s outcomes',
+    '',
+    `The same for the best strategy's ${run.games} games: « Or » at or below its 20th percentile's outcome gives it « Or » in 80 % of them or more.`,
+    '',
+    row(['Défi', ...PERCENTILES.map((percentile) => `${percentile}%`)]),
+    row(['---', ...PERCENTILES.map(() => '---:')]),
+    ...named.map(({ played, defi }) =>
+      row([defi.id, ...percentileCells(defi.goal.metric, played.best.games)]),
+    ),
+    '',
     DEFIS_END,
   ].join('\n')
 }
@@ -231,18 +242,27 @@ function targetRow(played: DefiRun, defi: Defi): string {
 
 function outcomeRow(played: DefiRun, defi: Defi): string {
   const { metric } = defi.goal
-  const shown = (value: number | null, none: string) =>
-    value === null ? none : formatValue(metric, value)
   const suggested = suggestedThresholds(metric, played.owners)
+  const shown = (value: number | null) =>
+    value === null ? 'n/a' : formatValue(metric, value)
   return row([
     defi.id,
-    ...PERCENTILES.map((percentile) =>
-      shown(outcomeAt(metric, played.owners, percentile), 'broken'),
-    ),
-    shown(suggested.or, 'n/a'),
-    shown(suggested.argent, 'n/a'),
-    shown(suggested.bronze, 'n/a'),
+    ...percentileCells(metric, played.owners),
+    shown(suggested.or),
+    shown(suggested.argent),
+    shown(suggested.bronze),
   ])
+}
+
+/** The outcome of `games` at each percentile, worst first, or « broken ». */
+function percentileCells(
+  metric: DefiMetric,
+  games: readonly DefiGame[],
+): string[] {
+  return PERCENTILES.map((percentile) => {
+    const value = outcomeAt(metric, games, percentile)
+    return value === null ? 'broken' : formatValue(metric, value)
+  })
 }
 
 const METRIC_NAMES: Readonly<Record<DefiMetric, string>> = {
