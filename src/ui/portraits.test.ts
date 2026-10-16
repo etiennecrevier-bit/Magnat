@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import eventsJson from '../content/events.json'
-import { PORTRAIT_URLS, portraitUrl } from './portraits.ts'
+import { BANKER, PORTRAIT_URLS, portraitUrl } from './portraits.ts'
 
 // The shipped portraits are read from disk, not from PORTRAIT_URLS: Vitest
 // caches portraits.ts as first transformed, with the files its glob matched
@@ -76,6 +76,10 @@ describe('the shipped portraits', () => {
         !PORTRAIT_FILES.includes(`${id}.png`),
     )
     expect(missing).toEqual([])
+  })
+
+  it("include the banker's, which the reports' advice shows", () => {
+    expect(PORTRAIT_FILES).toContain(`${BANKER}.png`)
   })
 
   it('leave out only characters that are on a card and have no file', () => {

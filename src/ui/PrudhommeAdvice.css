@@ -1,0 +1,38 @@
+/* « Le conseil de Mme Prudhomme », a card set apart from the report it
+   sits in. Its ink #2b2622 and brown #5c5048 keep at least 4.5:1 against
+   its white. */
+.prudhomme-advice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+  border: 1px solid #e3d3b4;
+  border-radius: 8px;
+  background: #fff;
+  color: #2b2622;
+}
+
+/* Framed as on an event card, smaller. */
+.prudhomme-advice__portrait {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border: 2px solid #2b2622;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.prudhomme-advice p {
+  margin: 0;
+}
+
+.prudhomme-advice__title {
+  color: #5c5048;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.prudhomme-advice__text {
+  font-style: italic;
+}
