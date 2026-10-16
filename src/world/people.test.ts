@@ -109,9 +109,12 @@ interface Point {
   readonly y: number
 }
 
-/** `look` drawn to face `facing`, turned as the street turns it. */
-function turned(look: Look, facing: 1 | -1): Container {
-  const drawn = drawCustomer(look, STYLE, LOOKS, facing)
+/**
+ * `look` drawn to face `facing`, turned as the street turns it, holding a
+ * cup with `cup`.
+ */
+function turned(look: Look, facing: 1 | -1, cup = false): Container {
+  const drawn = drawCustomer(look, STYLE, LOOKS, facing, cup)
   drawn.scale.x = facing
   return drawn
 }
@@ -406,21 +409,26 @@ describe('drawCustomer', () => {
     'lights every part on the left of the screen, facing %i',
     (facing) => {
       for (const segment of SEGMENTS) {
-        const drawn = turned({ ...FAMILY, segment }, facing)
-        const parts = ['torso', 'head', 'legs', 'arms', 'laptopBag']
-        if (segment === 'chic') parts.push('coat')
-        if (segment === 'habitue') parts.push('forearm')
-        for (const part of parts) {
-          const pairs = shading(find(drawn, part) as Graphics)
-          expect(pairs.length, `${segment} ${part}`).toBeGreaterThan(0)
-          for (const { shade, lit } of pairs) {
-            expect(lit.x, `${segment} ${part}`).toBeLessThan(shade.x)
+        for (const cup of [false, true]) {
+          const drawn = turned({ ...FAMILY, segment }, facing, cup)
+          const parts = ['torso', 'head', 'legs', 'arms', 'laptopBag']
+          if (segment === 'chic') parts.push('coat')
+          if (segment === 'habitue') parts.push('newspaper')
+          if (cup) parts.push('forearm')
+          for (const part of parts) {
+            const pairs = shading(find(drawn, part) as Graphics)
+            expect(pairs.length, `${segment} ${part}`).toBeGreaterThan(0)
+            for (const { shade, lit } of pairs) {
+              expect(lit.x, `${segment} ${part}`).toBeLessThan(shade.x)
+            }
           }
-        }
-        const child = find(drawn, 'child')
-        for (const part of ['torso', 'head', 'legs']) {
-          for (const { shade, lit } of shading(find(child, part) as Graphics)) {
-            expect(lit.x, `child ${part}`).toBeLessThan(shade.x)
+          const child = find(drawn, 'child')
+          for (const part of ['torso', 'head', 'legs']) {
+            for (const { shade, lit } of shading(
+              find(child, part) as Graphics,
+            )) {
+              expect(lit.x, `child ${part}`).toBeLessThan(shade.x)
+            }
           }
         }
       }
@@ -464,7 +472,7 @@ describe('drawCustomer', () => {
       hex(shade(childSkin)),
       hex(childSkin),
     ])
-    expect(labels(child)).not.toContain('mug')
+    expect(labels(child)).not.toContain('newspaper')
     expect(labels(drawCustomer(LOOK, STYLE, LOOKS))).not.toContain('child')
   })
 
@@ -477,31 +485,43 @@ describe('drawCustomer', () => {
   const PEOPLE = SEGMENTS.flatMap((segment) =>
     ([null, 'lanyard', 'laptopBag'] as const).flatMap((office) =>
       [null, CHILD].flatMap((child) =>
-        [null, FAN].map((fan) => ({
-          name: [segment, office, child && 'child', fan && 'fan']
-            .filter(Boolean)
-            .join(', '),
-          look: { ...LOOK, segment, office, child, fan },
-        })),
+        [null, FAN].flatMap((fan) =>
+          [false, true].map((cup) => ({
+            name: [
+              segment,
+              office,
+              child && 'child',
+              fan && 'fan',
+              cup && 'cup',
+            ]
+              .filter(Boolean)
+              .join(', '),
+            look: { ...LOOK, segment, office, child, fan },
+            cup,
+          })),
+        ),
       ),
     ),
   )
 
-  it.each(PEOPLE)('draws exactly two hands per person: $name', ({ look }) => {
-    for (const facing of [1, -1] as const) {
-      const drawn = turned(look, facing)
-      expect(hands(drawn, look.skin)).toHaveLength(2)
-      if (look.child !== null) {
-        expect(hands(drawn, look.child.skin)).toHaveLength(2)
+  it.each(PEOPLE)(
+    'draws exactly two hands per person: $name',
+    ({ look, cup }) => {
+      for (const facing of [1, -1] as const) {
+        const drawn = turned(look, facing, cup)
+        expect(hands(drawn, look.skin)).toHaveLength(2)
+        if (look.child !== null) {
+          expect(hands(drawn, look.child.skin)).toHaveLength(2)
+        }
       }
-    }
-  })
+    },
+  )
 
   it.each(PEOPLE)(
     'keeps most of each hand in sight of what they carry: $name',
-    ({ look }) => {
+    ({ look, cup }) => {
       for (const facing of [1, -1] as const) {
-        const drawn = turned(look, facing)
+        const drawn = turned(look, facing, cup)
         const skins = [look.skin, ...(look.child ? [look.child.skin] : [])]
         for (const hand of skins.flatMap((skin) => hands(drawn, skin))) {
           expect(
@@ -522,21 +542,25 @@ describe('drawCustomer', () => {
     )
   }
 
-  it('holds the mug in one of their own hands', () => {
-    const drawn = drawCustomer(LOOK, STYLE, LOOKS)
-    expect(holdingHands(drawn, LOOK, 'mug')).toHaveLength(1)
+  it('holds a cup only once served, in one of their own hands', () => {
+    for (const segment of SEGMENTS) {
+      const look = { ...LOOK, segment }
+      expect(labels(drawCustomer(look, STYLE, LOOKS))).not.toContain('cup')
+      const drawn = drawCustomer(look, STYLE, LOOKS, 1, true)
+      expect(holdingHands(drawn, look, 'cup')).toHaveLength(1)
+    }
   })
 
-  it('holds a fan in the hand on the right, and a mug still in the left', () => {
+  it('holds a fan in the hand on the right, and a cup still in the left', () => {
     const look = { ...LOOK, fan: FAN }
-    const drawn = drawCustomer(look, STYLE, LOOKS)
+    const drawn = drawCustomer(look, STYLE, LOOKS, 1, true)
     const fan = holdingHands(drawn, look, 'fan')
-    const mug = holdingHands(drawn, look, 'mug')
+    const cup = holdingHands(drawn, look, 'cup')
     expect(fan).toHaveLength(1)
-    expect(mug).toHaveLength(1)
+    expect(cup).toHaveLength(1)
     expect(fan[0]!.x).toBeGreaterThan(0)
-    expect(mug[0]!.x).toBeLessThan(0)
-    // Its leaves open above the hand, in its colour, outlined like the mug.
+    expect(cup[0]!.x).toBeLessThan(0)
+    // Its leaves open above the hand, in its colour, outlined like the cup.
     expect(find(drawn, 'fan').getBounds().maxY).toBeLessThanOrEqual(
       fan[0]!.y + fan[0]!.r,
     )
