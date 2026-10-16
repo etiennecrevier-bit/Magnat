@@ -8,7 +8,7 @@ import type {
 import { toCalendar } from '../engine/clock.ts'
 import { onHand } from '../engine/inventory.ts'
 import { MODIFIER_KINDS, inEffect, streetOn } from '../engine/street.ts'
-import type { GameState, StreetModifier } from '../engine/types.ts'
+import type { EventRecord, GameState, StreetModifier } from '../engine/types.ts'
 
 /** What the truck shows on the day the top bar names. */
 export interface TruckView {
@@ -19,7 +19,13 @@ export interface TruckView {
   /** The name written on the sign: the business's, from the profile. */
   readonly businessName: string
   /** The changes to the street in effect on day `game.day`. */
-  readonly modifiers: readonly StreetModifier[]
+  readonly modifiers: readonly ChosenModifier[]
+}
+
+/** A change to the street, with the choice of its card that made it. */
+export interface ChosenModifier extends StreetModifier {
+  /** The choice's id; none for a change a Défi forces. */
+  readonly choice?: string
 }
 
 /** Reads what the truck shows from the game. */
@@ -28,7 +34,7 @@ export function truckView(game: GameState): TruckView {
     open: opensToday(game),
     croissants: openingStock(game, 'croissant'),
     businessName: game.profile.businessName,
-    modifiers: modifiersToday(game),
+    modifiers: chosenModifiers(game),
   }
 }
 
@@ -62,6 +68,29 @@ export function modifiersToday(game: GameState): StreetModifier[] {
   return inEffect([...events.modifiers, ...starting], day)
 }
 
+/**
+ * The changes to the street in effect on day `game.day`, as
+ * `modifiersToday` gives them, each with the choice that made it: the last
+ * one of its card on its first day or before, as the history keeps them.
+ * A change a Défi forces has none.
+ */
+export function chosenModifiers(game: GameState): ChosenModifier[] {
+  const { history } = game.events
+  return modifiersToday(game).map((modifier) => ({
+    ...modifier,
+    choice: choiceOf(history, modifier),
+  }))
+}
+
+function choiceOf(
+  history: readonly EventRecord[],
+  { event, fromDay }: StreetModifier,
+): string | undefined {
+  return history.findLast(
+    (record) => record.event === event && record.day <= fromDay,
+  )?.choice
+}
+
 /** An effect that changes the street for a while. */
 type StreetEffect = Extract<EventEffect, { kind: StreetModifierKind }>
 
@@ -72,7 +101,8 @@ function changesStreet(effect: EventEffect): effect is StreetEffect {
 /**
  * Whether a piece that `shows` so shows in `view`: on open or closed days,
  * while any change to the street from the event card it names is in
- * effect, or while the product it names cannot be sold.
+ * effect, but for those its `except` choices made, or while the product it
+ * names cannot be sold.
  */
 export function showsOn(
   shows: Shows,
@@ -81,7 +111,11 @@ export function showsOn(
   if (shows === 'open') return view.open
   if (shows === 'closed') return !view.open
   if ('event' in shows) {
-    return view.modifiers.some(({ event }) => event === shows.event)
+    return view.modifiers.some(
+      ({ event, choice }) =>
+        event === shows.event &&
+        (choice === undefined || !shows.except?.includes(choice)),
+    )
   }
   return view.modifiers.some(
     ({ change }) =>

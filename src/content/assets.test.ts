@@ -163,6 +163,24 @@ describe('assets.json', () => {
     for (const event of named) expect(cards, event).toContain(event)
   })
 
+  it("names only the card's own choices in `except`", () => {
+    const { pieces, fans } = loadAssetManifest()
+    const { events } = loadEventContent()
+    const except = [...pieces.map((p) => p.shows), fans.shows].flatMap(
+      (shows?: Shows) =>
+        shows !== undefined && typeof shows === 'object' && 'event' in shows
+          ? (shows.except ?? []).map((choice) => [shows.event, choice])
+          : [],
+    )
+    expect(except).toContainEqual(['conesOrange', 'changerDeCoin'])
+    for (const [event, choice] of except) {
+      const choices = events
+        .find(({ id }) => id === event)
+        ?.choices.map(({ id }) => id)
+      expect(choices, `${event} ${choice}`).toContain(choice)
+    }
+  })
+
   it('writes the signs in French', () => {
     const text = Object.fromEntries(
       loadAssetManifest().pieces.map((p) => [p.id, p.text]),
@@ -181,6 +199,7 @@ describe('assets.json', () => {
       'open',
       'closed',
       { event: 'festival' },
+      { event: 'conesOrange', except: ['changerDeCoin'] },
       { unavailable: 'croissant' },
     ]) {
       const raw = shipped()
@@ -333,6 +352,13 @@ describe('loadAssetManifest', () => {
     'a piece shown with an empty event',
     (raw) => {
       piece(raw, 'bunting').shows = { event: '' }
+    },
+    /pieces\[\d+\]\.shows/,
+  )
+  rejects(
+    'a piece shown with an empty except',
+    (raw) => {
+      piece(raw, 'road-sign').shows = { event: 'conesOrange', except: [] }
     },
     /pieces\[\d+\]\.shows/,
   )
