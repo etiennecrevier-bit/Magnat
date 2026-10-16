@@ -21,10 +21,14 @@ import { cents } from '../engine/money.ts'
 import { MODIFIER_KINDS } from '../engine/street.ts'
 import type {
   DelayedEffect,
+  EventRecord,
   GameState,
   StreetModifier,
 } from '../engine/types.ts'
+import { ASSETS } from './manifest.ts'
 import {
+  type ChosenModifier,
+  chosenModifiers,
   modifiersToday,
   openingStock,
   opensToday,
@@ -310,11 +314,20 @@ describe('modifiersToday', () => {
         const played = playDay(state)
         expect(today, `day ${day}`).toEqual(played.lastDay!.modifiers)
         expect(opensToday(state), `day ${day} open`).toBe(engineOpened(played))
-        expect(truckView(state).modifiers).toEqual(today)
+        const shown = truckView(state).modifiers
+        expect(shown).toMatchObject(today)
 
-        for (const { event, change } of today) {
+        for (const { event, change, choice } of shown) {
           events.add(event)
           if (change.kind === 'unavailable') seen.unavailable += 1
+          // Made by a choice of its card that makes such a change.
+          const made = OFTEN.events
+            .find(({ id }) => id === event)
+            ?.choices.find(({ id }) => id === choice)
+          expect(
+            made?.outcomes.flatMap(({ effects }) => effects.map((e) => e.kind)),
+            `day ${day} ${event} ${choice}`,
+          ).toContain(change.kind)
         }
         const { weekday } = toCalendar(state.day)
         if (state.decisions.daysOpen.includes(weekday) && !opensToday(state)) {
@@ -410,8 +423,57 @@ describe('openingStock while a product cannot be sold', () => {
   })
 })
 
+describe('chosenModifiers', () => {
+  /** `choice` of `event` chosen on the morning of `day`. */
+  function chosen(day: number, event: string, choice: string): EventRecord {
+    return { day, event, followUp: false, choice, outcome: 0 }
+  }
+
+  it('gives each change the choice that made it, those it queued included', () => {
+    const waiting: GameState = {
+      ...tuesday,
+      events: {
+        ...tuesday.events,
+        pending: { event: 'conesOrange', followUp: false },
+      },
+    }
+    const moved = resolveEvent(waiting, 'changerDeCoin')
+    const kinds = (game: GameState) =>
+      chosenModifiers(game).map(({ change, choice }) => [change.kind, choice])
+    expect(kinds(moved)).toEqual([['walkIns', 'changerDeCoin']])
+    expect(kinds(tick(moved))).toEqual([
+      ['walkIns', 'changerDeCoin'],
+      ['closed', 'changerDeCoin'],
+    ])
+  })
+
+  it('takes the last choice of the card on its first day or before, and none for a Défi', () => {
+    const before = modifier('conesOrange', FEWER, 0, 3)
+    const after = modifier('conesOrange', FEWER, 1, 3)
+    const street = withEvents(tuesday, [before, after])
+    const game: GameState = {
+      ...street,
+      events: {
+        ...street.events,
+        history: [
+          chosen(0, 'conesOrange', 'patienter'),
+          chosen(1, 'canicule', 'glace'),
+          chosen(1, 'conesOrange', 'changerDeCoin'),
+        ],
+      },
+    }
+    expect(chosenModifiers(game).map(({ choice }) => choice)).toEqual([
+      'patienter',
+      'changerDeCoin',
+    ])
+    expect(chosenModifiers(withEvents(tuesday, [after]))).toEqual([
+      { ...after, choice: undefined },
+    ])
+  })
+})
+
 describe('showsOn', () => {
-  const view = (open: boolean, ...modifiers: StreetModifier[]) => ({
+  const view = (open: boolean, ...modifiers: ChosenModifier[]) => ({
     open,
     modifiers,
   })
@@ -433,6 +495,18 @@ describe('showsOn', () => {
     expect(showsOn(shows, view(false, cones))).toBe(true)
   })
 
+  it('leaves out the changes the choices in its `except` made', () => {
+    const shows = { event: 'conesOrange', except: ['changerDeCoin'] }
+    const moved = { ...cones, choice: 'changerDeCoin' }
+    const waited = { ...cones, choice: 'patienter' }
+    expect(showsOn(shows, view(true, moved))).toBe(false)
+    expect(showsOn(shows, view(false, broken, moved))).toBe(false)
+    expect(showsOn(shows, view(true, waited))).toBe(true)
+    expect(showsOn(shows, view(true, moved, waited))).toBe(true)
+    // A Défi's change, which no choice made.
+    expect(showsOn(shows, view(true, cones))).toBe(true)
+  })
+
   it("shows a product's piece while it cannot be sold, whatever made it so", () => {
     expect(showsOn({ unavailable: 'cafe' }, view(true))).toBe(false)
     expect(showsOn({ unavailable: 'cafe' }, view(true, cones))).toBe(false)
@@ -442,5 +516,77 @@ describe('showsOn', () => {
     )
     const essai = modifier('essai', NO_CAFE, 1, 1)
     expect(showsOn({ unavailable: 'cafe' }, view(false, essai))).toBe(true)
+  })
+})
+
+describe('the construction of « Les cônes orange »', () => {
+  /** The shipped pieces the card draws round the truck. */
+  const CONSTRUCTION = ASSETS.pieces.filter(
+    ({ shows }) =>
+      typeof shows === 'object' &&
+      'event' in shows &&
+      shows.event === 'conesOrange',
+  )
+  const ALL = ['cones-left', 'cones-right', 'road-sign']
+
+  /**
+   * Each morning from the one `choiceId` is chosen on, a Tuesday, while a
+   * change to the street from the card is in effect.
+   */
+  function mornings(choiceId: string): GameState[] {
+    const waiting: GameState = {
+      ...tuesday,
+      events: {
+        ...tuesday.events,
+        pending: { event: 'conesOrange', followUp: false },
+      },
+    }
+    const seen: GameState[] = []
+    let state = resolveEvent(waiting, choiceId)
+    while (fromTheCard(state).length > 0) {
+      seen.push(state)
+      state = tick(state)
+    }
+    return seen
+  }
+
+  /** The changes to the street from the card on the morning of `game`. */
+  function fromTheCard(game: GameState): StreetModifier[] {
+    return modifiersToday(game).filter(({ event }) => event === 'conesOrange')
+  }
+
+  /** The construction pieces the street shows on the morning of `game`. */
+  function construction(game: GameState): string[] {
+    const view = truckView(game)
+    return CONSTRUCTION.filter(({ shows }) => showsOn(shows!, view)).map(
+      ({ id }) => id,
+    )
+  }
+
+  it('draws the cones, the barrier and « Rue barrée »', () => {
+    expect(CONSTRUCTION.map(({ id }) => id)).toEqual(ALL)
+  })
+
+  it.each(['patienter', 'vacances'])(
+    'keeps them round the truck for the 21 days « %s » changes the street',
+    (choiceId) => {
+      const days = mornings(choiceId)
+      expect(days).toHaveLength(21)
+      for (const game of days) {
+        expect(construction(game), `day ${game.day}`).toEqual(ALL)
+      }
+    },
+  )
+
+  it('leaves them at the old corner after « Changer de coin de rue », the fewer walk-ins kept', () => {
+    const days = mornings('changerDeCoin')
+    expect(days).toHaveLength(21)
+    for (const game of days) {
+      expect(
+        fromTheCard(game).map(({ change }) => change.kind),
+        `day ${game.day}`,
+      ).toContain('walkIns')
+      expect(construction(game), `day ${game.day}`).toEqual([])
+    }
   })
 })
