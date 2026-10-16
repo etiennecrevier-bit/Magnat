@@ -6,6 +6,7 @@ import type {
   FoodTruckContent,
   GrocerId,
   OvenTerms,
+  StaffContent,
 } from '../../src/content/schema.ts'
 import { BAKERY, BAKERY_MEMO } from '../../src/engine/bakery.ts'
 import { endOfMonth, toCalendar } from '../../src/engine/calendar.ts'
@@ -15,6 +16,7 @@ import type { DecisionChange } from '../../src/engine/decisions.ts'
 import { NO_EVENTS } from '../../src/engine/events.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
 import { PERCENTILES } from '../../src/engine/percentiles.ts'
+import { STAFF, weeklyWage } from '../../src/engine/staff.ts'
 import type { GameState } from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import { balance } from '../../src/finance/journal.ts'
@@ -27,10 +29,11 @@ import {
 import { changedPrice } from './strategies.ts'
 
 // The bakery's balance run, `npm run balance -- --bakery` (#157): each game
-// opens the bakery on day 0 and makes its croissants there, and its twin
-// plays the same seed and the same truck buying them, so the gap between
-// their Encaisse is what the bakery made or cost. The price sets and the
-// truck's strategies below are the test grid of #157, not tunables of the
+// opens the bakery on day 0 and makes its croissants there, with a baker
+// hired that day (#158), and its twin plays the same seed and the same truck
+// buying them, so the gap between their Encaisse is what the bakery made or
+// cost, the baker's wages included. The price sets and the truck's
+// strategies below are the test grid of #157 and #158, not tunables of the
 // game. No I/O: cli.ts writes the report.
 
 const CASH: AccountCode = '1000'
@@ -88,14 +91,34 @@ export interface TruckStrategy {
    * order, and renew each time.
    */
   readonly contracts: readonly GrocerId[]
+  /** Whether the game and its twin hire an employee at the truck on day 0. */
+  readonly atTruck: boolean
 }
+
+/**
+ * The employee at the truck a strategy hires, and the baker every bakery
+ * game hires, both on day 0 at their role's starting wage. Any candidate
+ * would do.
+ */
+export const AT_TRUCK_HIRE = {
+  kind: 'hire',
+  role: 'camion',
+  candidate: 'amelie',
+} as const satisfies DecisionChange
+export const BAKER_HIRE = {
+  kind: 'hire',
+  role: 'boulanger',
+  candidate: 'sophie',
+} as const satisfies DecisionChange
 
 /**
  * The starting decisions; a busy truck that sells about as many croissants
  * as the street lets it; the same truck making 150 a day, the volume #157
  * asks the bakery to win at, though the street buys fewer; and that truck
  * with the two contracts of #157, Marché Bio-Logique's, who pays more for
- * the croissants the bakery makes, and Épicerie Chez Normand's.
+ * the croissants the bakery makes, and Épicerie Chez Normand's. Then, for
+ * #158, the busy truck and the truck with contracts with an employee at the
+ * truck too.
  */
 export const TRUCK_STRATEGIES: readonly TruckStrategy[] = [
   {
@@ -104,6 +127,7 @@ export const TRUCK_STRATEGIES: readonly TruckStrategy[] = [
     croissantPriceChange: 0,
     marketingDaily: cents(0),
     contracts: [],
+    atTruck: false,
   },
   {
     name: 'busy',
@@ -111,6 +135,7 @@ export const TRUCK_STRATEGIES: readonly TruckStrategy[] = [
     croissantPriceChange: -20,
     marketingDaily: cents(8_000),
     contracts: [],
+    atTruck: false,
   },
   {
     name: '150 a day',
@@ -118,6 +143,7 @@ export const TRUCK_STRATEGIES: readonly TruckStrategy[] = [
     croissantPriceChange: -20,
     marketingDaily: cents(8_000),
     contracts: [],
+    atTruck: false,
   },
   {
     name: '150 a day, 2 contracts',
@@ -125,6 +151,23 @@ export const TRUCK_STRATEGIES: readonly TruckStrategy[] = [
     croissantPriceChange: -20,
     marketingDaily: cents(8_000),
     contracts: ['marcheBioLogique', 'chezNormand'],
+    atTruck: false,
+  },
+  {
+    name: 'busy, employee at the truck',
+    croissantsPerDay: 110,
+    croissantPriceChange: -20,
+    marketingDaily: cents(8_000),
+    contracts: [],
+    atTruck: true,
+  },
+  {
+    name: '150 a day, 2 contracts, employee at the truck',
+    croissantsPerDay: 150,
+    croissantPriceChange: -20,
+    marketingDaily: cents(8_000),
+    contracts: ['marcheBioLogique', 'chezNormand'],
+    atTruck: true,
   },
 ]
 
@@ -193,7 +236,8 @@ export function truckStrategy(name: string): TruckStrategy {
 
 /**
  * The changes that put `strategy` in place: the croissant's price, the
- * croissants bought each morning and the marketing budget.
+ * croissants bought each morning, the marketing budget and, if it has one,
+ * the employee at the truck.
  */
 export function truckChanges(
   strategy: TruckStrategy,
@@ -211,12 +255,13 @@ export function truckChanges(
       rule: { kind: 'buyDaily', quantity: strategy.croissantsPerDay },
     },
     { kind: 'marketingDaily', budget: strategy.marketingDaily },
+    ...(strategy.atTruck ? [AT_TRUCK_HIRE] : []),
   ]
 }
 
 /**
- * The changes that open the bakery with `oven` on top of `strategy`, and
- * make there the croissants the twin buys.
+ * The changes that open the bakery with `oven` on top of `strategy`, make
+ * there the croissants the twin buys, and hire the baker who makes them.
  */
 export function bakeryChanges(
   strategy: TruckStrategy,
@@ -230,6 +275,7 @@ export function bakeryChanges(
       kind: 'bake',
       rule: { kind: 'buyDaily', quantity: strategy.croissantsPerDay },
     },
+    BAKER_HIRE,
   ]
 }
 
@@ -394,18 +440,31 @@ export function openDaysPerMonth(daysPerWeek: number): number {
 }
 
 /**
+ * What the baker `BAKER_HIRE` hires is paid in an average month, in the
+ * books: their weekly wage at their role's starting wage, paid each week.
+ */
+export function monthlyBakerWage(staff: StaffContent = STAFF): number {
+  const { role } = BAKER_HIRE
+  const { start } = staff.roles[role].hourlyWageCents
+  return (weeklyWage({ role, hourlyWage: start }, staff) * 365) / 12 / 7
+}
+
+/**
  * What the bakery costs each month whatever it makes, in the books: the
- * rent, and the oven's lease or its month of depreciation.
+ * rent, the oven's lease or its month of depreciation, and the baker's
+ * wages (see `monthlyBakerWage`).
  */
 export function monthlyBakeryCosts(
   prices: BakeryPrices,
   oven: OvenTerms,
   content: BakeryContent = BAKERY,
+  staff: StaffContent = STAFF,
 ): number {
   const { priceCents, usefulLifeMonths, monthlyLeaseCents } = content.oven
   return (
     prices.monthlyRentCents +
-    (oven === 'louer' ? monthlyLeaseCents : priceCents / usefulLifeMonths)
+    (oven === 'louer' ? monthlyLeaseCents : priceCents / usefulLifeMonths) +
+    monthlyBakerWage(staff)
   )
 }
 
@@ -420,8 +479,8 @@ export function savingPerCroissant(
 /**
  * What the bakery adds to the bénéfice net in an average month, in cents,
  * making `perOpenDay` croissants each day the truck opens `daysPerWeek` days
- * a week: the saving on each, less its monthly costs. The baker's energy is
- * left out.
+ * a week: the saving on each, less its monthly costs, the baker's wages
+ * included.
  */
 export function monthlyResult(
   prices: BakeryPrices,
@@ -430,12 +489,13 @@ export function monthlyResult(
   daysPerWeek: number,
   content: BakeryContent = BAKERY,
   foodTruck: FoodTruckContent = FOOD_TRUCK,
+  staff: StaffContent = STAFF,
 ): number {
   return (
     savingPerCroissant(prices, foodTruck) *
       perOpenDay *
       openDaysPerMonth(daysPerWeek) -
-    monthlyBakeryCosts(prices, oven, content)
+    monthlyBakeryCosts(prices, oven, content, staff)
   )
 }
 
@@ -449,9 +509,10 @@ export function breakEvenPerOpenDay(
   daysPerWeek: number,
   content: BakeryContent = BAKERY,
   foodTruck: FoodTruckContent = FOOD_TRUCK,
+  staff: StaffContent = STAFF,
 ): number {
   return (
-    monthlyBakeryCosts(prices, oven, content) /
+    monthlyBakeryCosts(prices, oven, content, staff) /
     (savingPerCroissant(prices, foodTruck) * openDaysPerMonth(daysPerWeek))
   )
 }

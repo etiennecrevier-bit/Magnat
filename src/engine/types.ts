@@ -4,6 +4,7 @@
 
 import type {
   Avatar,
+  CandidateId,
   CroissantSource,
   DifficultyId,
   EventEffect,
@@ -13,6 +14,7 @@ import type {
   ProductId,
   RestockRule,
   SegmentId,
+  StaffRoleId,
   StreetChange,
 } from '../content/schema.ts'
 import type { Journal } from '../finance/journal.ts'
@@ -77,6 +79,8 @@ export interface DaySummary {
   readonly modifiers: readonly StreetModifier[]
   /** The croissants delivered to the grocers that morning, in order. */
   readonly deliveries: readonly Delivery[]
+  /** The deliveries nobody could make that morning, in order. */
+  readonly missed: readonly MissedDelivery[]
 }
 
 /** One customer segment's visits on a business day. */
@@ -113,7 +117,8 @@ export interface Visit {
   readonly leftMinute: number | null
   /**
    * Units of their order the owner botched and threw out, each made again
-   * if a unit was left; 0 when the owner is rested.
+   * if a unit was left; 0 when the owner is rested or an employee served
+   * them.
    */
   readonly botched: number
 }
@@ -165,6 +170,28 @@ export interface Decisions {
    * when they are made there; either kind of rule, within its capacity.
    */
   readonly bake: RestockRule
+  /**
+   * The employees the player wants, in the order they were hired. The
+   * morning it takes effect hires those not on staff and lets go those no
+   * longer in it.
+   */
+  readonly staff: readonly Hire[]
+}
+
+/** Someone the player hires, or wants to. */
+export interface Hire {
+  /** Who, by their id in the content. */
+  readonly candidate: CandidateId
+  /** What they do. */
+  readonly role: StaffRoleId
+  /** What they earn an hour. */
+  readonly hourlyWage: Cents
+}
+
+/** An employee on staff. */
+export interface Employee extends Hire {
+  /** The morning they started. */
+  readonly hiredOnDay: Day
 }
 
 /** The bakery the player wants running. */
@@ -305,6 +332,17 @@ export interface GameState {
   readonly bakery: BakeryState
   /** The grocers' weekly croissant contracts. */
   readonly contracts: ContractsState
+  /**
+   * The employees on staff, as of the last close, in the order they were
+   * hired.
+   */
+  readonly staff: readonly Employee[]
+  /**
+   * Whether the owner is away all of business day `day`: they neither serve,
+   * deliver nor bake, and their energy holds. `tick()` clears it for the
+   * next morning.
+   */
+  readonly ownerAway: boolean
 }
 
 /** The grocers' contracts of a game. */
@@ -313,6 +351,8 @@ export interface ContractsState {
   readonly running: readonly Contract[]
   /** Every delivery made, oldest first. */
   readonly deliveries: readonly Delivery[]
+  /** Every delivery nobody could make, oldest first. */
+  readonly missed: readonly MissedDelivery[]
   /**
    * The grocers who walked away, each with the last day they offer
    * nothing.
@@ -335,6 +375,16 @@ export interface Contract {
    * for those the bakery made.
    */
   readonly unitPrice: Cents
+  /** The deliveries it missed; always below the content's `maxStrikes`. */
+  readonly strikes: number
+}
+
+/** A week's delivery to a grocer that nobody could make. */
+export interface MissedDelivery {
+  /** The morning it was due. */
+  readonly day: Day
+  /** The grocer, by their id in the content. */
+  readonly grocer: GrocerId
 }
 
 /** One week's croissants delivered to a grocer, sold on credit. */

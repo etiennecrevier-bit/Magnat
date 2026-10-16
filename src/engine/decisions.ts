@@ -1,8 +1,11 @@
 import {
+  candidateIdSchema,
   croissantSourceSchema,
   decisionKindSchema,
   ovenTermsSchema,
+  staffRoleIdSchema,
   type BakeryContent,
+  type CandidateId,
   type CroissantSource,
   type DecisionKind,
   type DecisionLimits,
@@ -11,18 +14,27 @@ import {
   type OvenTerms,
   type ProductId,
   type RestockRule,
+  type StaffContent,
+  type StaffRoleId,
 } from '../content/schema.ts'
 import { BAKERY, holdsPremises, morningBakery } from './bakery.ts'
 import { isLocked } from './challenge.ts'
 import { DEFIS, FOOD_TRUCK } from './day.ts'
 import { PRODUCTS } from './inventory.ts'
 import type { Cents } from './money.ts'
-import type { BakeryPlan, BakeryState, Decisions, GameState } from './types.ts'
+import { STAFF } from './staff.ts'
+import type {
+  BakeryPlan,
+  BakeryState,
+  Decisions,
+  GameState,
+  Hire,
+} from './types.ts'
 
 // The player's decisions: how the truck runs, from its prices to the days it
-// opens, and the bakery that makes its croissants. A change waits in
-// `pendingDecisions` until the next morning, so a day is always played with
-// the decisions it began with.
+// opens, the bakery that makes its croissants and the employees. A change
+// waits in `pendingDecisions` until the next morning, so a day is always
+// played with the decisions it began with.
 
 // ISO 8601 weekdays run from 1 = Monday to 7 = Sunday; a calendar fact.
 const MONDAY = 1
@@ -59,11 +71,24 @@ export type DecisionChange =
       /** How many croissants the bakery makes each morning. */
       readonly rule: RestockRule
     }
+  | {
+      readonly kind: 'hire'
+      readonly role: StaffRoleId
+      readonly candidate: CandidateId
+    }
+  | { readonly kind: 'fire'; readonly candidate: CandidateId }
+  | {
+      readonly kind: 'setWage'
+      readonly candidate: CandidateId
+      /** What they earn an hour. */
+      readonly hourlyWage: Cents
+    }
 
 /**
  * The decisions a game starts with, from the content: the truck's, then no
- * bakery and the croissants as `bakery` has them. Throws a RangeError if
- * they break the content's own limits (see `validateDecisions`).
+ * bakery, the croissants as `bakery` has them, and nobody on staff. Throws a
+ * RangeError if they break the content's own limits (see
+ * `validateDecisions`).
  */
 export function startingDecisions(
   content: FoodTruckContent = FOOD_TRUCK,
@@ -79,6 +104,7 @@ export function startingDecisions(
     bakery: null,
     croissantSource: bakery.startingDecisions.croissantSource,
     bake: copied(bakery.startingDecisions.bake),
+    staff: [],
   }
   validateDecisions(decisions, content.decisionLimits, bakery)
   return decisions
@@ -112,6 +138,16 @@ export function latestDecisions(state: GameState): Decisions {
  * terms, or if `closeBakery` comes with none planned; and one naming the
  * kind if the game's Défi, one of `defis`, locks it. A Défi locks none of
  * the bakery's changes.
+ *
+ * `hire` adds the candidate to the staff the player wants, after the
+ * others, at their role's starting wage in `staff`; `fire` takes them out,
+ * which costs nothing for a hire who has not started yet; `setWage` gives
+ * them another hourly wage. The next morning hires, lets go and pays as the
+ * staff then wants (see `staffMorning`). Throws a RangeError if `hire` names
+ * a candidate already wanted or who works the day under way, or a role or
+ * candidate `staff` does not know, if `fire` or `setWage` names one not
+ * wanted, or if the staff then breaks `staff`'s limits (see
+ * `validateDecisions`). A Défi locks none of these either.
  */
 export function applyDecision(
   state: GameState,
@@ -119,14 +155,21 @@ export function applyDecision(
   content: FoodTruckContent = FOOD_TRUCK,
   defis: DefiContent = DEFIS,
   bakery: BakeryContent = BAKERY,
+  staff: StaffContent = STAFF,
 ): GameState {
   if (isLockable(change.kind) && isLocked(state, change.kind, defis)) {
     throw new RangeError(
       `Invalid decision: the Défi ${state.challenge?.id} locks ${change.kind}`,
     )
   }
-  const decisions = changed(state, latestDecisions(state), change, bakery)
-  validateDecisions(decisions, content.decisionLimits, bakery)
+  const decisions = changed(
+    state,
+    latestDecisions(state),
+    change,
+    bakery,
+    staff,
+  )
+  validateDecisions(decisions, content.decisionLimits, bakery, staff)
   return { ...state, pendingDecisions: decisions }
 }
 
@@ -145,12 +188,15 @@ function isLockable(kind: DecisionChange['kind']): kind is DecisionKind {
  * rule, and no other key may appear. The bakery planned, if any, needs oven
  * terms, the croissants a source, and the bake rule, of either kind, whole
  * numbers of units from 0 to `bakery.capacityPerDay`, with `whenBelow` no
- * higher than `upTo`.
+ * higher than `upTo`. The staff holds at most `staff.maxEmployees`, each a
+ * different candidate of `staff`, in one of its roles, at an hourly wage of
+ * whole cents within the role's range.
  */
 export function validateDecisions(
   decisions: Decisions,
   limits: DecisionLimits,
   bakery: BakeryContent = BAKERY,
+  staff: StaffContent = STAFF,
 ): void {
   expectProducts('prices', decisions.prices)
   expectProducts('restock', decisions.restock)
@@ -185,6 +231,7 @@ export function validateDecisions(
     min: 0,
     max: bakery.capacityPerDay,
   })
+  validateStaff(decisions.staff, staff)
 }
 
 function changed(
@@ -192,6 +239,7 @@ function changed(
   decisions: Decisions,
   change: DecisionChange,
   bakery: BakeryContent,
+  staff: StaffContent,
 ): Decisions {
   switch (change.kind) {
     case 'price':
@@ -232,10 +280,72 @@ function changed(
       return { ...decisions, croissantSource: change.source }
     case 'bake':
       return { ...decisions, bake: copied(change.rule) }
+    case 'hire':
+      return {
+        ...decisions,
+        staff: [...decisions.staff, hired(state, decisions, change, staff)],
+      }
+    case 'fire':
+      planned(decisions, change.candidate)
+      return {
+        ...decisions,
+        staff: decisions.staff.filter(
+          ({ candidate }) => candidate !== change.candidate,
+        ),
+      }
+    case 'setWage':
+      planned(decisions, change.candidate)
+      return {
+        ...decisions,
+        staff: decisions.staff.map((hire) =>
+          hire.candidate === change.candidate
+            ? { ...hire, hourlyWage: change.hourlyWage }
+            : hire,
+        ),
+      }
     default:
       throw new RangeError(
         `Unknown decision: ${String((change as { kind: unknown }).kind)}`,
       )
+  }
+}
+
+/**
+ * The hire `change` makes, on top of `decisions`, at the role's starting
+ * wage: the candidate may be neither wanted yet nor at work the day under
+ * way, which would make them leave and start again the same morning.
+ */
+function hired(
+  state: GameState,
+  decisions: Decisions,
+  { role, candidate }: Extract<DecisionChange, { kind: 'hire' }>,
+  staff: StaffContent,
+): Hire {
+  if (!staffRoleIdSchema.safeParse(role).success) {
+    throw new RangeError(`Invalid decision: unknown role ${String(role)}`)
+  }
+  if (!candidateIdSchema.safeParse(candidate).success) {
+    throw new RangeError(`Invalid decision: unknown candidate ${candidate}`)
+  }
+  if (decisions.staff.some((hire) => hire.candidate === candidate)) {
+    throw new RangeError(`Invalid decision: ${candidate} is already hired`)
+  }
+  if (state.decisions.staff.some((hire) => hire.candidate === candidate)) {
+    throw new RangeError(
+      `Invalid decision: ${candidate} works on day ${state.day}, so cannot be hired again before the next morning`,
+    )
+  }
+  return {
+    candidate,
+    role,
+    hourlyWage: staff.roles[role].hourlyWageCents.start,
+  }
+}
+
+/** Throws a RangeError unless `candidate` is in the staff `decisions` want. */
+function planned(decisions: Decisions, candidate: CandidateId): void {
+  if (!decisions.staff.some((hire) => hire.candidate === candidate)) {
+    throw new RangeError(`Invalid decision: ${candidate} is not hired`)
   }
 }
 
@@ -355,6 +465,58 @@ function expectRule(
         `Invalid decision: ${field} has an unknown kind: ${String((rule as { kind: unknown }).kind)}`,
       )
   }
+}
+
+/**
+ * Throws a RangeError naming the first field wrong unless `staff` holds at
+ * most `content.maxEmployees`, each a different candidate of `content` in
+ * one of its roles, at an hourly wage of whole cents within the role's
+ * range, and nothing else.
+ */
+export function validateStaff(
+  staff: readonly Hire[],
+  content: StaffContent = STAFF,
+): void {
+  if (!Array.isArray(staff)) {
+    throw new RangeError(`Invalid decision: staff must be a list: ${staff}`)
+  }
+  if (staff.length > content.maxEmployees) {
+    throw new RangeError(
+      `Invalid decision: staff holds at most ${content.maxEmployees} employees: ${staff.length}`,
+    )
+  }
+  staff.forEach((hire, index) => {
+    const field = `staff.${index}`
+    const keys = typeof hire === 'object' ? Object.keys(hire).sort() : []
+    if (keys.join() !== 'candidate,hourlyWage,role') {
+      throw new RangeError(
+        `Invalid decision: ${field} must name exactly candidate, hourlyWage, role: ${keys.join(', ')}`,
+      )
+    }
+    if (!candidateIdSchema.safeParse(hire.candidate).success) {
+      throw new RangeError(
+        `Invalid decision: ${field}.candidate is unknown: ${hire.candidate}`,
+      )
+    }
+    if (
+      staff.findIndex(({ candidate }) => candidate === hire.candidate) !== index
+    ) {
+      throw new RangeError(
+        `Invalid decision: ${field}.candidate is hired twice: ${hire.candidate}`,
+      )
+    }
+    const role = staffRoleIdSchema.safeParse(hire.role)
+    if (!role.success) {
+      throw new RangeError(
+        `Invalid decision: ${field}.role is unknown: ${hire.role}`,
+      )
+    }
+    expectWithin(
+      `${field}.hourlyWage`,
+      hire.hourlyWage,
+      content.roles[role.data].hourlyWageCents,
+    )
+  })
 }
 
 function expectWithin(

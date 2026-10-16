@@ -27,6 +27,7 @@ import { CUSTOMERS, FOOD_TRUCK } from './day.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
 import { cents, type Cents } from './money.ts'
 import { next, seedRng } from './rng.ts'
+import type { Server } from './service.ts'
 import { streetOn } from './street.ts'
 import type { PerProduct, Visit } from './types.ts'
 
@@ -122,14 +123,14 @@ const PLENTY = stock(10_000)
 /** A counter that serves everyone the moment they arrive: no one waits. */
 const INSTANT: Counter = {
   service: { baseSeconds: 0, perItemSeconds: 0, maxAheadInLine: 0 },
-  servers: [{ speed: 1 }],
+  servers: [{ speed: 1, owner: true }],
   botchedShare: 0,
 }
 
 /** The shipped service, with the avatar alone at speed 1, rested. */
 const SHIPPED_COUNTER: Counter = {
   service: FOOD_TRUCK.service,
-  servers: [{ speed: 1 }],
+  servers: [{ speed: 1, owner: true }],
   botchedShare: 0,
 }
 
@@ -143,13 +144,17 @@ const TIMES: Service = {
   maxAheadInLine: 8,
 }
 
+/**
+ * A server at each speed, the owner first, then employees: `servers()`'s
+ * order.
+ */
+function crew(speeds: readonly number[]): Server[] {
+  return speeds.map((speed, index) => ({ speed, owner: index === 0 }))
+}
+
 /** A counter at `TIMES`, with a server at each speed, rested. */
 function timed(speeds = [1]): Counter {
-  return {
-    service: TIMES,
-    servers: speeds.map((speed) => ({ speed })),
-    botchedShare: 0,
-  }
+  return { service: TIMES, servers: crew(speeds), botchedShare: 0 }
 }
 
 /**
@@ -163,7 +168,7 @@ function counter(
 ): Counter {
   return {
     service: { ...FOOD_TRUCK.service, ...change },
-    servers: speeds.map((speed) => ({ speed })),
+    servers: crew(speeds),
     botchedShare,
   }
 }
@@ -1458,5 +1463,52 @@ describe('the line, with the shipped content', () => {
         expect(sum(weekday), scenario).toBeGreaterThan(sum(weekend))
       }
     }
+  })
+})
+
+describe('the owner and the employees at the counter', () => {
+  /** Everyone wants one of each product at 3 $; only café is on hand. */
+  function busy(servers: readonly Server[], botchedShare = 0) {
+    return serve(weekday(400, { productAppeal: perProduct(() => 1) }), {
+      customers: everyone({ base: 1, reference: 300, sensitivity: 4 }),
+      price: () => cents(300),
+      available: stock({ cafe: 10_000 }),
+      counter: { service: TIMES, servers, botchedShare },
+    })
+  }
+
+  const reached = (served: Served) =>
+    served.visits.filter(({ servedMinute }) => servedMinute !== null).length
+
+  it('counts every visit the owner alone served as theirs', () => {
+    const served = busy(crew([1]))
+    expect(reached(served)).toBeGreaterThan(0)
+    expect(served.servedByOwner).toBe(reached(served))
+  })
+
+  it("counts none as the owner's when an employee serves alone", () => {
+    const served = busy([{ speed: 0.85, owner: false }], 0.5)
+    expect(reached(served)).toBeGreaterThan(0)
+    expect(served.servedByOwner).toBe(0)
+    expect(served.botched).toEqual(stock(0))
+  })
+
+  it('botches only the units the owner makes, by their quota', () => {
+    const served = busy(crew([1, 0.85]), 0.5)
+    // Each visit served is made one café: the owner's are botched by the
+    // quota, the employee's never.
+    expect(served.servedByOwner).toBeGreaterThan(0)
+    expect(served.servedByOwner).toBeLessThan(reached(served))
+    expect(served.botched.cafe).toBe(Math.floor(served.servedByOwner * 0.5))
+  })
+
+  it('shortens the waits with a second server, from the same draws', () => {
+    const alone = busy(crew([1]))
+    const helped = busy(crew([1, 0.85]))
+    expect(helped.rngState).toBe(alone.rngState)
+    expect(arrivals(helped)).toEqual(arrivals(alone))
+    expect(helped.averageWaitSeconds).toBeLessThan(alone.averageWaitSeconds)
+    expect(helped.leftLine).toBeLessThan(alone.leftLine)
+    expect(reached(helped)).toBeGreaterThan(reached(alone))
   })
 })

@@ -4,13 +4,17 @@ import { DIFFICULTIES, FOOD_TRUCK } from '../../src/engine/day.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
 import type { Day, GameState } from '../../src/engine/types.ts'
 import { balance } from '../../src/finance/journal.ts'
+import { STAFF } from '../../src/engine/staff.ts'
 import {
+  AT_TRUCK_HIRE,
+  BAKER_HIRE,
   OVENS,
   PRICE_SETS,
   TRUCK_STRATEGIES,
   bakeryChanges,
   breakEvenPerOpenDay,
   monthEnds,
+  monthlyBakerWage,
   monthlyBakeryCosts,
   monthlyResult,
   openDaysPerMonth,
@@ -41,7 +45,7 @@ function debited(state: GameState, day: Day, memo: string): number {
 }
 
 describe('the grid', () => {
-  it("tries #157's three price sets, both ovens and four trucks, the last with two contracts", () => {
+  it("tries #157's three price sets, both ovens and six trucks, two with two contracts and two with an employee at the truck", () => {
     expect(
       PRICE_SETS.map(({ name, prices }) => [
         name,
@@ -55,22 +59,25 @@ describe('the grid', () => {
     ])
     expect(OVENS).toEqual(['louer', 'acheter'])
     expect(
-      TRUCK_STRATEGIES.map(({ croissantsPerDay, contracts }) => [
+      TRUCK_STRATEGIES.map(({ croissantsPerDay, contracts, atTruck }) => [
         croissantsPerDay,
         contracts,
+        atTruck,
       ]),
     ).toEqual([
-      [70, []],
-      [110, []],
-      [150, []],
-      [150, ['marcheBioLogique', 'chezNormand']],
+      [70, [], false],
+      [110, [], false],
+      [150, [], false],
+      [150, ['marcheBioLogique', 'chezNormand'], false],
+      [110, [], true],
+      [150, ['marcheBioLogique', 'chezNormand'], true],
     ])
     expect(() => truckStrategy('lazy')).toThrow(
       'No truck strategy is named lazy',
     )
   })
 
-  it('makes in the bakery game the croissants its twin buys', () => {
+  it('makes in the bakery game the croissants its twin buys, with a baker', () => {
     const busy = truckStrategy('busy')
     expect(truckChanges(busy)).toEqual([
       { kind: 'price', product: 'croissant', price: 300 },
@@ -86,7 +93,22 @@ describe('the grid', () => {
       { kind: 'openBakery', oven: 'acheter' },
       { kind: 'croissantSource', source: 'fabriquer' },
       { kind: 'bake', rule: { kind: 'buyDaily', quantity: 110 } },
+      { kind: 'hire', role: 'boulanger', candidate: 'sophie' },
     ])
+    // An employee at the truck, in the game and its twin alike.
+    const helped = truckStrategy('busy, employee at the truck')
+    expect(truckChanges(helped)).toEqual([
+      ...truckChanges(busy),
+      { kind: 'hire', role: 'camion', candidate: 'amelie' },
+    ])
+    expect(bakeryChanges(helped, 'louer')).toEqual([
+      ...truckChanges(helped),
+      { kind: 'openBakery', oven: 'louer' },
+      { kind: 'croissantSource', source: 'fabriquer' },
+      { kind: 'bake', rule: { kind: 'buyDaily', quantity: 110 } },
+      BAKER_HIRE,
+    ])
+    expect(AT_TRUCK_HIRE.role).toBe('camion')
     expect(truckChanges(START)[0]).toEqual({
       kind: 'price',
       product: 'croissant',
@@ -142,17 +164,27 @@ describe('the books of the bakery', () => {
     expect(savingPerCroissant(mid)).toBe(110 - 55)
   })
 
-  it('costs the rent and the lease, or the month of depreciation', () => {
-    expect(monthlyBakeryCosts(mid, 'louer')).toBe(240_000 + 60_000)
-    expect(monthlyBakeryCosts(mid, 'acheter')).toBe(
-      240_000 + BAKERY.oven.priceCents / BAKERY.oven.usefulLifeMonths,
+  it("pays the baker a week's wage each week: 22 $ × 30 h, in an average month", () => {
+    expect(STAFF.roles.boulanger.hourlyWageCents.start).toBe(2_200)
+    expect(monthlyBakerWage()).toBeCloseTo((2_200 * 30 * 365) / 12 / 7, 9)
+  })
+
+  it("costs the rent and the lease, or the month of depreciation, and the baker's wages", () => {
+    const baker = monthlyBakerWage()
+    expect(monthlyBakeryCosts(mid, 'louer')).toBeCloseTo(
+      240_000 + 60_000 + baker,
+      9,
+    )
+    expect(monthlyBakeryCosts(mid, 'acheter')).toBeCloseTo(
+      240_000 + BAKERY.oven.priceCents / BAKERY.oven.usefulLifeMonths + baker,
+      9,
     )
   })
 
   it('breaks even where the savings meet the costs', () => {
     expect(openDaysPerMonth(7)).toBeCloseTo(365 / 12, 9)
     const perDay = breakEvenPerOpenDay(mid, 'louer', 6)
-    expect(perDay).toBeCloseTo(209.2, 1)
+    expect(perDay).toBeCloseTo(409.2, 1)
     expect(monthlyResult(mid, 'louer', perDay, 6)).toBeCloseTo(0, 6)
     expect(monthlyResult(mid, 'louer', 80, 6)).toBeLessThan(0)
     expect(breakEvenPerOpenDay(high, 'louer', 6)).toBeGreaterThan(perDay)
@@ -180,6 +212,29 @@ describe('playBakeryGame', () => {
         70 * prices.ingredientCostCents,
       )
     }
+  })
+
+  it('hires the baker on day 0 in the bakery game only, and the employee at the truck in both', () => {
+    const strategy = truckStrategy('busy, employee at the truck')
+    const play = (bakery: boolean) =>
+      playBakeryGame(
+        1,
+        'moyen',
+        bakery ? bakeryChanges(strategy, 'louer') : truckChanges(strategy),
+        DIFFICULTIES,
+        1,
+      ).state
+    expect(
+      play(true).staff.map(({ role, hiredOnDay }) => [role, hiredOnDay]),
+    ).toEqual([
+      ['camion', 0],
+      ['boulanger', 0],
+    ])
+    expect(play(false).staff.map(({ role }) => role)).toEqual(['camion'])
+    expect(
+      playBakeryGame(1, 'moyen', truckChanges(START), DIFFICULTIES, 1).state
+        .staff,
+    ).toEqual([])
   })
 
   it('sums the game up: cash at each month end, open days, croissants and energy', () => {

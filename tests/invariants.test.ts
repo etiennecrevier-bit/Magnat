@@ -4,7 +4,7 @@ import type {
   EventContent,
   StreetModifierKind,
 } from '../src/content/schema.ts'
-import { createInitialState, tick, toCalendar } from '../src/engine/clock.ts'
+import { tick, toCalendar } from '../src/engine/clock.ts'
 import {
   CUSTOMERS,
   DIFFICULTIES,
@@ -14,10 +14,11 @@ import {
   PERSONAL,
 } from '../src/engine/day.ts'
 import { GROCERS } from '../src/engine/contracts.ts'
+import type { DecisionChange } from '../src/engine/decisions.ts'
 import { resolveEvent } from '../src/engine/events.ts'
 import { inventoryValue } from '../src/engine/inventory.ts'
 import { add, cents, sub, type Cents } from '../src/engine/money.ts'
-import { defaultProfile } from '../src/engine/profile.ts'
+import { STAFF_MEMO } from '../src/engine/staff.ts'
 import { MODIFIER_KINDS } from '../src/engine/street.ts'
 import type { Day, GameState } from '../src/engine/types.ts'
 import type { AccountCode } from '../src/finance/accounts.ts'
@@ -33,6 +34,7 @@ import {
   eventChooser,
   journalHash,
   simulate,
+  startGame,
   type YearSummary,
 } from '../tools/sim/simulate.ts'
 
@@ -43,13 +45,25 @@ import {
 // `npm run sim -- --events random --contracts all` answers them: the
 // grocers' offers and renewals all accepted (#156), so the contracts deliver
 // and the grocers pay through the ten years, and every other card at random.
+// One game also hires an employee at the truck and a deliverer on day 0
+// (#158), so their training and their wages post through the ten years.
 // The whole file must stay under BUDGET_MS in CI; if it gets slower, make
 // the slow part faster rather than checking fewer days or seeds.
 
-const GAMES: readonly { seed: number; difficulty: DifficultyId }[] = [
-  { seed: 1, difficulty: 'facile' },
-  { seed: 42, difficulty: 'moyen' },
-  { seed: 2026, difficulty: 'difficile' },
+/** An employee at the truck and a deliverer, hired on day 0. */
+const STAFFED: readonly DecisionChange[] = [
+  { kind: 'hire', role: 'camion', candidate: 'amelie' },
+  { kind: 'hire', role: 'livreur', candidate: 'kevin' },
+]
+
+const GAMES: readonly {
+  seed: number
+  difficulty: DifficultyId
+  changes: readonly DecisionChange[]
+}[] = [
+  { seed: 1, difficulty: 'facile', changes: [] },
+  { seed: 42, difficulty: 'moyen', changes: STAFFED },
+  { seed: 2026, difficulty: 'difficile', changes: [] },
 ]
 const DAYS = 3650
 const BUDGET_MS = 60_000
@@ -99,6 +113,11 @@ const MIN_DELIVERIES = 50
  * would leave it untested.
  */
 const MIN_MODIFIER_DAYS = 20
+/**
+ * Fewer weekly wages than this over ten years of a game with staff would
+ * leave them untested: a year of two employees.
+ */
+const MIN_WAGES = 100
 
 const started = performance.now()
 
@@ -124,6 +143,8 @@ interface Checked {
   /** Deliveries made to the grocers, and their payments collected. */
   deliveries: number
   grocerPayments: number
+  /** The employees' weekly wages paid. */
+  wages: number
   /** Milliseconds each day took to play, then to check, in day order. */
   playMs: number[]
   checkMs: number[]
@@ -193,7 +214,11 @@ class Tally {
  * the state just played, then plays the same game again with the headless
  * runner.
  */
-function check(seed: number, difficulty: DifficultyId): Checked {
+function check(
+  seed: number,
+  difficulty: DifficultyId,
+  changes: readonly DecisionChange[],
+): Checked {
   const checked: Checked = {
     days: 0,
     months: 0,
@@ -214,6 +239,7 @@ function check(seed: number, difficulty: DifficultyId): Checked {
     ) as Record<StreetModifierKind, number>,
     deliveries: 0,
     grocerPayments: 0,
+    wages: 0,
     playMs: [],
     checkMs: [],
     checkedHash: '',
@@ -225,10 +251,7 @@ function check(seed: number, difficulty: DifficultyId): Checked {
     if (list.length < MAX_FAILURES) list.push(message)
   }
 
-  let state: GameState = createInitialState(seed, FOOD_TRUCK, {
-    ...defaultProfile(),
-    difficulty,
-  })
+  let state: GameState = startGame(seed, difficulty, changes)
   const tally = new Tally()
   tally.count(state.journal)
   const choose = contractChooser('all', eventChooser('random', seed))
@@ -320,8 +343,14 @@ function check(seed: number, difficulty: DifficultyId): Checked {
 
     const played = state.lastDay
     checked.deliveries += played?.deliveries.length ?? 0
-    checked.grocerPayments += entriesSince(journal, day).filter(
-      (entry) => entry.day === day && grocerPayments.has(entry.memo),
+    const today = entriesSince(journal, day).filter(
+      (entry) => entry.day === day,
+    )
+    checked.grocerPayments += today.filter(({ memo }) =>
+      grocerPayments.has(memo),
+    ).length
+    checked.wages += today.filter(({ memo }) =>
+      memo.startsWith(`${STAFF_MEMO.wage} · `),
     ).length
 
     // The street as the changes in effect left it: a closed truck sells
@@ -386,7 +415,7 @@ function check(seed: number, difficulty: DifficultyId): Checked {
     seed,
     DAYS,
     difficulty,
-    [],
+    changes,
     'random',
     EVENTS_IN_PLAY,
     DIFFICULTIES,
@@ -399,12 +428,12 @@ function check(seed: number, difficulty: DifficultyId): Checked {
 
 describe.each(GAMES)(
   `seed $seed at $difficulty over ${DAYS} days`,
-  ({ seed, difficulty }) => {
+  ({ seed, difficulty, changes }) => {
     let checked: Checked
     // Both runs of the game happen here, so the timeout covers the whole
     // workload; the test at the end of the file holds every game to the budget.
     beforeAll(() => {
-      checked = check(seed, difficulty)
+      checked = check(seed, difficulty, changes)
     }, BUDGET_MS)
 
     it('checks the close of every day and every calendar month', () => {
@@ -440,6 +469,14 @@ describe.each(GAMES)(
     it('delivers to the grocers, who pay for what they got', () => {
       expect(checked.deliveries).toBeGreaterThanOrEqual(MIN_DELIVERIES)
       expect(checked.grocerPayments).toBeGreaterThanOrEqual(MIN_DELIVERIES)
+    })
+
+    it('pays the staff hired on day 0 each week, and no wage without', () => {
+      const hired = changes.length > 0
+      expect(checked.wages).toBeGreaterThanOrEqual(hired ? MIN_WAGES : 0)
+      expect(checked.wages).toBeLessThanOrEqual(
+        hired ? Number.POSITIVE_INFINITY : 0,
+      )
     })
 
     it(`draws events from day ${EVENTS_IN_PLAY.pacing.firstDay} on, at least ${EVENTS_IN_PLAY.pacing.minDaysBetween} days apart, follow-ups and dated events aside`, () => {

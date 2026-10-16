@@ -33,6 +33,7 @@ import {
   incomeStatement,
   type StatementLine,
 } from '../finance/statements.ts'
+import { BAKERY } from './bakery.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
 import { SEGMENTS, dayTypeOf, perSegment, serveWalkIns } from './customers.ts'
 import {
@@ -44,7 +45,11 @@ import {
   currentPrice,
   playDay,
 } from './day.ts'
-import { applyDecision } from './decisions.ts'
+import {
+  applyDecision,
+  latestDecisions,
+  type DecisionChange,
+} from './decisions.ts'
 import { applyEffect } from './effects.ts'
 import { FULL_ENERGY, fatigueOf } from './energy.ts'
 import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
@@ -651,6 +656,7 @@ describe('tick', () => {
       botched: 0,
       modifiers: [],
       deliveries: [],
+      missed: [],
     })
     expect(visits).toHaveLength(10)
     for (const visit of visits) {
@@ -1327,7 +1333,7 @@ describe("the owner's energy", () => {
       const fatigue = fatigueOf(morning.energy, ENERGY)
       const speed =
         fatigue === 'rested' ? 1 : 1 / (1 + ENERGY[fatigue].serviceTimeIncrease)
-      expect(servers(morning, ENERGY)).toEqual([{ speed }])
+      expect(servers(morning, ENERGY)).toEqual([{ speed, owner: true }])
       // The same day played by a rested owner: the same customers.
       const rested = summary(
         playDay(
@@ -1371,7 +1377,7 @@ describe("the owner's energy", () => {
     const sunday = week[5] as GameState
     expect(toCalendar(sunday.day).weekday).toBe(7)
     expect(sunday.energy).toBe(FULL_ENERGY)
-    expect(servers(sunday, ENERGY)).toEqual([{ speed: 1 }])
+    expect(servers(sunday, ENERGY)).toEqual([{ speed: 1, owner: true }])
     const played = summary(week[6] as GameState)
     expect(played.visits.length).toBeGreaterThan(0)
     expect(played.botched).toBe(0)
@@ -1771,6 +1777,7 @@ describe('cash', () => {
       botched: 0,
       modifiers: [],
       deliveries: [],
+      missed: [],
     })
     expect(visits.map(({ outcome }) => outcome)).toEqual(
       Array.from({ length: 10 }, () => 'soldOut'),
@@ -2091,6 +2098,144 @@ describe('changes to the street', () => {
     expect(summary(hot).sold.cafe).toBe(summary(usual).sold.cafe)
     expect(arrivals(hot)).toEqual(arrivals(usual))
     expect(hot.rngState).toBe(usual.rngState)
+  })
+})
+
+describe('the staff', () => {
+  const BAKING: readonly DecisionChange[] = [
+    { kind: 'openBakery', oven: 'louer' },
+    { kind: 'croissantSource', source: 'fabriquer' },
+  ]
+  const AT_TRUCK: DecisionChange = {
+    kind: 'hire',
+    role: 'camion',
+    candidate: 'amelie',
+  }
+  const BAKER: DecisionChange = {
+    kind: 'hire',
+    role: 'boulanger',
+    candidate: 'sophie',
+  }
+
+  /** A shipped game of seed 42 with `changes` in effect from day 0. */
+  function staffed(...changes: readonly DecisionChange[]): GameState {
+    const state = changes.reduce(
+      (next, change) => applyDecision(next, change),
+      createInitialState(42),
+    )
+    return {
+      ...state,
+      decisions: latestDecisions(state),
+      pendingDecisions: null,
+    }
+  }
+
+  /** Day 1, a Tuesday, open, played from `state`'s day 0, the owner away. */
+  function tuesdayAway(state: GameState, energy?: number): GameState {
+    const morning = tick(state)
+    return playDay({
+      ...morning,
+      ownerAway: true,
+      energy: energy ?? morning.energy,
+    })
+  }
+
+  it('sells with an employee at the truck while the owner is away all day, and their energy holds', () => {
+    const game = staffed(AT_TRUCK)
+    const morning = tick(game)
+    const close = tuesdayAway(game, 10)
+    const day = summary(close)
+    expect(day.revenue).toBeGreaterThan(0)
+    expect(day.visits.length).toBeGreaterThan(0)
+    // An employee never tires, so they botch nothing, however tired the owner.
+    expect(day.botched).toBe(0)
+    expect(close.energy).toBe(10)
+    expect(day.energy).toBe(10)
+    // The owner there, they serve too, and tire.
+    expect(playDay(morning).energy).toBeLessThan(morning.energy)
+  })
+
+  it('keeps the truck closed while the owner is away with nobody at the truck', () => {
+    const game = staffed()
+    const morning = tick(game)
+    const close = tuesdayAway(game)
+    const day = summary(close)
+    expect(day.visits).toEqual([])
+    expect(day.revenue).toBe(0)
+    expect(close.rngState).toBe(morning.rngState)
+    expect(close.energy).toBe(morning.energy)
+    expect(entriesOn(close, 1).map(({ memo }) => memo)).toEqual([])
+    expect(close.weekSoFar.days.at(-1)).toMatchObject({ day: 1, open: false })
+  })
+
+  it('posts the training, the wages each Friday after the owner pay, then the notice, the books balanced every day', () => {
+    const weekly = 1750 * 35
+    let state = staffed(AT_TRUCK)
+    for (let day = 0; day < 25; day += 1) {
+      if (day === 10) {
+        state = applyDecision(state, { kind: 'fire', candidate: 'amelie' })
+      }
+      state = tick(state)
+      const { totalDebit, totalCredit } = trialBalance(state.journal, day)
+      expect(totalDebit, `day ${day}`).toBe(totalCredit)
+    }
+    const staffEntries = entriesOf(state.journal).filter(({ memo }) =>
+      memo.includes(' · '),
+    )
+    expect(
+      staffEntries.map(({ day, memo, lines }) => [
+        day,
+        memo,
+        lines[0]?.account,
+        lines[0]?.debit,
+        lines[1]?.account,
+        lines[1]?.credit,
+      ]),
+    ).toEqual([
+      [0, 'Formation · Amélie Gagnon', '6000', weekly, CASH, weekly],
+      [4, 'Salaire · Amélie Gagnon', '6000', weekly, CASH, weekly],
+      [11, 'Préavis · Amélie Gagnon', '6000', 2 * weekly, CASH, 2 * weekly],
+    ])
+    const friday = entriesOn(state, 4).map(({ memo }) => memo)
+    expect(friday.indexOf('Salaire · Amélie Gagnon')).toBe(
+      friday.indexOf('Paie du propriétaire') + 1,
+    )
+    // Fired on day 10, gone from day 11: no wage on Friday 11 or after.
+    expect(toCalendar(11).weekday).toBe(5)
+    expect(state.staff).toEqual([])
+  })
+
+  it('bakes for the truck with a baker, at no energy to the owner', () => {
+    const withBaker = tick(staffed(...BAKING, BAKER))
+    const without = tick(staffed(...BAKING))
+    expect(withBaker.energy).toBe(without.energy)
+    const baked = playDay(withBaker)
+    const alone = playDay(without)
+    expect(baked.lastDay?.sold.croissant).toBeGreaterThan(0)
+    expect(baked.lastDay?.sold).toEqual(alone.lastDay?.sold)
+    expect(baked.energy - alone.energy).toBeCloseTo(BAKERY.bakingEnergyCost, 10)
+  })
+
+  it('makes no croissant, and buys none, when the bakery runs but nobody bakes', () => {
+    const close = tuesdayAway(staffed(...BAKING, AT_TRUCK))
+    const day = summary(close)
+    expect(day.revenue).toBeGreaterThan(0)
+    expect(day.sold.croissant).toBe(0)
+    expect(day.lostSales.croissant).toBeGreaterThan(0)
+    expect(
+      close.inventory.filter(
+        ({ product, boughtOnDay }) =>
+          product === 'croissant' && boughtOnDay === 1,
+      ),
+    ).toEqual([])
+    expect(
+      entriesOn(close, 1)
+        .map(({ memo }) => memo)
+        .filter((memo) => memo === 'Ingrédients du fournil'),
+    ).toEqual([])
+    // With a baker, the owner away, the truck has its croissants.
+    const baked = summary(tuesdayAway(staffed(...BAKING, AT_TRUCK, BAKER)))
+    expect(baked.sold.croissant).toBeGreaterThan(0)
   })
 })
 

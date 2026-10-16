@@ -20,6 +20,7 @@ import type {
   Day,
   Delivery,
   GameState,
+  MissedDelivery,
   Receivable,
 } from './types.ts'
 
@@ -28,7 +29,9 @@ import type {
 // as many weeks as the grocer's contract runs. Each delivery is its own
 // batch, made at the bakery or bought that morning, and leaves the stock at
 // once, so the truck's lots never mix with it. The grocer pays for it on
-// credit, days later. Nothing here draws from the generator.
+// credit, days later. A delivery nobody can make is missed (#158): no sale,
+// a week off the contract and a strike, and the last strike the grocers
+// allow ends it. Nothing here draws from the generator.
 
 /**
  * The shipped grocers, validated once when the engine loads against the
@@ -47,9 +50,9 @@ const MEMO = {
   costOfSales: 'Coût des marchandises vendues',
 } as const
 
-/** No contract, no delivery and nobody away, as a game starts. */
+/** No contract, no delivery, none missed and nobody away, as a game starts. */
 export function noContracts(): ContractsState {
-  return { running: [], deliveries: [], away: {} }
+  return { running: [], deliveries: [], missed: [], away: {} }
 }
 
 /**
@@ -88,6 +91,7 @@ export function startContract(
     startDay: day,
     weeksLeft: weeks,
     unitPrice: price > 0 ? price : cents(1),
+    strikes: 0,
   }
   return { ...contracts, running: [...contracts.running, contract] }
 }
@@ -118,6 +122,8 @@ export interface Delivered {
   readonly state: GameState
   /** The deliveries, in the order the contracts were signed. */
   readonly deliveries: readonly Delivery[]
+  /** The deliveries nobody made, in the order the contracts were signed. */
+  readonly missed: readonly MissedDelivery[]
   /** The croissants the bakery made for them. */
   readonly baked: number
 }
@@ -125,12 +131,16 @@ export interface Delivered {
 /**
  * The morning's deliveries on `state.day`, open or closed: none but on the
  * `deliveryWeekday`, when each contract signed before that day delivers the
- * grocer's `unitsPerWeek` croissants, in the order signed. When `bakes`, the
- * bakery runs and makes the croissants, it makes those of the deliveries
- * first, within its `capacityPerDay`, those of the grocers who pay a premium
- * first, then in the order signed, at the ingredients' cost of `prices`; the
- * others are bought at `foodTruck`'s cost. Each delivery posts, dated that
- * day:
+ * grocer's `unitsPerWeek` croissants, in the order signed, if someone
+ * `delivers`. When nobody does, each of them is missed: no entry, no
+ * receivable, a week off the contract and a strike against it, recorded in
+ * `missed`. The grocers' `maxStrikes`-th strike ends the contract with no
+ * renewal; otherwise a missed last week ends it as a delivery would. When
+ * `bakes`, the bakery runs and someone bakes, it makes the croissants of the
+ * deliveries first, within its `capacityPerDay`, those of the grocers who
+ * pay a premium first, then in the order signed, at the ingredients' cost of
+ * `prices`; the others are bought at `foodTruck`'s cost. Each delivery
+ * posts, dated that day:
  * 1. « Ingrédients du fournil », Dr 1200 Stocks / Cr 1000 Encaisse, for the
  *    croissants made, and « Achat de marchandises », the same, for those
  *    bought;
@@ -143,12 +153,13 @@ export interface Delivered {
  *
  * Each delivery takes a week off its contract, and the last one ends it,
  * the grocer's `renewalEvent` coming as a follow-up the next morning.
- * Returns the new state, the deliveries and the croissants made; never
- * mutates `state`.
+ * Returns the new state, the deliveries, those missed and the croissants
+ * made; never mutates `state`.
  */
 export function deliverContracts(
   state: GameState,
   bakes: boolean,
+  delivers: boolean,
   prices: BakeryPrices,
   foodTruck: FoodTruckContent,
   bakery: BakeryContent,
@@ -157,8 +168,9 @@ export function deliverContracts(
   const { day, contracts } = state
   const due = contracts.running.filter(({ startDay }) => startDay < day)
   if (toCalendar(day).weekday !== grocers.deliveryWeekday || due.length === 0) {
-    return { state, deliveries: [], baked: 0 }
+    return { state, deliveries: [], missed: [], baked: 0 }
   }
+  if (!delivers) return missDeliveries(state, due, grocers)
 
   // The premium first; `toSorted` keeps the order signed among equals.
   const premiumOf = ({ grocer }: Contract) =>
@@ -247,7 +259,56 @@ export function deliverContracts(
       events: { ...state.events, followUps },
     },
     deliveries,
+    missed: [],
     baked: deliveries.reduce((made, { baked }) => made + baked, 0),
+  }
+}
+
+/**
+ * The morning's deliveries of the `due` contracts, all missed: each takes a
+ * week off its contract and a strike. The `maxStrikes`-th ends it with no
+ * renewal; otherwise a missed last week ends it with the grocer's
+ * `renewalEvent` the next morning.
+ */
+function missDeliveries(
+  state: GameState,
+  due: readonly Contract[],
+  grocers: GrocerContent,
+): Delivered {
+  const { day, contracts } = state
+  let { followUps } = state.events
+  const running: Contract[] = []
+  const missed: MissedDelivery[] = []
+  for (const contract of contracts.running) {
+    if (!due.includes(contract)) {
+      running.push(contract)
+      continue
+    }
+    missed.push({ day, grocer: contract.grocer })
+    const strikes = contract.strikes + 1
+    if (strikes >= grocers.maxStrikes) continue
+    if (contract.weeksLeft > 1) {
+      running.push({ ...contract, weeksLeft: contract.weeksLeft - 1, strikes })
+    } else {
+      followUps = insertByDay(followUps, {
+        day: day + 1,
+        event: grocers.grocers[contract.grocer].renewalEvent,
+      })
+    }
+  }
+  return {
+    state: {
+      ...state,
+      contracts: {
+        ...contracts,
+        running,
+        missed: [...contracts.missed, ...missed],
+      },
+      events: { ...state.events, followUps },
+    },
+    deliveries: [],
+    missed,
+    baked: 0,
   }
 }
 

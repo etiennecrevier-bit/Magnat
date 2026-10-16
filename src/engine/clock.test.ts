@@ -38,7 +38,7 @@ const DEFAULT_ACCOUNT = openingAccount(
 )
 
 describe('createInitialState', () => {
-  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile, the owner at full energy, no event, nobody owing anything, a first week to come, partial, from the opening cash, no Défi, no bakery and no contract", () => {
+  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile, the owner at full energy, no event, nobody owing anything, a first week to come, partial, from the opening cash, no Défi, no bakery, no contract, nobody on staff and the owner at work", () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
@@ -75,7 +75,9 @@ describe('createInitialState', () => {
         closesAfterDay: null,
         ovenBoughtOnDay: null,
       },
-      contracts: { running: [], deliveries: [], away: {} },
+      contracts: { running: [], deliveries: [], missed: [], away: {} },
+      staff: [],
+      ownerAway: false,
     })
     expect(FULL_ENERGY).toBe(100)
   })
@@ -219,6 +221,23 @@ describe('tick', () => {
     const next = tick(state)
     expect(next).not.toBe(state)
     expect(state).toEqual(createInitialState(42))
+  })
+
+  it('brings the owner back each morning: an absence lasts the day it was set for', () => {
+    // Day 1 is a Tuesday, open; with nobody at the truck, the owner's
+    // absence keeps it closed and their energy as it was.
+    const morning = { ...tick(createInitialState(42)), ownerAway: true }
+    const next = tick(morning)
+    expect(next.ownerAway).toBe(false)
+    expect(next.lastDay?.visits).toEqual([])
+    expect(next.lastDay?.revenue).toBe(0)
+    expect(next.lastDay?.energy).toBe(morning.energy)
+    expect(next.rngState).toBe(morning.rngState)
+    // Day 2, the owner back, opens and tires them.
+    const after = tick(next)
+    expect(after.ownerAway).toBe(false)
+    expect(after.lastDay?.visits.length).toBeGreaterThan(0)
+    expect(after.lastDay?.energy).toBeLessThan(next.energy)
   })
 
   it('counts one day per tick and keeps the seed and the profile', () => {

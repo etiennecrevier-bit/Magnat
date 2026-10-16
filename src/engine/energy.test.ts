@@ -23,6 +23,7 @@ const PLAIN: EnergyContent = loadEnergyContent({
 
 const OPEN: Workday = {
   worked: true,
+  away: false,
   customersServed: 0,
   stressed: false,
   bakingCost: 0,
@@ -133,6 +134,20 @@ describe('energyAtClose', () => {
   it('takes the stress of debt on top, open or closed', () => {
     expect(energyAtClose(80, { ...OPEN, stressed: true }, PLAIN)).toBe(64)
     expect(energyAtClose(30, { ...CLOSED, stressed: true }, PLAIN)).toBe(65)
+  })
+
+  it('holds the energy of an owner away all day, the truck open or not', () => {
+    const away = { ...OPEN, away: true, customersServed: 40 }
+    expect(energyAtClose(37, away, PLAIN)).toBe(37)
+    expect(energyAtClose(37, { ...away, worked: false }, PLAIN)).toBe(37)
+    expect(energyAtClose(0, away, PLAIN)).toBe(0)
+    expect(energyAtClose(FULL_ENERGY, away, PLAIN)).toBe(FULL_ENERGY)
+  })
+
+  it('still takes the stress of debt from an owner away', () => {
+    const away = { ...CLOSED, away: true, stressed: true }
+    expect(energyAtClose(37, away, PLAIN)).toBe(27)
+    expect(energyAtClose(4, away, PLAIN)).toBe(0)
   })
 
   it('never goes below 0 nor above full, at each change', () => {
