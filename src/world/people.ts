@@ -653,11 +653,13 @@ export function drawAvatar(
 
   // The avatar faces the viewer, so the sun lights their left.
   const sun: Side = 'left'
+  // The legs stop half an outline above the feet, so their outline ends at
+  // 0 and the counter, whose bottom edge the feet stand on, hides it all.
   const legs = root.addChild(new Graphics({ label: 'legs' }))
   for (const x of [-h * 0.11, h * 0.02]) {
     shadedRect(
       legs,
-      [x, -h * 0.45, h * 0.09, h * 0.45, h * 0.03],
+      [x, -h * 0.45, h * 0.09, h * 0.45 - style.outline / 2, h * 0.03],
       trousers,
       style,
       sun,
