@@ -17,9 +17,9 @@ import FinancesPanel from './FinancesPanel.tsx'
 import { formatGameDate } from './formatGameDate.ts'
 import ManagePanel from './ManagePanel.tsx'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
+import ReportPanel from './ReportPanel.tsx'
 import SettingsPanel from './SettingsPanel.tsx'
 import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
-import WeeklyReportPanel from './WeeklyReport.tsx'
 import './TopBar.css'
 
 function speedLabel(speed: number): string {
@@ -231,7 +231,7 @@ export default function TopBar() {
       {panel === 'defi' && <DefiPanel />}
       {panel === 'settings' && <SettingsPanel />}
       {panel === 'event' && <EventCard />}
-      {panel === 'report' && <WeeklyReportPanel />}
+      {panel === 'report' && <ReportPanel />}
     </>
   )
 }

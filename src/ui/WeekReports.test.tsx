@@ -13,7 +13,7 @@ import { cents } from '../engine/money.ts'
 import type { GameState, WeekRecord } from '../engine/types.ts'
 import { formatShortGameDate } from './formatGameDate.ts'
 import { formatMoney } from './formatMoney.ts'
-import { gameStore, type GameStoreState } from './store.ts'
+import { createGameStore, gameStore, type GameStoreState } from './store.ts'
 import WeekReports, { WeekReportsView } from './WeekReports.tsx'
 
 // A static render reads a Zustand store's initial state, so the connected
@@ -116,6 +116,26 @@ describe('WeekReports', () => {
     ])
     expect(html).toContain(
       '<section class="week-reports__latest" aria-labelledby="week-reports-latest"><h2 id="week-reports-latest">Bilan de la semaine</h2><div class="weekly-report"><p class="weekly-report__dates">Du 8 mai au 14 mai, an 1</p>',
+    )
+    expect(html).not.toContain('Bilan du mois')
+  })
+
+  it('then shows the last « Bilan du mois », once one came', () => {
+    const store = createGameStore(secondMonday(), NO_EVENTS, {
+      everyWeek: () => false,
+      cadence: () => 'month',
+    })
+    // The first weeks' reports open in full: close each to go on.
+    while (store.getState().game.day < 31) {
+      store.getState().advance(31 - store.getState().game.day)
+      if (store.getState().panel === 'report') store.getState().closePanel()
+    }
+    const { game, monthReport } = store.getState()
+    expect(game.day).toBe(31)
+    gameStore.setState({ game, monthReport, slideIn: null })
+    const html = renderToStaticMarkup(<WeekReports />)
+    expect(html).toMatch(
+      /<h2 id="week-reports-latest">Bilan de la semaine<\/h2><div class="weekly-report">.*<\/section><section class="week-reports__latest" aria-labelledby="week-reports-month"><h2 id="week-reports-month">Bilan du mois<\/h2><div class="weekly-report monthly-report"><p class="monthly-report__month">Mai, an 1<\/p>.*<\/section><\/section>$/,
     )
   })
 })

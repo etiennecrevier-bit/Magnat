@@ -44,10 +44,14 @@ function nameAt(names: readonly string[], oneBasedIndex: number): string {
   return name
 }
 
+/** The day of the month, e.g. `1er` or `12`. */
+function dayNumber({ dayOfMonth }: CalendarDate): string {
+  return dayOfMonth === 1 ? '1er' : String(dayOfMonth)
+}
+
 /** The day and month, e.g. `1er mai`. */
-function dayAndMonth({ month, dayOfMonth }: CalendarDate): string {
-  const dayLabel = dayOfMonth === 1 ? '1er' : String(dayOfMonth)
-  return `${dayLabel} ${nameAt(MONTHS, month)}`
+function dayAndMonth(date: CalendarDate): string {
+  return `${dayNumber(date)} ${nameAt(MONTHS, date.month)}`
 }
 
 function shortDate(date: CalendarDate): string {
@@ -63,6 +67,11 @@ export function formatGameDate(day: Day): string {
 /** French (Quebec) date without the weekday, e.g. `1er mai, an 1`. */
 export function formatShortGameDate(day: Day): string {
   return shortDate(toCalendar(day))
+}
+
+/** French (Quebec) day of the month alone, e.g. `1er` or `12`. */
+export function formatDayOfMonth(day: Day): string {
+  return dayNumber(toCalendar(day))
 }
 
 /** French (Quebec) day of the month and month, e.g. `1er mai`. */

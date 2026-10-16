@@ -12,7 +12,8 @@ import { NO_EVENTS } from '../engine/events.ts'
 import { cents } from '../engine/money.ts'
 import type { GameState } from '../engine/types.ts'
 import { formatMoney } from './formatMoney.ts'
-import { gameStore, type GameStoreState } from './store.ts'
+import { formatWeekOf, monthFactLines } from './monthlyReport.ts'
+import { createGameStore, gameStore, type GameStoreState } from './store.ts'
 import { factLines } from './weeklyReport.ts'
 import WeekSlideIn, { WeekSlideInView } from './WeekSlideIn.tsx'
 
@@ -94,6 +95,28 @@ describe('WeekSlideInView', () => {
     )
   })
 
+  it('titles a month « Bilan du mois », with the encaisse at its end alone when its start is not known', () => {
+    const html = renderToStaticMarkup(
+      <WeekSlideInView
+        report={{
+          sales: cents(1_234_500),
+          netIncome: cents(98_700),
+          cashAtStart: null,
+          cashAtEnd: cents(950_000),
+        }}
+        title="Bilan du mois"
+        topFact={null}
+        onOpen={() => {}}
+      />,
+    )
+    expect(html).toMatch(
+      /^<section class="week-slide-in__card" aria-label="Bilan du mois"><p class="week-slide-in__title">Bilan du mois<\/p><dl class="week-slide-in__figures">/,
+    )
+    expect(html).toContain(
+      `<dt>Encaisse</dt><dd><span class="amount">${formatMoney(cents(950_000))}</span></dd>`,
+    )
+  })
+
   it('leaves the fact out of a week with none', () => {
     const html = renderToStaticMarkup(
       <WeekSlideInView report={WEEK} topFact={null} onOpen={() => {}} />,
@@ -114,6 +137,30 @@ describe('WeekSlideIn', () => {
     )
     expect(html).toContain(
       `<p class="week-slide-in__fact">${fact!.replaceAll("'", '&#x27;')}</p>`,
+    )
+  })
+
+  it("shows the app store's month while it slides in, its first fact after its week", () => {
+    const store = createGameStore(GAME, NO_EVENTS, {
+      everyWeek: () => false,
+      cadence: () => 'month',
+    })
+    // The first weeks' reports open in full: close each to go on.
+    while (store.getState().game.day < 31) {
+      store.getState().advance(31 - store.getState().game.day)
+      if (store.getState().panel === 'report') store.getState().closePanel()
+    }
+    const { game, monthReport, slideIn, reportShown } = store.getState()
+    expect(game.day).toBe(31)
+    gameStore.setState({ game, monthReport, slideIn, reportShown })
+    const html = renderToStaticMarkup(<WeekSlideIn />)
+    const [fact] = monthFactLines(monthReport!)
+    expect(fact).toBeDefined()
+    expect(html).toMatch(
+      /^<div class="week-slide-in" role="status"><section class="week-slide-in__card" aria-label="Bilan du mois"><p class="week-slide-in__title">Bilan du mois<\/p>/,
+    )
+    expect(html).toContain(
+      `<p class="week-slide-in__fact">${formatWeekOf(fact!.week)} — ${fact!.text.replaceAll("'", '&#x27;')}</p>`,
     )
   })
 

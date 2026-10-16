@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatDayAndMonth,
+  formatDayOfMonth,
   formatGameDate,
   formatGameMonth,
   formatGamePeriod,
@@ -41,6 +42,18 @@ describe('formatShortGameDate', () => {
 
   it('rejects days the calendar rejects', () => {
     expect(() => formatShortGameDate(-1)).toThrow(RangeError)
+  })
+})
+
+describe('formatDayOfMonth', () => {
+  it.each([
+    { day: 0, text: '1er' },
+    { day: 4, text: '5' },
+    { day: 31, text: '1er' },
+    { day: 60, text: '30' },
+    { day: 244, text: '31' },
+  ])('formats day $day as $text', ({ day, text }) => {
+    expect(formatDayOfMonth(day)).toBe(text)
   })
 })
 

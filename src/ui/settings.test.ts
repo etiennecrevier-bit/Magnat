@@ -44,6 +44,7 @@ describe('the settings', () => {
     expect(DEFAULT_SETTINGS).toEqual({
       visualEffects: 'full',
       openReportEveryWeek: false,
+      reportCadence: 'week',
       bestMedals: {},
     })
     expect(readSettings(null)).toEqual(DEFAULT_SETTINGS)
@@ -58,6 +59,7 @@ describe('the settings', () => {
     expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
       visualEffects: 'simple',
       openReportEveryWeek: false,
+      reportCadence: 'week',
       bestMedals: {},
     })
     expect(createSettingsStore(storage).getState().visualEffects).toBe('simple')
@@ -69,11 +71,24 @@ describe('the settings', () => {
     expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
       visualEffects: 'full',
       openReportEveryWeek: true,
+      reportCadence: 'week',
       bestMedals: {},
     })
     expect(createSettingsStore(storage).getState().openReportEveryWeek).toBe(
       true,
     )
+  })
+
+  it('keep « Bilan : chaque mois » in this browser', () => {
+    const storage = memory()
+    createSettingsStore(storage).getState().setReportCadence('month')
+    expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
+      visualEffects: 'full',
+      openReportEveryWeek: false,
+      reportCadence: 'month',
+      bestMedals: {},
+    })
+    expect(createSettingsStore(storage).getState().reportCadence).toBe('month')
   })
 
   it('keep each setting when the other changes, after a reload', () => {
@@ -83,6 +98,7 @@ describe('the settings', () => {
     expect(readSettings(storage)).toEqual({
       visualEffects: 'simple',
       openReportEveryWeek: true,
+      reportCadence: 'week',
       bestMedals: {},
     })
 
@@ -90,23 +106,34 @@ describe('the settings', () => {
     expect(readSettings(storage)).toEqual({
       visualEffects: 'full',
       openReportEveryWeek: true,
+      reportCadence: 'week',
       bestMedals: {},
     })
     createSettingsStore(storage).getState().setOpenReportEveryWeek(false)
     expect(readSettings(storage)).toEqual({
       visualEffects: 'full',
       openReportEveryWeek: false,
+      reportCadence: 'week',
+      bestMedals: {},
+    })
+    createSettingsStore(storage).getState().setReportCadence('month')
+    createSettingsStore(storage).getState().setVisualEffects('simple')
+    expect(readSettings(storage)).toEqual({
+      visualEffects: 'simple',
+      openReportEveryWeek: false,
+      reportCadence: 'month',
       bestMedals: {},
     })
   })
 
-  it('read the settings an older version kept, without the weekly report', () => {
+  it('read the settings an older version kept, without the report settings', () => {
     const storage = memory({
       [SETTINGS_KEY]: JSON.stringify({ visualEffects: 'simple' }),
     })
     expect(readSettings(storage)).toEqual({
       visualEffects: 'simple',
       openReportEveryWeek: false,
+      reportCadence: 'week',
       bestMedals: {},
     })
   })
@@ -114,11 +141,39 @@ describe('the settings', () => {
   it.each([
     [
       { visualEffects: 'ultra', openReportEveryWeek: true },
-      { visualEffects: 'full', openReportEveryWeek: true, bestMedals: {} },
+      {
+        visualEffects: 'full',
+        openReportEveryWeek: true,
+        reportCadence: 'week',
+        bestMedals: {},
+      },
     ],
     [
       { visualEffects: 'simple', openReportEveryWeek: 'oui' },
-      { visualEffects: 'simple', openReportEveryWeek: false, bestMedals: {} },
+      {
+        visualEffects: 'simple',
+        openReportEveryWeek: false,
+        reportCadence: 'week',
+        bestMedals: {},
+      },
+    ],
+    [
+      { reportCadence: 'year', openReportEveryWeek: true },
+      {
+        visualEffects: 'full',
+        openReportEveryWeek: true,
+        reportCadence: 'week',
+        bestMedals: {},
+      },
+    ],
+    [
+      { visualEffects: 'ultra', reportCadence: 'month' },
+      {
+        visualEffects: 'full',
+        openReportEveryWeek: false,
+        reportCadence: 'month',
+        bestMedals: {},
+      },
     ],
   ])('keep a valid setting beside an invalid one: %j', (stored, settings) => {
     const storage = memory({ [SETTINGS_KEY]: JSON.stringify(stored) })
@@ -159,6 +214,7 @@ describe('the settings', () => {
       writeSettings(BLOCKED, {
         visualEffects: 'simple',
         openReportEveryWeek: true,
+        reportCadence: 'week',
         bestMedals: {},
       }),
     ).toBe(false)
@@ -183,6 +239,7 @@ describe('the settings', () => {
     expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
       visualEffects: 'simple',
       openReportEveryWeek: false,
+      reportCadence: 'week',
       bestMedals: { travauxSaintDenis: 'bronze', zeroGaspillage: 'argent' },
     })
     expect(createSettingsStore(storage).getState().bestMedals).toEqual({
@@ -227,6 +284,10 @@ describe('the settings', () => {
         'the weekly report',
         (b: SettingsStore) => b.getState().setOpenReportEveryWeek(true),
       ],
+      [
+        'the report cadence',
+        (b: SettingsStore) => b.getState().setReportCadence('month'),
+      ],
     ])(
       'keep the medals one won when the other changes %s',
       (_, changeSetting) => {
@@ -268,6 +329,7 @@ describe('the settings', () => {
       expect(readSettings(storage)).toEqual({
         visualEffects: 'simple',
         openReportEveryWeek: false,
+        reportCadence: 'week',
         bestMedals: { travauxSaintDenis: 'or' },
       })
       expect(a.getState().bestMedals).toEqual({ travauxSaintDenis: 'or' })
@@ -332,6 +394,7 @@ describe('the settings', () => {
       expect(readSettings(storage)).toEqual({
         visualEffects: 'simple',
         openReportEveryWeek: true,
+        reportCadence: 'week',
         bestMedals: kept,
       })
     },
@@ -340,5 +403,6 @@ describe('the settings', () => {
   it('find no storage under Node, so the shared ones are the defaults', () => {
     expect(settingsStore.getState().visualEffects).toBe('full')
     expect(settingsStore.getState().openReportEveryWeek).toBe(false)
+    expect(settingsStore.getState().reportCadence).toBe('week')
   })
 })

@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from 'zustand'
+import pacing from '../content/pacing.json'
 import { downloadSave } from './saves.ts'
 import {
+  REPORT_CADENCES,
   settingsStore,
   VISUAL_EFFECTS,
+  type ReportCadence,
   type SettingsStore,
   type VisualEffects,
 } from './settings.ts'
@@ -22,6 +25,16 @@ const IMPORT_HINT_ID = 'settings-import-hint'
 const EFFECTS: Record<VisualEffects, string> = {
   full: 'Complets',
   simple: 'Simples',
+}
+
+const CADENCES: Record<ReportCadence, string> = {
+  week: 'Chaque semaine',
+  month: 'Chaque mois',
+}
+
+const EVERY_TIME: Record<ReportCadence, string> = {
+  week: 'Ouvrir le bilan chaque semaine',
+  month: 'Ouvrir le bilan chaque mois',
 }
 
 interface VisualEffectsFieldProps {
@@ -89,7 +102,10 @@ interface SettingsPanelViewProps {
   /** The visual effects the player picked, kept in this browser. */
   visualEffects: VisualEffects
   onVisualEffectsChange: (visualEffects: VisualEffects) => void
-  /** Whether « Ouvrir le bilan chaque semaine » is on. */
+  /** How often the « Bilan » comes after the first weeks of a game. */
+  cadence: ReportCadence
+  onCadenceChange: (cadence: ReportCadence) => void
+  /** Whether « Ouvrir le bilan chaque semaine », or « chaque mois », is on. */
   everyWeek: boolean
   onEveryWeekChange: (everyWeek: boolean) => void
   /** Downloads the game played. */
@@ -101,12 +117,15 @@ interface SettingsPanelViewProps {
 }
 
 /**
- * « Réglages »: the visual effects, the switch that opens the « Bilan de la
- * semaine » every week, and the game's export and import.
+ * « Réglages »: the visual effects, the « Bilan » every week or every
+ * month, with the switch that opens it in full each time, and the game's
+ * export and import.
  */
 export function SettingsPanelView({
   visualEffects,
   onVisualEffectsChange,
+  cadence,
+  onCadenceChange,
   everyWeek,
   onEveryWeekChange,
   onExport,
@@ -128,7 +147,21 @@ export function SettingsPanelView({
         onChange={onVisualEffectsChange}
       />
       <fieldset className="settings-panel__setting">
-        <legend>Bilan de la semaine</legend>
+        <legend>Bilan</legend>
+        <div className="settings-panel__options">
+          {REPORT_CADENCES.map((option) => (
+            <label key={option} className="settings-panel__option">
+              <input
+                type="radio"
+                name="reportCadence"
+                value={option}
+                checked={option === cadence}
+                onChange={() => onCadenceChange(option)}
+              />
+              {CADENCES[option]}
+            </label>
+          ))}
+        </div>
         <label className="settings-panel__switch">
           <input
             type="checkbox"
@@ -136,8 +169,14 @@ export function SettingsPanelView({
             checked={everyWeek}
             onChange={(event) => onEveryWeekChange(event.target.checked)}
           />
-          Ouvrir le bilan chaque semaine
+          {EVERY_TIME[cadence]}
         </label>
+        {cadence === 'month' && (
+          <p className="settings-panel__hint">
+            Les {pacing.fullReportWeeks} premières semaines d'une partie, le
+            bilan vient quand même chaque semaine.
+          </p>
+        )}
       </fieldset>
       <fieldset className="settings-panel__setting">
         <legend>Partie</legend>
@@ -174,6 +213,8 @@ export default function SettingsPanel({
   const startGame = useGame((state) => state.startGame)
   const visualEffects = useStore(settings, (state) => state.visualEffects)
   const setVisualEffects = useStore(settings, (state) => state.setVisualEffects)
+  const cadence = useStore(settings, (state) => state.reportCadence)
+  const setCadence = useStore(settings, (state) => state.setReportCadence)
   const everyWeek = useStore(settings, (state) => state.openReportEveryWeek)
   const setEveryWeek = useStore(
     settings,
@@ -208,6 +249,8 @@ export default function SettingsPanel({
       <SettingsPanelView
         visualEffects={visualEffects}
         onVisualEffectsChange={setVisualEffects}
+        cadence={cadence}
+        onCadenceChange={setCadence}
         everyWeek={everyWeek}
         onEveryWeekChange={setEveryWeek}
         onExport={() => downloadSave(gameStore.getState().game)}

@@ -11,7 +11,7 @@ import {
   PERSONAL,
 } from '../engine/day.ts'
 import { NO_EVENTS, resolveEvent } from '../engine/events.ts'
-import { cents } from '../engine/money.ts'
+import { cents, sum } from '../engine/money.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState, Profile } from '../engine/types.ts'
 import { createSettingsStore, settingsStore } from './settings.ts'
@@ -23,6 +23,7 @@ import {
   newChallenge,
   newGame,
   seedFromSearch,
+  type GameStore,
 } from './store.ts'
 
 afterEach(() => {
@@ -881,6 +882,324 @@ describe('the weekly report', () => {
   })
 })
 
+/** The report on, monthly after the first weeks, in full only at first. */
+const MONTHLY = { everyWeek: () => false, cadence: () => 'month' as const }
+
+/**
+ * The mornings `store` stops on, playing up to `lastDay`, each with what
+ * shows: the panel the report opens in, or the card sliding in, of the week
+ * or the month. Each full report is closed and each card taken away, so
+ * the next one shows.
+ */
+function stops(store: GameStore, lastDay: number) {
+  const seen: { day: number; shows: string; firstDay: number }[] = []
+  while (store.getState().game.day < lastDay) {
+    store.getState().advance(lastDay - store.getState().game.day)
+    const { game, panel, slideIn, reportShown, monthReport } = store.getState()
+    const report = reportShown === 'month' ? monthReport : game.lastWeek
+    if (panel === 'report') {
+      seen.push({
+        day: game.day,
+        shows: `${reportShown} in full`,
+        firstDay: report!.firstDay,
+      })
+      store.getState().closePanel()
+    } else if (slideIn !== null) {
+      seen.push({
+        day: game.day,
+        shows: `${reportShown} sliding in`,
+        firstDay: slideIn,
+      })
+      store.getState().dismissSlideIn()
+    }
+  }
+  return seen
+}
+
+describe('the monthly report', () => {
+  it('leaves the weekly report as it is when the player wants it every week', () => {
+    const weekly = stops(
+      createGameStore(createInitialState(1), NO_EVENTS, {
+        everyWeek: () => false,
+        cadence: () => 'week',
+      }),
+      70,
+    )
+    expect(weekly).toEqual(
+      stops(
+        createGameStore(createInitialState(1), NO_EVENTS, REPORT_AT_FIRST),
+        70,
+      ),
+    )
+    expect(weekly).toEqual([
+      ...[7, 14, 21, 28].map((day) => ({
+        day,
+        shows: 'week in full',
+        firstDay: day - 7,
+      })),
+      ...[35, 42, 49, 56, 63, 70].map((day) => ({
+        day,
+        shows: 'week sliding in',
+        firstDay: day - 7,
+      })),
+    ])
+  })
+
+  it('stays weekly for the first 4 weeks, then comes on the 1st only, sliding in', () => {
+    expect(
+      stops(createGameStore(createInitialState(1), NO_EVENTS, MONTHLY), 100),
+    ).toEqual([
+      { day: 7, shows: 'week in full', firstDay: 0 },
+      { day: 14, shows: 'week in full', firstDay: 7 },
+      { day: 21, shows: 'week in full', firstDay: 14 },
+      { day: 28, shows: 'week in full', firstDay: 21 },
+      // June 1st, July 1st, August 1st.
+      { day: 31, shows: 'month sliding in', firstDay: 0 },
+      { day: 61, shows: 'month sliding in', firstDay: 31 },
+      { day: 92, shows: 'month sliding in', firstDay: 61 },
+    ])
+  })
+
+  it('slides in on the 1st without pausing, then nothing until the next 1st', () => {
+    const store = createGameStore(playedTo(29), NO_EVENTS, MONTHLY)
+    store.getState().setSpeed(10)
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    store.getState().advance(10)
+
+    expect(store.getState()).toMatchObject({
+      game: { day: 31, lastWeek: { firstDay: 21 } },
+      panel: null,
+      speed: 10,
+      resumeSpeed: null,
+      reportShown: 'month',
+      monthReport: { firstDay: 0, lastDay: 30 },
+      slideIn: 0,
+    })
+    expect(listener).toHaveBeenCalledTimes(1)
+    for (let day = 32; day < 61; day += 1) {
+      store.getState().advance(1)
+      expect(store.getState()).toMatchObject({
+        game: { day },
+        panel: null,
+        reportShown: 'month',
+        monthReport: { firstDay: 0 },
+        slideIn: 0,
+      })
+    }
+    store.getState().advance(1)
+    expect(store.getState()).toMatchObject({
+      game: { day: 61, lastWeek: { firstDay: 49 } },
+      monthReport: { firstDay: 31, lastDay: 60 },
+      slideIn: 31,
+    })
+  })
+
+  it('totals the weeks of the month as the history has them', () => {
+    const store = createGameStore(playedTo(29), NO_EVENTS, MONTHLY)
+    store.getState().advance(40)
+    store.getState().advance(40)
+    const { game, monthReport, weekReports } = store.getState()
+    expect(game.day).toBe(61)
+    const weeks = game.weekHistory.filter(
+      ({ firstDay }) => firstDay >= 28 && firstDay <= 49,
+    )
+    expect(weeks).toHaveLength(4)
+    expect(monthReport).toMatchObject({
+      weeks,
+      sales: sum(weeks.map(({ sales }) => sales)),
+      netIncome: sum(weeks.map(({ netIncome }) => netIncome)),
+      cashAtEnd: weeks.at(-1)!.cashAtEnd,
+    })
+    // Every week of the month played in the store, so nothing is left out.
+    expect(monthReport!.reports.map(({ firstDay }) => firstDay)).toEqual([
+      28, 35, 42, 49,
+    ])
+    expect(monthReport!.lowestCash).not.toBeNull()
+    expect(monthReport!.days).toHaveLength(30)
+    expect(weekReports.map(({ firstDay }) => firstDay)).toEqual([
+      21, 28, 35, 42, 49,
+    ])
+  })
+
+  it('opens in full every month while « Ouvrir le bilan chaque mois » is on', () => {
+    const store = createGameStore(playedTo(29), NO_EVENTS, {
+      everyWeek: () => true,
+      cadence: () => 'month',
+    })
+    store.getState().setSpeed(3)
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      game: { day: 31 },
+      panel: 'report',
+      speed: PAUSED,
+      resumeSpeed: 3,
+      reportShown: 'month',
+      monthReport: { firstDay: 0 },
+      slideIn: null,
+    })
+    store.getState().advance(1)
+    expect(store.getState().game.day).toBe(31)
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ panel: null, speed: 3 })
+  })
+
+  it('shows before the event card on a 1st that brings both', () => {
+    const store = createGameStore(playedTo(29), essaiFrom(31), MONTHLY)
+    store.getState().setSpeed(10)
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      game: { day: 31, events: { pending: { event: 'essai' } } },
+      panel: 'report',
+      reportShown: 'month',
+      speed: PAUSED,
+      resumeSpeed: 10,
+      slideIn: null,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ panel: 'event', speed: PAUSED })
+    store.getState().chooseEvent('rienFaire')
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ panel: null, speed: 10 })
+  })
+
+  it('waits for a panel open when its 1st comes, then shows before the event card', () => {
+    const store = createGameStore(playedTo(29), essaiFrom(31), MONTHLY)
+    store.getState().openPanel('finances')
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      game: { day: 31 },
+      panel: 'finances',
+      reportWaiting: true,
+      reportShown: 'month',
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: 'report',
+      reportWaiting: false,
+      reportShown: 'month',
+    })
+    store.getState().closePanel()
+    expect(store.getState().panel).toBe('event')
+  })
+
+  it('opens in full from its card sliding in', () => {
+    const store = createGameStore(playedTo(29), NO_EVENTS, MONTHLY)
+    store.getState().advance(10)
+    store.getState().openPanel('report')
+    expect(store.getState()).toMatchObject({
+      panel: 'report',
+      reportShown: 'month',
+      slideIn: null,
+    })
+  })
+
+  it('brings one report, the month’s, on a 1st that is also a Monday, with the week closed the night before', () => {
+    // January 1st, year 2, is day 245, a Monday.
+    const store = createGameStore(playedTo(200), essaiFrom(245), MONTHLY)
+    store.getState().advance(50)
+    expect(store.getState()).toMatchObject({
+      game: { day: 214 },
+      monthReport: { firstDay: 184 },
+      slideIn: 184,
+    })
+    store.getState().advance(50)
+    const { game, monthReport, weekReports } = store.getState()
+    expect(store.getState()).toMatchObject({
+      game: { day: 245, lastWeek: { firstDay: 238 } },
+      panel: 'report',
+      reportShown: 'month',
+      slideIn: null,
+    })
+    expect(game.events.pending).not.toBeNull()
+    expect(weekReports.at(-1)).toBe(game.lastWeek)
+    expect(monthReport).toMatchObject({ firstDay: 214, lastDay: 244 })
+    expect(monthReport!.weeks.map(({ firstDay }) => firstDay)).toEqual([
+      210, 217, 224, 231, 238,
+    ])
+    expect(monthReport!.lowestCash).not.toBeNull()
+
+    store.getState().closePanel()
+    expect(store.getState().panel).toBe('event')
+    store.getState().chooseEvent('rienFaire')
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: null,
+      reportShown: 'month',
+    })
+  })
+
+  it('follows the player who changes it during a game', () => {
+    const settings = createSettingsStore(null)
+    const store = createGameStore(playedTo(34), NO_EVENTS, {
+      everyWeek: () => settings.getState().openReportEveryWeek,
+      cadence: () => settings.getState().reportCadence,
+    })
+    store.getState().advance(1)
+    expect(store.getState()).toMatchObject({
+      game: { day: 35 },
+      reportShown: 'week',
+      slideIn: 28,
+    })
+
+    // Monthly from mid-June: the next report is June's, on July 1st, with
+    // every week of June, kept while the reports were weekly.
+    settings.getState().setReportCadence('month')
+    store.getState().advance(40)
+    expect(store.getState()).toMatchObject({
+      game: { day: 61 },
+      reportShown: 'month',
+      monthReport: { firstDay: 31 },
+      slideIn: 31,
+    })
+    expect(store.getState().monthReport!.lowestCash).not.toBeNull()
+
+    // Weekly again: the next Monday brings its week.
+    settings.getState().setReportCadence('week')
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      game: { day: 63, lastWeek: { firstDay: 56 } },
+      reportShown: 'week',
+      monthReport: { firstDay: 31 },
+      slideIn: 56,
+    })
+  })
+
+  it('starts each game with only its last week, and no month', () => {
+    const store = createGameStore(playedTo(29), NO_EVENTS, MONTHLY)
+    store.getState().advance(10)
+    expect(store.getState().monthReport).not.toBeNull()
+    const next = playedTo(40)
+    store.getState().startGame(next)
+    expect(store.getState()).toMatchObject({
+      weekReports: [next.lastWeek],
+      monthReport: null,
+      reportShown: 'week',
+      slideIn: null,
+    })
+    store.getState().startGame(createInitialState(2))
+    expect(store.getState().weekReports).toEqual([])
+  })
+
+  it('leaves out what a game loaded during the month did not keep', () => {
+    // Loaded on June 26: the store has only that morning's week, of June 19.
+    const store = createGameStore(playedTo(56), NO_EVENTS, MONTHLY)
+    store.getState().advance(10)
+    const { game, monthReport } = store.getState()
+    expect(game.day).toBe(61)
+    expect(monthReport!.reports.map(({ firstDay }) => firstDay)).toEqual([49])
+    expect(monthReport!.lowestCash).toBeNull()
+    expect(monthReport!.sales).toBe(
+      sum(
+        game.weekHistory
+          .filter(({ firstDay }) => firstDay >= 28 && firstDay <= 49)
+          .map(({ sales }) => sales),
+      ),
+    )
+  })
+})
+
 /** The Défi `defiId` on `seed`, played with no event to its end. */
 function playedOut(defiId: string, seed: number): GameState {
   let game = startChallenge(defiId, seed)
@@ -1046,6 +1365,7 @@ describe('gameStore', () => {
   afterEach(() => {
     gameStore.setState(gameStore.getInitialState(), true)
     settingsStore.getState().setOpenReportEveryWeek(false)
+    settingsStore.getState().setReportCadence('week')
   })
 
   it("shows the weekly report as the player's settings say", () => {
@@ -1062,6 +1382,19 @@ describe('gameStore', () => {
     expect(gameStore.getState()).toMatchObject({
       game: { day: 35 },
       panel: 'report',
+    })
+  })
+
+  it("shows the monthly report as the player's settings say", () => {
+    settingsStore.getState().setReportCadence('month')
+    gameStore.getState().startGame(playedTo(29))
+    gameStore.getState().advance(10)
+    // The shipped cards may bring an event that morning, which opens the
+    // report in full rather than sliding it in.
+    expect(gameStore.getState()).toMatchObject({
+      game: { day: 31 },
+      reportShown: 'month',
+      monthReport: { firstDay: 0, lastDay: 30 },
     })
   })
 })

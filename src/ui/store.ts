@@ -16,7 +16,13 @@ import { resolveEvent } from '../engine/events.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { Day, GameState, Profile, WeekReport } from '../engine/types.ts'
 import { isChallengeOver } from './defis.ts'
-import { settingsStore } from './settings.ts'
+import {
+  keepWeekReport,
+  monthReport,
+  reportOnMorning,
+  type MonthReport,
+} from './monthlyReport.ts'
+import { settingsStore, type ReportCadence } from './settings.ts'
 import { newWeekOf, opensFullReport } from './weeklyReport.ts'
 
 export const PAUSED = 0
@@ -26,17 +32,26 @@ export const NORMAL_SPEED = 1
 /**
  * The panels: « Gérer le camion », « Vos finances », the Défi's and
  * « Réglages », which the top bar opens, the event card, which opens on its
- * own when an event comes up, the « Bilan de la semaine », which opens on
- * its own on a Monday morning or from the card that slides in, and the end
- * of a Défi, which opens on its own once the Défi is over and never closes.
+ * own when an event comes up, the « Bilan » of the week or the month, which
+ * opens on its own on the morning it comes or from the card that slides
+ * in, and the end of a Défi, which opens on its own once the Défi is over
+ * and never closes.
  */
 export type Panel =
   'manage' | 'finances' | 'defi' | 'settings' | 'event' | 'report' | 'defiEnd'
 
-/** How the store shows the « Bilan de la semaine ». */
+/** How the store shows the « Bilan » of the week or the month. */
 export interface WeeklyReportOptions {
-  /** Whether the player wants the full report every week. */
+  /**
+   * Whether the player wants the full report each time it comes, every
+   * week or every month.
+   */
   readonly everyWeek: () => boolean
+  /**
+   * How often the player wants the report after the first weeks of a
+   * game; every week when not given.
+   */
+  readonly cadence?: () => ReportCadence
 }
 
 export interface GameStoreState {
@@ -69,12 +84,26 @@ export interface GameStoreState {
    */
   eventBefore: GameState | null
   /**
-   * Whether the full « Bilan de la semaine » waits for the panel open when
-   * its Monday came to close, before any event card.
+   * Whether the full « Bilan » waits for the panel open when its morning
+   * came to close, before any event card.
    */
   reportWaiting: boolean
   /**
-   * The Monday of the week the card sliding in shows, `lastWeek`'s; null
+   * The full reports of the last weeks, oldest first, kept as each week
+   * comes for the « Bilan du mois »: as many as a month holds. A game
+   * started or loaded keeps only its `lastWeek`, as the save holds no more.
+   */
+  weekReports: readonly WeekReport[]
+  /** The last « Bilan du mois » that came; null until one does. */
+  monthReport: MonthReport | null
+  /**
+   * The report the « Bilan » panel and the card sliding in show, the last
+   * that came: the week's, `game.lastWeek`, or the month's, `monthReport`.
+   */
+  reportShown: ReportCadence
+  /**
+   * The first day of the report the card sliding in shows (see
+   * `reportShown`): the Monday of the week, or the 1st of the month; null
    * when none shows. It hides while a panel is open.
    */
   slideIn: Day | null
@@ -90,20 +119,23 @@ export interface GameStoreState {
    * while an event waits for the player's choice, nor while the card shows
    * what the choice did, which the next day would blur.
    *
-   * With the weekly report on, it also stops on the Monday morning a new
-   * `lastWeek` comes. The full report opens in the event card's place, the
-   * card following when it closes: for the first weeks of a game, when the
-   * player wants it every week, and on a morning that brings an event,
-   * which pauses the game anyway. Otherwise the card slides in (`slideIn`)
-   * and the game goes on. Does nothing while the full report is open or
-   * waits for a panel to close, since the next Monday would replace the
-   * week it shows.
+   * It keeps the full report of each week that closes (`weekReports`).
+   * With the weekly report on, it also stops on the morning a report comes
+   * (see `reportOnMorning`): the Monday a new `lastWeek` comes, or, once
+   * the first weeks of a game are over and the player wants it every
+   * month, the 1st, with the « Bilan du mois » (`monthReport`). The full
+   * report opens in the event card's place, the card following when it
+   * closes: for the first weeks of a game, when the player wants it each
+   * time, and on a morning that brings an event, which pauses the game
+   * anyway. Otherwise the card slides in (`slideIn`) and the game goes on.
+   * Does nothing while the full report is open or waits for a panel to
+   * close, since the next report would replace the one it shows.
    *
    * In a Défi, it stops on the morning after the day that ends it, the
    * engine playing no day past that, and opens the end of the Défi in
-   * place of that morning's report, pausing the game for good; with a
-   * panel already open, it opens when that panel closes. Once the Défi is
-   * over it does nothing.
+   * place of that morning's report, the week's or the month's, pausing the
+   * game for good; with a panel already open, it opens when that panel
+   * closes. Once the Défi is over it does nothing.
    */
   advance: (days: number) => void
   /**
@@ -224,8 +256,8 @@ function openingPanel(game: GameState): 'defiEnd' | 'event' | null {
 /**
  * The store's state for playing `game` from its start, at normal speed: on
  * the end of the Défi or the event card, paused, if it opens on one (see
- * `openingPanel`). The weekly report of a game loaded on a Monday does not
- * show again.
+ * `openingPanel`). The report of a game loaded on its morning does not
+ * show again, and only `lastWeek` is kept of its weeks.
  */
 function playing(game: GameState) {
   const panel = openingPanel(game)
@@ -238,6 +270,9 @@ function playing(game: GameState) {
     panel,
     eventBefore: null,
     reportWaiting: false,
+    weekReports: game.lastWeek === null ? [] : [game.lastWeek],
+    monthReport: null,
+    reportShown: 'week' as const,
     slideIn: null,
   }
 }
@@ -245,8 +280,8 @@ function playing(game: GameState) {
 /**
  * A store playing `game`, whose days draw the event cards from `events`
  * and whose choices play them out. With `weeklyReport`, it shows the
- * « Bilan de la semaine » on each Monday morning (see `advance`); without,
- * as for tests of other parts, the days run on.
+ * « Bilan » of the week on each Monday morning, or of the month on the 1st
+ * (see `advance`); without, as for tests of other parts, the days run on.
  */
 export function createGameStore(
   game: GameState = createInitialState(randomSeed()),
@@ -278,12 +313,13 @@ export function createGameStore(
         return
       }
       let next = start
-      let week: WeekReport | null = null
+      let { weekReports } = get()
+      let comes: ReportCadence | null = null
       for (
         let i = 0;
         i < days &&
         next.events.pending === null &&
-        week === null &&
+        comes === null &&
         !isChallengeOver(next);
         i += 1
       ) {
@@ -297,49 +333,82 @@ export function createGameStore(
           ENERGY,
           events,
         )
-        if (weeklyReport !== null) week = newWeekOf(before, next)
+        const closed = newWeekOf(before, next)
+        if (closed !== null) weekReports = keepWeekReport(weekReports, closed)
+        if (weeklyReport !== null) {
+          comes = reportOnMorning(
+            next.day,
+            closed,
+            weeklyReport.cadence?.() ?? 'week',
+          )
+        }
       }
       // The end of the Défi has the numbers, so it takes the place of the
-      // week's report, or of its card sliding in, that morning.
+      // week's or the month's report, or of its card sliding in, that
+      // morning.
       if (isChallengeOver(next)) {
         set(
           resumeSpeed === null
             ? {
                 game: next,
+                weekReports,
                 panel: 'defiEnd',
                 resumeSpeed: speed,
                 speed: PAUSED,
                 slideIn: null,
               }
-            : { game: next, slideIn: null },
+            : { game: next, weekReports, slideIn: null },
         )
         return
       }
+      const month = comes === 'month' ? monthReport(next, weekReports) : null
+      // The week the morning brought, when its report comes.
+      const week = comes === 'week' ? next.lastWeek : null
+      const report = month ?? week
+      const shown =
+        month !== null
+          ? { reportShown: 'month' as const, monthReport: month }
+          : { reportShown: 'week' as const }
       const eventComes = next.events.pending !== null
-      // The weekly report goes first on a morning that brings both: it
-      // opens in the event card's place, and closePanel() opens the card.
+      // The report goes first on a morning that brings both: it opens in
+      // the event card's place, and closePanel() opens the card.
+      const everyTime = weeklyReport?.everyWeek() ?? false
       const opens =
-        week !== null &&
+        report !== null &&
         (eventComes ||
-          opensFullReport(week, weeklyReport?.everyWeek() ?? false))
+          (week !== null ? opensFullReport(week, everyTime) : everyTime))
       if (opens) {
         set(
           resumeSpeed === null
             ? {
                 game: next,
+                weekReports,
+                ...shown,
                 panel: 'report',
                 resumeSpeed: speed,
                 speed: PAUSED,
                 slideIn: null,
               }
-            : { game: next, reportWaiting: true, slideIn: null },
+            : {
+                game: next,
+                weekReports,
+                ...shown,
+                reportWaiting: true,
+                slideIn: null,
+              },
         )
-      } else if (week !== null) {
-        set({ game: next, slideIn: week.firstDay })
+      } else if (report !== null) {
+        set({ game: next, weekReports, ...shown, slideIn: report.firstDay })
       } else if (!eventComes || resumeSpeed !== null) {
-        set({ game: next })
+        set({ game: next, weekReports })
       } else {
-        set({ game: next, panel: 'event', resumeSpeed: speed, speed: PAUSED })
+        set({
+          game: next,
+          weekReports,
+          panel: 'event',
+          resumeSpeed: speed,
+          speed: PAUSED,
+        })
       }
     },
     openPanel: (panel) => {
@@ -394,16 +463,19 @@ export function createGameStore(
 }
 
 /**
- * The store the app runs on, with the weekly report as the player's
- * settings say. Until the start screen hands it the game to play, it holds
- * a new game with the default profile, seeded from the page address when
- * it has a `?seed=`, for the world to draw behind the menu. Tests build
- * their own with `createGameStore`.
+ * The store the app runs on, with the report of the week or the month as
+ * the player's settings say. Until the start screen hands it the game to
+ * play, it holds a new game with the default profile, seeded from the page
+ * address when it has a `?seed=`, for the world to draw behind the menu.
+ * Tests build their own with `createGameStore`.
  */
 export const gameStore = createGameStore(
   newGame(typeof window === 'undefined' ? '' : window.location.search),
   EVENTS,
-  { everyWeek: () => settingsStore.getState().openReportEveryWeek },
+  {
+    everyWeek: () => settingsStore.getState().openReportEveryWeek,
+    cadence: () => settingsStore.getState().reportCadence,
+  },
 )
 
 /**

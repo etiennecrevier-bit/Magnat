@@ -1,38 +1,42 @@
 import type { WeekReport } from '../engine/types.ts'
+import type { MonthReport } from './monthlyReport.ts'
 import type { GameStore, GameStoreState } from './store.ts'
 
-// After the first weeks of a game, the « Bilan de la semaine » slides in at
-// the bottom right on a Monday morning instead of opening in full, and goes
-// away on its own a few seconds later without pausing the game. It hides
-// while a panel is open, so it never sits behind one, and its seconds only
-// count while it shows.
+// After the first weeks of a game, the « Bilan » of the week, or of the
+// month, slides in at the bottom right on the morning it comes instead of
+// opening in full, and goes away on its own a few seconds later without
+// pausing the game. It hides while a panel is open, so it never sits
+// behind one, and its seconds only count while it shows.
 
-/** The week the card sliding in shows; null while it does not show. */
-export function slideInWeek(state: GameStoreState): WeekReport | null {
-  const { slideIn, panel, game } = state
-  return slideIn !== null &&
-    panel === null &&
-    game.lastWeek?.firstDay === slideIn
-    ? game.lastWeek
-    : null
+/**
+ * The report the card sliding in shows, the week's or the month's (see
+ * `reportShown`); null while it does not show.
+ */
+export function slideInReport(
+  state: GameStoreState,
+): WeekReport | MonthReport | null {
+  const { slideIn, panel, game, reportShown, monthReport } = state
+  if (slideIn === null || panel !== null) return null
+  const report = reportShown === 'month' ? monthReport : game.lastWeek
+  return report?.firstDay === slideIn ? report : null
 }
 
 /**
  * Takes the card sliding in away `ms` after it shows, counting again from
- * the start each time it shows again after a panel, or shows another week.
- * Returns what stops it.
+ * the start each time it shows again after a panel, or shows another
+ * report. Returns what stops it.
  */
 export function hideSlideInAfter(store: GameStore, ms: number): () => void {
-  let shown: WeekReport | null = null
+  let shown: WeekReport | MonthReport | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
 
   const follow = (state: GameStoreState) => {
-    const week = slideInWeek(state)
-    if (week === shown) return
-    shown = week
+    const report = slideInReport(state)
+    if (report === shown) return
+    shown = report
     if (timer !== null) clearTimeout(timer)
     timer =
-      week === null
+      report === null
         ? null
         : setTimeout(() => store.getState().dismissSlideIn(), ms)
   }
