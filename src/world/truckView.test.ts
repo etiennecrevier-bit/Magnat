@@ -24,6 +24,7 @@ import type {
   GameState,
   StreetModifier,
 } from '../engine/types.ts'
+import { ASSETS } from './manifest.ts'
 import {
   modifiersToday,
   openingStock,
@@ -442,5 +443,77 @@ describe('showsOn', () => {
     )
     const essai = modifier('essai', NO_CAFE, 1, 1)
     expect(showsOn({ unavailable: 'cafe' }, view(false, essai))).toBe(true)
+  })
+})
+
+describe('the construction of « Les cônes orange »', () => {
+  /** The shipped pieces the card draws round the truck. */
+  const CONSTRUCTION = ASSETS.pieces.filter(
+    ({ shows }) =>
+      typeof shows === 'object' &&
+      'event' in shows &&
+      shows.event === 'conesOrange',
+  )
+  const ALL = ['cones-left', 'cones-right', 'road-sign']
+
+  /**
+   * Each morning from the one `choiceId` is chosen on, a Tuesday, while a
+   * change to the street from the card is in effect.
+   */
+  function mornings(choiceId: string): GameState[] {
+    const waiting: GameState = {
+      ...tuesday,
+      events: {
+        ...tuesday.events,
+        pending: { event: 'conesOrange', followUp: false },
+      },
+    }
+    const seen: GameState[] = []
+    let state = resolveEvent(waiting, choiceId)
+    while (fromTheCard(state).length > 0) {
+      seen.push(state)
+      state = tick(state)
+    }
+    return seen
+  }
+
+  /** The changes to the street from the card on the morning of `game`. */
+  function fromTheCard(game: GameState): StreetModifier[] {
+    return modifiersToday(game).filter(({ event }) => event === 'conesOrange')
+  }
+
+  /** The construction pieces the street shows on the morning of `game`. */
+  function construction(game: GameState): string[] {
+    const view = truckView(game)
+    return CONSTRUCTION.filter(({ shows }) => showsOn(shows!, view)).map(
+      ({ id }) => id,
+    )
+  }
+
+  it('draws the cones, the barrier and « Rue barrée »', () => {
+    expect(CONSTRUCTION.map(({ id }) => id)).toEqual(ALL)
+  })
+
+  it.each(['patienter', 'vacances'])(
+    'keeps them round the truck for the 21 days « %s » changes the street',
+    (choiceId) => {
+      const days = mornings(choiceId)
+      expect(days).toHaveLength(21)
+      for (const game of days) {
+        expect(construction(game), `day ${game.day}`).toEqual(ALL)
+      }
+    },
+  )
+
+  it('leaves them at the old corner after « Changer de coin de rue », the fewer walk-ins kept', () => {
+    const days = mornings('changerDeCoin')
+    expect(days).toHaveLength(21)
+    for (const game of days) {
+      expect(
+        fromTheCard(game).map(({ change }) => change.kind),
+        `day ${game.day}`,
+      ).toContain('walkIns')
+      expect(construction(game), `day ${game.day}`).toEqual([])
+    }
   })
 })
