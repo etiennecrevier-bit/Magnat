@@ -9,6 +9,7 @@ import {
   PERSONAL,
 } from '../engine/day.ts'
 import { conditionsHold, resolveEvent } from '../engine/events.ts'
+import { FULL_ENERGY } from '../engine/energy.ts'
 import { onHand } from '../engine/inventory.ts'
 import { next } from '../engine/rng.ts'
 import { streetOn, type Street } from '../engine/street.ts'
@@ -603,7 +604,8 @@ describe('the energy the cards cost and give', () => {
   // A card that closes the truck for a day of work costs energy: the owner
   // bakes all night, queues at the permit counter or carries a divan. From
   // the same morning, they end that day less rested than with the choice
-  // that costs no energy. The closed day is no day off (#145).
+  // that costs no energy. The closed day is no day off (#145). The chalet's
+  // are, and its tag says what they give.
 
   /** The owner's energy at the close of `day`, one of the days played. */
   function energyAtCloseOf(mornings: readonly GameState[], day: Day): number {
@@ -642,21 +644,14 @@ describe('the energy the cards cost and give', () => {
     },
   )
 
-  it('chalet: « Y aller » gives its « Énergie +20 » on Sunday', () => {
+  it('chalet: « Y aller » leaves the owner at « Énergie au maximum » on Sunday', () => {
+    // The three days off rest the owner to full by themselves (#145).
+    expect(choiceOf('chalet', 'yAller').tags).toContain('Énergie au maximum')
     const morning = firstMorning('chalet')
     const sunday = nextWeekday(morning.day, 7)
-    const chosen = choose(morning, 'chalet', 'yAller')
-    const { delayed } = chosen.events
-    const withoutRest: GameState = {
-      ...chosen,
-      events: {
-        ...chosen.events,
-        delayed: delayed.filter(({ effect }) => effect.kind !== 'energy'),
-      },
-    }
-    expect(withoutRest.events.delayed).toHaveLength(delayed.length - 1)
-    expect(energyAtCloseOf(playOut(chosen), sunday)).toBeGreaterThan(
-      energyAtCloseOf(playOut(withoutRest), sunday),
-    )
+    const away = playOut(choose(morning, 'chalet', 'yAller'))
+    const open = playOut(choose(morning, 'chalet', 'resterOuvert'))
+    expect(energyAtCloseOf(away, sunday)).toBe(FULL_ENERGY)
+    expect(energyAtCloseOf(open, sunday)).toBeLessThan(FULL_ENERGY)
   })
 })

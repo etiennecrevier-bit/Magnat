@@ -469,27 +469,27 @@ describe('the progress of a Défi', () => {
   })
 
   it('keeps the energy the start of a day took, though a closed day gives it back by the close', () => {
-    // « La grosse commande » on Wednesday tires the owner by 15 at the
-    // start of Thursday, a day the truck stays closed.
-    const order = defis([
+    // « Ouvrir tôt pour les déménageurs » on Wednesday tires the owner by
+    // 10 at the start of Thursday, a day off.
+    const early = defis([
       defi({
-        id: 'commande',
+        id: 'demenagement',
         setup: { daysOpen: [2, 3, 5, 6, 7] },
-        events: [{ day: 2, event: 'grosseCommande', choices: ['accepter'] }],
+        events: [{ day: 2, event: 'premierJuillet', choices: ['ouvrirTot'] }],
       }),
     ])
-    let state = startChallenge('commande', SEED, FOOD_TRUCK, order)
+    let state = startChallenge('demenagement', SEED, FOOD_TRUCK, early)
     while (state.day < 10) {
       if (state.events.pending !== null) {
-        state = resolveEvent(state, 'accepter', EVENTS, FOOD_TRUCK, order)
+        state = resolveEvent(state, 'ouvrirTot', EVENTS, FOOD_TRUCK, early)
       }
-      state = next(state, order)
+      state = next(state, early)
     }
     const before = state.challenge?.progress.lowestEnergy ?? 0
-    expect(state.energy - 15).toBeLessThan(before)
-    const thursday = close(state, order)
-    expect(thursday.lastDay?.energy).toBeGreaterThan(state.energy - 15)
-    expect(thursday.challenge?.progress.lowestEnergy).toBe(state.energy - 15)
+    expect(state.energy - 10).toBeLessThan(before)
+    const thursday = close(state, early)
+    expect(thursday.lastDay?.energy).toBeGreaterThan(state.energy - 10)
+    expect(thursday.challenge?.progress.lowestEnergy).toBe(state.energy - 10)
   })
 
   // « Le remontant », forced on a closed Monday at 30 energy: « Maintenant »

@@ -226,7 +226,12 @@
                   "name": "vente"
                 },
                 { "kind": "energy", "amount": -15, "onNextWeekday": 4 },
-                { "kind": "closed", "days": 1, "onNextWeekday": 4 }
+                {
+                  "kind": "closed",
+                  "days": 1,
+                  "work": true,
+                  "onNextWeekday": 4
+                }
               ]
             },
             {
@@ -261,7 +266,12 @@
                   "onNextWeekday": 4
                 },
                 { "kind": "energy", "amount": -15, "onNextWeekday": 4 },
-                { "kind": "closed", "days": 1, "onNextWeekday": 4 }
+                {
+                  "kind": "closed",
+                  "days": 1,
+                  "work": true,
+                  "onNextWeekday": 4
+                }
               ]
             }
           ]
@@ -301,7 +311,12 @@
                   "name": "vente"
                 },
                 { "kind": "energy", "amount": -15, "onNextWeekday": 4 },
-                { "kind": "closed", "days": 1, "onNextWeekday": 4 }
+                {
+                  "kind": "closed",
+                  "days": 1,
+                  "work": true,
+                  "onNextWeekday": 4
+                }
               ]
             }
           ]
@@ -953,7 +968,7 @@
               "chance": 0.7,
               "result": "Le tampon était bon. On s'excuse avec un formulaire.",
               "effects": [
-                { "kind": "closed", "days": 1, "inDays": 1 },
+                { "kind": "closed", "days": 1, "work": true, "inDays": 1 },
                 { "kind": "energy", "amount": -10, "name": "energie" }
               ]
             },
@@ -961,7 +976,7 @@
               "chance": 0.3,
               "result": "Vous avez rempli le 14-B. Il fallait le 14-B bis. Amende doublée.",
               "effects": [
-                { "kind": "closed", "days": 1, "inDays": 1 },
+                { "kind": "closed", "days": 1, "work": true, "inDays": 1 },
                 { "kind": "energy", "amount": -10, "name": "energie" },
                 {
                   "kind": "charge",
@@ -996,23 +1011,12 @@
         {
           "id": "yAller",
           "label": "Y aller",
-          "tags": [
-            "Fermé vendredi, samedi et dimanche",
-            { "text": "Énergie +{montant}", "effect": "repos" }
-          ],
+          "tags": ["Fermé vendredi, samedi et dimanche", "Énergie au maximum"],
           "outcomes": [
             {
               "chance": 1,
               "result": "Trois jours de lac, de chaise longue et de blé d'Inde. Les maringouins étaient gentils. Pas tous.",
-              "effects": [
-                { "kind": "closed", "days": 3, "onNextWeekday": 5 },
-                {
-                  "kind": "energy",
-                  "amount": 20,
-                  "onNextWeekday": 7,
-                  "name": "repos"
-                }
-              ]
+              "effects": [{ "kind": "closed", "days": 3, "onNextWeekday": 5 }]
             }
           ]
         },
@@ -1250,7 +1254,7 @@
               "chance": 1,
               "result": "Le divan n'a pas passé dans l'escalier. Il a passé par la fenêtre. Normand vous glisse {montant:merci} et une bière tiède.",
               "effects": [
-                { "kind": "closed", "days": 1, "inDays": 1 },
+                { "kind": "closed", "days": 1, "work": true, "inDays": 1 },
                 {
                   "kind": "energy",
                   "amount": -20,

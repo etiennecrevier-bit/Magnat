@@ -21,8 +21,8 @@ const PLAIN: EnergyContent = loadEnergyContent({
   exhausted: { below: 25, serviceTimeIncrease: 0.4, botchedShare: 0.05 },
 })
 
-const OPEN: Workday = { open: true, customersServed: 0, stressed: false }
-const CLOSED: Workday = { open: false, customersServed: 0, stressed: false }
+const OPEN: Workday = { worked: true, customersServed: 0, stressed: false }
+const CLOSED: Workday = { worked: false, customersServed: 0, stressed: false }
 
 describe('fatigueOf', () => {
   it.each([

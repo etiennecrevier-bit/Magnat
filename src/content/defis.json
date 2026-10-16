@@ -107,7 +107,7 @@
       "randomEvents": true,
       "goal": {
         "metric": "lowestCash",
-        "medals": { "or": 600000, "argent": 290000, "bronze": 0 }
+        "medals": { "or": 587500, "argent": 290000, "bronze": 0 }
       },
       "conditions": [{ "kind": "minCash", "amountCents": 0 }]
     },

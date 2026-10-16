@@ -526,6 +526,33 @@ describe('serialize and deserialize', () => {
     expect(reloaded(CLOSE_2)).toEqual(CLOSE_2)
   })
 
+  it('give back a closure for work, to come and in effect', () => {
+    const working: GameState = {
+      ...CHOSEN,
+      events: {
+        ...CHOSEN.events,
+        delayed: [
+          ...CHOSEN.events.delayed,
+          {
+            day: 5,
+            event: 'essai',
+            effect: { kind: 'closed', days: 1, work: true },
+          },
+        ],
+        modifiers: [
+          ...CHOSEN.events.modifiers,
+          {
+            event: 'essai',
+            change: { kind: 'closed', work: true },
+            fromDay: 1,
+            lastDay: 1,
+          },
+        ],
+      },
+    }
+    expect(reloaded(working)).toEqual(working)
+  })
+
   it('give back queued follow-ups', () => {
     const queued: GameState = {
       ...CHOSEN,

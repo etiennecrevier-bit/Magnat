@@ -1974,6 +1974,31 @@ describe('changes to the street', () => {
     expect(summary(saturday).modifiers).toEqual([])
   })
 
+  it('closes the truck for a day of work: no sale, and the energy of an open day with nobody served', () => {
+    const content = shipped()
+    const { openDayCost, closedDayRecovery } = content.energy
+    // Day 122, a Thursday, the truck open; day 126, a Monday, closed.
+    expect(toCalendar(122).weekday).toBe(4)
+    expect(toCalendar(126).weekday).toBe(1)
+    const thursday = after(122, content)
+    const monday = after(4, content, thursday)
+    expect([thursday.day, monday.day]).toEqual([122, 126])
+    for (const morning of [thursday, monday]) {
+      const shut = (effect: EventEffect) =>
+        close(changed(morning, effect, 'grosseCommande', content), content)
+      const working = shut({ kind: 'closed', days: 1, work: true })
+      const resting = shut({ kind: 'closed', days: 1 })
+      expect(summary(working).visits).toEqual([])
+      expect(entriesOn(working, morning.day)).toEqual(
+        entriesOn(resting, morning.day),
+      )
+      expect(working.energy).toBe(morning.energy - openDayCost)
+      expect(resting.energy).toBe(
+        Math.min(FULL_ENERGY, morning.energy + closedDayRecovery),
+      )
+    }
+  })
+
   it('multiplies the changes of a day: ×0.5 and ×2 play the very day without them', () => {
     const content = variant()
     const morning = after(3, content)
