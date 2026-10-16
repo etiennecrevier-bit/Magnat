@@ -121,13 +121,13 @@ describe('assets.json', () => {
     }
   })
 
-  it('shows the awning and steam when open, the rolled awning and sign when closed', () => {
+  it('shows the awning when open, the steam while café sells, the rolled awning and sign when closed', () => {
     const shows = Object.fromEntries(
       loadAssetManifest().pieces.map((p) => [p.kind, p.shows]),
     )
     expect(shows).toMatchObject({
       awning: 'open',
-      steam: 'open',
+      steam: { sells: 'cafe' },
       rolledAwning: 'closed',
       closedSign: 'closed',
       truck: undefined,
@@ -201,6 +201,7 @@ describe('assets.json', () => {
       { event: 'festival' },
       { event: 'conesOrange', except: ['changerDeCoin'] },
       { unavailable: 'croissant' },
+      { sells: 'cafe' },
     ]) {
       const raw = shipped()
       piece(raw, 'bunting').shows = shows
@@ -345,6 +346,13 @@ describe('loadAssetManifest', () => {
     'a piece shown while an unknown product cannot be sold',
     (raw) => {
       piece(raw, 'out-of-order').shows = { unavailable: 'poutine' }
+    },
+    /pieces\[\d+\]\.shows/,
+  )
+  rejects(
+    'a piece shown while an unknown product sells',
+    (raw) => {
+      piece(raw, 'steam').shows = { sells: 'poutine' }
     },
     /pieces\[\d+\]\.shows/,
   )

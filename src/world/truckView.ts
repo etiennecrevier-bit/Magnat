@@ -101,8 +101,8 @@ function changesStreet(effect: EventEffect): effect is StreetEffect {
 /**
  * Whether a piece that `shows` so shows in `view`: on open or closed days,
  * while any change to the street from the event card it names is in
- * effect, but for those its `except` choices made, or while the product it
- * names cannot be sold.
+ * effect, but for those its `except` choices made, while the product it
+ * names cannot be sold, or on open days while that product can be sold.
  */
 export function showsOn(
   shows: Shows,
@@ -117,9 +117,19 @@ export function showsOn(
         (choice === undefined || !shows.except?.includes(choice)),
     )
   }
-  return view.modifiers.some(
-    ({ change }) =>
-      change.kind === 'unavailable' && change.product === shows.unavailable,
+  if ('sells' in shows) {
+    return view.open && !unsold(view.modifiers, shows.sells)
+  }
+  return unsold(view.modifiers, shows.unavailable)
+}
+
+/** Whether a change in `modifiers` leaves `product` unsold. */
+function unsold(
+  modifiers: readonly ChosenModifier[],
+  product: ProductId,
+): boolean {
+  return modifiers.some(
+    ({ change }) => change.kind === 'unavailable' && change.product === product,
   )
 }
 

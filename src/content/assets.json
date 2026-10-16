@@ -1,5 +1,5 @@
 {
-  "_note": "The world's pieces, drawn back to front in the order of `layers`, then in the order listed here. Positions and sizes are logical pixels of the 1440 × 900 design, which the world scales to the window. A piece with an `image` (a file path under src/world/art/) shows that image stretched to its size; without one, or when the image fails to load, the world draws a placeholder shape in its `color`, lit as `light` says. `shows` keeps a piece to some days: `open` or `closed` ones; those a change to the street from an event card is in effect, `{ \"event\": <the card's id> }`, except the changes its choices listed in an optional `except` made, such as the move away from the cones; or those a product cannot be sold, `{ \"unavailable\": <the product> }`. `text` is what a sign or a board says, in French: the road sign, the rival truck, the banner and the « Hors service » card each need one, and no other piece takes one. `fans` sets who fans themselves while it `shows`, as in a heat wave: each customer who comes then holds a fan of `color` with `chance`, which swings `swing` radians each way and back once every `periodMs` real milliseconds. `fill` makes the croissants follow the stock: `capacity` units fill the rack, shown in `steps` shelves. The `light.shadowLayer` holds no piece: the world draws the shadows on the ground there, under what stands on it.",
+  "_note": "The world's pieces, drawn back to front in the order of `layers`, then in the order listed here. Positions and sizes are logical pixels of the 1440 × 900 design, which the world scales to the window. A piece with an `image` (a file path under src/world/art/) shows that image stretched to its size; without one, or when the image fails to load, the world draws a placeholder shape in its `color`, lit as `light` says. `shows` keeps a piece to some days: `open` or `closed` ones; those a change to the street from an event card is in effect, `{ \"event\": <the card's id> }`, except the changes its choices listed in an optional `except` made, such as the move away from the cones; those a product cannot be sold, `{ \"unavailable\": <the product> }`; or open ones it can be sold, `{ \"sells\": <the product> }`, such as the steam over the espresso machine. `text` is what a sign or a board says, in French: the road sign, the rival truck, the banner and the « Hors service » card each need one, and no other piece takes one. `fans` sets who fans themselves while it `shows`, as in a heat wave: each customer who comes then holds a fan of `color` with `chance`, which swings `swing` radians each way and back once every `periodMs` real milliseconds. `fill` makes the croissants follow the stock: `capacity` units fill the rack, shown in `steps` shelves. The `light.shadowLayer` holds no piece: the world draws the shadows on the ground there, under what stands on it.",
   "designSize": { "width": 1440, "height": 900 },
   "palette": {
     "ink": "#2B2622",
@@ -390,7 +390,7 @@
       "width": 44,
       "height": 54,
       "color": "cream",
-      "shows": "open"
+      "shows": { "sells": "cafe" }
     },
     {
       "id": "hot-chocolate-pot",
