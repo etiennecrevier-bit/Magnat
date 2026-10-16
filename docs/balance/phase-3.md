@@ -311,7 +311,7 @@ From #102: owners win « Or » in under 10% of their games, « Argent » or bett
 | semaineDesMilleDollars | net income | $1,000.00 | $600.00 | $100.00 | 0.0% | 7.0% | 32.8% | 71.4% | prices -20%, croissants 70/day, marketing $0.00/day, days 6/week, pay $400.00/week | 0.0% | 99.0% | ✓ |
 | zeroGaspillage | customers served | 1,150 | 875 | 520 | 26.6% | 6.8% | 30.7% | 68.9% | prices -20%, croissants 14/day, marketing $80.00/day, days 7/week, pay $400.00/week | 0.0% | 96.9% | ✓ |
 | festivalDuPasPire | sales | $3,000.00 | $2,450.00 | $1,750.00 | 25.9% | 8.4% | 33.0% | 68.1% | prices base, croissants 55/day, marketing $80.00/day, days 6/week, pay $400.00/week | 4.0% | 93.5% | ✓ |
-| payeDans60Jours | lowest cash | $6,000.00 | $2,900.00 | $0.00 | 28.9% | 9.6% | 40.0% | 71.1% | prices base, croissants 40/day, marketing $0.00/day, days 7/week, pay $400.00/week | 0.0% | 84.1% | ✓ |
+| payeDans60Jours | lowest cash | $5,875.00 | $2,900.00 | $0.00 | 29.9% | 9.5% | 38.9% | 70.1% | prices base, croissants 40/day, marketing $0.00/day, days 7/week, pay $400.00/week | 0.0% | 80.2% | ✓ |
 | moisSansConge | net income | -$1,000.00 | -$3,000.00 | -$4,850.00 | 25.3% | 3.2% | 36.3% | 71.1% | prices base, croissants 40/day, marketing $30.00/day, days locked, pay $400.00/week | 1.5% | 98.0% | ✓ |
 
 ### Owners’ outcomes
@@ -324,7 +324,7 @@ What the goal measured at each percentile of the owners' 1000 games, worst first
 | semaineDesMilleDollars | -$431.77 | -$277.54 | -$15.26 | $118.53 | $276.97 | $407.10 | $520.38 | $631.25 | $740.65 | $928.78 | $1,056.99 | $975.11 | $583.80 | $118.53 |
 | zeroGaspillage | broken | broken | broken | 491 | 652 | 739 | 810 | 879 | 972 | 1,103 | 1,167 | 1,135 | 845 | 491 |
 | festivalDuPasPire | broken | broken | broken | $1,673.98 | $1,923.05 | $2,137.20 | $2,311.34 | $2,490.80 | $2,650.88 | $2,932.58 | $3,129.48 | $3,011.16 | $2,415.74 | $1,673.98 |
-| payeDans60Jours | broken | broken | broken | $120.69 | $1,094.53 | $2,091.23 | $2,899.54 | $3,708.11 | $4,638.24 | $5,922.98 | $6,490.38 | $6,170.35 | $3,332.60 | $120.69 |
+| payeDans60Jours | broken | broken | broken | $14.15 | $983.83 | $1,945.66 | $2,792.73 | $3,584.65 | $4,599.64 | $5,833.31 | $6,438.86 | $6,017.59 | $3,194.17 | $14.15 |
 | moisSansConge | broken | broken | broken | -$4,742.91 | -$4,002.24 | -$3,591.13 | -$3,125.63 | -$2,704.81 | -$2,188.59 | -$1,657.90 | -$1,203.68 | -$1,515.67 | -$2,957.41 | -$4,742.91 |
 
 ### Best strategy’s outcomes
@@ -337,7 +337,7 @@ The same for the best strategy's 1000 games: « Or » at or below its 20th perce
 | semaineDesMilleDollars | $1,067.37 | $1,111.04 | $1,157.46 | $1,190.04 | $1,215.05 | $1,238.93 | $1,261.00 | $1,282.79 | $1,310.76 | $1,347.10 | $1,373.62 |
 | zeroGaspillage | 1,156 | 1,172 | 1,194 | 1,208 | 1,218 | 1,228 | 1,236 | 1,246 | 1,257 | 1,273 | 1,287 |
 | festivalDuPasPire | $2,956.08 | $3,078.68 | $3,159.65 | $3,206.43 | $3,250.80 | $3,286.75 | $3,320.10 | $3,365.83 | $3,406.55 | $3,459.50 | $3,507.28 |
-| payeDans60Jours | $5,633.71 | $5,833.88 | $6,123.45 | $6,591.96 | $6,706.31 | $6,738.50 | $6,738.50 | $6,738.50 | $6,738.50 | $6,738.50 | $6,738.50 |
+| payeDans60Jours | $5,387.72 | $5,629.80 | $5,881.64 | $6,345.58 | $6,611.63 | $6,703.46 | $6,738.50 | $6,738.50 | $6,738.50 | $6,738.50 | $6,738.50 |
 | moisSansConge | -$856.19 | -$763.93 | -$655.43 | -$596.75 | -$539.25 | -$494.68 | -$446.12 | -$394.50 | -$337.73 | -$253.51 | -$198.63 |
 
 <!-- End of the Défis section. -->
@@ -662,3 +662,15 @@ A Défi plays the cards as written: its story and its medals keep their amounts,
 
 - The French of the new texts is a draft to polish: the results of `gateauFete` and `traiteurPresse` « accepter », the quote of `traiteurPresse` (« 40 croissants avant midi, … comptant. », in place of « je paie le double », which the amounts no longer fit), the situation of `chequeDansLaMalle`, and the costs of Difficile.
 - The four new characters have no portrait yet.
+
+## Closures for work (#145)
+
+#145 found that a card closing the truck for a day of work rested the owner like a day off: the `closedDayRecovery` of 45 turned the energy cost of « La grosse commande » (« Accepter » and « Accepter, mais payé à la livraison »), « Contester » (« Le formulaire 14-B ») and « Aider Normand » (« Le 1er juillet ») into a gain. Those closures now say `"work": true`, and such a day costs `openDayCost`, like an open day where nobody came. The chalet's three days off already rest the owner to full by Sunday, so its « Énergie +20 », which never changed anything, is gone, and its tag reads « Énergie au maximum », as Étienne chose on #145; its games play as before.
+
+### Défis
+
+« Payé dans 60 jours » forces the order, so its Thursday no longer rests the owner, and the Défi got harder: with « Or » at 6 000 $, the best strategy, the same as before, won it in 77.1 % of its games, under #102's 80 %. Both targets hold only with « Or » from 5 850 $ to 5 880 $, and with Étienne's agreement on #145, it is now 5 875 $: the owners win « Or » in 9.5 % of the games, argent or better in 38.9 % and bronze or better in 70.1 %, and the best strategy wins « Or » in 80.2 %. P3-13's owners on seeds 1 to 200 win « Or » 20 times, argent or better 83 times and bronze or better 141 times, with 59 games broken; the guardrail test has the new counts. The other Défis draw no random card and did not move.
+
+### Event cards
+
+The event cards' section was not run again: the closures for work move only the energy of the days after them, and no choice of the three cards was near a limit, the closest being « Aider Normand » at Moyen, best on neither in 72.9 % of 48 games.

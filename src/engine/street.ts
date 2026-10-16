@@ -23,6 +23,8 @@ export interface Street extends CrowdChanges {
   readonly unavailable: Readonly<Record<ProductId, boolean>>
   /** Whether the truck stays closed, whatever the days open. */
   readonly closed: boolean
+  /** Whether the owner works the day away from the counter. */
+  readonly working: boolean
 }
 
 /**
@@ -42,7 +44,8 @@ export function inEffect(
  * The street on `day` with the modifiers in effect that day. Each factor is
  * 1 unless a change multiplies it, and the factors of several multiply: a
  * change with no segment multiplies every segment's. A product one change
- * makes unavailable is, and one change closes the truck.
+ * makes unavailable is, and one change closes the truck. The owner works
+ * when one that closes it is for `work`.
  */
 export function streetOn(
   modifiers: readonly StreetModifier[],
@@ -57,6 +60,7 @@ export function streetOn(
     PRODUCTS.map((product) => [product, false]),
   ) as Record<ProductId, boolean>
   let closed = false
+  let working = false
   for (const { change } of inEffect(modifiers, day)) {
     switch (change.kind) {
       case 'walkIns':
@@ -77,10 +81,11 @@ export function streetOn(
         break
       case 'closed':
         closed = true
+        if (change.work === true) working = true
         break
     }
   }
-  return { walkIns, appeal, willingness, unavailable, closed }
+  return { walkIns, appeal, willingness, unavailable, closed, working }
 }
 
 /** `segment` alone, or every segment when a change names none. */

@@ -484,7 +484,8 @@ const factor = z.number().positive()
  * The changes to the street, one shape for each kind, without how long they
  * last: the walk-ins of everyone or of one `segment`, one product's appeal,
  * what everyone or one `segment` will pay, a product that cannot be sold,
- * and the truck closed whatever the days open.
+ * and the truck closed whatever the days open, for a day off or, with
+ * `work`, for a day of work away from the counter.
  */
 const STREET_CHANGES = {
   walkIns: {
@@ -499,7 +500,7 @@ const STREET_CHANGES = {
     segment: segmentIdSchema.optional(),
   },
   unavailable: { kind: z.literal('unavailable'), product: productIdSchema },
-  closed: { kind: z.literal('closed') },
+  closed: { kind: z.literal('closed'), work: z.boolean().optional() },
 } as const
 
 /**
@@ -637,7 +638,10 @@ function effectSchemas<Extra extends z.core.$ZodShape>(extra: Extra) {
       days: streetDays,
       ...extra,
     }),
-    /** For `days` days, the truck stays closed, whatever the days open. */
+    /**
+     * For `days` days, the truck stays closed, whatever the days open. With
+     * `work`, the owner works those days away from the counter.
+     */
     z.strictObject({ ...STREET_CHANGES.closed, days: streetDays, ...extra }),
   ] as const
 }

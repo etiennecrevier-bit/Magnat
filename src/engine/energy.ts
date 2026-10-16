@@ -28,8 +28,11 @@ const RESTED: FatigueEffects = { serviceTimeIncrease: 0, botchedShare: 0 }
 
 /** What a day did to the owner, as `energyAtClose` reads it. */
 export interface Workday {
-  /** Whether the truck opened. */
-  readonly open: boolean
+  /**
+   * Whether the owner worked: the truck opened, or a card closed it for a
+   * day of work away from the counter.
+   */
+  readonly worked: boolean
   /** The customers who reached the counter. */
   readonly customersServed: number
   /** Whether it was payday with the owner's personal cash below zero. */
@@ -59,17 +62,17 @@ export function effectsOf(
 
 /**
  * The owner's energy at the close of a day they started with `energy`. A
- * day the truck opens costs `openDayCost`, plus `costPerCustomerServed` for
- * each customer served; a day it is closed gives `closedDayRecovery` back.
+ * day they work costs `openDayCost`, plus `costPerCustomerServed` for each
+ * customer served; a day off gives `closedDayRecovery` back.
  * Then, on a payday in debt, the stress takes `debtStress`. Each change
  * stops at 0 and at `FULL_ENERGY`.
  */
 export function energyAtClose(
   energy: number,
-  { open, customersServed, stressed }: Workday,
+  { worked, customersServed, stressed }: Workday,
   content: EnergyContent,
 ): number {
-  let level = open
+  let level = worked
     ? clampEnergy(
         energy -
           (content.openDayCost +

@@ -357,7 +357,7 @@ export function playDay(
   const closingEnergy = energyAtClose(
     state.energy,
     {
-      open,
+      worked: open || street.working,
       customersServed: served.visits.filter(
         ({ servedMinute }) => servedMinute !== null,
       ).length,

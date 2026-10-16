@@ -1,5 +1,5 @@
 {
-  "_note": "The owner's energy (#82), on a scale of 0 to 100; a game starts at 100. Each open day costs openDayCost plus costPerCustomerServed for each customer who reaches the counter; each closed day gives closedDayRecovery back and each night nightRecovery. Each payday the owner's personal cash is below zero, debtStress more goes. Below tired.below the owner is « Fatigué », below exhausted.below « Épuisé »: serving takes serviceTimeIncrease longer, and botchedShare of the units made are botched and made again. Tuned in P2-19 (#58) with the balance bot: see docs/balance/phase-2.md.",
+  "_note": "The owner's energy (#82), on a scale of 0 to 100; a game starts at 100. Each open day costs openDayCost plus costPerCustomerServed for each customer who reaches the counter; each closed day gives closedDayRecovery back, unless an event card closed it for work, which costs openDayCost, and each night gives nightRecovery. Each payday the owner's personal cash is below zero, debtStress more goes. Below tired.below the owner is « Fatigué », below exhausted.below « Épuisé »: serving takes serviceTimeIncrease longer, and botchedShare of the units made are botched and made again. Tuned in P2-19 (#58) with the balance bot: see docs/balance/phase-2.md.",
   "openDayCost": 6,
   "costPerCustomerServed": 0.06,
   "nightRecovery": 5,

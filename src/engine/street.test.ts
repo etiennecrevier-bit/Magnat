@@ -53,6 +53,7 @@ describe('streetOn', () => {
       ...NO_CHANGES,
       unavailable: { cafe: false, chocolat: false, croissant: false },
       closed: false,
+      working: false,
     })
   })
 
@@ -119,6 +120,20 @@ describe('streetOn', () => {
     expect(CLOSED.closed).toBe(true)
     expect(CLOSED.walkIns).toEqual(NO_CHANGES.walkIns)
     expect(streetOn([modifier({ kind: 'closed' })], 15).closed).toBe(false)
+  })
+
+  it('has the owner work while a closure for work is in effect', () => {
+    expect(CLOSED.working).toBe(false)
+    const work = modifier({ kind: 'closed', work: true }, 10, 10)
+    expect(streetOn([work], 10)).toMatchObject({ closed: true, working: true })
+    expect(streetOn([work], 11)).toMatchObject({
+      closed: false,
+      working: false,
+    })
+    // A day off and a day of work on the same day: the owner works.
+    const both = [modifier({ kind: 'closed' }), work]
+    expect(streetOn(both, 10).working).toBe(true)
+    expect(streetOn(both, 11)).toMatchObject({ closed: true, working: false })
   })
 
   it('never mutates the modifiers', () => {
