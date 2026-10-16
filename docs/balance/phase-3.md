@@ -15,36 +15,36 @@ The bénéfice net from day 0 to the close of a week's Sunday, after the owner's
 | Week | 5% | 10% | 20% | 30% | 40% | 50% | 60% | 70% | 80% | 90% | 95% |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 1 | -$2,879.33 | -$2,696.14 | -$2,445.72 | -$2,278.05 | -$2,140.99 | -$1,985.11 | -$1,843.09 | -$1,729.27 | -$1,602.23 | -$1,422.30 | -$1,265.94 |
-| 4 | -$3,958.63 | -$3,363.46 | -$2,359.94 | -$1,698.35 | -$1,223.67 | -$705.60 | -$245.90 | $124.99 | $659.16 | $1,386.65 | $1,778.50 |
-| 13 | -$13,533.22 | -$11,461.90 | -$8,407.71 | -$6,653.71 | -$4,839.14 | -$3,402.10 | -$2,267.76 | -$748.56 | $914.33 | $2,940.54 | $4,456.59 |
-| 26 | -$25,356.61 | -$21,583.24 | -$15,513.98 | -$11,810.86 | -$8,621.26 | -$5,279.43 | -$3,288.28 | -$186.38 | $3,618.47 | $7,219.85 | $9,970.93 |
-| 52 | -$50,724.42 | -$42,687.49 | -$30,337.14 | -$23,551.85 | -$16,819.05 | -$10,357.75 | -$6,535.64 | $238.25 | $7,012.45 | $14,638.03 | $20,371.95 |
-| 78 | -$75,988.43 | -$63,829.29 | -$45,471.64 | -$35,837.89 | -$25,406.13 | -$16,102.29 | -$10,457.91 | -$165.93 | $10,435.45 | $20,731.38 | $29,510.28 |
-| 104 | -$101,442.83 | -$84,744.28 | -$60,144.27 | -$47,520.03 | -$33,913.87 | -$21,182.87 | -$13,987.79 | -$876.92 | $14,122.87 | $28,126.82 | $39,728.85 |
+| 4 | -$3,860.36 | -$3,134.16 | -$2,212.10 | -$1,605.79 | -$1,100.79 | -$648.50 | -$140.32 | $257.74 | $774.72 | $1,532.69 | $1,911.89 |
+| 13 | -$12,585.36 | -$10,261.36 | -$7,514.07 | -$5,626.86 | -$3,938.54 | -$2,507.03 | -$1,266.48 | $139.02 | $1,965.46 | $3,633.99 | $5,234.50 |
+| 26 | -$24,271.31 | -$20,214.04 | -$14,194.22 | -$10,547.78 | -$7,428.83 | -$4,478.75 | -$2,230.00 | $704.82 | $4,593.42 | $8,112.79 | $11,305.75 |
+| 52 | -$49,487.92 | -$40,486.07 | -$28,792.87 | -$21,786.53 | -$14,962.77 | -$8,861.49 | -$4,976.36 | $1,544.35 | $8,926.66 | $15,629.92 | $22,024.32 |
+| 78 | -$73,646.34 | -$61,066.21 | -$42,905.05 | -$33,179.90 | -$22,703.93 | -$13,472.84 | -$7,524.01 | $1,765.22 | $12,875.44 | $23,577.95 | $32,650.42 |
+| 104 | -$99,153.61 | -$81,073.72 | -$56,744.29 | -$44,021.85 | -$29,942.88 | -$18,202.75 | -$10,156.99 | $2,655.79 | $17,497.70 | $31,413.29 | $43,343.06 |
 
 ### Moyen
 
 | Week | 5% | 10% | 20% | 30% | 40% | 50% | 60% | 70% | 80% | 90% | 95% |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 1 | -$2,879.33 | -$2,696.14 | -$2,445.72 | -$2,278.05 | -$2,140.99 | -$1,985.11 | -$1,843.09 | -$1,729.27 | -$1,602.23 | -$1,422.30 | -$1,265.94 |
-| 4 | -$3,958.63 | -$3,363.46 | -$2,359.94 | -$1,698.35 | -$1,223.67 | -$705.60 | -$245.90 | $124.99 | $659.16 | $1,386.65 | $1,778.50 |
-| 13 | -$14,460.21 | -$12,388.89 | -$9,334.70 | -$7,580.70 | -$5,766.13 | -$4,329.09 | -$3,194.75 | -$1,675.55 | -$12.66 | $2,013.55 | $3,529.60 |
-| 26 | -$27,626.02 | -$23,852.65 | -$17,783.39 | -$14,080.27 | -$10,890.67 | -$7,567.24 | -$5,633.80 | -$2,482.53 | $1,349.06 | $4,752.65 | $7,646.03 |
-| 52 | -$55,501.37 | -$47,464.44 | -$35,114.09 | -$28,328.80 | -$21,599.97 | -$15,161.52 | -$11,357.93 | -$4,552.90 | $2,235.50 | $9,727.64 | $15,057.42 |
-| 78 | -$83,028.53 | -$70,869.39 | -$52,511.74 | -$42,877.99 | -$32,446.23 | -$23,184.08 | -$17,534.37 | -$7,257.43 | $3,258.53 | $13,623.64 | $22,392.01 |
-| 104 | -$110,491.76 | -$93,793.21 | -$69,193.20 | -$56,568.96 | -$42,962.80 | -$30,434.63 | -$23,082.01 | -$9,926.39 | $5,073.94 | $18,790.37 | $30,679.92 |
+| 4 | -$4,191.20 | -$3,447.67 | -$2,490.81 | -$1,816.11 | -$1,241.63 | -$755.57 | -$193.07 | $221.08 | $761.17 | $1,449.29 | $1,975.07 |
+| 13 | -$14,671.51 | -$12,327.03 | -$9,584.87 | -$7,833.02 | -$6,344.17 | -$4,597.92 | -$3,349.61 | -$1,647.68 | $51.41 | $2,043.04 | $3,693.96 |
+| 26 | -$28,369.13 | -$24,309.48 | -$18,314.83 | -$14,843.22 | -$11,667.49 | -$8,818.35 | -$6,258.85 | -$2,973.66 | $276.17 | $4,278.93 | $7,028.29 |
+| 52 | -$56,963.74 | -$48,926.67 | -$36,931.84 | -$30,147.32 | -$23,434.78 | -$17,495.85 | -$12,828.86 | -$6,730.35 | $419.58 | $7,826.95 | $13,964.45 |
+| 78 | -$85,572.51 | -$73,667.42 | -$56,151.92 | -$45,842.04 | -$35,248.19 | -$26,164.30 | -$20,076.63 | -$10,589.94 | $429.94 | $10,646.61 | $19,704.83 |
+| 104 | -$112,983.11 | -$96,795.53 | -$73,720.15 | -$60,575.45 | -$46,848.83 | -$34,611.05 | -$26,329.99 | -$13,636.19 | $1,454.75 | $14,715.92 | $26,506.06 |
 
 ### Difficile
 
 | Week | 5% | 10% | 20% | 30% | 40% | 50% | 60% | 70% | 80% | 90% | 95% |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 1 | -$3,971.00 | -$3,787.81 | -$3,537.39 | -$3,369.72 | -$3,232.66 | -$3,076.78 | -$2,934.76 | -$2,820.94 | -$2,693.90 | -$2,513.97 | -$2,360.52 |
-| 4 | -$5,050.30 | -$4,455.13 | -$3,453.04 | -$2,790.02 | -$2,315.34 | -$1,808.45 | -$1,337.57 | -$967.67 | -$438.79 | $253.29 | $634.67 |
-| 13 | -$16,808.23 | -$14,736.91 | -$11,682.72 | -$9,928.72 | -$8,114.15 | -$6,680.93 | -$5,556.58 | -$4,031.74 | -$2,405.30 | -$417.80 | $1,276.64 |
-| 26 | -$31,906.63 | -$28,133.26 | -$22,073.80 | -$18,360.88 | -$15,175.18 | -$11,865.12 | -$9,989.96 | -$6,763.14 | -$2,963.02 | $433.54 | $3,247.31 |
-| 52 | -$63,824.46 | -$55,787.53 | -$43,437.18 | -$36,651.89 | -$29,991.24 | -$23,484.61 | -$19,723.77 | -$13,121.28 | -$6,146.32 | $1,374.12 | $6,656.63 |
-| 78 | -$95,638.49 | -$83,479.35 | -$65,121.70 | -$55,487.95 | -$45,056.19 | -$35,837.17 | -$30,238.85 | -$19,867.39 | -$9,464.64 | $1,005.03 | $9,551.35 |
-| 104 | -$127,642.91 | -$110,944.36 | -$86,344.35 | -$73,720.11 | -$60,113.95 | -$47,611.39 | -$40,290.92 | -$27,077.54 | -$12,180.93 | $1,571.13 | $13,018.17 |
+| 4 | -$5,318.84 | -$4,542.19 | -$3,592.23 | -$2,942.63 | -$2,381.68 | -$1,869.34 | -$1,356.71 | -$926.85 | -$418.48 | $273.43 | $793.86 |
+| 13 | -$17,405.71 | -$14,768.20 | -$12,361.20 | -$10,286.24 | -$8,824.38 | -$7,112.63 | -$5,741.35 | -$4,226.22 | -$2,529.93 | -$670.98 | $966.07 |
+| 26 | -$33,162.01 | -$28,686.87 | -$23,323.39 | -$19,514.89 | -$16,620.71 | -$13,641.78 | -$10,939.56 | -$8,174.54 | -$4,435.73 | -$1,064.10 | $1,896.18 |
+| 52 | -$66,150.03 | -$57,852.10 | -$46,393.29 | -$39,001.16 | -$32,976.51 | -$26,927.09 | -$22,147.20 | -$15,646.57 | -$8,958.19 | -$1,773.59 | $4,290.98 |
+| 78 | -$99,244.85 | -$87,180.77 | -$69,621.94 | -$58,560.14 | -$49,752.42 | -$40,525.94 | -$34,116.29 | -$24,235.89 | -$13,717.11 | -$3,119.81 | $6,750.80 |
+| 104 | -$133,031.08 | -$116,149.90 | -$92,252.32 | -$78,429.64 | -$65,959.10 | -$53,366.80 | -$45,483.33 | -$32,132.72 | -$17,965.60 | -$3,986.03 | $9,849.16 |
 
 ## Event cards
 
@@ -61,120 +61,148 @@ A choice is too strong when it is best on both in more than 80% of the games, an
 
 | Event | Games | Verdict |
 | --- | ---: | --- |
-| grosseCommande | 1000 | ✓ |
-| chequeDansLaMalle | 46 | ✓ |
-| conesOrange | 1000 | ✓ |
-| machineTousse | 1000 | ✓ |
+| grosseCommande | 1000 | ✗ refuser best on neither in 99.6% |
+| chequeDansLaMalle | 50 | ✓ |
+| conesOrange | 1000 | ✗ patienter best on neither in 85.7% |
+| machineTousse | 1000 | ✗ reparer best on neither in 87.8% |
 | critique | 1000 | ✓ |
 | influenceuse | 1000 | ✓ |
 | concurrence | 1000 | ✓ |
 | formulaire14B | 1000 | ✓ |
-| chalet | 430 | ✓ |
-| canicule | 1000 | ✓ |
-| festival | 979 | ✓ |
-| premierJuillet | 82 | ✓ |
+| chalet | 378 | ✓ |
+| canicule | 996 | ✓ |
+| festival | 841 | ✓ |
+| premierJuillet | 63 | ✓ |
+| gateauFete | 1000 | ✗ accepter best on both in 99.1%; refuser best on neither in 99.1% |
+| traiteurPresse | 1000 | ✗ accepter best on both in 99.3%; refuser best on neither in 99.3% |
+| placementMiracle | 1000 | ✗ investir best on both in 99.8%; refuser best on both in 100.0% |
+| peintureLuxe | 1000 | ✗ nonMerci best on both in 100.0%; payer best on neither in 100.0% |
 
 ### Facile
 
 | Event | Choice | Games | Median Δ encaisse | Median Δ bénéfice net | Best on encaisse | Best on bénéfice net | Best on both | Best on neither |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| grosseCommande | accepter | 1000 | -$602.30 | $145.02 | 0.0% | 90.9% | 0.0% | 9.1% |
-| grosseCommande | payeLivraison | 1000 | $72.70 | $70.02 | 68.8% | 0.0% | 0.0% | 31.2% |
-| grosseCommande | refuser | 1000 | $0.00 | $0.00 | 31.2% | 9.1% | 9.1% | 68.8% |
-| chequeDansLaMalle | patienter | 46 | $0.00 | $0.00 | 67.4% | 67.4% | 67.4% | 32.6% |
-| chequeDansLaMalle | allerLeVoir | 46 | -$40.00 | -$40.00 | 32.6% | 32.6% | 32.6% | 67.4% |
-| conesOrange | patienter | 1000 | -$1,616.47 | -$1,604.17 | 30.5% | 31.1% | 28.3% | 66.7% |
-| conesOrange | changerDeCoin | 1000 | -$1,511.87 | -$1,515.91 | 43.9% | 43.3% | 41.5% | 54.3% |
-| conesOrange | vacances | 1000 | -$1,643.98 | -$1,643.26 | 25.6% | 25.6% | 24.1% | 72.9% |
-| machineTousse | reparer | 1000 | -$650.00 | -$650.00 | 24.7% | 25.4% | 22.9% | 72.8% |
-| machineTousse | attendrePiece | 1000 | -$648.37 | -$653.85 | 27.0% | 26.3% | 24.5% | 71.2% |
-| machineTousse | ruban | 1000 | -$1,051.59 | -$1,068.47 | 48.3% | 48.3% | 48.3% | 51.7% |
-| critique | offrirBoite | 1000 | -$6.60 | -$6.60 | 74.2% | 74.8% | 74.2% | 25.2% |
-| critique | toutLeMondePaie | 1000 | -$6.95 | -$15.39 | 25.8% | 25.2% | 25.2% | 74.2% |
-| influenceuse | payer | 1000 | -$10.14 | -$10.65 | 28.5% | 28.7% | 26.8% | 69.6% |
-| influenceuse | offrirCroissants | 1000 | -$11.00 | -$11.00 | 39.7% | 39.7% | 39.7% | 60.3% |
-| influenceuse | nonMerci | 1000 | $0.00 | $0.00 | 31.8% | 31.6% | 29.9% | 66.5% |
-| concurrence | allerLuiParler | 1000 | -$5.47 | -$5.71 | 67.4% | 68.0% | 67.1% | 31.7% |
-| concurrence | ignorer | 1000 | -$7.09 | -$7.57 | 68.6% | 68.0% | 67.7% | 31.1% |
-| formulaire14B | payer | 1000 | -$150.00 | -$150.00 | 55.6% | 56.9% | 54.4% | 41.9% |
-| formulaire14B | contester | 1000 | -$191.75 | -$196.64 | 44.4% | 43.1% | 41.9% | 54.4% |
-| chalet | yAller | 424 | $8.98 | $8.50 | 51.9% | 52.4% | 49.8% | 45.5% |
-| chalet | resterOuvert | 424 | $0.00 | $0.00 | 48.1% | 47.6% | 45.5% | 49.8% |
-| canicule | glace | 1000 | -$304.40 | -$304.09 | 55.6% | 56.3% | 47.7% | 35.8% |
-| canicule | habitude | 1000 | -$314.21 | -$317.09 | 44.4% | 43.7% | 35.8% | 47.7% |
-| festival | payer | 979 | $162.77 | $160.84 | 61.7% | 63.1% | 59.7% | 34.8% |
-| festival | dehors | 979 | $122.31 | $121.88 | 38.3% | 36.9% | 34.8% | 59.7% |
-| premierJuillet | ouvrirTot | 78 | $0.00 | $0.00 | 61.5% | 62.8% | 61.5% | 37.2% |
-| premierJuillet | aiderNormand | 78 | -$21.66 | -$20.77 | 25.6% | 25.6% | 24.4% | 73.1% |
-| premierJuillet | habitude | 78 | $43.93 | $42.35 | 51.3% | 50.0% | 50.0% | 48.7% |
+| grosseCommande | accepter | 1000 | -$618.14 | $131.35 | 0.0% | 91.4% | 0.0% | 8.6% |
+| grosseCommande | payeLivraison | 1000 | $56.86 | $56.35 | 65.6% | 0.0% | 0.0% | 34.4% |
+| grosseCommande | refuser | 1000 | $0.00 | $0.00 | 34.4% | 8.6% | 8.5% | 65.5% |
+| chequeDansLaMalle | patienter | 67 | $0.00 | $0.00 | 70.1% | 70.1% | 70.1% | 29.9% |
+| chequeDansLaMalle | allerLeVoir | 67 | -$28.00 | -$28.00 | 29.9% | 29.9% | 29.9% | 70.1% |
+| conesOrange | patienter | 1000 | -$1,079.67 | -$1,077.95 | 50.0% | 50.1% | 47.4% | 47.3% |
+| conesOrange | changerDeCoin | 1000 | -$1,083.28 | -$1,080.33 | 41.7% | 41.1% | 38.9% | 56.1% |
+| conesOrange | vacances | 1000 | -$1,462.04 | -$1,450.48 | 8.3% | 8.8% | 7.8% | 90.7% |
+| machineTousse | reparer | 1000 | -$455.00 | -$455.00 | 37.0% | 37.6% | 35.5% | 60.9% |
+| machineTousse | attendrePiece | 1000 | -$540.85 | -$541.13 | 14.8% | 14.2% | 12.7% | 83.7% |
+| machineTousse | ruban | 1000 | -$792.34 | -$816.30 | 48.2% | 48.2% | 48.2% | 51.8% |
+| critique | offrirBoite | 1000 | -$6.60 | -$6.60 | 71.3% | 72.4% | 71.3% | 27.6% |
+| critique | toutLeMondePaie | 1000 | $0.00 | -$9.49 | 28.7% | 27.6% | 27.6% | 71.3% |
+| influenceuse | payer | 1000 | $113.46 | $112.14 | 46.0% | 46.1% | 44.7% | 52.6% |
+| influenceuse | offrirCroissants | 1000 | -$11.00 | -$11.00 | 40.0% | 40.0% | 40.0% | 60.0% |
+| influenceuse | nonMerci | 1000 | $0.00 | $0.00 | 14.0% | 13.9% | 12.6% | 84.7% |
+| concurrence | allerLuiParler | 1000 | -$4.05 | -$4.35 | 69.7% | 69.1% | 69.0% | 30.2% |
+| concurrence | ignorer | 1000 | -$5.06 | -$5.09 | 70.1% | 70.7% | 70.0% | 29.2% |
+| formulaire14B | payer | 1000 | -$105.00 | -$105.00 | 58.8% | 59.0% | 57.5% | 39.7% |
+| formulaire14B | contester | 1000 | -$167.70 | -$169.63 | 41.2% | 41.0% | 39.7% | 57.5% |
+| chalet | yAller | 371 | $22.85 | $10.65 | 54.2% | 54.2% | 50.7% | 42.3% |
+| chalet | resterOuvert | 371 | $0.00 | $0.00 | 45.8% | 45.8% | 42.3% | 50.7% |
+| canicule | glace | 993 | -$214.97 | -$213.65 | 49.7% | 49.9% | 42.9% | 43.2% |
+| canicule | habitude | 993 | -$217.81 | -$218.32 | 50.3% | 50.2% | 43.2% | 42.8% |
+| festival | payer | 851 | $229.58 | $236.01 | 81.6% | 83.0% | 79.2% | 14.7% |
+| festival | dehors | 851 | $124.61 | $122.52 | 18.4% | 17.0% | 14.7% | 79.2% |
+| premierJuillet | ouvrirTot | 47 | $0.00 | $0.00 | 57.4% | 57.4% | 57.4% | 42.6% |
+| premierJuillet | aiderNormand | 47 | -$31.74 | -$12.24 | 40.4% | 38.3% | 38.3% | 59.6% |
+| premierJuillet | habitude | 47 | $41.58 | $38.85 | 44.7% | 46.8% | 44.7% | 53.2% |
+| gateauFete | accepter | 1000 | $123.60 | $123.60 | 99.7% | 99.7% | 99.7% | 0.3% |
+| gateauFete | refuser | 1000 | $0.00 | $0.00 | 0.3% | 0.3% | 0.3% | 99.7% |
+| traiteurPresse | accepter | 1000 | $136.00 | $136.00 | 99.7% | 99.6% | 99.6% | 0.3% |
+| traiteurPresse | refuser | 1000 | $0.00 | $0.00 | 0.3% | 0.4% | 0.3% | 99.6% |
+| placementMiracle | investir | 1000 | $0.00 | $0.00 | 99.9% | 99.9% | 99.9% | 0.1% |
+| placementMiracle | refuser | 1000 | $0.00 | $0.00 | 100.0% | 100.0% | 100.0% | 0.0% |
+| peintureLuxe | payer | 1000 | -$691.27 | -$701.40 | 0.0% | 0.0% | 0.0% | 100.0% |
+| peintureLuxe | nonMerci | 1000 | $0.00 | $0.00 | 100.0% | 100.0% | 100.0% | 0.0% |
 
 ### Moyen
 
 | Event | Choice | Games | Median Δ encaisse | Median Δ bénéfice net | Best on encaisse | Best on bénéfice net | Best on both | Best on neither |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| grosseCommande | accepter | 1000 | -$602.65 | $145.02 | 0.0% | 90.9% | 0.0% | 9.1% |
-| grosseCommande | payeLivraison | 1000 | $72.36 | $70.02 | 69.1% | 0.0% | 0.0% | 30.9% |
-| grosseCommande | refuser | 1000 | $0.00 | $0.00 | 30.9% | 9.1% | 9.1% | 69.1% |
-| chequeDansLaMalle | patienter | 46 | $0.00 | $0.00 | 67.4% | 67.4% | 67.4% | 32.6% |
-| chequeDansLaMalle | allerLeVoir | 46 | -$40.00 | -$40.00 | 32.6% | 32.6% | 32.6% | 67.4% |
-| conesOrange | patienter | 1000 | -$1,616.66 | -$1,604.17 | 30.4% | 31.2% | 28.2% | 66.6% |
-| conesOrange | changerDeCoin | 1000 | -$1,511.12 | -$1,515.91 | 44.1% | 43.4% | 41.6% | 54.1% |
-| conesOrange | vacances | 1000 | -$1,647.82 | -$1,646.45 | 25.5% | 25.4% | 23.9% | 73.0% |
-| machineTousse | reparer | 1000 | -$650.00 | -$650.00 | 24.6% | 25.3% | 22.9% | 73.0% |
-| machineTousse | attendrePiece | 1000 | -$647.90 | -$653.44 | 26.4% | 25.7% | 24.0% | 71.9% |
-| machineTousse | ruban | 1000 | -$1,038.88 | -$1,048.86 | 49.0% | 49.0% | 49.0% | 51.0% |
-| critique | offrirBoite | 1000 | -$6.60 | -$6.60 | 74.2% | 74.8% | 74.2% | 25.2% |
-| critique | toutLeMondePaie | 1000 | -$6.95 | -$15.39 | 25.8% | 25.2% | 25.2% | 74.2% |
-| influenceuse | payer | 1000 | -$9.32 | -$10.34 | 28.6% | 28.7% | 26.8% | 69.5% |
-| influenceuse | offrirCroissants | 1000 | -$11.00 | -$11.00 | 39.6% | 39.6% | 39.6% | 60.4% |
-| influenceuse | nonMerci | 1000 | $0.00 | $0.00 | 31.8% | 31.7% | 29.9% | 66.4% |
-| concurrence | allerLuiParler | 1000 | -$5.32 | -$5.54 | 67.9% | 68.5% | 67.6% | 31.2% |
-| concurrence | ignorer | 1000 | -$7.52 | -$7.72 | 68.0% | 67.4% | 67.1% | 31.7% |
-| formulaire14B | payer | 1000 | -$150.00 | -$150.00 | 55.4% | 56.6% | 54.2% | 42.2% |
-| formulaire14B | contester | 1000 | -$192.09 | -$196.97 | 44.6% | 43.4% | 42.2% | 54.2% |
-| chalet | yAller | 430 | -$8.34 | -$6.04 | 49.1% | 49.5% | 46.5% | 47.9% |
-| chalet | resterOuvert | 430 | $0.00 | $0.00 | 50.9% | 50.5% | 47.9% | 46.5% |
-| canicule | glace | 1000 | -$304.54 | -$303.95 | 55.8% | 56.5% | 47.8% | 35.5% |
-| canicule | habitude | 1000 | -$314.49 | -$317.71 | 44.2% | 43.5% | 35.5% | 47.8% |
-| festival | payer | 979 | $162.77 | $161.27 | 61.3% | 62.7% | 59.6% | 35.5% |
-| festival | dehors | 979 | $122.64 | $121.96 | 38.7% | 37.3% | 35.5% | 59.6% |
-| premierJuillet | ouvrirTot | 82 | $0.00 | $0.00 | 61.0% | 63.4% | 61.0% | 36.6% |
-| premierJuillet | aiderNormand | 82 | -$27.97 | -$21.66 | 25.6% | 25.6% | 24.4% | 73.2% |
-| premierJuillet | habitude | 82 | $43.34 | $42.83 | 50.0% | 47.6% | 47.6% | 50.0% |
+| grosseCommande | accepter | 1000 | -$609.45 | $364.19 | 0.0% | 100.0% | 0.0% | 0.0% |
+| grosseCommande | payeLivraison | 1000 | $268.06 | $266.69 | 99.6% | 0.0% | 0.0% | 0.4% |
+| grosseCommande | refuser | 1000 | $0.00 | $0.00 | 0.4% | 0.0% | 0.0% | 99.6% |
+| chequeDansLaMalle | patienter | 50 | $0.00 | $0.00 | 62.0% | 62.0% | 62.0% | 38.0% |
+| chequeDansLaMalle | allerLeVoir | 50 | -$52.00 | -$52.00 | 38.0% | 38.0% | 38.0% | 62.0% |
+| conesOrange | patienter | 1000 | -$2,169.41 | -$2,151.91 | 12.7% | 13.5% | 11.9% | 85.7% |
+| conesOrange | changerDeCoin | 1000 | -$1,955.86 | -$1,949.46 | 36.9% | 36.0% | 34.9% | 62.0% |
+| conesOrange | vacances | 1000 | -$1,845.76 | -$1,839.95 | 50.4% | 50.5% | 48.9% | 48.0% |
+| machineTousse | reparer | 1000 | -$845.00 | -$845.00 | 11.6% | 10.5% | 9.9% | 87.8% |
+| machineTousse | attendrePiece | 1000 | -$755.27 | -$751.66 | 34.6% | 35.7% | 34.0% | 63.7% |
+| machineTousse | ruban | 1000 | $0.00 | $0.00 | 53.8% | 53.8% | 53.8% | 46.2% |
+| critique | offrirBoite | 1000 | -$6.60 | -$6.60 | 73.8% | 74.2% | 73.8% | 25.8% |
+| critique | toutLeMondePaie | 1000 | -$27.51 | -$31.54 | 26.2% | 25.8% | 25.8% | 73.8% |
+| influenceuse | payer | 1000 | -$24.34 | -$23.47 | 26.3% | 26.8% | 24.3% | 71.2% |
+| influenceuse | offrirCroissants | 1000 | -$11.00 | -$11.00 | 40.2% | 40.2% | 40.2% | 59.8% |
+| influenceuse | nonMerci | 1000 | $0.00 | $0.00 | 33.5% | 33.0% | 31.0% | 64.5% |
+| concurrence | allerLuiParler | 1000 | -$7.72 | -$7.74 | 66.6% | 66.2% | 66.0% | 33.2% |
+| concurrence | ignorer | 1000 | -$8.71 | -$8.83 | 66.2% | 66.6% | 66.0% | 33.2% |
+| formulaire14B | payer | 1000 | -$195.00 | -$195.00 | 52.3% | 52.9% | 50.8% | 45.6% |
+| formulaire14B | contester | 1000 | -$209.56 | -$211.25 | 47.7% | 47.1% | 45.6% | 50.8% |
+| chalet | yAller | 378 | $15.28 | $25.31 | 54.2% | 54.8% | 51.3% | 42.3% |
+| chalet | resterOuvert | 378 | $0.00 | $0.00 | 45.8% | 45.2% | 42.3% | 51.3% |
+| canicule | glace | 996 | -$396.80 | -$395.76 | 49.9% | 47.4% | 41.4% | 44.1% |
+| canicule | habitude | 996 | -$398.65 | -$395.06 | 50.1% | 52.6% | 44.1% | 41.4% |
+| festival | payer | 841 | $183.14 | $182.57 | 54.7% | 54.2% | 52.0% | 43.0% |
+| festival | dehors | 841 | $156.91 | $155.22 | 45.3% | 45.8% | 43.0% | 52.0% |
+| premierJuillet | ouvrirTot | 63 | $0.00 | $0.00 | 68.3% | 66.7% | 66.7% | 31.7% |
+| premierJuillet | aiderNormand | 63 | -$13.94 | -$27.02 | 38.1% | 38.1% | 36.5% | 60.3% |
+| premierJuillet | habitude | 63 | $38.78 | $38.78 | 47.6% | 49.2% | 47.6% | 50.8% |
+| gateauFete | accepter | 1000 | $168.60 | $168.60 | 99.1% | 99.1% | 99.1% | 0.9% |
+| gateauFete | refuser | 1000 | $0.00 | $0.00 | 0.9% | 0.9% | 0.9% | 99.1% |
+| traiteurPresse | accepter | 1000 | $190.00 | $190.00 | 99.3% | 99.3% | 99.3% | 0.7% |
+| traiteurPresse | refuser | 1000 | $0.00 | $0.00 | 0.7% | 0.7% | 0.7% | 99.3% |
+| placementMiracle | investir | 1000 | $0.00 | $0.00 | 99.8% | 99.8% | 99.8% | 0.2% |
+| placementMiracle | refuser | 1000 | $0.00 | $0.00 | 100.0% | 100.0% | 100.0% | 0.0% |
+| peintureLuxe | payer | 1000 | -$1,621.05 | -$1,613.73 | 0.0% | 0.0% | 0.0% | 100.0% |
+| peintureLuxe | nonMerci | 1000 | $0.00 | $0.00 | 100.0% | 100.0% | 100.0% | 0.0% |
 
 ### Difficile
 
 | Event | Choice | Games | Median Δ encaisse | Median Δ bénéfice net | Best on encaisse | Best on bénéfice net | Best on both | Best on neither |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| grosseCommande | accepter | 1000 | -$605.44 | $144.10 | 0.0% | 90.9% | 0.0% | 9.1% |
-| grosseCommande | payeLivraison | 1000 | $69.57 | $69.10 | 69.0% | 0.0% | 0.0% | 31.0% |
-| grosseCommande | refuser | 1000 | $0.00 | $0.00 | 31.0% | 9.1% | 9.1% | 69.0% |
-| chequeDansLaMalle | patienter | 46 | $0.00 | $0.00 | 67.4% | 67.4% | 67.4% | 32.6% |
-| chequeDansLaMalle | allerLeVoir | 46 | -$40.00 | -$40.00 | 32.6% | 32.6% | 32.6% | 67.4% |
-| conesOrange | patienter | 1000 | -$1,614.82 | -$1,602.69 | 30.5% | 31.3% | 28.3% | 66.5% |
-| conesOrange | changerDeCoin | 1000 | -$1,512.05 | -$1,516.90 | 44.3% | 43.7% | 41.9% | 53.9% |
-| conesOrange | vacances | 1000 | -$1,653.01 | -$1,646.82 | 25.2% | 25.0% | 23.6% | 73.4% |
-| machineTousse | reparer | 1000 | -$650.00 | -$650.00 | 24.5% | 25.2% | 22.8% | 73.1% |
-| machineTousse | attendrePiece | 1000 | -$646.83 | -$652.83 | 26.6% | 25.9% | 24.2% | 71.7% |
-| machineTousse | ruban | 1000 | -$1,040.80 | -$1,053.98 | 48.9% | 48.9% | 48.9% | 51.1% |
-| critique | offrirBoite | 1000 | -$6.60 | -$6.60 | 74.0% | 74.6% | 74.0% | 25.4% |
-| critique | toutLeMondePaie | 1000 | -$6.95 | -$15.55 | 26.0% | 25.4% | 25.4% | 74.0% |
-| influenceuse | payer | 1000 | -$9.32 | -$10.07 | 29.0% | 29.0% | 27.1% | 69.1% |
-| influenceuse | offrirCroissants | 1000 | -$11.00 | -$11.00 | 39.2% | 39.2% | 39.2% | 60.8% |
-| influenceuse | nonMerci | 1000 | $0.00 | $0.00 | 31.8% | 31.8% | 29.9% | 66.3% |
-| concurrence | allerLuiParler | 1000 | -$5.32 | -$5.54 | 67.8% | 68.4% | 67.5% | 31.3% |
-| concurrence | ignorer | 1000 | -$7.51 | -$7.72 | 68.3% | 67.7% | 67.4% | 31.4% |
-| formulaire14B | payer | 1000 | -$150.00 | -$150.00 | 55.3% | 56.5% | 54.1% | 42.3% |
-| formulaire14B | contester | 1000 | -$190.69 | -$196.84 | 44.7% | 43.5% | 42.3% | 54.1% |
-| chalet | yAller | 433 | -$13.52 | -$11.04 | 48.0% | 49.0% | 46.0% | 49.0% |
-| chalet | resterOuvert | 433 | $0.00 | $0.00 | 52.0% | 51.0% | 49.0% | 46.0% |
-| canicule | glace | 1000 | -$304.26 | -$303.55 | 56.4% | 56.8% | 48.2% | 35.0% |
-| canicule | habitude | 1000 | -$314.49 | -$317.21 | 43.6% | 43.2% | 35.0% | 48.2% |
-| festival | payer | 980 | $163.20 | $160.84 | 60.9% | 62.6% | 59.2% | 35.7% |
-| festival | dehors | 980 | $122.72 | $121.77 | 39.1% | 37.4% | 35.7% | 59.2% |
-| premierJuillet | ouvrirTot | 81 | $0.00 | $0.00 | 61.7% | 64.2% | 61.7% | 35.8% |
-| premierJuillet | aiderNormand | 81 | -$40.16 | -$22.14 | 24.7% | 24.7% | 23.5% | 74.1% |
-| premierJuillet | habitude | 81 | $42.76 | $42.76 | 50.6% | 48.1% | 48.1% | 49.4% |
+| grosseCommande | accepter | 1000 | -$603.50 | -$81.12 | 0.0% | 33.1% | 0.0% | 66.9% |
+| grosseCommande | payeLivraison | 1000 | -$131.00 | -$133.62 | 23.5% | 0.0% | 0.0% | 76.5% |
+| grosseCommande | refuser | 1000 | $0.00 | $0.00 | 76.5% | 66.9% | 66.4% | 23.0% |
+| chequeDansLaMalle | patienter | 53 | $0.00 | $0.00 | 67.9% | 67.9% | 67.9% | 32.1% |
+| chequeDansLaMalle | allerLeVoir | 53 | -$48.00 | -$48.00 | 32.1% | 32.1% | 32.1% | 67.9% |
+| conesOrange | patienter | 1000 | -$1,975.09 | -$1,974.57 | 18.8% | 18.7% | 17.4% | 79.9% |
+| conesOrange | changerDeCoin | 1000 | -$1,806.61 | -$1,813.13 | 41.4% | 41.0% | 39.4% | 57.0% |
+| conesOrange | vacances | 1000 | -$1,798.43 | -$1,795.26 | 39.8% | 40.3% | 38.6% | 58.5% |
+| machineTousse | reparer | 1000 | -$780.00 | -$780.00 | 16.9% | 15.2% | 14.4% | 82.3% |
+| machineTousse | attendrePiece | 1000 | -$708.63 | -$711.08 | 32.6% | 34.3% | 31.8% | 64.9% |
+| machineTousse | ruban | 1000 | -$30.00 | -$30.00 | 50.5% | 50.5% | 50.5% | 49.5% |
+| critique | offrirBoite | 1000 | -$6.60 | -$6.60 | 72.6% | 73.1% | 72.6% | 26.9% |
+| critique | toutLeMondePaie | 1000 | -$23.19 | -$26.48 | 27.5% | 27.0% | 27.0% | 72.5% |
+| influenceuse | payer | 1000 | -$200.53 | -$201.61 | 1.2% | 1.1% | 0.6% | 98.3% |
+| influenceuse | offrirCroissants | 1000 | -$11.00 | -$11.00 | 97.1% | 98.2% | 96.5% | 1.2% |
+| influenceuse | nonMerci | 1000 | -$87.53 | -$87.33 | 1.7% | 0.7% | 0.6% | 98.2% |
+| concurrence | allerLuiParler | 1000 | -$7.26 | -$7.52 | 65.1% | 64.6% | 64.4% | 34.7% |
+| concurrence | ignorer | 1000 | -$8.71 | -$8.72 | 68.8% | 69.3% | 68.6% | 30.5% |
+| formulaire14B | payer | 1000 | -$180.00 | -$180.00 | 52.3% | 52.9% | 50.5% | 45.3% |
+| formulaire14B | contester | 1000 | -$190.00 | -$198.08 | 47.7% | 47.1% | 45.3% | 50.5% |
+| chalet | yAller | 370 | $19.15 | $23.39 | 55.4% | 56.2% | 52.7% | 41.1% |
+| chalet | resterOuvert | 370 | $0.00 | $0.00 | 44.6% | 43.8% | 41.1% | 52.7% |
+| canicule | glace | 998 | -$365.34 | -$364.19 | 53.8% | 53.9% | 47.2% | 39.5% |
+| canicule | habitude | 998 | -$381.21 | -$379.05 | 46.2% | 46.1% | 39.5% | 47.2% |
+| festival | payer | 830 | $10.10 | $6.67 | 42.7% | 42.3% | 38.9% | 54.0% |
+| festival | dehors | 830 | $26.41 | $27.29 | 57.3% | 57.7% | 54.0% | 38.9% |
+| premierJuillet | ouvrirTot | 55 | $0.00 | $0.00 | 63.6% | 63.6% | 63.6% | 36.4% |
+| premierJuillet | aiderNormand | 55 | $0.00 | $0.00 | 43.6% | 41.8% | 40.0% | 54.5% |
+| premierJuillet | habitude | 55 | $25.32 | $25.32 | 47.3% | 49.1% | 45.5% | 49.1% |
+| gateauFete | accepter | 1000 | $78.60 | $78.60 | 99.1% | 99.2% | 99.1% | 0.8% |
+| gateauFete | refuser | 1000 | -$90.97 | -$89.92 | 0.9% | 0.8% | 0.8% | 99.1% |
+| traiteurPresse | accepter | 1000 | $82.00 | $82.00 | 99.4% | 99.4% | 99.4% | 0.6% |
+| traiteurPresse | refuser | 1000 | $0.00 | $0.00 | 0.6% | 0.6% | 0.6% | 99.4% |
+| placementMiracle | investir | 1000 | $0.00 | $0.00 | 99.9% | 99.9% | 99.9% | 0.1% |
+| placementMiracle | refuser | 1000 | $0.00 | $0.00 | 94.8% | 94.8% | 94.8% | 5.2% |
+| peintureLuxe | payer | 1000 | -$1,756.25 | -$1,753.68 | 0.0% | 0.0% | 0.0% | 100.0% |
+| peintureLuxe | nonMerci | 1000 | -$70.45 | -$70.33 | 100.0% | 100.0% | 100.0% | 0.0% |
 
 <!-- npm run balance -- --defis writes this section. -->
 
@@ -200,7 +228,7 @@ From #102: owners win « Or » in under 10% of their games, « Argent » or bett
 | semaineDesMilleDollars | net income | $1,000.00 | $600.00 | $100.00 | 0.0% | 7.0% | 32.8% | 71.4% | prices -20%, croissants 70/day, marketing $0.00/day, days 6/week, pay $400.00/week | 0.0% | 99.0% | ✓ |
 | zeroGaspillage | customers served | 1,150 | 875 | 520 | 26.6% | 6.8% | 30.7% | 68.9% | prices -20%, croissants 14/day, marketing $80.00/day, days 7/week, pay $400.00/week | 0.0% | 96.9% | ✓ |
 | festivalDuPasPire | sales | $3,000.00 | $2,450.00 | $1,750.00 | 25.9% | 8.4% | 33.0% | 68.1% | prices base, croissants 55/day, marketing $80.00/day, days 6/week, pay $400.00/week | 4.0% | 93.5% | ✓ |
-| payeDans60Jours | lowest cash | $5,900.00 | $2,900.00 | $0.00 | 32.6% | 8.6% | 36.4% | 67.4% | prices base, croissants 40/day, marketing $0.00/day, days 7/week, pay $400.00/week | 0.0% | 87.5% | ✓ |
+| payeDans60Jours | lowest cash | $6,000.00 | $2,900.00 | $0.00 | 30.0% | 9.4% | 39.9% | 70.0% | prices base, croissants 40/day, marketing $0.00/day, days 7/week, pay $400.00/week | 0.0% | 81.5% | ✓ |
 | moisSansConge | net income | -$1,000.00 | -$3,000.00 | -$4,850.00 | 25.3% | 3.2% | 36.3% | 71.1% | prices base, croissants 40/day, marketing $30.00/day, days locked, pay $400.00/week | 1.5% | 98.0% | ✓ |
 
 ### Owners’ outcomes
@@ -213,7 +241,7 @@ What the goal measured at each percentile of the owners' 1000 games, worst first
 | semaineDesMilleDollars | -$431.77 | -$277.54 | -$15.26 | $118.53 | $276.97 | $407.10 | $520.38 | $631.25 | $740.65 | $928.78 | $1,056.99 | $975.11 | $583.80 | $118.53 |
 | zeroGaspillage | broken | broken | broken | 491 | 652 | 739 | 810 | 879 | 972 | 1,103 | 1,167 | 1,135 | 845 | 491 |
 | festivalDuPasPire | broken | broken | broken | $1,673.98 | $1,923.05 | $2,137.20 | $2,311.34 | $2,490.80 | $2,650.88 | $2,932.58 | $3,129.48 | $3,011.16 | $2,415.74 | $1,673.98 |
-| payeDans60Jours | broken | broken | broken | broken | $722.15 | $1,719.92 | $2,657.18 | $3,519.26 | $4,452.64 | $5,640.94 | $6,386.33 | $5,992.83 | $3,067.23 | n/a |
+| payeDans60Jours | broken | broken | broken | broken | $1,071.91 | $1,905.71 | $2,892.10 | $3,647.05 | $4,604.83 | $5,932.79 | $6,492.93 | $6,137.42 | $3,233.73 | n/a |
 | moisSansConge | broken | broken | broken | -$4,742.91 | -$4,002.24 | -$3,591.13 | -$3,125.63 | -$2,704.81 | -$2,188.59 | -$1,657.90 | -$1,203.68 | -$1,515.67 | -$2,957.41 | -$4,742.91 |
 
 ### Best strategy’s outcomes
@@ -226,7 +254,7 @@ The same for the best strategy's 1000 games: « Or » at or below its 20th perce
 | semaineDesMilleDollars | $1,067.37 | $1,111.04 | $1,157.46 | $1,190.04 | $1,215.05 | $1,238.93 | $1,261.00 | $1,282.79 | $1,310.76 | $1,347.10 | $1,373.62 |
 | zeroGaspillage | 1,156 | 1,172 | 1,194 | 1,208 | 1,218 | 1,228 | 1,236 | 1,246 | 1,257 | 1,273 | 1,287 |
 | festivalDuPasPire | $2,956.08 | $3,078.68 | $3,159.65 | $3,206.43 | $3,250.80 | $3,286.75 | $3,320.10 | $3,365.83 | $3,406.55 | $3,459.50 | $3,507.28 |
-| payeDans60Jours | $5,574.02 | $5,825.69 | $6,091.17 | $6,365.22 | $6,644.98 | $6,715.03 | $6,738.50 | $6,738.50 | $6,738.50 | $6,738.50 | $6,738.50 |
+| payeDans60Jours | $5,364.48 | $5,575.94 | $6,056.45 | $6,529.08 | $6,694.99 | $6,738.26 | $6,738.50 | $6,738.50 | $6,738.50 | $6,738.50 | $6,738.50 |
 | moisSansConge | -$856.19 | -$763.93 | -$655.43 | -$596.75 | -$539.25 | -$494.68 | -$446.12 | -$394.50 | -$337.73 | -$253.51 | -$198.63 |
 
 <!-- End of the Défis section. -->
@@ -421,3 +449,14 @@ Café and chocolat keep a truck with no croissants alive, and bronze sits at the
 ### Tests outside the cards' folders
 
 With Étienne's agreement on #102, the tests in `src/ui/` that quoted a Défi's cash, thresholds, conditions or length now read them from `src/content/defis.json` and check how they read; one Défi made up in `src/ui/defis.test.ts`, which no tuning moves, pins how money and shares read. In `src/content/defis.test.ts`, the scripted games follow the new numbers, and in `src/ui/store.test.ts`, the Défi that stops when a condition breaks is now « Les travaux de la rue Saint-Denis » with 3 000 $ a week to the owner.
+
+## Event cards by difficulty (P3-13b)
+
+#137 makes the same card play differently at each difficulty. `scaling` in `src/content/events.json` holds the issue's starting values: Facile keeps the gains and takes 0.7 of the losses, Moyen takes 1.3 of both, and Difficile gives 0.7 of the gains and takes 1.2 of the losses. Every Difficile choice now costs something, and four new cards come up at every difficulty with a weight of 1. At Facile they are drawn by the player's standing: `gateauFete` and `traiteurPresse` toward « en difficulté », `placementMiracle` and `peintureLuxe` toward « en avance ». The percentile table above was played again with all of it. Facile's owners drew by their standing against the table from before.
+
+A Défi plays the cards as written, so its story and its medals keep their amounts. « Payé dans 60 jours » lets random cards come, so the new cards come up in it too. Two of them bring cash, an order paid on Saturday and a caterer who pays double, and with them the owners' lowest cash went up: « Or » at 5 900 $ went to 10.1 % of the owners, over the 10 % of #102. « Or » is now 6 000 $: 9.4 % of the owners win it, and 81.5 % of the best strategy's games. P3-13's owners on seeds 1 to 200 now win « Or » 20 times, argent or better 87 times and bronze or better 140 times, with 60 games broken. The guardrail test has the new counts.
+
+Step 6 of #137, the retune by difficulty, is still to do. At Moyen, where #101 tuned the cards, the event report above now shows:
+- Moyen's scaling moves three tuned choices off their targets: `grosseCommande` « refuser » (best on neither in 99.6 %), `conesOrange` « patienter » (85.7 %) and `machineTousse` « reparer » (87.8 %).
+- The new cards are not tuned yet. `gateauFete` and `traiteurPresse` « accepter » are best on both in about 99 %. `peintureLuxe` « payer » never pays back its 1 800 $ within the 8 weeks. `placementMiracle` moves only the owner's own money, which the report does not measure, so both of its choices tie at 0.
+- The report still judges Moyen only. It does not yet give a table of targets per difficulty, nor how often each standing drew each card at Facile.
