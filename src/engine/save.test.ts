@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  loadDefiContent,
   loadDifficultyContent,
   loadEventContent,
   loadFoodTruckContent,
@@ -14,9 +15,16 @@ import {
   type Journal,
 } from '../finance/journal.ts'
 import { incomeStatement } from '../finance/statements.ts'
-import { createInitialState, tick, toCalendar } from './clock.ts'
+import { allowedChoices } from './challenge.ts'
+import {
+  createInitialState,
+  startChallenge,
+  tick,
+  toCalendar,
+} from './clock.ts'
 import {
   CUSTOMERS,
+  DEFIS,
   DIFFICULTIES,
   ENERGY,
   EVENTS,
@@ -278,11 +286,23 @@ function v9(state: GameState): string {
   return JSON.stringify({ ...save, saveVersion: 9 })
 }
 
-/** Takes the week in numbers out of `save`, as version 9 wrote it. */
+/**
+ * Takes the week in numbers out of `save`, as version 9 wrote it, and the
+ * Défi, which came later.
+ */
 function withoutWeek(save: Json): void {
   delete save.weekSoFar
   delete save.lastWeek
   delete save.weekHistory
+  delete save.challenge
+}
+
+/** `state`, not a Défi, saved as version 10, before the Défis. */
+function v10(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  expect(save.challenge).toBeNull()
+  delete save.challenge
+  return JSON.stringify({ ...save, saveVersion: 10 })
 }
 
 /**
@@ -315,10 +335,11 @@ function expectInvalid(
   content = FOOD_TRUCK,
   events = EVENTS,
   difficulties = DIFFICULTIES,
+  defis = DEFIS,
 ): void {
   let message: string | undefined
   try {
-    deserialize(text, content, events, difficulties)
+    deserialize(text, content, events, difficulties, defis)
   } catch (error) {
     if (!(error instanceof Error)) throw error
     message = error.message
@@ -330,8 +351,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(10)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 10 })
+    expect(SAVE_VERSION).toBe(11)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 11 })
   })
 
   it.each<Profile>([
@@ -658,6 +679,20 @@ describe('serialize and deserialize', () => {
     )
   })
 
+  it('load a version 10 game as one that is not a Défi', () => {
+    for (const state of [
+      createInitialState(SEED),
+      THURSDAY,
+      SUNDAY_CLOSE,
+      DAY_400,
+    ]) {
+      expect(deserialize(v10(state))).toStrictEqual(state)
+    }
+    expect(deserialize(v10(DAY_0_CHOSEN), FOOD_TRUCK, DAY_0_CARD)).toEqual(
+      DAY_0_CHOSEN,
+    )
+  })
+
   it('give back the street each morning and each close, as each change ends', () => {
     const load = (state: GameState) =>
       deserialize(serialize(state), FOOD_TRUCK, ESSAI)
@@ -790,7 +825,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 6, 11, '10', '9', '8', '7', null])(
+  it.each([0, 1, 6, 12, '11', '10', '9', '8', '7', null])(
     'saveVersion %j',
     (version) => {
       expectInvalid(withValue('saveVersion', version), [
@@ -1674,6 +1709,20 @@ describe('deserialize rejects', () => {
     })
   })
 
+  describe('a version 10 game', () => {
+    it('with a Défi, which came in version 11', () => {
+      const save = JSON.parse(v10(FORTNIGHT)) as Json
+      save.challenge = null
+      expectInvalid(JSON.stringify(save), ['Unrecognized key: "challenge"'])
+    })
+
+    it('with a field it breaks', () => {
+      const save = JSON.parse(v10(FORTNIGHT)) as Json
+      save.energy = 101
+      expectInvalid(JSON.stringify(save), ['→ at energy'])
+    })
+  })
+
   describe('a version 9 game', () => {
     it('which loads', () => {
       expect(deserialize(v9(FORTNIGHT))).toEqual(sinceLoaded(FORTNIGHT))
@@ -2343,6 +2392,662 @@ describe('deserialize rejects', () => {
         FOOD_TRUCK,
         DAY_0_CARD,
       )
+    })
+  })
+})
+
+describe('a Défi', () => {
+  /** A Défi of the save's tests; `fields` replace its own. */
+  const defi = (fields: Json): Json => ({
+    id: 'essai',
+    title: 'Un essai',
+    story: 'Quelques jours pour essayer.',
+    difficulty: 'moyen',
+    start: { month: 5, dayOfMonth: 8 },
+    lengthDays: 10,
+    setup: { cashCents: 300_000 },
+    locked: [],
+    modifiers: [],
+    events: [],
+    randomEvents: false,
+    goal: {
+      metric: 'lowestCash',
+      medals: { or: 300_000, argent: 200_000, bronze: 0 },
+    },
+    conditions: [{ kind: 'minCash', amountCents: 0 }],
+    ...fields,
+  })
+  // From Monday, May 8th, day 7, open every day, locked: « Essai » on its
+  // first morning, then on day 2 with every effect on the books and the
+  // owner, then « La concurrence » on day 4, which tires the owner; the
+  // construction from the first day, the festival from day 5. Then a
+  // Défi from July 10th, day 70, over August 1st, and one from day 0.
+  const SAVE_DEFIS = loadDefiContent(
+    {
+      defis: [
+        defi({
+          id: 'semaine',
+          setup: { cashCents: 300_000, daysOpen: [1, 2, 3, 4, 5, 6, 7] },
+          locked: ['daysOpen'],
+          modifiers: [
+            {
+              day: 0,
+              days: 3,
+              event: 'conesOrange',
+              change: { kind: 'walkIns', factor: 0.65 },
+            },
+            {
+              day: 5,
+              days: 3,
+              event: 'festival',
+              change: { kind: 'walkIns', factor: 1.8 },
+            },
+          ],
+          events: [
+            { day: 0, event: 'essai', choices: ['rienFaire'] },
+            { day: 2, event: 'essai', choices: ['toutEssayer'] },
+            { day: 4, event: 'concurrence', choices: ['allerLuiParler'] },
+          ],
+        }),
+        defi({
+          id: 'ete',
+          start: { month: 7, dayOfMonth: 10 },
+          lengthDays: 28,
+          setup: {},
+          randomEvents: true,
+        }),
+        defi({
+          id: 'mai',
+          difficulty: 'facile',
+          start: { month: 5, dayOfMonth: 1 },
+          lengthDays: 7,
+          setup: { energy: 90 },
+          goal: {
+            metric: 'sales',
+            medals: { or: 1_000_000, argent: 500_000, bronze: 100_000 },
+          },
+          conditions: [],
+        }),
+      ],
+    },
+    EVENTS,
+  )
+
+  // « Le remontant », forced on the first morning, a closed Monday, at 30
+  // energy: « Maintenant » takes 20 of the owner's energy and gives it back
+  // at once, « Demain » takes 70 and gives it back at the start of Tuesday.
+  // Either way, the Défi of that name falls to its minimum energy.
+  const PICK_ME_UP = loadEventContent({
+    pacing: { firstDay: 0, minDaysBetween: 0, dailyChance: 0 },
+    events: [
+      {
+        id: 'remontant',
+        weight: 1,
+        character: { id: 'gerant', name: 'Le gérant', role: 'Gérant' },
+        title: 'Un remontant',
+        situation: 'Un café bien serré?',
+        choices: [
+          ['maintenant', 0],
+          ['demain', 1],
+        ].map(([id, inDays]) => ({
+          id,
+          label: id,
+          tags: ['Énergie'],
+          outcomes: [
+            {
+              chance: 1,
+              result: 'Ouf.',
+              effects: [-1, 1].map((sign) => ({
+                kind: 'energy',
+                amount: sign * (inDays === 0 ? 20 : 70),
+                ...(inDays === 0 ? {} : { inDays }),
+              })),
+            },
+          ],
+        })),
+      },
+    ],
+  })
+  const PICK_ME_UP_DEFIS = loadDefiContent(
+    {
+      defis: [
+        ['maintenant', 1],
+        ['demain', 2],
+      ].map(([id, lengthDays]) =>
+        defi({
+          id,
+          difficulty: 'facile',
+          lengthDays,
+          setup: { energy: 30, daysOpen: [3] },
+          events: [{ day: 0, event: 'remontant', choices: [id] }],
+          goal: {
+            metric: 'lowestEnergy',
+            medals: { or: 30, argent: 25, bronze: 20 },
+          },
+          conditions: [{ kind: 'minEnergy', amount: 25 }],
+        }),
+      ),
+    },
+    PICK_ME_UP,
+  )
+
+  /** `state` saved and loaded with the Défis of these tests. */
+  const reloaded = (state: GameState, defis = SAVE_DEFIS) =>
+    deserialize(serialize(state), FOOD_TRUCK, EVENTS, DIFFICULTIES, defis)
+
+  /** The event waiting answered as the Défi allows, or the last choice. */
+  const answered = (state: GameState): GameState => {
+    const { pending } = state.events
+    if (pending === null) return state
+    const choice =
+      allowedChoices(state, SAVE_DEFIS)?.[0] ??
+      EVENTS.events.find(({ id }) => id === pending.event)?.choices.at(-1)?.id
+    return resolveEvent(state, choice ?? '', EVENTS, FOOD_TRUCK, SAVE_DEFIS)
+  }
+
+  const nextMorning = (state: GameState) =>
+    tick(
+      state,
+      FOOD_TRUCK,
+      CUSTOMERS,
+      DIFFICULTIES,
+      PERSONAL,
+      ENERGY,
+      EVENTS,
+      SAVE_DEFIS,
+    )
+
+  const closed = (state: GameState) =>
+    playDay(
+      state,
+      FOOD_TRUCK,
+      CUSTOMERS,
+      DIFFICULTIES,
+      PERSONAL,
+      ENERGY,
+      SAVE_DEFIS,
+    )
+
+  /** The Défi from `state`, a morning, played to its end. */
+  const playedOut = (state: GameState): GameState => {
+    let played = state
+    while (played.challenge?.status === 'enCours') {
+      played = nextMorning(answered(played))
+    }
+    return played
+  }
+
+  /**
+   * Every state of the Défi `id`, from its first morning to the morning
+   * after its end: each morning, then after its choice, if any, then its
+   * close.
+   */
+  const states = (id: string): GameState[] => {
+    let state = startChallenge(id, SEED, FOOD_TRUCK, SAVE_DEFIS)
+    const all = [state]
+    while (state.challenge?.status === 'enCours') {
+      if (state.events.pending !== null) {
+        state = answered(state)
+        all.push(state)
+      }
+      all.push(closed(state))
+      state = nextMorning(state)
+      all.push(state)
+    }
+    return all
+  }
+
+  const WEEK = states('semaine')
+  /** The morning of `day`, before its event is chosen if one waits. */
+  const morningOf = (day: number, list = WEEK): GameState => {
+    const found = list.find(
+      (state) => state.day === day && state.lastDay?.day !== day,
+    )
+    if (found === undefined) throw new Error(`No morning of day ${day}`)
+    return found
+  }
+  /** The morning of `day`, once its event is chosen. */
+  const chosenOn = (day: number): GameState => {
+    const found = WEEK.find(
+      (state) =>
+        state.events.history.at(-1)?.day === day && state.lastDay?.day !== day,
+    )
+    if (found === undefined) throw new Error(`No choice on day ${day}`)
+    return found
+  }
+  const closeOf = (day: number, list = WEEK): GameState => {
+    const found = list.find(
+      (state) => state.lastDay?.day === day && state.day === day,
+    )
+    if (found === undefined) throw new Error(`No close of day ${day}`)
+    return found
+  }
+  const END = WEEK.at(-1) as GameState
+  const save = (state: GameState) => JSON.parse(serialize(state)) as Json
+  const text = (json: Json) => JSON.stringify(json)
+  const expectRejected = (json: Json, reasons: string[], defis = SAVE_DEFIS) =>
+    expectInvalid(text(json), reasons, FOOD_TRUCK, EVENTS, DIFFICULTIES, defis)
+
+  describe('saved and loaded', () => {
+    it('gives back every morning, choice and close, to the morning after its end', () => {
+      // The first morning, three choices, and ten mornings and closes.
+      expect(WEEK.length).toBe(1 + 3 + 2 * 10)
+      expect(END.challenge?.status).toBe('reussi')
+      for (const state of WEEK) expect(reloaded(state)).toStrictEqual(state)
+    })
+
+    it('goes on as if it had never stopped: from its first morning, with its event waiting, from the mornings after a choice that sold, charged and tired the owner, before the day is played, and from the middle', () => {
+      expect(WEEK[0]?.events.pending).toEqual({
+        event: 'essai',
+        followUp: false,
+      })
+      const money = chosenOn(9)
+      expect(money.events.history.at(-1)?.choice).toBe('toutEssayer')
+      expect(money.energy).toBeLessThan(morningOf(9).energy)
+      expect(balance(money.journal, '1000', { toDay: 9 })).not.toBe(
+        balance(money.journal, '1000', { toDay: 8 }),
+      )
+      const tired = chosenOn(11)
+      expect(tired.energy).toBeLessThan(morningOf(11).energy)
+      for (const state of [
+        WEEK[0] as GameState,
+        money,
+        tired,
+        morningOf(13),
+        END,
+      ]) {
+        expect(playedOut(reloaded(state))).toStrictEqual(END)
+      }
+    })
+
+    it('keeps its progress to the last close while a choice made that morning moved the cash and the energy, and the energy that choice took', () => {
+      const money = chosenOn(9)
+      const before = closeOf(8).challenge
+      expect(money.energy).toBeLessThan(before?.lowestEnergySinceClose ?? 0)
+      expect(money.challenge).toStrictEqual({
+        ...before,
+        lowestEnergySinceClose: money.energy,
+      })
+      expect(reloaded(money).challenge).toStrictEqual(money.challenge)
+    })
+
+    it('gives back a Défi that starts in July and pays the loan on August 1st, and goes on the same', () => {
+      const summer = states('ete')
+      const august = closeOf(92, summer)
+      expect(
+        entriesOf(august.journal).some(
+          ({ day, memo }) => day === 92 && memo === "Intérêts sur l'emprunt",
+        ),
+      ).toBe(true)
+      expect(reloaded(august)).toStrictEqual(august)
+      const end = summer.at(-1) as GameState
+      for (const state of [summer[0] as GameState, morningOf(93, summer)]) {
+        expect(reloaded(state)).toStrictEqual(state)
+        expect(playedOut(reloaded(state))).toStrictEqual(end)
+      }
+    })
+
+    it('gives back a Défi that starts on day 0', () => {
+      const may = states('mai')
+      expect(may[0]?.day).toBe(0)
+      for (const state of may) expect(reloaded(state)).toStrictEqual(state)
+      expect(playedOut(reloaded(may[0] as GameState))).toStrictEqual(may.at(-1))
+    })
+
+    it('gives back the energy a choice took and gave back, after the choice and after each day, and goes on the same', () => {
+      const loaded = (state: GameState) =>
+        deserialize(
+          serialize(state),
+          FOOD_TRUCK,
+          PICK_ME_UP,
+          DIFFICULTIES,
+          PICK_ME_UP_DEFIS,
+        )
+      const morningAfter = (state: GameState, id: string) =>
+        tick(
+          state.events.pending === null
+            ? state
+            : resolveEvent(state, id, PICK_ME_UP, FOOD_TRUCK, PICK_ME_UP_DEFIS),
+          FOOD_TRUCK,
+          CUSTOMERS,
+          DIFFICULTIES,
+          PERSONAL,
+          ENERGY,
+          PICK_ME_UP,
+          PICK_ME_UP_DEFIS,
+        )
+      for (const id of ['maintenant', 'demain']) {
+        // The first morning, its choice, then each close and morning after.
+        let state = startChallenge(id, SEED, FOOD_TRUCK, PICK_ME_UP_DEFIS)
+        const all = [state]
+        state = resolveEvent(
+          state,
+          id,
+          PICK_ME_UP,
+          FOOD_TRUCK,
+          PICK_ME_UP_DEFIS,
+        )
+        all.push(state)
+        while (state.challenge?.status === 'enCours') {
+          all.push(
+            playDay(
+              state,
+              FOOD_TRUCK,
+              CUSTOMERS,
+              DIFFICULTIES,
+              PERSONAL,
+              ENERGY,
+              PICK_ME_UP_DEFIS,
+            ),
+          )
+          state = morningAfter(state, id)
+          all.push(state)
+        }
+        expect(all[1]?.challenge?.lowestEnergySinceClose).toBe(
+          id === 'maintenant' ? 10 : 30,
+        )
+        expect(state.challenge).toMatchObject({
+          progress: { lowestEnergy: 10 },
+          status: 'echoue',
+          medal: null,
+        })
+        for (const saved of all) {
+          expect(loaded(saved)).toStrictEqual(saved)
+          if (saved.lastDay?.day === saved.day) continue
+          let played = loaded(saved)
+          while (played.challenge?.status === 'enCours') {
+            played = morningAfter(played, id)
+          }
+          expect(played).toStrictEqual(state)
+        }
+      }
+    })
+  })
+
+  describe('a save rejected', () => {
+    it('of a Défi of no such id', () => {
+      const json = save(WEEK[0] as GameState)
+      ;(json.challenge as Json).id = 'inconnu'
+      expectRejected(json, ['challenge is an unknown Défi: inconnu'])
+    })
+
+    it("that does not start on the Défi's first day", () => {
+      const json = save(WEEK[0] as GameState)
+      ;(json.challenge as Json).startDay = 8
+      expectRejected(json, [
+        'challenge starts on day 8, not on day 7, the first day of the Défi semaine',
+      ])
+    })
+
+    it("at another difficulty than the Défi's", () => {
+      const json = save(WEEK[0] as GameState)
+      ;(json.profile as Json).difficulty = 'facile'
+      expectRejected(json, [
+        "the Défi semaine is played at moyen, not at the profile's difficulty facile",
+      ])
+    })
+
+    it('that waits for its first day on another day', () => {
+      const json = save(startChallenge('mai', SEED, FOOD_TRUCK, SAVE_DEFIS))
+      json.day = 1
+      expectRejected(json, ['lastDay is null on day 1'])
+    })
+
+    it('that played a day before its first', () => {
+      // The same game, read as a Défi that starts a week later.
+      const later = loadDefiContent(
+        {
+          defis: [
+            defi({
+              id: 'semaine',
+              start: { month: 5, dayOfMonth: 15 },
+              setup: { cashCents: 300_000, daysOpen: [1, 2, 3, 4, 5, 6, 7] },
+            }),
+          ],
+        },
+        EVENTS,
+      )
+      const json = save(closeOf(10))
+      ;(json.challenge as Json).startDay = 14
+      expectRejected(
+        json,
+        ["lastDay is day 10, before the game's first day, day 14"],
+        later,
+      )
+    })
+
+    it('with an entry or an event before its first day', () => {
+      const entry = save(morningOf(10))
+      const journal = entry.journal as Json[]
+      journal.splice(3, 0, {
+        day: 3,
+        memo: 'Avant',
+        lines: [
+          { account: '6900', debit: 100, credit: 0 },
+          { account: '3000', debit: 0, credit: 100 },
+        ],
+      })
+      expectRejected(entry, [
+        "journal entry 4 is on day 3, before the Défi's first day, day 7",
+      ])
+      const event = save(morningOf(10))
+      const { history } = event.events as { history: Json[] }
+      history.unshift({
+        day: 3,
+        event: 'essai',
+        followUp: false,
+        choice: 'rienFaire',
+        outcome: 0,
+      })
+      expectRejected(event, [
+        "an event came before the Défi's first day, day 7",
+      ])
+    })
+
+    it('that played more days than the Défi has', () => {
+      const shorter = loadDefiContent(
+        {
+          defis: [
+            defi({
+              id: 'semaine',
+              lengthDays: 5,
+              setup: { cashCents: 300_000, daysOpen: [1, 2, 3, 4, 5, 6, 7] },
+              locked: ['daysOpen'],
+            }),
+          ],
+        },
+        EVENTS,
+      )
+      expectRejected(
+        save(morningOf(13)),
+        ['challenge has played 6 days of a Défi of 5'],
+        shorter,
+      )
+    })
+
+    it('with progress that is not what was played or what the books hold', () => {
+      const at = (state: GameState, field: string, value: unknown) => {
+        const json = save(state)
+        ;((json.challenge as Json).progress as Json)[field] = value
+        return json
+      }
+      const mid = morningOf(12)
+      const { progress } = mid.challenge ?? {}
+      if (progress === undefined) throw new Error('No Défi')
+      expectRejected(at(mid, 'daysPlayed', 4), [
+        'challenge.progress.daysPlayed is 4, not the 5 days played since day 7',
+      ])
+      expectRejected(at(mid, 'sales', progress.sales + 1), [
+        `challenge has ${progress.sales + 1} of ventes`,
+      ])
+      expectRejected(at(mid, 'netIncome', progress.netIncome - 1), [
+        'of bénéfice net, not the',
+      ])
+      // The lowest close is not the lowest cash.
+      const lowestClose = Math.min(
+        ...[7, 8, 9, 10, 11].map((day) =>
+          balance(mid.journal, '1000', { toDay: day }),
+        ),
+      )
+      expect(lowestClose).toBeGreaterThan(progress.lowestCash)
+      expectRejected(at(mid, 'lowestCash', lowestClose), [
+        `challenge.progress.lowestCash is ${lowestClose}, not the ${progress.lowestCash} the books went down to`,
+      ])
+      // The save keeps no energy but the last close's: the lowest is no
+      // higher.
+      const later = morningOf(14)
+      const above = (later.lastDay?.energy ?? 0) + 1
+      expect(above).toBeLessThanOrEqual(100)
+      expectRejected(at(later, 'lowestEnergy', above), [
+        `challenge.progress.lowestEnergy is ${above}, above`,
+      ])
+      expectRejected(at(WEEK[0] as GameState, 'customersServed', 1), [
+        'challenge counts customers or units before its first day is played',
+      ])
+      expectRejected(at(WEEK[0] as GameState, 'lowestEnergy', 50), [
+        'challenge.progress.lowestEnergy is 50 before its first day is played, not 100',
+      ])
+    })
+
+    it('with a lowest energy since the last close the game could not leave', () => {
+      const at = (state: GameState, value: number) => {
+        const json = save(state)
+        ;(json.challenge as Json).lowestEnergySinceClose = value
+        return json
+      }
+      // With no choice made since, the last close's, or the starting energy.
+      const mid = morningOf(12)
+      const closing = mid.lastDay?.energy ?? 0
+      expectRejected(at(mid, closing - 1), [
+        `challenge.lowestEnergySinceClose is ${closing - 1}, not the ${closing} of the last close`,
+      ])
+      expectRejected(at(closeOf(12), 0), [
+        `challenge.lowestEnergySinceClose is 0, not the ${closeOf(12).lastDay?.energy} of the last close`,
+      ])
+      expectRejected(at(WEEK[0] as GameState, 99), [
+        'challenge.lowestEnergySinceClose is 99, not the 100 of its first morning',
+      ])
+      // A choice made that morning can only have lowered it, to the
+      // owner's energy now or below.
+      const tired = chosenOn(11)
+      const limit = Math.min(closeOf(10).lastDay?.energy ?? 0, tired.energy)
+      expect(tired.challenge?.lowestEnergySinceClose).toBe(limit)
+      expectRejected(at(tired, limit + 1), [
+        `challenge.lowestEnergySinceClose is ${limit + 1}, above ${limit}`,
+      ])
+    })
+
+    it('with a status or a medal its progress does not give', () => {
+      const won = save(END)
+      ;(won.challenge as Json).medal = 'or'
+      expectRejected(won, [
+        'challenge is reussi with the medal or, not reussi with argent',
+      ])
+      const early = save(morningOf(12))
+      ;(early.challenge as Json).status = 'reussi'
+      ;(early.challenge as Json).medal = 'bronze'
+      expectRejected(early, [
+        'challenge is reussi with the medal bronze, not enCours with null',
+      ])
+    })
+
+    it('with an event after its end', () => {
+      const json = save(END)
+      ;(json.events as Json).pending = { event: 'essai', followUp: true }
+      expectRejected(json, ['an event came after the Défi semaine was over'])
+    })
+
+    it('lost to its minimum cash a day before its last day played', () => {
+      // The Défi played on with no condition, then read as one whose
+      // minimum cash, 90 000 $, broke before its first day was played.
+      const lax = loadDefiContent(
+        { defis: [defi({ id: 'semaine', setup: {}, conditions: [] })] },
+        EVENTS,
+      )
+      let state = startChallenge('semaine', SEED, FOOD_TRUCK, lax)
+      const play = (morning: GameState) =>
+        tick(
+          answered(morning),
+          FOOD_TRUCK,
+          CUSTOMERS,
+          DIFFICULTIES,
+          PERSONAL,
+          ENERGY,
+          EVENTS,
+          lax,
+        )
+      for (let day = 7; day < 12; day += 1) state = play(state)
+      const strict = loadDefiContent(
+        {
+          defis: [
+            defi({
+              id: 'semaine',
+              setup: {},
+              conditions: [{ kind: 'minCash', amountCents: 9_000_000 }],
+            }),
+          ],
+        },
+        EVENTS,
+      )
+      const json = save(state)
+      Object.assign(json.challenge as Json, { status: 'echoue', medal: null })
+      expectRejected(
+        json,
+        ['the Défi semaine was lost before day 11, the last day played'],
+        strict,
+      )
+    })
+
+    it('with decisions it locks changed, or waiting', () => {
+      for (const field of ['decisions', 'pendingDecisions']) {
+        const json = save(morningOf(12))
+        json[field] = {
+          ...(json.decisions as Json),
+          daysOpen: [2, 3, 4, 5, 6, 7],
+        }
+        expectRejected(json, [
+          `${field} change daysOpen, which the Défi semaine locks`,
+        ])
+      }
+    })
+
+    it('without the event it forces on a day played, or with a choice it does not allow', () => {
+      const missing = save(morningOf(13))
+      const events = missing.events as { history: Json[] }
+      events.history = events.history.filter(({ day }) => day !== 7)
+      expectRejected(missing, [
+        'the event the Défi semaine forces on day 7 never came',
+      ])
+      const other = save(morningOf(13))
+      const record = (other.events as { history: Json[] }).history[0] as Json
+      record.choice = 'toutEssayer'
+      expectRejected(other, [
+        'the event the Défi semaine forces on day 7 is not the one chosen that morning, with a choice it allows',
+      ])
+    })
+
+    it('with another event waiting on a morning it forces one', () => {
+      const json = save(morningOf(11))
+      ;(json.events as Json).pending = { event: 'essai', followUp: false }
+      expectRejected(json, [
+        'the event the Défi semaine forces on day 11 is not the one waiting',
+      ])
+    })
+
+    it('with an event drawn though it has no random event', () => {
+      const json = save(morningOf(13))
+      const events = json.events as { history: Json[]; lastDrawnDay: number }
+      events.history.push({
+        day: 12,
+        event: 'essai',
+        followUp: false,
+        choice: 'rienFaire',
+        outcome: 0,
+      })
+      events.history.sort((a, b) => (a.day as number) - (b.day as number))
+      expectRejected(json, [
+        'an event was drawn on day 12 of the Défi semaine, which has no random event',
+      ])
     })
   })
 })

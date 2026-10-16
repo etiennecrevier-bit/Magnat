@@ -1,10 +1,12 @@
 import type {
   DecisionLimits,
+  DefiContent,
   FoodTruckContent,
   ProductId,
   RestockRule,
 } from '../content/schema.ts'
-import { FOOD_TRUCK } from './day.ts'
+import { isLocked } from './challenge.ts'
+import { DEFIS, FOOD_TRUCK } from './day.ts'
 import { PRODUCTS } from './inventory.ts'
 import type { Cents } from './money.ts'
 import type { Decisions, GameState } from './types.ts'
@@ -72,13 +74,20 @@ export function latestDecisions(state: GameState): Decisions {
  * Throws a RangeError, naming the field, if the change names an unknown
  * kind or product, gives a product another kind of restock rule than it has,
  * or leaves the decisions outside the content's limits (see
- * `validateDecisions`).
+ * `validateDecisions`), and one naming the kind if the game's Défi, one of
+ * `defis`, locks it.
  */
 export function applyDecision(
   state: GameState,
   change: DecisionChange,
   content: FoodTruckContent = FOOD_TRUCK,
+  defis: DefiContent = DEFIS,
 ): GameState {
+  if (isLocked(state, change.kind, defis)) {
+    throw new RangeError(
+      `Invalid decision: the Défi ${state.challenge?.id} locks ${change.kind}`,
+    )
+  }
   const decisions = changed(latestDecisions(state), change)
   validateDecisions(decisions, content.decisionLimits)
   return { ...state, pendingDecisions: decisions }

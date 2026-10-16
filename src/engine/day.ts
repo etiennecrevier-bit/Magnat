@@ -1,11 +1,13 @@
 import {
   loadCustomerContent,
+  loadDefiContent,
   loadDifficultyContent,
   loadEnergyContent,
   loadEventContent,
   loadFoodTruckContent,
   loadPersonalContent,
   type CustomerContent,
+  type DefiContent,
   type Difficulty,
   type DifficultyContent,
   type DifficultyId,
@@ -19,12 +21,18 @@ import {
 import type { AccountCode } from '../finance/accounts.ts'
 import {
   emptyJournal,
+  entriesOf,
   postEntry,
   type Journal,
   type JournalLine,
 } from '../finance/journal.ts'
 import { loanSchedule } from '../finance/loan.ts'
 import { monthsSinceStart, toCalendar } from './calendar.ts'
+import {
+  challengeDifficulties,
+  defiById,
+  recordChallengeDay,
+} from './challenge.ts'
 import {
   dayTypeOf,
   noWithdrawals,
@@ -73,6 +81,12 @@ export const ENERGY: EnergyContent = loadEnergyContent()
  * loads.
  */
 export const EVENTS: EventContent = loadEventContent()
+
+/**
+ * The shipped Défis, validated once against the shipped event cards when
+ * the engine loads.
+ */
+export const DEFIS: DefiContent = loadDefiContent(undefined, EVENTS)
 
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
@@ -176,11 +190,14 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
 
 /**
  * Plays business day `morning.day` with `morning.decisions`. Throws an Error
- * while an event waits for the player's choice. First the start of the day:
+ * while an event waits for the player's choice, and once the game's Défi, if
+ * any, is over. First the start of the day:
  * the delayed effects of the events' choices due that day, then the
  * receivables due (see `startOfDay`). Then the street that day, with the
  * changes in effect folded together (see `streetOn`). On the 1st of the
- * month, open or closed: the month's charges (see `monthlyCharges`). On a
+ * month, open or closed: the month's charges (see `monthlyCharges`), the
+ * truck's counted in months from the game's first day, day 0 or a Défi's
+ * first day, as if the truck came to the business then. On a
  * day the truck opens, one of the days open the street does not close: the
  * morning restock of every product the street leaves on sale, then the
  * walk-in customers, with those the marketing of the days before brings on
@@ -199,9 +216,12 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * stock, the generator, the marketing history, `lastDay`, with the changes
  * to the street in effect that day, the owner's personal account, their
  * energy, the events, without the changes whose last day it was, the
- * receivables brought up to the close, and the day added to the week under
- * way, summed up on a Sunday (see `recordDay`); never mutates `morning`.
- * Cash may go negative.
+ * receivables brought up to the close, the day added to the week under
+ * way, summed up on a Sunday (see `recordDay`), and, in a Défi of `defis`,
+ * the day added to its progress, which may end it (see
+ * `recordChallengeDay`), with the owner's lowest energy since the last
+ * close, the start of the day's effects included, and at this one; never
+ * mutates `morning`. Cash may go negative.
  */
 export function playDay(
   morning: GameState,
@@ -210,11 +230,18 @@ export function playDay(
   difficulties: DifficultyContent = DIFFICULTIES,
   personal: PersonalContent = PERSONAL,
   energy: EnergyContent = ENERGY,
+  defis: DefiContent = DEFIS,
 ): GameState {
   const { pending } = morning.events
   if (pending !== null) {
     throw new Error(
       `Day ${morning.day} cannot be played: the event ${pending.event} is waiting for a choice`,
+    )
+  }
+  const { challenge } = morning
+  if (challenge !== null && challenge.status !== 'enCours') {
+    throw new Error(
+      `Day ${morning.day} cannot be played: the Défi ${challenge.id} is over`,
     )
   }
   const state = startOfDay(morning, content)
@@ -231,7 +258,8 @@ export function playDay(
 
   if (dayOfMonth === 1) {
     const { truck } = difficulties.difficulties[state.profile.difficulty]
-    journal = monthlyCharges(journal, day, content, truck)
+    const month = monthsSinceStart(day) - monthsSinceStart(firstDay(state))
+    journal = monthlyCharges(journal, day, month, content, truck)
   }
 
   if (open) {
@@ -374,17 +402,35 @@ export function playDay(
         ? state.events
         : { ...state.events, modifiers: lasting },
   }
-  return { ...closing, ...recordDay(closing, open, expired.cost) }
+  const recorded = { ...closing, ...recordDay(closing, open, expired.cost) }
+  if (challenge === null) return recorded
+  const defi = defiById(defis, challenge.id)
+  const opening = openingJournal(
+    state.profile.difficulty,
+    content,
+    challengeDifficulties(defi, difficulties),
+  )
+  return {
+    ...recorded,
+    challenge: recordChallengeDay(recorded, defi, entriesOf(opening).length),
+  }
+}
+
+/** The game's first day: day 0, or its Défi's first day. */
+function firstDay({ challenge }: GameState): Day {
+  return challenge?.startDay ?? 0
 }
 
 /**
  * What the 1st of the month costs, open or closed: the permit, parking and
  * commissary, the insurance, then the truck's own charges, which depend on
- * how it came to the business. Month 0 is the month of day 0.
+ * how it came to the business. `month` counts from the month the truck
+ * came, its month 0.
  */
 function monthlyCharges(
   journal: Journal,
   day: Day,
+  month: number,
   content: FoodTruckContent,
   truck: Difficulty['truck'],
 ): Journal {
@@ -397,7 +443,6 @@ function monthlyCharges(
     permitParkingAndCommissary,
   )
   books = pay(books, day, MEMO.insurance, INSURANCE, insurance)
-  const month = monthsSinceStart(day)
   switch (truck.kind) {
     case 'owned':
       return depreciate(books, day, month, content.truck)

@@ -30,6 +30,7 @@ const GAME_CHANGERS = [
   'resolveEvent',
   'applyEffect',
   'startOfDay',
+  'startChallenge',
 ]
 const NO_WORLD = {
   regex: '(^|/)world(/|$)',

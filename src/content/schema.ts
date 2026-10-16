@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { cents } from '../engine/money.ts'
+import defisJson from './defis.json'
 import difficultyJson from './difficulty.json'
 import energyJson from './energy.json'
 import eventsJson from './events.json'
@@ -883,6 +884,273 @@ export const reportContentSchema = z.strictObject({
 
 export type ReportContent = z.output<typeof reportContentSchema>
 
+// A rule a Défi is held to, not a tunable: what fits on its card.
+const STORY_MAX_LENGTH = 400
+
+// A calendar fact, not a tunable: day 0 is May 1st of year 1, so a Défi
+// starts in the first season, from May to December.
+const FIRST_MONTH = 5
+
+/** Whole cents of either sign, typed as the engine's `Cents`. */
+const signedMoney = z.int().transform((n) => cents(n))
+
+/**
+ * A kind of change to the decisions, as `DecisionChange` in
+ * src/engine/decisions.ts names it: what a Défi may lock.
+ */
+export const decisionKindSchema = z.enum([
+  'price',
+  'restock',
+  'daysOpen',
+  'ownerWeeklyPay',
+  'marketingDaily',
+])
+
+export type DecisionKind = z.infer<typeof decisionKindSchema>
+
+/** A Défi's medals, the best first: « Or », « Argent » and « Bronze ». */
+export const medalSchema = z.enum(['or', 'argent', 'bronze'])
+
+export type Medal = z.infer<typeof medalSchema>
+
+/**
+ * The threshold of each medal, in the unit of `threshold`: or ≥ argent ≥
+ * bronze, or the other way around when a lower value is better.
+ */
+function medals(threshold: z.ZodType<number>, lowerIsBetter = false) {
+  return z
+    .strictObject({ or: threshold, argent: threshold, bronze: threshold })
+    .refine(
+      ({ or, argent, bronze }) =>
+        lowerIsBetter
+          ? or <= argent && argent <= bronze
+          : or >= argent && argent >= bronze,
+      {
+        message: lowerIsBetter
+          ? 'expected or ≤ argent ≤ bronze, since lower is better'
+          : 'expected or ≥ argent ≥ bronze',
+      },
+    )
+}
+
+/**
+ * What a Défi's medals measure over its days, and the least each medal
+ * needs, or the most for `spoilageRate`: `lowestCash`, the lowest Encaisse
+ * after any entry, in cents of either sign; `netIncome`, the bénéfice net,
+ * in cents of either sign; `sales`, the ventes, in cents; `customersServed`,
+ * the visits that reached the counter; `spoilageRate`, the units written off
+ * at the close as a share of those sold and written off; `lowestEnergy`, the
+ * owner's lowest energy.
+ */
+const defiGoalSchema = z.discriminatedUnion('metric', [
+  z.strictObject({
+    metric: z.literal('lowestCash'),
+    medals: medals(signedMoney),
+  }),
+  z.strictObject({
+    metric: z.literal('netIncome'),
+    medals: medals(signedMoney),
+  }),
+  z.strictObject({ metric: z.literal('sales'), medals: medals(money) }),
+  z.strictObject({
+    metric: z.literal('customersServed'),
+    medals: medals(count),
+  }),
+  z.strictObject({
+    metric: z.literal('spoilageRate'),
+    medals: medals(share, true),
+  }),
+  z.strictObject({
+    metric: z.literal('lowestEnergy'),
+    medals: medals(energyAmount),
+  }),
+])
+
+export type DefiGoal = z.output<typeof defiGoalSchema>
+
+/** What a Défi's medals measure. */
+export type DefiMetric = DefiGoal['metric']
+
+/**
+ * A condition that must hold all along a Défi, or it fails at once: the
+ * Encaisse never below `amountCents`, the owner's energy never below
+ * `amount`, the spoilage rate never above `rate`.
+ */
+const defiConditionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('minCash'), amountCents: signedMoney }),
+  z.strictObject({ kind: z.literal('minEnergy'), amount: energyAmount }),
+  z.strictObject({ kind: z.literal('maxSpoilageRate'), rate: share }),
+])
+
+export type DefiCondition = z.output<typeof defiConditionSchema>
+
+export type DefiConditionKind = DefiCondition['kind']
+
+/**
+ * How a Défi's game opens, besides its difficulty: each field given replaces
+ * what a game starts with. `cashCents` replaces the difficulty's
+ * `startingCashCents`, the cash in the bank once the truck is settled; the
+ * decisions replace the content's starting decisions, product by product
+ * for the prices and the restock; `energy` is the owner's on the first
+ * morning.
+ */
+const defiSetupSchema = z.strictObject({
+  cashCents: money.optional(),
+  prices: z.partialRecord(productIdSchema, money).optional(),
+  restock: z.partialRecord(productIdSchema, restockRuleSchema).optional(),
+  daysOpen: z.array(weekday).min(1).optional(),
+  ownerWeeklyPayCents: money.optional(),
+  marketingDailyCents: money.optional(),
+  energy: energyAmount.optional(),
+})
+
+/**
+ * A change to the street a Défi forces for `days` days from its day `day`,
+ * counting from 0, made as if by a choice of the card `event`.
+ */
+const defiModifierSchema = z.strictObject({
+  day: count,
+  days: streetDays,
+  event: idSchema,
+  change: streetChangeSchema,
+})
+
+/**
+ * The card `event` a Défi brings on the morning of its day `day`, counting
+ * from 0, where the player may make only the `choices` listed.
+ */
+const defiEventSchema = z.strictObject({
+  day: count,
+  event: idSchema,
+  choices: z.array(idSchema).min(1),
+})
+
+/** A Défi as `defis.json` writes it. */
+const defiSchema = z
+  .strictObject({
+    id: idSchema,
+    title: frenchText(),
+    story: frenchText(STORY_MAX_LENGTH),
+    difficulty: difficultyIdSchema,
+    /** The date of its first day, in the first season of year 1. */
+    start: calendarDateSchema.refine(({ month }) => month >= FIRST_MONTH, {
+      message: 'a Défi starts in the first season, from May 1st',
+      path: ['month'],
+    }),
+    lengthDays: z.int().positive(),
+    setup: defiSetupSchema,
+    /** The kinds of change the player cannot make. */
+    locked: z.array(decisionKindSchema),
+    modifiers: z.array(defiModifierSchema),
+    events: z.array(defiEventSchema),
+    /** Whether the event cards' draws come too, besides the forced ones. */
+    randomEvents: z.boolean(),
+    goal: defiGoalSchema,
+    conditions: z.array(defiConditionSchema),
+  })
+  .superRefine((defi, ctx) => {
+    const issue = (message: string, path: (string | number)[]) =>
+      ctx.addIssue({ code: 'custom', message, path })
+    const repeats = <T>(values: readonly T[], at: (index: number) => void) => {
+      values.forEach((value, index) => {
+        if (values.indexOf(value) !== index) at(index)
+      })
+    }
+    defi.modifiers.forEach(({ day }, index) => {
+      if (day >= defi.lengthDays) {
+        issue(`day ${day} is not one of the ${defi.lengthDays} days`, [
+          'modifiers',
+          index,
+          'day',
+        ])
+      }
+    })
+    defi.events.forEach(({ day, choices }, index) => {
+      if (day >= defi.lengthDays) {
+        issue(`day ${day} is not one of the ${defi.lengthDays} days`, [
+          'events',
+          index,
+          'day',
+        ])
+      }
+      repeats(choices, (c) =>
+        issue('a choice appears twice', ['events', index, 'choices', c]),
+      )
+    })
+    repeats(
+      defi.events.map(({ day }) => day),
+      (index) =>
+        issue('one forced event a day at most', ['events', index, 'day']),
+    )
+    repeats(defi.locked, (index) =>
+      issue('a kind of decision appears twice', ['locked', index]),
+    )
+    repeats(
+      defi.conditions.map(({ kind }) => kind),
+      (index) =>
+        issue('a kind of condition appears twice', ['conditions', index]),
+    )
+  })
+
+export type Defi = z.output<typeof defiSchema>
+
+export const defiContentSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    defis: z.array(defiSchema),
+  })
+  .superRefine(({ defis }, ctx) => {
+    defis.forEach(({ id }, index) => {
+      if (defis.findIndex((defi) => defi.id === id) !== index) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `the Défi id ${id} appears twice`,
+          path: ['defis', index, 'id'],
+        })
+      }
+    })
+  })
+
+export type DefiContent = z.output<typeof defiContentSchema>
+
+/**
+ * The Défis' content, checked against `events`: each forced change to the
+ * street and each forced event names a card of it, and each choice allowed
+ * one of that card's.
+ */
+function defiContentFor(events: EventContent) {
+  const cards = new Map(events.events.map((card) => [card.id, card]))
+  return defiContentSchema.superRefine(({ defis }, ctx) => {
+    const issue = (message: string, path: (string | number)[]) =>
+      ctx.addIssue({ code: 'custom', message, path: ['defis', ...path] })
+    defis.forEach((defi, d) => {
+      defi.modifiers.forEach(({ event }, m) => {
+        if (!cards.has(event)) {
+          issue(`no event has the id ${event}`, [d, 'modifiers', m, 'event'])
+        }
+      })
+      defi.events.forEach(({ event, choices }, e) => {
+        const card = cards.get(event)
+        if (card === undefined) {
+          issue(`no event has the id ${event}`, [d, 'events', e, 'event'])
+          return
+        }
+        choices.forEach((choice, c) => {
+          if (!card.choices.some(({ id }) => id === choice)) {
+            issue(`the event ${event} has no choice ${choice}`, [
+              d,
+              'events',
+              e,
+              'choices',
+              c,
+            ])
+          }
+        })
+      })
+    })
+  })
+}
+
 /**
  * Validates the food truck's content and returns it typed, with money as
  * `Cents`. Throws an Error naming every invalid field. Pass `raw` only to
@@ -964,6 +1232,24 @@ export function loadEventContent(raw: unknown = eventsJson): EventContent {
  */
 export function loadReportContent(raw: unknown = reportJson): ReportContent {
   return parsed(reportContentSchema, raw, 'report.json')
+}
+
+/**
+ * Validates the Défis against the event cards `events` and returns them
+ * typed, with money as `Cents`. Throws an Error naming every invalid field:
+ * besides each field, the Défi ids are unique; each forced change to the
+ * street and each forced event falls on one of the Défi's days and names an
+ * event of `events`; a Défi forces one event a day at most, each choice
+ * allowed is one of its card's and appears once; and a Défi locks each kind
+ * of decision and sets each kind of condition once at most. Pass `raw` only
+ * to check other data; by default it reads `defis.json`, against
+ * `events.json`.
+ */
+export function loadDefiContent(
+  raw: unknown = defisJson,
+  events: EventContent = loadEventContent(),
+): DefiContent {
+  return parsed(defiContentFor(events), raw, 'defis.json')
 }
 
 function parsed<T extends z.ZodType>(

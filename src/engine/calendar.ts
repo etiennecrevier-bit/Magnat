@@ -59,6 +59,35 @@ export function toCalendar(day: Day): CalendarDate {
 }
 
 /**
+ * The game day of `month` and `dayOfMonth` in year 1, the inverse of
+ * `toCalendar` there: May 1st is day 0, December 31st day 244. Throws a
+ * RangeError unless the date exists and falls on May 1st or later.
+ */
+export function dayOfDate({
+  month,
+  dayOfMonth,
+}: Pick<CalendarDate, 'month' | 'dayOfMonth'>): Day {
+  const length = MONTH_LENGTHS[month - 1]
+  if (
+    !Number.isSafeInteger(month) ||
+    !Number.isSafeInteger(dayOfMonth) ||
+    length === undefined ||
+    dayOfMonth < 1 ||
+    dayOfMonth > length ||
+    month < START_MONTH
+  ) {
+    throw new RangeError(
+      `Not a date of year 1 from May 1st: ${month}-${dayOfMonth}`,
+    )
+  }
+  const dayOfYear = MONTH_LENGTHS.slice(0, month - 1).reduce(
+    (total, days) => total + days,
+    dayOfMonth - 1,
+  )
+  return dayOfYear - START_DAY_OF_YEAR
+}
+
+/**
  * The Monday that starts the week of `day`; day 0 is a Monday, so it is
  * never negative. Throws a RangeError unless `day` is a non-negative safe
  * integer.
