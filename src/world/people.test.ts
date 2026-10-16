@@ -178,21 +178,13 @@ function drawOrder(root: Container): Container[] {
 
 /**
  * The share of `hand` that shows: of points spread over it, those that no
- * part drawn after its own fills or outlines, the parts labelled `worn`
- * aside.
+ * part drawn after its own fills or outlines.
  */
-function shown(
-  root: Container,
-  hand: Hand,
-  worn: readonly string[] = [],
-): number {
+function shown(root: Container, hand: Hand): number {
   const order = drawOrder(root)
   const above = order
     .slice(order.indexOf(hand.part) + 1)
-    .filter(
-      (node): node is Graphics =>
-        node instanceof Graphics && !worn.includes(node.label),
-    )
+    .filter((node): node is Graphics => node instanceof Graphics)
   const steps = 8
   let points = 0
   let seen = 0
@@ -502,9 +494,8 @@ describe('drawCustomer', () => {
         const drawn = turned(look, facing)
         const skins = [look.skin, ...(look.child ? [look.child.skin] : [])]
         for (const hand of skins.flatMap((skin) => hands(drawn, skin))) {
-          // A coat is worn over the arms, not carried.
           expect(
-            shown(drawn, hand, ['coat']),
+            shown(drawn, hand),
             `facing ${facing}, hand at ${hand.x.toFixed(0)}`,
           ).toBeGreaterThan(0.5)
         }

@@ -165,6 +165,22 @@ export function drawCustomer(
         .stroke(line(style)),
     )
   }
+  const coat =
+    look.segment === 'chic'
+      ? shadedRect(
+          new Graphics({ label: 'coat' }),
+          [-h * 0.18, neck, h * 0.36, h * 0.62, h * 0.08],
+          looks.coat,
+          style,
+          sun,
+        )
+          .poly([-h * 0.07, neck, h * 0.07, neck, 0, neck + h * 0.12])
+          .fill(look.clothes)
+          .stroke(line(style, style.outline * 0.7))
+          .moveTo(0, neck + h * 0.12)
+          .lineTo(0, -h * 0.15)
+          .stroke(line(style, style.outline * 0.6))
+      : null
   drawBody(
     root,
     h,
@@ -175,25 +191,8 @@ export function drawCustomer(
     style,
     holding,
     sun,
+    coat,
   )
-
-  if (look.segment === 'chic') {
-    root.addChild(
-      shadedRect(
-        new Graphics({ label: 'coat' }),
-        [-h * 0.18, neck, h * 0.36, h * 0.62, h * 0.08],
-        looks.coat,
-        style,
-        sun,
-      )
-        .poly([-h * 0.07, neck, h * 0.07, neck, 0, neck + h * 0.12])
-        .fill(look.clothes)
-        .stroke(line(style, style.outline * 0.7))
-        .moveTo(0, neck + h * 0.12)
-        .lineTo(0, -h * 0.15)
-        .stroke(line(style, style.outline * 0.6)),
-    )
-  }
 
   if (look.office === 'laptopBag') {
     root.addChild(
@@ -309,7 +308,8 @@ function toteShade(sun: Side): number[] {
  * Draws a body in `parent`, feet at 0, 0: legs, arms, torso and head, each
  * labelled and lit on the `sun` side. `sleeves` colours the arms, so a coat
  * covers them. The arms on the `holding` sides stop at the elbow, for
- * drawHeld to finish.
+ * drawHeld to finish. A `coat` goes over the torso, and the arms hang in
+ * front of it, so its hands show.
  */
 function drawBody(
   parent: Container,
@@ -321,6 +321,7 @@ function drawBody(
   style: DrawStyle,
   holding: readonly Side[],
   sun: Side,
+  coat: Graphics | null = null,
 ): void {
   const head = h * 0.115
   const neck = -h * 0.77
@@ -361,16 +362,15 @@ function drawBody(
       0.7,
     )
   }
-  parent.addChild(arms)
-  parent.addChild(
-    shadedRect(
-      new Graphics({ label: 'torso' }),
-      [-torso / 2, neck, torso, h * 0.36, torso * 0.35],
-      clothes,
-      style,
-      sun,
-    ),
+  const body = shadedRect(
+    new Graphics({ label: 'torso' }),
+    [-torso / 2, neck, torso, h * 0.36, torso * 0.35],
+    clothes,
+    style,
+    sun,
   )
+  // Without a coat, the torso covers the arms' inner edges.
+  parent.addChild(...(coat === null ? [arms, body] : [body, coat, arms]))
   parent.addChild(
     shadedCircle(
       new Graphics({ label: 'head' }),
