@@ -33,6 +33,8 @@ declare class Brand {
  * before it. A journal and everything in it is frozen. `postEntry()` and
  * everything that reads the entries through `entriesOf()` reject any other
  * object, so a cast or untyped data cannot get one past the type check.
+ * `entries` is built the first time it is read, so posting an entry does
+ * not copy the ones before it.
  */
 export interface Journal extends Brand {
   /** Entries in the order they were posted, so their days never go down. */
@@ -53,12 +55,42 @@ export interface TrialBalance {
   readonly totalCredit: Cents
 }
 
+type Nets = ReadonlyMap<AccountCode, Cents>
+
+/** What this module keeps of a journal it made. */
+interface Books {
+  /**
+   * The journal's entries, then those of the journals posted from it one
+   * after the other, which share the array: a post adds after the others,
+   * so the journal's own `count` entries never change.
+   */
+  readonly posted: JournalEntry[]
+  readonly count: number
+  /**
+   * Each account's net debits after every entry, so a balance at the
+   * journal's last day does not sum the entries again; null once a running
+   * balance has left the safe integer range, so reading one throws as
+   * summing the entries does.
+   */
+  readonly nets: Nets | null
+  /** The journal's entries as one frozen array, once read. */
+  entries?: readonly JournalEntry[]
+}
+
 const ZERO = cents(0)
 
-/** Every journal `emptyJournal()` and `postEntry()` made. */
-const MADE = new WeakSet<Journal>()
+/** Every journal `emptyJournal()` and `postEntry()` made, and its books. */
+const BOOKS = new WeakMap<Journal, Books>()
 
-const EMPTY = freezeJournal([])
+/** `entries`, read through `entriesOf()` like every other read. */
+const ENTRIES = {
+  enumerable: true,
+  get(this: Journal) {
+    return entriesOf(this)
+  },
+} satisfies PropertyDescriptor
+
+const EMPTY = makeJournal({ posted: [], count: 0, nets: new Map() })
 
 export function emptyJournal(): Journal {
   return EMPTY
@@ -75,7 +107,7 @@ export function emptyJournal(): Journal {
  * the credits.
  */
 export function postEntry(journal: Journal, entry: JournalEntry): Journal {
-  const entries = entriesOf(journal)
+  const { posted, count, nets } = booksOf(journal)
   const { day, memo, lines } = entry
   // First of the entry's checks, since the others quote the memo. An object
   // memo would be stored by reference, so later changes would reach the
@@ -90,7 +122,7 @@ export function postEntry(journal: Journal, entry: JournalEntry): Journal {
   }
 
   if (!Number.isSafeInteger(day) || day < 0) fail('not a game day')
-  const last = entries.at(-1)
+  const last = posted[count - 1]
   if (last !== undefined && day < last.day) {
     fail(`the last entry is on day ${last.day}`)
   }
@@ -135,12 +167,20 @@ export function postEntry(journal: Journal, entry: JournalEntry): Journal {
     fail(`debits of ${totalDebit} do not equal credits of ${totalCredit}`)
   }
 
-  const posted: JournalEntry = Object.freeze({
-    day,
-    memo,
-    lines: Object.freeze(stored),
+  // The entry goes at the end of the array the journal shares, so a post
+  // costs the same in the tenth year as on the first day. Once the journal
+  // has been posted to, the entries after its own belong to that later
+  // journal, so another post to it copies its own into a new array. So does
+  // a post to the empty journal, which every game starts from, so that no
+  // game keeps the entries of another alive.
+  const shared =
+    count > 0 && posted.length === count ? posted : posted.slice(0, count)
+  shared.push(Object.freeze({ day, memo, lines: Object.freeze(stored) }))
+  return makeJournal({
+    posted: shared,
+    count: count + 1,
+    nets: netsAfter(nets, stored),
   })
-  return freezeJournal([...entries, posted])
 }
 
 /**
@@ -157,7 +197,7 @@ export function balance(
   { toDay }: { toDay: Day },
 ): Cents {
   const { normalBalance } = getAccount(account)
-  const net = netDebits(journal, toDay).get(account) ?? ZERO
+  const net = netDebits(journal, { toDay }).get(account) ?? ZERO
   return normalBalance === 'debit' ? net : sub(ZERO, net)
 }
 
@@ -169,7 +209,7 @@ export function balance(
  * TypeError unless `emptyJournal()` or `postEntry()` made `journal`.
  */
 export function trialBalance(journal: Journal, toDay: Day): TrialBalance {
-  const nets = netDebits(journal, toDay)
+  const nets = netDebits(journal, { toDay })
   let totalDebit = ZERO
   let totalCredit = ZERO
   const lines = ACCOUNTS.map(({ code }): TrialBalanceLine => {
@@ -188,41 +228,137 @@ export function trialBalance(journal: Journal, toDay: Day): TrialBalance {
 }
 
 /**
- * Each account's debits minus its credits, over the entries up to and
- * including `toDay`. Accounts without lines are missing from the map.
+ * Each account's debits minus its credits, over the entries from `fromDay`
+ * (or the first entry) to `toDay`, both included, in a new map that leaves
+ * out the accounts whose net is zero. Throws a RangeError unless both days
+ * are safe integers, or if a balance leaves the safe integer range, and a
+ * TypeError unless `emptyJournal()` or `postEntry()` made `journal`.
  */
-function netDebits(journal: Journal, toDay: Day): Map<AccountCode, Cents> {
-  if (!Number.isSafeInteger(toDay)) {
-    throw new RangeError(`Invalid game day: ${toDay}`)
-  }
-  const nets = new Map<AccountCode, Cents>()
-  for (const entry of entriesOf(journal)) {
-    // Days never go down, so no later entry can be in range either.
-    if (entry.day > toDay) break
-    for (const { account, debit, credit } of entry.lines) {
-      // A line has one side only, so this overflows only when the running
-      // balance itself leaves the safe integer range.
-      nets.set(account, add(nets.get(account) ?? ZERO, sub(debit, credit)))
+export function netDebits(
+  journal: Journal,
+  { fromDay, toDay }: { fromDay?: Day; toDay: Day },
+): Map<AccountCode, Cents> {
+  for (const day of [fromDay ?? 0, toDay]) {
+    if (!Number.isSafeInteger(day)) {
+      throw new RangeError(`Invalid game day: ${day}`)
     }
   }
-  return nets
+  const books = booksOf(journal)
+  const { posted, count, nets } = books
+  const first = fromDay === undefined ? 0 : countBefore(books, fromDay)
+  const last = countBefore(books, toDay + 1)
+  let summed: Map<AccountCode, Cents>
+  // From the first entry, take the journal's own nets less the entries after
+  // `toDay` when those are the fewer, so a balance late in a long game costs
+  // what it does early on. Taking them away from the last line of the last
+  // entry back goes through the running balances that summing reaches, in
+  // reverse, all in range while `nets` is set, so both ways give the same
+  // nets. In any other order a balance on the way may leave the range.
+  if (first === 0 && nets !== null && count - last < last) {
+    summed = new Map(nets)
+    for (const { lines } of posted.slice(last, count).reverse()) {
+      for (const { account, debit, credit } of lines.toReversed()) {
+        summed.set(
+          account,
+          sub(summed.get(account) ?? ZERO, sub(debit, credit)),
+        )
+      }
+    }
+  } else {
+    summed = new Map()
+    for (const { lines } of posted.slice(first, last)) {
+      for (const { account, debit, credit } of lines) {
+        // A line has one side only, so this overflows only when the running
+        // balance itself leaves the safe integer range.
+        summed.set(
+          account,
+          add(summed.get(account) ?? ZERO, sub(debit, credit)),
+        )
+      }
+    }
+  }
+  for (const [account, net] of summed) if (net === 0) summed.delete(account)
+  return summed
 }
 
 /**
  * The journal's entries, which balance, use known accounts and come in day
- * order. Throws a TypeError unless `emptyJournal()` or `postEntry()` made
- * `journal`: a copy, a spread or untyped data may break any of these rules,
- * or hold an array its maker can still change.
+ * order: the same frozen array every time. Throws a TypeError unless
+ * `emptyJournal()` or `postEntry()` made `journal`: a copy, a spread or
+ * untyped data may break any of these rules, or hold an array its maker can
+ * still change.
  */
 export function entriesOf(journal: Journal): readonly JournalEntry[] {
-  if (!MADE.has(journal)) {
-    throw new TypeError('Not a journal from emptyJournal() or postEntry()')
-  }
-  return journal.entries
+  const books = booksOf(journal)
+  books.entries ??= Object.freeze(books.posted.slice(0, books.count))
+  return books.entries
 }
 
-function freezeJournal(entries: readonly JournalEntry[]): Journal {
-  const journal = Object.freeze({ entries: Object.freeze(entries) }) as Journal
-  MADE.add(journal)
+/**
+ * The journal's entries dated `fromDay` or later, in posting order, in a
+ * frozen array, without reading or copying the ones before: what reads the
+ * last days of a long game costs the same in its tenth year as in its
+ * first. Throws a RangeError unless `fromDay` is a safe integer, and a
+ * TypeError unless `emptyJournal()` or `postEntry()` made `journal`.
+ */
+export function entriesSince(
+  journal: Journal,
+  fromDay: Day,
+): readonly JournalEntry[] {
+  if (!Number.isSafeInteger(fromDay)) {
+    throw new RangeError(`Invalid game day: ${fromDay}`)
+  }
+  const books = booksOf(journal)
+  return Object.freeze(
+    books.posted.slice(countBefore(books, fromDay), books.count),
+  )
+}
+
+/** How many of the journal's entries are dated before `day`. */
+function countBefore({ posted, count }: Books, day: Day): number {
+  // Days never go down, so those entries all come first: halve the range
+  // until it holds the first entry that is not one of them.
+  let low = 0
+  let high = count
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    const entry = posted[middle]
+    if (entry !== undefined && entry.day < day) low = middle + 1
+    else high = middle
+  }
+  return low
+}
+
+function booksOf(journal: Journal): Books {
+  const books = BOOKS.get(journal)
+  if (books === undefined) {
+    throw new TypeError('Not a journal from emptyJournal() or postEntry()')
+  }
+  return books
+}
+
+function makeJournal(books: Books): Journal {
+  const journal = Object.freeze(
+    Object.defineProperty({}, 'entries', ENTRIES),
+  ) as Journal
+  BOOKS.set(journal, books)
   return journal
+}
+
+/**
+ * `nets` with the lines added, or null if a balance leaves the safe integer
+ * range or already had.
+ */
+function netsAfter(
+  nets: Nets | null,
+  lines: readonly JournalLine[],
+): Nets | null {
+  if (nets === null) return null
+  const after = new Map(nets)
+  for (const { account, debit, credit } of lines) {
+    const net = (after.get(account) ?? ZERO) + debit - credit
+    if (!Number.isSafeInteger(net)) return null
+    after.set(account, cents(net))
+  }
+  return after
 }

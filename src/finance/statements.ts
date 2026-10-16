@@ -7,7 +7,12 @@
 import { add, cents, sub, sum, type Cents } from '../engine/money.ts'
 import type { Day } from '../engine/types.ts'
 import { ACCOUNTS, getAccount, type AccountCode } from './accounts.ts'
-import { entriesOf, type Journal, type JournalEntry } from './journal.ts'
+import {
+  entriesOf,
+  netDebits,
+  type Journal,
+  type JournalEntry,
+} from './journal.ts'
 
 /** One row of a statement. */
 export interface StatementLine {
@@ -491,27 +496,6 @@ function line(
   return Object.freeze(
     account === undefined ? { label, amount } : { label, amount, account },
   )
-}
-
-/**
- * Each account's debits minus its credits, over the entries from `fromDay`
- * (or the first entry) to `toDay`, both included. Accounts without lines are
- * missing from the map.
- */
-function netDebits(
-  journal: Journal,
-  { fromDay = -Infinity, toDay }: { fromDay?: Day; toDay: Day },
-): Nets {
-  const nets = new Map<AccountCode, Cents>()
-  for (const { day, lines } of entriesOf(journal)) {
-    // Days never go down, so no later entry can be in range either.
-    if (day > toDay) break
-    if (day < fromDay) continue
-    for (const { account, debit, credit } of lines) {
-      nets.set(account, add(nets.get(account) ?? ZERO, sub(debit, credit)))
-    }
-  }
-  return nets
 }
 
 function checkDay(day: Day): void {
