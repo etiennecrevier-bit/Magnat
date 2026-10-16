@@ -598,3 +598,65 @@ describe('the changes to the street', () => {
     ).toEqual([{ day: day + 1, label: 'Normand vous remercie', amount: 6000 }])
   })
 })
+
+describe('the energy the cards cost and give', () => {
+  // A card that closes the truck for a day of work costs energy: the owner
+  // bakes all night, queues at the permit counter or carries a divan. From
+  // the same morning, they end that day less rested than with the choice
+  // that costs no energy. The closed day is no day off (#145).
+
+  /** The owner's energy at the close of `day`, one of the days played. */
+  function energyAtCloseOf(mornings: readonly GameState[], day: Day): number {
+    const summary = mornings.find(
+      ({ lastDay }) => lastDay?.day === day,
+    )?.lastDay
+    if (summary === undefined || summary === null) {
+      throw new Error(`Day ${day} was not played`)
+    }
+    return summary.energy
+  }
+
+  it.each([
+    ['grosseCommande', 'accepter', 0, 'refuser'],
+    ['grosseCommande', 'accepter', 1, 'refuser'],
+    ['grosseCommande', 'payeLivraison', 0, 'refuser'],
+    ['formulaire14B', 'contester', 0, 'payer'],
+    ['formulaire14B', 'contester', 1, 'payer'],
+    ['premierJuillet', 'aiderNormand', 0, 'habitude'],
+  ] as const)(
+    '%s: « %s », outcome %i, closes a day of work that tires more than « %s »',
+    (event, choiceId, outcome, free) => {
+      const morning = firstMorning(event)
+      const working = playOut(choose(morning, event, choiceId, outcome))
+      const [closedDay] = daysWhen(
+        working,
+        morning.day,
+        morning.day + 7,
+        ({ closed }) => closed,
+      )
+      if (closedDay === undefined) throw new Error('No day closed')
+      const resting = playOut(choose(morning, event, free))
+      expect(energyAtCloseOf(working, closedDay)).toBeLessThan(
+        energyAtCloseOf(resting, closedDay),
+      )
+    },
+  )
+
+  it('chalet: « Y aller » gives its « Énergie +20 » on Sunday', () => {
+    const morning = firstMorning('chalet')
+    const sunday = nextWeekday(morning.day, 7)
+    const chosen = choose(morning, 'chalet', 'yAller')
+    const { delayed } = chosen.events
+    const withoutRest: GameState = {
+      ...chosen,
+      events: {
+        ...chosen.events,
+        delayed: delayed.filter(({ effect }) => effect.kind !== 'energy'),
+      },
+    }
+    expect(withoutRest.events.delayed).toHaveLength(delayed.length - 1)
+    expect(energyAtCloseOf(playOut(chosen), sunday)).toBeGreaterThan(
+      energyAtCloseOf(playOut(withoutRest), sunday),
+    )
+  })
+})
