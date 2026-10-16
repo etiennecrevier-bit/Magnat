@@ -1,9 +1,11 @@
 import {
   difficultyIdSchema,
+  type BakeryPrices,
   type DifficultyId,
   type OvenTerms,
 } from '../../src/content/schema.ts'
 import { BAKERY } from '../../src/engine/bakery.ts'
+import { GROCERS } from '../../src/engine/contracts.ts'
 import { DIFFICULTIES, FOOD_TRUCK } from '../../src/engine/day.ts'
 import { cents } from '../../src/engine/money.ts'
 import { formatDollars } from '../sim/cli.ts'
@@ -41,6 +43,19 @@ const DAYS_OPEN = FOOD_TRUCK.startingDecisions.daysOpen.length
 export const LOSES_UNDER = 80
 export const WINS_ABOVE = 150
 
+/**
+ * The month #157 has the bakery pay back in at each difficulty, making
+ * `WINS_ABOVE` croissants a day with two contracts, at the prices
+ * `src/content/difficulty.json` gives that difficulty; within
+ * `PAYBACK_SLACK` months either way.
+ */
+export const PAYBACK_MONTHS: Readonly<Record<DifficultyId, number>> = {
+  facile: 4,
+  moyen: 6,
+  difficile: 9,
+}
+export const PAYBACK_SLACK = 1
+
 const OVEN_NAMES: Readonly<Record<OvenTerms, string>> = {
   louer: 'leased',
   acheter: 'bought',
@@ -61,11 +76,17 @@ export interface BakeryTarget {
 /**
  * #157's targets against `run`: a croissant made costs less than one
  * bought, at every price set; no game of a truck whose twins sell under
- * `LOSES_UNDER` croissants an open day, at the median, pays back; and, for
- * each price set, the bakery making `WINS_ABOVE` a day wins in the books
- * with one of its ovens and pays back in most games at every difficulty.
+ * `LOSES_UNDER` croissants an open day, at the median, pays back; for each
+ * price set, the bakery making `WINS_ABOVE` a day wins in the books with
+ * one of its ovens and pays back in most games at every difficulty; and, at
+ * each difficulty, the bakery making `WINS_ABOVE` a day with two contracts
+ * pays back on `PAYBACK_MONTHS`'s schedule at `difficulties`' prices (see
+ * `paybackTarget`).
  */
-export function bakeryTargets(run: BakeryReportRun): BakeryTarget[] {
+export function bakeryTargets(
+  run: BakeryReportRun,
+  difficulties = DIFFICULTIES,
+): BakeryTarget[] {
   const bought = FOOD_TRUCK.products.croissant.unitCostCents
   const madeCheaper = PRICE_SETS.every(
     ({ prices }) => prices.ingredientCostCents < bought,
@@ -126,7 +147,50 @@ export function bakeryTargets(run: BakeryReportRun): BakeryTarget[] {
         met: books.some((result) => result > 0) && paid,
       }
     }),
+    ...difficultyIdSchema.options.map((difficulty) =>
+      paybackTarget(run, difficulty, difficulties.bakery[difficulty]),
+    ),
   ]
+}
+
+/**
+ * #157's payback at `difficulty`, at `prices`: the median payback month of
+ * the strategy making `WINS_ABOVE` a day with contracts, with either oven,
+ * is within `PAYBACK_SLACK` months of `PAYBACK_MONTHS`. Measured shows every
+ * price set's, so the report tells which set would.
+ */
+export function paybackTarget(
+  run: BakeryReportRun,
+  difficulty: DifficultyId,
+  prices: BakeryPrices,
+): BakeryTarget {
+  const target = PAYBACK_MONTHS[difficulty]
+  const cells =
+    run.runs.find(
+      (each) =>
+        each.difficulty === difficulty && each.strategy === contractStrategy(),
+    )?.cells ?? []
+  const set = PRICE_SETS.find(
+    ({ prices: each }) =>
+      each.ingredientCostCents === prices.ingredientCostCents &&
+      each.monthlyRentCents === prices.monthlyRentCents,
+  )?.name
+  const onTime = cells.some(({ set: name, paybacks }) => {
+    if (name !== set) return false
+    const months = median(paybacks.map((m) => m ?? Number.POSITIVE_INFINITY))
+    return Math.abs(months - target) <= PAYBACK_SLACK
+  })
+  return {
+    target: `At ${DIFFICULTIES.difficulties[difficulty].name}, making ${WINS_ABOVE} croissants a day with two contracts, the bakery pays back in month ${target} at the prices of \`src/content/difficulty.json\`, ${set ?? 'a set the run did not play'}`,
+    measured: PRICE_SETS.map(
+      ({ name }) =>
+        `${name} ${OVENS.map((oven) => {
+          const cell = cells.find((c) => c.set === name && c.oven === oven)
+          return `${OVEN_NAMES[oven]} ${cell === undefined ? '-' : medianPayback(cell.paybacks)}`
+        }).join(', ')}`,
+    ).join('; '),
+    met: onTime,
+  }
 }
 
 /**
@@ -141,10 +205,16 @@ export function formatBakeryReport(run: BakeryReportRun): string {
     '',
     '## What each game plays',
     '',
-    `Each difficulty plays seeds 1 to ${run.games} with each truck strategy below. A game opens the bakery on day 0, Monday, May 1st, year 1, with its oven leased or bought, makes its croissants there from that day on, and plays ${run.months} months, to the close of the last day of month ${run.months}. Its twin plays the same seed and the same truck, buying its croissants: each morning, the bakery makes as many as the twin buys. No event card comes up. Every difficulty plays every price set, whatever \`src/content/difficulty.json\` holds; the oven, the move and the energy of a morning of baking are \`src/content/bakery.json\`'s. The truck opens ${DAYS_OPEN} days a week, as the starting decisions have it, and keeps their other prices and the owner's pay.`,
+    `Each difficulty plays seeds 1 to ${run.games} with each truck strategy below. A game opens the bakery on day 0, Monday, May 1st, year 1, with its oven leased or bought, makes its croissants there from that day on, and plays ${run.months} months, to the close of the last day of month ${run.months}. Its twin plays the same seed and the same truck, buying its croissants: each morning, the bakery makes as many as the twin buys. A strategy with contracts signs them on day 0, game and twin alike, at the terms of \`src/content/grocers.json\`, and renews each one as it ends; each Monday the bakery makes the deliveries' croissants first, within its capacity, those of the grocer who pays more for them first, and the twin buys them. No other event card comes up. Every difficulty plays every price set, whatever \`src/content/difficulty.json\` holds; the oven, the move and the energy of a morning of baking are \`src/content/bakery.json\`'s. The truck opens ${DAYS_OPEN} days a week, as the starting decisions have it, and keeps their other prices and the owner's pay.`,
     '',
-    row(['Strategy', 'Croissants a day', 'Croissant price', 'Marketing a day']),
-    row(['---', '---:', '---:', '---:']),
+    row([
+      'Strategy',
+      'Croissants a day',
+      'Croissant price',
+      'Marketing a day',
+      'Contracts',
+    ]),
+    row(['---', '---:', '---:', '---:', '---']),
     ...TRUCK_STRATEGIES.map((strategy) => {
       const [price] = truckChanges(strategy)
       return row([
@@ -152,6 +222,14 @@ export function formatBakeryReport(run: BakeryReportRun): string {
         String(strategy.croissantsPerDay),
         price?.kind === 'price' ? dollars(price.price) : '',
         dollars(strategy.marketingDaily),
+        strategy.contracts.length === 0
+          ? 'none'
+          : strategy.contracts
+              .map((grocer) => {
+                const { name, unitsPerWeek } = GROCERS.grocers[grocer]
+                return `${name}, ${unitsPerWeek} a week`
+              })
+              .join('; '),
       ])
     }),
     '',
@@ -205,7 +283,7 @@ export function formatBakeryReport(run: BakeryReportRun): string {
     '',
     '## Payback by difficulty',
     '',
-    "Made, sold and the energy at the close are a game's average over the days the truck opened; the twin's follow in parentheses.",
+    "Made, sold and the energy at the close are a game's average over the days the truck opened; the twin's follow in parentheses. Made counts the croissants the bakery made for the deliveries too, and sold only those the truck sold.",
     ...difficultyIdSchema.options.flatMap((difficulty) =>
       difficultySection(run, difficulty),
     ),
@@ -281,10 +359,19 @@ export function medianPayback(paybacks: readonly (number | null)[]): string {
   return Number.isFinite(months) ? oneDecimal(months) : 'never'
 }
 
-/** The strategy that makes `WINS_ABOVE` croissants a day. */
+/** The strategy that makes `WINS_ABOVE` croissants a day, with no contract. */
 function volumeStrategy(): string | undefined {
   return TRUCK_STRATEGIES.find(
-    ({ croissantsPerDay }) => croissantsPerDay === WINS_ABOVE,
+    ({ croissantsPerDay, contracts }) =>
+      croissantsPerDay === WINS_ABOVE && contracts.length === 0,
+  )?.name
+}
+
+/** The strategy that makes `WINS_ABOVE` croissants a day with contracts. */
+function contractStrategy(): string | undefined {
+  return TRUCK_STRATEGIES.find(
+    ({ croissantsPerDay, contracts }) =>
+      croissantsPerDay === WINS_ABOVE && contracts.length > 0,
   )?.name
 }
 

@@ -99,6 +99,30 @@ describe('energyAtClose', () => {
     expect(energyAtClose(5, { ...OPEN, bakingCost: 8 }, PLAIN)).toBe(0)
   })
 
+  it("takes each morning's deliveries on top of the open day, and of the baking", () => {
+    expect(energyAtClose(80, { ...OPEN, deliveryCost: 12 }, PLAIN)).toBe(62)
+    expect(
+      energyAtClose(80, { ...OPEN, bakingCost: 8, deliveryCost: 4 }, PLAIN),
+    ).toBe(62)
+    expect(energyAtClose(10, { ...OPEN, deliveryCost: 12 }, PLAIN)).toBe(0)
+  })
+
+  it('takes the deliveries and the baking of a closed morning from the day back, once it stops at full', () => {
+    expect(energyAtClose(30, { ...CLOSED, deliveryCost: 12 }, PLAIN)).toBe(63)
+    expect(
+      energyAtClose(30, { ...CLOSED, bakingCost: 8, deliveryCost: 4 }, PLAIN),
+    ).toBe(63)
+    // Full by the rest, then the morning's work.
+    expect(energyAtClose(90, { ...CLOSED, deliveryCost: 12 }, PLAIN)).toBe(88)
+    expect(
+      energyAtClose(
+        90,
+        { ...CLOSED, bakingCost: 8, deliveryCost: 12, stressed: true },
+        PLAIN,
+      ),
+    ).toBe(70)
+  })
+
   it('gives a closed day back, whoever would have come', () => {
     expect(energyAtClose(30, CLOSED, PLAIN)).toBe(75)
     expect(energyAtClose(30, { ...CLOSED, customersServed: 40 }, PLAIN)).toBe(

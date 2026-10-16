@@ -472,6 +472,24 @@ describe('events.json', () => {
     ).toBe(true)
   })
 
+  it("loads a grocer's contract, at their price or another, and a grocer walking away, with the grocer condition", () => {
+    const effects = [
+      { kind: 'contract', grocer: 'chezNormand' },
+      { kind: 'contract', grocer: 'marcheBioLogique', priceFactor: 1.1 },
+      { kind: 'grocerAway', grocer: 'depanneur2424', days: 180 },
+    ]
+    const raw = withEffects(...effects)
+    const loaded = loadEventContent({
+      ...raw,
+      events: (raw.events as Json[]).map((event) => ({
+        ...event,
+        conditions: { grocer: 'chezNormand' },
+      })),
+    })
+    expect(loaded.events[0]?.choices[0]?.outcomes[0]?.effects).toEqual(effects)
+    expect(loaded.events[0]?.conditions).toEqual({ grocer: 'chezNormand' })
+  })
+
   it('loads every change to the street, now or later, for everyone or one segment', () => {
     const effects = [
       { kind: 'walkIns', factor: 0.65, days: 15 },
@@ -685,6 +703,39 @@ describe('loadEventContent rejects', () => {
         'a purchase at its own unit cost happens now',
       )
     }
+  })
+
+  it('a contract signed, or a grocer walking away, on a later day', () => {
+    for (const effect of [
+      { kind: 'contract', grocer: 'chezNormand' },
+      { kind: 'grocerAway', grocer: 'chezNormand', days: 180 },
+    ]) {
+      for (const timing of [{ inDays: 1 }, { onNextWeekday: 1 }]) {
+        rejects(
+          withEffects({ ...effect, ...timing }),
+          'a contract, or a grocer walking away, happens now',
+        )
+      }
+    }
+  })
+
+  it('a contract with a grocer the game does not know, or at no price', () => {
+    rejects(
+      withEffects({ kind: 'contract', grocer: 'costco' }),
+      '→ at events[0].choices[0].outcomes[0].effects[0].grocer',
+    )
+    rejects(
+      withEffects({ kind: 'contract', grocer: 'chezNormand', priceFactor: 0 }),
+      '→ at events[0].choices[0].outcomes[0].effects[0].priceFactor',
+    )
+    rejects(
+      withEffects({ kind: 'grocerAway', grocer: 'chezNormand', days: 0 }),
+      '→ at events[0].choices[0].outcomes[0].effects[0].days',
+    )
+    rejects(
+      file([card({ conditions: { grocer: 'costco' } })]),
+      '→ at events[0].conditions.grocer',
+    )
   })
 
   it('a follow-up to an event the file does not hold', () => {

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import grocersJson from '../content/grocers.json'
 import {
   loadDefiContent,
   loadDifficultyContent,
   loadEventContent,
   loadFoodTruckContent,
+  loadGrocerContent,
   type DifficultyContent,
   type DifficultyId,
   type EventContent,
@@ -18,7 +20,7 @@ import { incomeStatement } from '../finance/statements.ts'
 import { BAKERY, closedBakery } from './bakery.ts'
 import { endOfMonth } from './calendar.ts'
 import { allowedChoices } from './challenge.ts'
-import { noContracts } from './contracts.ts'
+import { grocerAway, noContracts, startContract } from './contracts.ts'
 import {
   createInitialState,
   startChallenge,
@@ -3419,5 +3421,183 @@ describe('the bakery', () => {
     ],
   ])('rejects %s', (_, text, reason) => {
     expectInvalid(text, [reason])
+  })
+})
+
+describe("the grocers' contracts", () => {
+  /**
+   * Seed 42 with contracts signed on day 0 with Épicerie Chez Normand and
+   * Marché Bio-Logique, and Dépanneur 24/24 away, played to the morning of
+   * day 30, after four Mondays of deliveries.
+   */
+  const SIGNED: GameState = (() => {
+    const start = createInitialState(SEED)
+    const both = ['chezNormand', 'marcheBioLogique'] as const
+    const contracts = both.reduce(
+      (signed, grocer) => startContract(signed, 0, grocer),
+      start.contracts,
+    )
+    return {
+      ...start,
+      contracts: grocerAway(contracts, 0, 'depanneur2424', 60),
+    }
+  })()
+  const MORNING = played(30, SIGNED)
+  const MORNING_SAVE = serialize(MORNING)
+  // The close of Monday, day 28, with its two deliveries.
+  const MONDAY_CLOSE = playDay(played(28, SIGNED))
+  const MONDAY_SAVE = serialize(MONDAY_CLOSE)
+
+  it('give back a game in the middle of its contracts, which then plays on the same', () => {
+    expect(MORNING.contracts.deliveries.map(({ day }) => day)).toEqual([
+      7, 7, 14, 14, 21, 21, 28, 28,
+    ])
+    expect(MORNING.contracts.running.map(({ weeksLeft }) => weeksLeft)).toEqual(
+      [8, 8],
+    )
+    expect(MONDAY_CLOSE.lastDay?.deliveries).toHaveLength(2)
+    for (const state of [MORNING, MONDAY_CLOSE]) {
+      const back = reloaded(state)
+      expect(back).toStrictEqual(state)
+      expect(played(30, back)).toStrictEqual(played(30, state))
+    }
+  })
+
+  /** The load of `text` fails, naming `reason`, against `grocers`. */
+  function rejects(
+    text: string,
+    reason: string,
+    grocers = loadGrocerContent(grocersJson, EVENTS),
+  ): void {
+    expect(() =>
+      deserialize(
+        text,
+        FOOD_TRUCK,
+        EVENTS,
+        DIFFICULTIES,
+        DEFIS,
+        BAKERY,
+        grocers,
+      ),
+    ).toThrow(reason)
+  }
+
+  it('rejects more contracts running than the most at once', () => {
+    rejects(
+      MORNING_SAVE,
+      '2 contracts run, more than the 1 at once',
+      loadGrocerContent({ ...grocersJson, maxContracts: 1 }, EVENTS),
+    )
+  })
+
+  const normand = MORNING.contracts.running[0]
+  it.each([
+    [
+      'a second contract with a grocer',
+      withValue('contracts.running', [normand, normand], MORNING_SAVE),
+      'contract 2 is a second contract with chezNormand',
+    ],
+    [
+      'a contract signed after the day',
+      withValue('contracts.running.0.startDay', 31, MORNING_SAVE),
+      'contract 1 was signed on day 31, after day 30',
+    ],
+    [
+      "more deliveries left than the grocer's weeks",
+      withValue('contracts.running.0.weeksLeft', 13, MORNING_SAVE),
+      'contract 1 has 13 deliveries left, more than the 12 of a contract with chezNormand',
+    ],
+    [
+      'deliveries left that do not match those made',
+      withValue('contracts.running.0.weeksLeft', 12, MORNING_SAVE),
+      'contract 1 has 12 of its 12 deliveries left, after 4 since day 0',
+    ],
+    [
+      'no delivery left',
+      withValue('contracts.running.0.weeksLeft', 0, MORNING_SAVE),
+      '→ at contracts.running[0].weeksLeft',
+    ],
+    [
+      'a contract at no price',
+      withValue('contracts.running.0.unitPrice', 0, MORNING_SAVE),
+      '→ at contracts.running[0].unitPrice',
+    ],
+    [
+      'an unknown grocer',
+      withValue('contracts.running.0.grocer', 'costco', MORNING_SAVE),
+      '→ at contracts.running[0].grocer',
+    ],
+    [
+      'a delivery on a day not played',
+      withValue('contracts.deliveries.7.day', 35, MORNING_SAVE),
+      'delivery 8 is on day 35, a day not played',
+    ],
+    [
+      'a delivery on another day than Monday',
+      withValue('contracts.deliveries.0.day', 6, MORNING_SAVE),
+      'delivery 1 is on day 6, not a delivery day',
+    ],
+    [
+      'deliveries out of order',
+      withValue('contracts.deliveries.0.day', 14, MORNING_SAVE),
+      'delivery 2 comes before the one before it: day 7 < day 14',
+    ],
+    [
+      'more croissants made than delivered',
+      withValue('contracts.deliveries.0.baked', 751, MORNING_SAVE),
+      'delivery 1 has 751 croissants made, more than its 750',
+    ],
+    [
+      'a delivery due on its own day',
+      withValue('contracts.deliveries.0.dueDay', 7, MORNING_SAVE),
+      'delivery 1 is due on day 7, not after it',
+    ],
+    [
+      'a grocer away to no game day',
+      withValue('contracts.away.depanneur2424', -1, MORNING_SAVE),
+      '→ at contracts.away.depanneur2424',
+    ],
+    [
+      'a last day that lost its deliveries',
+      withValue('lastDay.deliveries', [], MONDAY_SAVE),
+      "lastDay's deliveries are not those of day 28",
+    ],
+    [
+      'a last day with deliveries never made',
+      withValue(
+        'lastDay.deliveries',
+        MORNING.contracts.deliveries.slice(0, 2),
+        MONDAY_SAVE,
+      ),
+      "lastDay's deliveries are not those of day 28",
+    ],
+    [
+      'a contract waiting for a later day',
+      withValue(
+        'events.delayed',
+        [
+          {
+            day: 40,
+            event: 'contratNormand',
+            effect: { kind: 'contract', grocer: 'chezNormand' },
+          },
+        ],
+        MORNING_SAVE,
+      ),
+      'delayed effect 1 is a contract, which never waits',
+    ],
+    [
+      'no contracts at all',
+      edited(
+        'contracts',
+        (parent, key) => {
+          delete parent[key]
+        },
+        MORNING_SAVE,
+      ),
+      'contracts',
+    ],
+  ])('rejects %s', (_, text, reason) => {
+    rejects(text, reason)
   })
 })

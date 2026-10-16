@@ -15,6 +15,7 @@ import {
   formatBakeryReport,
   madePerOpenDay,
   medianPayback,
+  paybackTarget,
   soldPerOpenDay,
   type BakeryReportRun,
 } from './bakeryReport.ts'
@@ -103,7 +104,8 @@ describe('medianPayback', () => {
 
 describe('bakeryTargets', () => {
   it('finds made croissants cheaper, and no slow truck paying back', () => {
-    const [cheaper, slow, ...wins] = bakeryTargets(run())
+    const [cheaper, slow, ...rest] = bakeryTargets(run())
+    const wins = rest.slice(0, PRICE_SETS.length)
     expect(cheaper).toEqual({
       target: 'A croissant made costs less than one bought, $1.10',
       measured: 'low $0.45, mid $0.55, high $0.65',
@@ -134,6 +136,65 @@ describe('bakeryTargets', () => {
     // Making 150 wins in the books only at the low prices.
     expect(low?.met).toBe(true)
     expect(mid?.met).toBe(false)
+  })
+
+  it("checks each difficulty's payback with two contracts at the prices difficulty.json gives it", () => {
+    // Each price set pays back in its own month: low 4, mid 6, high 9.
+    const months: Record<string, number> = { low: 4, mid: 6, high: 9 }
+    const base = run()
+    const scheduled: BakeryReportRun = {
+      ...base,
+      runs: base.runs.map((each) =>
+        each.strategy === '150 a day, 2 contracts'
+          ? {
+              ...each,
+              cells: each.cells.map((cell) => ({
+                ...cell,
+                paybacks: [months[cell.set] ?? null, months[cell.set] ?? null],
+              })),
+            }
+          : each,
+      ),
+    }
+    const prices = (name: string) => {
+      const set = PRICE_SETS.find((each) => each.name === name)
+      if (set === undefined) throw new Error(`No price set ${name}`)
+      return set.prices
+    }
+    expect(paybackTarget(scheduled, 'facile', prices('low'))).toEqual({
+      target:
+        'At Facile, making 150 croissants a day with two contracts, the bakery pays back in month 4 at the prices of `src/content/difficulty.json`, low',
+      measured:
+        'low leased 4.0, bought 4.0; mid leased 6.0, bought 6.0; high leased 9.0, bought 9.0',
+      met: true,
+    })
+    expect(paybackTarget(scheduled, 'moyen', prices('mid')).met).toBe(true)
+    expect(paybackTarget(scheduled, 'difficile', prices('high')).met).toBe(true)
+    // A month late or early is on schedule; two are not.
+    expect(paybackTarget(scheduled, 'moyen', prices('low')).met).toBe(false)
+    expect(paybackTarget(scheduled, 'facile', prices('mid')).met).toBe(false)
+    // Never paying back is never on schedule, and a set the run did not
+    // play cannot be.
+    expect(paybackTarget(run(), 'moyen', prices('mid'))).toMatchObject({
+      measured:
+        'low leased never, bought never; mid leased never, bought never; high leased never, bought never',
+      met: false,
+    })
+    expect(
+      paybackTarget(scheduled, 'moyen', {
+        ingredientCostCents: cents(1),
+        monthlyRentCents: cents(1),
+      }),
+    ).toMatchObject({
+      target: expect.stringMatching(/, a set the run did not play$/),
+      met: false,
+    })
+    // The report checks every difficulty at the shipped prices.
+    expect(
+      bakeryTargets(scheduled)
+        .slice(-3)
+        .map(({ target }) => target.split(',')[0]),
+    ).toEqual(['At Facile', 'At Moyen', 'At Difficile'])
   })
 
   it('cannot meet the slow truck target with no truck selling under 80', () => {
@@ -175,7 +236,9 @@ describe('formatBakeryReport', () => {
     const rows = report
       .split('\n')
       .filter((line) =>
-        /^\| (start|busy|150 a day) \| (low|mid|high) \|/.test(line),
+        /^\| (start|busy|150 a day|150 a day, 2 contracts) \| (low|mid|high) \|/.test(
+          line,
+        ),
       )
     expect(rows).toHaveLength(3 * TRUCK_STRATEGIES.length * 6)
     expect(rows[0]).toBe(
@@ -187,8 +250,11 @@ describe('formatBakeryReport', () => {
     expect(report).toContain(
       '| mid | leased | $3,000.00 | $0.55 | 209.2 | -$1,852.86 | -$849.11 |',
     )
-    expect(report).toContain('| start | 70 | $3.75 | $0.00 |')
-    expect(report).toContain('| 150 a day | 150 | $3.00 | $80.00 |')
+    expect(report).toContain('| start | 70 | $3.75 | $0.00 | none |')
+    expect(report).toContain('| 150 a day | 150 | $3.00 | $80.00 | none |')
+    expect(report).toContain(
+      '| 150 a day, 2 contracts | 150 | $3.00 | $80.00 | Marché Bio-Logique, 1250 a week; Épicerie Chez Normand, 750 a week |',
+    )
   })
 
   it('ends with one line break, and keeps the hand-written part', () => {

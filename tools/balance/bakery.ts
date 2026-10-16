@@ -4,11 +4,13 @@ import type {
   DifficultyContent,
   DifficultyId,
   FoodTruckContent,
+  GrocerId,
   OvenTerms,
 } from '../../src/content/schema.ts'
 import { BAKERY, BAKERY_MEMO } from '../../src/engine/bakery.ts'
 import { endOfMonth, toCalendar } from '../../src/engine/calendar.ts'
-import { DIFFICULTIES, FOOD_TRUCK } from '../../src/engine/day.ts'
+import { startContract } from '../../src/engine/contracts.ts'
+import { DIFFICULTIES, EVENTS, FOOD_TRUCK } from '../../src/engine/day.ts'
 import type { DecisionChange } from '../../src/engine/decisions.ts'
 import { NO_EVENTS } from '../../src/engine/events.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
@@ -16,7 +18,12 @@ import { PERCENTILES } from '../../src/engine/percentiles.ts'
 import type { GameState } from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import { balance } from '../../src/finance/journal.ts'
-import { playMorning, startGame } from '../sim/simulate.ts'
+import {
+  contractChooser,
+  grocerCards,
+  playMorning,
+  startGame,
+} from '../sim/simulate.ts'
 import { changedPrice } from './strategies.ts'
 
 // The bakery's balance run, `npm run balance -- --bakery` (#157): each game
@@ -76,12 +83,19 @@ export interface TruckStrategy {
   readonly croissantPriceChange: number
   /** The marketing budget, each day. */
   readonly marketingDaily: Cents
+  /**
+   * The grocers whose contracts the game and its twin sign on day 0, in
+   * order, and renew each time.
+   */
+  readonly contracts: readonly GrocerId[]
 }
 
 /**
  * The starting decisions; a busy truck that sells about as many croissants
- * as the street lets it; and the same truck making 150 a day, the volume
- * #157 asks the bakery to win at, though the street buys fewer.
+ * as the street lets it; the same truck making 150 a day, the volume #157
+ * asks the bakery to win at, though the street buys fewer; and that truck
+ * with the two contracts of #157, Marché Bio-Logique's, who pays more for
+ * the croissants the bakery makes, and Épicerie Chez Normand's.
  */
 export const TRUCK_STRATEGIES: readonly TruckStrategy[] = [
   {
@@ -89,20 +103,39 @@ export const TRUCK_STRATEGIES: readonly TruckStrategy[] = [
     croissantsPerDay: 70,
     croissantPriceChange: 0,
     marketingDaily: cents(0),
+    contracts: [],
   },
   {
     name: 'busy',
     croissantsPerDay: 110,
     croissantPriceChange: -20,
     marketingDaily: cents(8_000),
+    contracts: [],
   },
   {
     name: '150 a day',
     croissantsPerDay: 150,
     croissantPriceChange: -20,
     marketingDaily: cents(8_000),
+    contracts: [],
+  },
+  {
+    name: '150 a day, 2 contracts',
+    croissantsPerDay: 150,
+    croissantPriceChange: -20,
+    marketingDaily: cents(8_000),
+    contracts: ['marcheBioLogique', 'chezNormand'],
   },
 ]
+
+/**
+ * The grocers' cards with no draw: only the renewals come, each the morning
+ * after a contract's last delivery.
+ */
+const RENEWALS_ONLY = {
+  ...grocerCards(EVENTS),
+  pacing: { ...EVENTS.pacing, dailyChance: 0 },
+}
 
 /** One game's months, as the report reads them. */
 export interface BakeryGame {
@@ -219,7 +252,9 @@ export function monthEnds(months: number): number[] {
 /**
  * Plays seed `seed` at `difficulty` with `changes` in effect from day 0 and
  * `difficulties` every day, to the close of the last day of its `months`th
- * month, and sums it up. Returns the last state too, for the tests.
+ * month, and sums it up. The contracts of `contracts` are signed on day 0,
+ * in order, and each renewal accepted; no other event card comes up. Returns
+ * the last state too, for the tests.
  */
 export function playBakeryGame(
   seed: number,
@@ -227,17 +262,28 @@ export function playBakeryGame(
   changes: readonly DecisionChange[],
   difficulties: DifficultyContent,
   months: number,
+  contracts: readonly GrocerId[] = [],
 ): { game: BakeryGame; state: GameState } {
   const ends = monthEnds(months)
   const lastDay = ends.at(-1) ?? 0
-  let state = startGame(seed, difficulty, changes, difficulties)
+  const started = startGame(seed, difficulty, changes, difficulties)
+  let state: GameState = {
+    ...started,
+    contracts: contracts.reduce(
+      (signed, grocer) => startContract(signed, 0, grocer),
+      started.contracts,
+    ),
+  }
+  const renewing = contracts.length > 0
+  const events = renewing ? RENEWALS_ONLY : NO_EVENTS
+  const choose = renewing ? contractChooser('all', null) : null
   const cashAtMonthEnds: Cents[] = []
   let openDays = 0
   let croissantsSold = 0
   let energyAtOpenCloses = 0
   for (let day = 0; day <= lastDay; day += 1) {
     const opens = state.decisions.daysOpen.includes(toCalendar(day).weekday)
-    state = playMorning(state, NO_EVENTS, null, PERCENTILES, difficulties)
+    state = playMorning(state, events, choose, PERCENTILES, difficulties)
     if (opens) {
       openDays += 1
       energyAtOpenCloses += state.lastDay?.energy ?? 0
@@ -310,6 +356,7 @@ export function runBakery({
         truckChanges(strategy),
         DIFFICULTIES,
         months,
+        strategy.contracts,
       ).game,
   )
   const cells = PRICE_SETS.flatMap(({ name: set, prices }) =>
@@ -322,6 +369,7 @@ export function runBakery({
             bakeryChanges(strategy, oven),
             withPrices(prices),
             months,
+            strategy.contracts,
           ).game,
       )
       return {

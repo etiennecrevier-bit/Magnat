@@ -3,6 +3,7 @@ import bakeryJson from './bakery.json'
 import difficultyJson from './difficulty.json'
 import energyJson from './energy.json'
 import foodTruckJson from './foodtruck.json'
+import grocersJson from './grocers.json'
 import personalJson from './personal.json'
 import profileJson from './profile.json'
 import reportJson from './report.json'
@@ -13,7 +14,9 @@ import {
   loadCustomerContent,
   loadDifficultyContent,
   loadEnergyContent,
+  loadEventContent,
   loadFoodTruckContent,
+  loadGrocerContent,
   loadPersonalContent,
   loadProfileContent,
   loadReportContent,
@@ -743,6 +746,89 @@ describe('loadBakeryContent', () => {
         withBakeryValue('startingDecisions.bake.quantity', capacityPerDay),
       ).startingDecisions.bake,
     ).toEqual({ kind: 'buyDaily', quantity: capacityPerDay })
+  })
+})
+
+describe('loadGrocerContent', () => {
+  const EVENTS = loadEventContent()
+  const loadGrocers: Load = (raw) => loadGrocerContent(raw, EVENTS)
+  const reject = (raw: unknown, path: string) =>
+    expectRejected(raw, path, loadGrocers)
+  const withGrocerValue = (path: string, value: unknown) =>
+    withValue(path, value, grocersJson)
+  const NORMAND = 'grocers.chezNormand'
+
+  it('loads the shipped grocers.json against the shipped cards', () => {
+    const grocers = loadGrocerContent()
+    expect(Object.keys(grocers.grocers)).toEqual([
+      'chezNormand',
+      'marcheBioLogique',
+      'depanneur2424',
+    ])
+    expect(loadGrocerContent(undefined, EVENTS)).toEqual(grocers)
+  })
+
+  it('names grocers.json in its error', () => {
+    expect(() => loadGrocers({})).toThrow(/^grocers\.json is invalid/)
+  })
+
+  it.each([
+    ['maxContracts', 0],
+    ['maxContracts', 1.5],
+    ['deliveryWeekday', 0],
+    ['deliveryWeekday', 8],
+    ['deliveryEnergyCost', -1],
+    ['deliveryEnergyCost', 101],
+    [`${NORMAND}.name`, ''],
+    [`${NORMAND}.name`, ' Chez Normand'],
+    [`${NORMAND}.owner`, ''],
+    [`${NORMAND}.unitsPerWeek`, 0],
+    [`${NORMAND}.unitsPerWeek`, 1.5],
+    [`${NORMAND}.unitPriceCents`, 0],
+    [`${NORMAND}.unitPriceCents`, 2.1],
+    [`${NORMAND}.paymentDays`, 0],
+    [`${NORMAND}.weeks`, 0],
+    [`${NORMAND}.artisanalPremiumCents`, -1],
+    [`${NORMAND}.renewalEvent`, 'Renouvellement'],
+  ])('rejects %s = %j', (path, value) => {
+    reject(withGrocerValue(path, value), path)
+  })
+
+  it('rejects a grocer missing, one the game does not know, and a mistyped key', () => {
+    reject(
+      without('grocers.depanneur2424', grocersJson),
+      'grocers.depanneur2424',
+    )
+    expect(() =>
+      loadGrocers(
+        withGrocerValue('grocers.costco', grocersJson.grocers.chezNormand),
+      ),
+    ).toThrow(/costco/)
+    expect(() =>
+      loadGrocers(withGrocerValue(`${NORMAND}.paymentTerms`, 30)),
+    ).toThrow('Unrecognized key: "paymentTerms"')
+  })
+
+  it('rejects two grocers of one name, whose debts would mix', () => {
+    const raw = withGrocerValue(
+      'grocers.depanneur2424.name',
+      grocersJson.grocers.chezNormand.name,
+    )
+    reject(raw, 'grocers.depanneur2424.name')
+    expect(() => loadGrocers(raw)).toThrow(
+      'two grocers are named Épicerie Chez Normand',
+    )
+  })
+
+  it('rejects a renewal that is no card of the events, or one that may be drawn', () => {
+    const unknown = withGrocerValue(`${NORMAND}.renewalEvent`, 'inconnu')
+    reject(unknown, `${NORMAND}.renewalEvent`)
+    expect(() => loadGrocers(unknown)).toThrow('no event has the id inconnu')
+    const drawn = withGrocerValue(`${NORMAND}.renewalEvent`, 'chalet')
+    reject(drawn, `${NORMAND}.renewalEvent`)
+    expect(() => loadGrocers(drawn)).toThrow(
+      'the event chalet does not come only as a follow-up',
+    )
   })
 })
 
