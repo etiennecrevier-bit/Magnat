@@ -1,9 +1,10 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useMemo, useRef } from 'react'
 import { useStore } from 'zustand'
 import type { ReportText } from '../content/reportText.ts'
 import { defiById } from '../engine/challenge.ts'
 import { DEFIS } from '../engine/day.ts'
 import type { Cents } from '../engine/money.ts'
+import { percentileOnMorning } from '../engine/standing.ts'
 import type { ChallengeState, WeekReport } from '../engine/types.ts'
 import { DefiProgressView } from './DefiPanel.tsx'
 import {
@@ -29,8 +30,9 @@ import './panel.css'
 import './WeeklyReport.css'
 
 const TITLE_ID = 'weekly-report-title'
-// French puts a no-break space (U+00A0) before a colon.
+// French puts a no-break space (U+00A0) before a colon and a percent sign.
 const COLON = ' :'
+const PERCENT = ' %'
 // The days of the week, Monday to Sunday.
 const DAYS_PER_WEEK = 7
 
@@ -293,20 +295,27 @@ interface WeeklyReportViewProps {
   onEveryWeekChange: (everyWeek: boolean) => void
   /** The game's Défi; the report shows it while it is under way. */
   challenge?: ChallengeState | null
+  /**
+   * Where the owner stands among the simulated owners at the close of the
+   * week (see `percentileOnMorning`); null shows nothing.
+   */
+  percentile?: number | null
   text?: ReportText
 }
 
 /**
  * The « Bilan de la semaine » of `report`: its dates, ventes, bénéfice and
- * encaisse, the chart of its days, its facts, La Presse-Citron's headline,
- * and the switch that opens it every week, with the Défi under way, if
- * any, after the figures. It never explains a term.
+ * encaisse, the chart of its days, its facts, how the owner compares,
+ * La Presse-Citron's headline, and the switch that opens it every week,
+ * with the Défi under way, if any, after the figures. The percentile is
+ * rounded down. It never explains a term.
  */
 export function WeeklyReportView({
   report,
   everyWeek,
   onEveryWeekChange,
   challenge = null,
+  percentile = null,
   text = REPORT_TEXT,
 }: WeeklyReportViewProps) {
   const facts = factLines(report, text)
@@ -327,6 +336,11 @@ export function WeeklyReportView({
           ))}
         </ul>
       )}
+      {percentile !== null && (
+        <p className="weekly-report__percentile">
+          {`Mieux que ${Math.floor(percentile)}${PERCENT} des propriétaires`}
+        </p>
+      )}
       <p className="weekly-report__headline">
         <span className="weekly-report__paper">La Presse-Citron</span>{' '}
         {reportHeadline(report, text)}
@@ -345,8 +359,8 @@ export function WeeklyReportView({
 }
 
 /**
- * The report of the app store's last week, with the switch wired, and the
- * game's Défi under way.
+ * The report of the app store's last week, with the switch wired, how the
+ * owner compares, and the game's Défi under way.
  */
 export function LastWeekReport({
   settings = settingsStore,
@@ -355,6 +369,8 @@ export function LastWeekReport({
 }) {
   const report = useGame((state) => state.game.lastWeek)
   const challenge = useGame((state) => state.game.challenge)
+  const game = useGame((state) => state.game)
+  const percentile = useMemo(() => percentileOnMorning(game), [game])
   const everyWeek = useStore(settings, (state) => state.openReportEveryWeek)
   const setEveryWeek = useStore(
     settings,
@@ -368,6 +384,7 @@ export function LastWeekReport({
       everyWeek={everyWeek}
       onEveryWeekChange={setEveryWeek}
       challenge={challenge}
+      percentile={percentile}
     />
   )
 }

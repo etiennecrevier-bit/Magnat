@@ -10,7 +10,10 @@ import {
 } from '../engine/day.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import { cents } from '../engine/money.ts'
+import { percentileOf } from '../engine/percentiles.ts'
+import { defaultProfile } from '../engine/profile.ts'
 import type { GameState, WeekReport } from '../engine/types.ts'
+import { incomeStatement } from '../finance/statements.ts'
 import { formatBriefMoney, formatMoney } from './formatMoney.ts'
 import { createSettingsStore, SETTINGS_KEY } from './settings.ts'
 import { gameStore, type GameStoreState } from './store.ts'
@@ -282,6 +285,34 @@ describe('WeeklyReportPanel', () => {
     gameStore.setState({ game })
     expect(renderToStaticMarkup(<LastWeekReport />)).toContain(
       `Défi en cours${S}: Zéro gaspillage`,
+    )
+  })
+
+  it('says how the owner compares, at their difficulty, from day 0 to the Sunday', () => {
+    // Four weeks at Difficile, seed 1: the bénéfice net from day 0 reads
+    // 87.5, so rounding down tells from rounding off, while the fourth
+    // week's bénéfice alone would read 95.
+    const difficulty = 'difficile'
+    let game = createInitialState(1, FOOD_TRUCK, {
+      ...defaultProfile(),
+      difficulty,
+    })
+    while (game.day < 28) {
+      game = tick(
+        game,
+        FOOD_TRUCK,
+        CUSTOMERS,
+        DIFFICULTIES,
+        PERSONAL,
+        ENERGY,
+        NO_EVENTS,
+      )
+    }
+    gameStore.setState({ game })
+    const { netIncome } = incomeStatement(game.journal, 0, 27)
+    const percentile = Math.floor(percentileOf(difficulty, 4, netIncome.amount))
+    expect(renderToStaticMarkup(<LastWeekReport />)).toContain(
+      `Mieux que ${percentile}${S}% des propriétaires`,
     )
   })
 
