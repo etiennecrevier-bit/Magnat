@@ -219,11 +219,11 @@ function sharedStorage(items: Record<string, string>): SaveStorage {
 
 /**
  * A tab playing `playing`, as App runs it: its store, with the autosave
- * already writing to `storage`, and « Réglages » open, importing into the
- * store. `failed()` is whether the last save failed, which shows App's
- * banner.
+ * already writing to `storage`, then `days` played on, and « Réglages »
+ * open, importing into the store. `failed()` is whether the last save
+ * failed, which shows App's banner.
  */
-function tab(storage: SaveStorage, playing: GameState) {
+function tab(storage: SaveStorage, playing: GameState, days = 0) {
   const host: AutosaveHost = {
     isHidden: () => false,
     onVisibilityChange: () => () => {},
@@ -231,7 +231,12 @@ function tab(storage: SaveStorage, playing: GameState) {
   const store = createGameStore(playing, NO_EVENTS)
   const save = createSaveWriter(storage)
   let failed = false
-  startAutosave(store, (game) => (failed = !save(game)), host)
+  startAutosave(
+    store,
+    (game, replaces) => (failed = !save(game, replaces)),
+    host,
+  )
+  store.getState().advance(days)
   store.getState().setSpeed(3)
   store.getState().openPanel('settings')
   const onImportError = vi.fn<(error: string | null) => void>()
@@ -292,6 +297,33 @@ describe('an import mid-game', () => {
     expect(stored(items)).toEqual(IMPORTED)
     expect(failed()).toBe(false)
   })
+
+  it.each([
+    ['as this tab last saved it', 0],
+    ['further than this tab last saved it, behind where it plays', 4],
+    ['where this tab plays it', 10],
+    ['further than this tab plays it', 11],
+    ['further than the other tab saved it', 15],
+  ])(
+    'replaces it with its own game %s, though another tab saved that further on since',
+    async (_, day) => {
+      const items: Record<string, string> = {}
+      const storage = sharedStorage(items)
+      const start = game('Played', 7)
+      // This tab saved its game on day 0, then played on to day 10 in May,
+      // which saves nothing; another tab then saved day 12 of it.
+      const { store, importFile, failed } = tab(storage, start, 10)
+      expect(store.getState().game.day).toBe(10)
+      expect(stored(items)).toEqual(start)
+      createSaveWriter(storage)(played(12, start))
+
+      const imported = played(day, start)
+      await importFile(fileOf(serialize(imported)))
+      expect(store.getState().game).toEqual(imported)
+      expect(stored(items)).toEqual(imported)
+      expect(failed()).toBe(false)
+    },
+  )
 
   it('then saves the imported game as it plays on', async () => {
     const items: Record<string, string> = {}

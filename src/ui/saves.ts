@@ -72,38 +72,39 @@ export function writeStoredSave(
 }
 
 /**
- * What one tab saves its game with. The first call saves as
- * `writeStoredSave` does: starting, continuing or importing a game replaces
- * the browser's save. So does a later call with a game that is not the one
- * this tab saved last, played on, as when the player imports a game
- * mid-game, an earlier save of the same one included. Any other call saves
- * over what another tab saved since only when that is the same game, played
- * no further. So of two tabs on one game, the one that played it furthest
- * keeps the save, whichever closes last, and a tab never writes over a game
- * another tab started, unless it starts one itself. Each call returns
- * whether it saved; never throws.
+ * What one tab saves its game with: a call saves `game` and returns whether
+ * it did; never throws. Pass `replaces` when the player started that game in
+ * place of the one saved, as an import mid-game does.
  */
-export function createSaveWriter(
-  storage: SaveStorage | null,
-): (game: GameState) => boolean {
-  let saved: { readonly text: string; readonly game: GameState } | null = null
-  return (game) => {
+export type SaveWriter = (game: GameState, replaces?: boolean) => boolean
+
+/**
+ * The `SaveWriter` of one tab. Its first save, and the first after a call
+ * that `replaces`, saves as `writeStoredSave` does: starting, continuing or
+ * importing a game replaces the browser's save, whatever another tab saved.
+ * Each other one saves over what another tab saved since only when that is
+ * the same game, played no further. So of two tabs on one game, the one that
+ * played it furthest keeps the save, whichever closes last, and a tab never
+ * writes over a game another tab started, unless the player starts one in
+ * it. A save that fails leaves the replacement to the next one.
+ */
+export function createSaveWriter(storage: SaveStorage | null): SaveWriter {
+  let saved: string | null = null
+  let replacing = true
+  return (game, replaces = false) => {
     if (storage === null) return false
+    replacing ||= replaces
     try {
-      const replaces = saved === null || !isBehind(saved.game, game)
       // Storage cleared since holds no game to keep.
-      const stored = replaces ? null : storage.getItem(SAVE_KEY)
-      if (
-        stored !== null &&
-        stored !== saved?.text &&
-        !isStoredBehind(stored, game)
-      ) {
+      const stored = replacing ? null : storage.getItem(SAVE_KEY)
+      if (stored !== null && stored !== saved && !isBehind(stored, game)) {
         console.warn('Another tab saved a game this one would set back')
         return false
       }
       const text = serialize(game)
       storage.setItem(SAVE_KEY, text)
-      saved = { text, game }
+      saved = text
+      replacing = false
       return true
     } catch (error) {
       console.warn('Could not save the game', error)
@@ -113,33 +114,25 @@ export function createSaveWriter(
 }
 
 /**
- * Whether `earlier` is `game` as of a day no later than its own: the same
- * seed and player, no further on.
+ * Whether the save `text` holds `game` as of a day no later than its own:
+ * the same seed and player, no further on. A save that does not load, such
+ * as one a newer version of the game wrote, is not.
  */
-function isBehind(earlier: GameState, game: GameState): boolean {
-  const { profile } = earlier
-  return (
-    earlier.seed === game.seed &&
-    profile.businessName === game.profile.businessName &&
-    profile.avatar === game.profile.avatar &&
-    profile.difficulty === game.profile.difficulty &&
-    earlier.day <= game.day
-  )
-}
-
-/**
- * Whether the save `text` holds `game` as of a day no later than its own
- * (see `isBehind`). A save that does not load, such as one a newer version
- * of the game wrote, is not.
- */
-function isStoredBehind(text: string, game: GameState): boolean {
+function isBehind(text: string, game: GameState): boolean {
   let stored: GameState
   try {
     stored = deserialize(text)
   } catch {
     return false
   }
-  return isBehind(stored, game)
+  const { profile } = stored
+  return (
+    stored.seed === game.seed &&
+    profile.businessName === game.profile.businessName &&
+    profile.avatar === game.profile.avatar &&
+    profile.difficulty === game.profile.difficulty &&
+    stored.day <= game.day
+  )
 }
 
 /**

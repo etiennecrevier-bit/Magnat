@@ -16,17 +16,19 @@ function monthOf(day: Day): string {
  * game month, and whenever the page is hidden, so closing the tab or
  * switching away loses nothing. Days the loop plays in one go count once,
  * whatever months they cross. A game started in place of the one played,
- * such as one imported mid-game, is handed over at once, whatever its month.
- * A Défi is never handed over: the browser keeps one game, and trying a
- * Défi must not replace the long one. Returns a function that stops it.
+ * such as one imported mid-game, is handed over at once, whatever its month,
+ * with `replaces` set: the player chose it over the saved game (see
+ * `SaveWriter`). A Défi is never handed over: the browser keeps one game,
+ * and trying a Défi must not replace the long one. Returns a function that
+ * stops it.
  */
 export function startAutosave(
   store: GameStore,
-  writeGame: (game: GameState) => void,
+  writeGame: (game: GameState, replaces: boolean) => void,
   host: AutosaveHost = browserHost,
 ): () => void {
-  const write = (game: GameState) => {
-    if (game.challenge === null) writeGame(game)
+  const write = (game: GameState, replaces = false) => {
+    if (game.challenge === null) writeGame(game, replaces)
   }
   let savedMonth = monthOf(store.getState().game.day)
   write(store.getState().game)
@@ -37,7 +39,7 @@ export function startAutosave(
     const started = state.gamesStarted !== previous.gamesStarted
     if (month === savedMonth && !started) return
     savedMonth = month
-    write(state.game)
+    write(state.game, started)
   })
   const stopWatching = host.onVisibilityChange(() => {
     if (host.isHidden()) write(store.getState().game)

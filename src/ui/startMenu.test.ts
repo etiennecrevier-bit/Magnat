@@ -63,8 +63,8 @@ function tab(storage: SaveStorage) {
     const save = createSaveWriter(storage)
     startAutosave(
       store,
-      (saved) => {
-        failed = !save(saved)
+      (saved, replaces) => {
+        failed = !save(saved, replaces)
       },
       host,
     )

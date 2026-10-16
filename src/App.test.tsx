@@ -9,9 +9,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App.tsx'
 import { allowedChoices } from './engine/challenge.ts'
-import { createInitialState } from './engine/clock.ts'
+import { createInitialState, tick } from './engine/clock.ts'
 import { DEFIS, EVENTS, FOOD_TRUCK } from './engine/day.ts'
 import { serialize } from './engine/save.ts'
+import type { GameState } from './engine/types.ts'
 import GameScreens from './ui/GameScreens.tsx'
 import { readStoredSave, SAVE_KEY, type SaveStorage } from './ui/saves.ts'
 import StartScreen from './ui/StartScreen.tsx'
@@ -257,47 +258,59 @@ describe('App', () => {
     app.unmount()
   })
 
-  it('saves a game imported from « Réglages » at once, over what another tab saved since', () => {
-    const items: Record<string, string> = {}
-    const storage: SaveStorage = {
-      getItem: (key) => items[key] ?? null,
-      setItem: (key, value) => {
-        items[key] = value
-      },
-    }
-    vi.stubGlobal('window', {
-      localStorage: storage,
-      location: { search: '' },
-      requestAnimationFrame: () => 1,
-      cancelAnimationFrame: () => {},
-    })
-    vi.stubGlobal('document', {
-      hidden: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    })
-    const app = mountApp()
-    const played = createInitialState(7, FOOD_TRUCK, {
-      businessName: 'Chez Ginette',
-      avatar: 'femme',
-      difficulty: 'moyen',
-    })
-    find(app.render(), StartScreen)?.props.onStart(played)
-    app.render()
-    gameStore.getState().advance(5)
-    expect(readStoredSave(storage)).toEqual({ status: 'found', game: played })
-    // Another tab plays the same game further and saves it.
-    items[SAVE_KEY] = serialize({ ...played, day: 9 })
+  it.each([
+    ['another game', () => createInitialState(8)],
+    [
+      'an earlier day of the same game, after the last saved one',
+      (played: GameState) => tick(tick(played)),
+    ],
+  ])(
+    'saves %s imported from « Réglages » at once, over what another tab saved since',
+    (_, importedFrom) => {
+      const items: Record<string, string> = {}
+      const storage: SaveStorage = {
+        getItem: (key) => items[key] ?? null,
+        setItem: (key, value) => {
+          items[key] = value
+        },
+      }
+      vi.stubGlobal('window', {
+        localStorage: storage,
+        location: { search: '' },
+        requestAnimationFrame: () => 1,
+        cancelAnimationFrame: () => {},
+      })
+      vi.stubGlobal('document', {
+        hidden: false,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })
+      const app = mountApp()
+      const played = createInitialState(7, FOOD_TRUCK, {
+        businessName: 'Chez Ginette',
+        avatar: 'femme',
+        difficulty: 'moyen',
+      })
+      find(app.render(), StartScreen)?.props.onStart(played)
+      app.render()
+      gameStore.getState().advance(5)
+      expect(readStoredSave(storage)).toEqual({ status: 'found', game: played })
+      // Another tab plays the same game further and saves it.
+      items[SAVE_KEY] = serialize({ ...played, day: 9 })
 
-    // What « Importer une partie » does with a game of the same month.
-    const imported = createInitialState(8)
-    gameStore.getState().openPanel('settings')
-    gameStore.getState().startGame(imported)
-    expect(readStoredSave(storage)).toEqual({ status: 'found', game: imported })
+      // What « Importer une partie » does with a game of the same month.
+      const imported = importedFrom(played)
+      gameStore.getState().openPanel('settings')
+      gameStore.getState().startGame(imported)
+      expect(readStoredSave(storage)).toEqual({
+        status: 'found',
+        game: imported,
+      })
 
-    const tree = app.render()
-    expect(find(tree, GameScreens)?.props.autosaveFailed).toBe(false)
-    expect(gameStore.getState().panel).toBeNull()
-    app.unmount()
-  })
+      const tree = app.render()
+      expect(find(tree, GameScreens)?.props.autosaveFailed).toBe(false)
+      expect(gameStore.getState().panel).toBeNull()
+      app.unmount()
+    },
+  )
 })
