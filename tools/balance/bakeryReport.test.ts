@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { DifficultyId } from '../../src/content/schema.ts'
+import staffJson from '../../src/content/staff.json'
+import {
+  loadStaffContent,
+  type DifficultyId,
+} from '../../src/content/schema.ts'
 import { cents } from '../../src/engine/money.ts'
 import {
   OVENS,
@@ -123,19 +127,36 @@ describe('bakeryTargets', () => {
       'Making 150 croissants a day, the bakery wins at the mid prices',
       'Making 150 croissants a day, the bakery wins at the high prices',
     ])
+    // The baker's wages: no set wins in the books.
     expect(wins[0]?.measured).toBe(
-      'leased -$58.04, bought +$333.63 a month in the books; 0 of 12 games pay back',
+      'leased -$2,925.89, bought -$2,534.23 a month in the books; 0 of 12 games pay back',
     )
     expect(wins.every(({ met }) => !met)).toBe(true)
   })
 
   it('fails the slow truck when its bakery pays back, and passes the win when the books and the games say so', () => {
-    const [, slow, low, mid] = bakeryTargets(run([-100, 10]))
+    const paying = run([-100, 10])
+    const [, slow, low] = bakeryTargets(paying)
     expect(slow?.met).toBe(false)
     expect(slow?.measured).toMatch(/^36 of 36 games pay back/)
-    // Making 150 wins in the books only at the low prices.
-    expect(low?.met).toBe(true)
-    expect(mid?.met).toBe(false)
+    // The games pay back, but the baker's wages lose in the books.
+    expect(low?.met).toBe(false)
+    // A baker paid next to nothing: making 150 wins in the books only at
+    // the low prices, with a bought oven.
+    const cheap = loadStaffContent({
+      ...staffJson,
+      roles: {
+        ...staffJson.roles,
+        boulanger: {
+          ...staffJson.roles.boulanger,
+          hoursPerWeek: 1,
+          hourlyWageCents: { min: 1, start: 1, max: 1 },
+        },
+      },
+    })
+    const [, , cheapLow, cheapMid] = bakeryTargets(paying, undefined, cheap)
+    expect(cheapLow?.met).toBe(true)
+    expect(cheapMid?.met).toBe(false)
   })
 
   it("checks each difficulty's payback with two contracts at the prices difficulty.json gives it", () => {
@@ -236,8 +257,8 @@ describe('formatBakeryReport', () => {
     const rows = report
       .split('\n')
       .filter((line) =>
-        /^\| (start|busy|150 a day|150 a day, 2 contracts) \| (low|mid|high) \|/.test(
-          line,
+        TRUCK_STRATEGIES.some(({ name }) =>
+          new RegExp(`^\\| ${name} \\| (low|mid|high) \\|`).test(line),
         ),
       )
     expect(rows).toHaveLength(3 * TRUCK_STRATEGIES.length * 6)
@@ -248,12 +269,27 @@ describe('formatBakeryReport', () => {
 
   it('shows the break-even of each price set and oven', () => {
     expect(report).toContain(
-      '| mid | leased | $3,000.00 | $0.55 | 209.2 | -$1,852.86 | -$849.11 |',
+      '| mid | leased | $5,867.86 | $0.55 | 409.2 | -$4,720.71 | -$3,716.96 |',
     )
-    expect(report).toContain('| start | 70 | $3.75 | $0.00 | none |')
-    expect(report).toContain('| 150 a day | 150 | $3.00 | $80.00 | none |')
+    expect(report).toContain('| start | 70 | $3.75 | $0.00 | none | no |')
+    expect(report).toContain('| 150 a day | 150 | $3.00 | $80.00 | none | no |')
     expect(report).toContain(
-      '| 150 a day, 2 contracts | 150 | $3.00 | $80.00 | Marché Bio-Logique, 1250 a week; Épicerie Chez Normand, 750 a week |',
+      '| 150 a day, 2 contracts | 150 | $3.00 | $80.00 | Marché Bio-Logique, 1250 a week; Épicerie Chez Normand, 750 a week | no |',
+    )
+    expect(report).toContain(
+      '| busy, employee at the truck | 110 | $3.00 | $80.00 | none | yes |',
+    )
+  })
+
+  it('says who the baker and the employee at the truck are, and what they cost', () => {
+    expect(report).toContain(
+      'It hires a baker that day (#158), « Boulanger » at $22.00 an hour, 30 h a week, so the owner never bakes: the baker costs a week of training on day 0 and $660.00 each Friday.',
+    )
+    expect(report).toContain(
+      '« Au camion » at $17.50 an hour, 35 h a week, $612.50 a week, who serves beside the owner.',
+    )
+    expect(report).toContain(
+      "and the baker's wages, $2,867.86 in an average month",
     )
   })
 

@@ -231,8 +231,9 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * they do it, while a day away holds it (see `energyAtClose`). Returns a new
  * state on the same day with the books, the bakery, the staff, the contracts,
  * the stock, the generator, the marketing history, `lastDay`, with the changes
- * to the street in effect that day, the deliveries and those missed, the owner's personal account, their
- * energy, the events, without the changes whose last day it was, the
+ * to the street in effect that day, the deliveries and those missed, the
+ * owner's personal account, their energy, the events, without the changes
+ * whose last day it was, the
  * receivables brought up to the close, the day added to the week under way,
  * summed up on a Sunday (see `recordDay`), and, in a Défi of `defis`, the day
  * added to its progress, which may end it (see `recordChallengeDay`), with the

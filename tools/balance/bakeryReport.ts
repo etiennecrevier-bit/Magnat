@@ -3,17 +3,23 @@ import {
   type BakeryPrices,
   type DifficultyId,
   type OvenTerms,
+  type StaffContent,
+  type StaffRoleId,
 } from '../../src/content/schema.ts'
 import { BAKERY } from '../../src/engine/bakery.ts'
 import { GROCERS } from '../../src/engine/contracts.ts'
 import { DIFFICULTIES, FOOD_TRUCK } from '../../src/engine/day.ts'
 import { cents } from '../../src/engine/money.ts'
+import { STAFF, weeklyWage } from '../../src/engine/staff.ts'
 import { formatDollars } from '../sim/cli.ts'
 import {
+  AT_TRUCK_HIRE,
+  BAKER_HIRE,
   OVENS,
   PRICE_SETS,
   TRUCK_STRATEGIES,
   breakEvenPerOpenDay,
+  monthlyBakerWage,
   monthlyBakeryCosts,
   monthlyResult,
   openDaysPerMonth,
@@ -81,11 +87,12 @@ export interface BakeryTarget {
  * one of its ovens and pays back in most games at every difficulty; and, at
  * each difficulty, the bakery making `WINS_ABOVE` a day with two contracts
  * pays back on `PAYBACK_MONTHS`'s schedule at `difficulties`' prices (see
- * `paybackTarget`).
+ * `paybackTarget`). The books count the baker's wages of `staff`.
  */
 export function bakeryTargets(
   run: BakeryReportRun,
   difficulties = DIFFICULTIES,
+  staff: StaffContent = STAFF,
 ): BakeryTarget[] {
   const bought = FOOD_TRUCK.products.croissant.unitCostCents
   const madeCheaper = PRICE_SETS.every(
@@ -122,7 +129,15 @@ export function bakeryTargets(
     },
     ...PRICE_SETS.map(({ name, prices }): BakeryTarget => {
       const books = OVENS.map((oven) =>
-        monthlyResult(prices, oven, WINS_ABOVE, DAYS_OPEN),
+        monthlyResult(
+          prices,
+          oven,
+          WINS_ABOVE,
+          DAYS_OPEN,
+          BAKERY,
+          FOOD_TRUCK,
+          staff,
+        ),
       )
       const cells = volume.flatMap(({ difficulty, cells: all }) =>
         all
@@ -205,7 +220,7 @@ export function formatBakeryReport(run: BakeryReportRun): string {
     '',
     '## What each game plays',
     '',
-    `Each difficulty plays seeds 1 to ${run.games} with each truck strategy below. A game opens the bakery on day 0, Monday, May 1st, year 1, with its oven leased or bought, makes its croissants there from that day on, and plays ${run.months} months, to the close of the last day of month ${run.months}. Its twin plays the same seed and the same truck, buying its croissants: each morning, the bakery makes as many as the twin buys. A strategy with contracts signs them on day 0, game and twin alike, at the terms of \`src/content/grocers.json\`, and renews each one as it ends; each Monday the bakery makes the deliveries' croissants first, within its capacity, those of the grocer who pays more for them first, and the twin buys them. No other event card comes up. Every difficulty plays every price set, whatever \`src/content/difficulty.json\` holds; the oven, the move and the energy of a morning of baking are \`src/content/bakery.json\`'s. The truck opens ${DAYS_OPEN} days a week, as the starting decisions have it, and keeps their other prices and the owner's pay.`,
+    `Each difficulty plays seeds 1 to ${run.games} with each truck strategy below. A game opens the bakery on day 0, Monday, May 1st, year 1, with its oven leased or bought, makes its croissants there from that day on, and plays ${run.months} months, to the close of the last day of month ${run.months}. It hires a baker that day (#158), « ${staffRole(BAKER_HIRE.role)} » at ${hourly(BAKER_HIRE.role)}, so the owner never bakes: the baker costs a week of training on day 0 and ${dollars(weekly(BAKER_HIRE.role))} each Friday. Its twin plays the same seed and the same truck, buying its croissants, with no baker: each morning, the bakery makes as many as the twin buys. A strategy with contracts signs them on day 0, game and twin alike, at the terms of \`src/content/grocers.json\`, and renews each one as it ends; each Monday the bakery makes the deliveries' croissants first, within its capacity, those of the grocer who pays more for them first, and the twin buys them. A strategy with an employee at the truck hires one on day 0, game and twin alike, « ${staffRole(AT_TRUCK_HIRE.role)} » at ${hourly(AT_TRUCK_HIRE.role)}, ${dollars(weekly(AT_TRUCK_HIRE.role))} a week, who serves beside the owner. No other event card comes up. Every difficulty plays every price set, whatever \`src/content/difficulty.json\` holds; the oven and the move are \`src/content/bakery.json\`'s, and the wages \`src/content/staff.json\`'s. The truck opens ${DAYS_OPEN} days a week, as the starting decisions have it, and keeps their other prices and the owner's pay.`,
     '',
     row([
       'Strategy',
@@ -213,8 +228,9 @@ export function formatBakeryReport(run: BakeryReportRun): string {
       'Croissant price',
       'Marketing a day',
       'Contracts',
+      'Employee at the truck',
     ]),
-    row(['---', '---:', '---:', '---:', '---']),
+    row(['---', '---:', '---:', '---:', '---', '---']),
     ...TRUCK_STRATEGIES.map((strategy) => {
       const [price] = truckChanges(strategy)
       return row([
@@ -230,6 +246,7 @@ export function formatBakeryReport(run: BakeryReportRun): string {
                 return `${name}, ${unitsPerWeek} a week`
               })
               .join('; '),
+        strategy.atTruck ? 'yes' : 'no',
       ])
     }),
     '',
@@ -255,7 +272,7 @@ export function formatBakeryReport(run: BakeryReportRun): string {
     '',
     '## Break-even in the books',
     '',
-    `From the content alone: what making a croissant saves on buying it at ${dollars(FOOD_TRUCK.products.croissant.unitCostCents)}, against the rent and the oven's lease or month of depreciation (${dollars(BAKERY.oven.priceCents)} over ${BAKERY.oven.usefulLifeMonths} months), the truck open ${DAYS_OPEN} days a week, ${oneDecimal(openDaysPerMonth(DAYS_OPEN))} days in an average month. It leaves out the move, the cash a bought oven takes at once, and what baking takes from the owner's energy, which the games above count.`,
+    `From the content alone: what making a croissant saves on buying it at ${dollars(FOOD_TRUCK.products.croissant.unitCostCents)}, against the rent, the oven's lease or month of depreciation (${dollars(BAKERY.oven.priceCents)} over ${BAKERY.oven.usefulLifeMonths} months) and the baker's wages, ${dollars(monthlyBakerWage())} in an average month, the truck open ${DAYS_OPEN} days a week, ${oneDecimal(openDaysPerMonth(DAYS_OPEN))} days in an average month. It leaves out the move, the cash a bought oven takes at once and the baker's week of training, which the games above count.`,
     '',
     row([
       'Prices',
@@ -359,20 +376,45 @@ export function medianPayback(paybacks: readonly (number | null)[]): string {
   return Number.isFinite(months) ? oneDecimal(months) : 'never'
 }
 
-/** The strategy that makes `WINS_ABOVE` croissants a day, with no contract. */
+/**
+ * The strategy that makes `WINS_ABOVE` croissants a day, with no contract
+ * and the owner alone at the truck.
+ */
 function volumeStrategy(): string | undefined {
   return TRUCK_STRATEGIES.find(
-    ({ croissantsPerDay, contracts }) =>
-      croissantsPerDay === WINS_ABOVE && contracts.length === 0,
+    ({ croissantsPerDay, contracts, atTruck }) =>
+      croissantsPerDay === WINS_ABOVE && contracts.length === 0 && !atTruck,
   )?.name
 }
 
-/** The strategy that makes `WINS_ABOVE` croissants a day with contracts. */
+/**
+ * The strategy that makes `WINS_ABOVE` croissants a day with contracts and
+ * the owner alone at the truck, as #157 has it.
+ */
 function contractStrategy(): string | undefined {
   return TRUCK_STRATEGIES.find(
-    ({ croissantsPerDay, contracts }) =>
-      croissantsPerDay === WINS_ABOVE && contracts.length > 0,
+    ({ croissantsPerDay, contracts, atTruck }) =>
+      croissantsPerDay === WINS_ABOVE && contracts.length > 0 && !atTruck,
   )?.name
+}
+
+/** The role's name, as the player reads it. */
+function staffRole(role: StaffRoleId): string {
+  return STAFF.roles[role].name
+}
+
+/** The role's starting wage an hour and its hours: `$22.00 an hour, 30 h a week`. */
+function hourly(role: StaffRoleId): string {
+  const { hourlyWageCents, hoursPerWeek } = STAFF.roles[role]
+  return `${dollars(hourlyWageCents.start)} an hour, ${hoursPerWeek} h a week`
+}
+
+/** The role's weekly wage at its starting wage. */
+function weekly(role: StaffRoleId): number {
+  return weeklyWage({
+    role,
+    hourlyWage: STAFF.roles[role].hourlyWageCents.start,
+  })
 }
 
 export function soldPerOpenDay(game: BakeryGame): number {

@@ -77,9 +77,15 @@ export function crewOf(staff: readonly Employee[], ownerAway: boolean): Crew {
   }
 }
 
-/** What `hire` earns a week: their hourly wage × their role's hours. */
-export function weeklyWage(hire: Hire, content: StaffContent = STAFF): Cents {
-  return mulInt(hire.hourlyWage, content.roles[hire.role].hoursPerWeek)
+/**
+ * What someone in `role` at `hourlyWage` earns a week: the hourly wage ×
+ * the role's hours.
+ */
+export function weeklyWage(
+  { role, hourlyWage }: Pick<Hire, 'role' | 'hourlyWage'>,
+  content: StaffContent = STAFF,
+): Cents {
+  return mulInt(hourlyWage, content.roles[role].hoursPerWeek)
 }
 
 /** What `staff` earns a week, together. */

@@ -415,13 +415,13 @@ describe('npm run balance', () => {
       expect(status).toBe(0)
       // A line for each difficulty and truck, then the file.
       const progress = stdout.trimEnd().split('\n')
-      expect(progress).toHaveLength(13)
-      for (const line of progress.slice(0, 12)) {
+      expect(progress).toHaveLength(19)
+      for (const line of progress.slice(0, 18)) {
         expect(line).toMatch(
           /^(Facile|Moyen|Difficile), [a-z0-9 ,]+: 6 bakeries × 1 games and their twins in \d+\.\d s$/,
         )
       }
-      expect(progress[12]?.replace(/ in \d+\.\d s$/, '')).toBe(
+      expect(progress[18]?.replace(/ in \d+\.\d s$/, '')).toBe(
         `Wrote ${report}`,
       )
       return readFileSync(report, 'utf8')

@@ -6,7 +6,7 @@ How the game is put together at the end of phase 1: the folders and who may impo
 
 | Folder | Holds | Imports from other folders |
 | --- | --- | --- |
-| `src/engine/` | Game rules: the clock, a day of business, walk-in customers, the marketing budget, the player's decisions, the bakery, the owner's personal account and energy, the event cards and what their choices do, the changes they make to the street for a while, the customers who pay later, the week in numbers, lots and FIFO, money, the seeded generator, the shared types | `src/finance/` (journal, accounts, loan, receivables, statements) and `src/content/schema.ts` |
+| `src/engine/` | Game rules: the clock, a day of business, walk-in customers, the marketing budget, the player's decisions, the bakery, the grocers' contracts, the employees, the owner's personal account and energy, the event cards and what their choices do, the changes they make to the street for a while, the customers who pay later, the week in numbers, lots and FIFO, money, the seeded generator, the shared types | `src/finance/` (journal, accounts, loan, receivables, statements) and `src/content/schema.ts` |
 | `src/finance/` | The journal, the chart of accounts, the three statements | `src/engine/money.ts` and `src/engine/types.ts` only |
 | `src/content/` | Tunable numbers as JSON, and the zod schema that validates them | `src/engine/money.ts` only, to type money as `Cents` |
 | `src/ui/` | React screens, the Zustand store and the real-time loop | engine, finance and content |
