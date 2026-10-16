@@ -4,16 +4,20 @@ import { cents } from '../../src/engine/money.ts'
 import { runOwners } from './owners.ts'
 import { runBalance, type DifficultyRun } from './play.ts'
 import type { Strategy } from './strategies.ts'
+import { runDefi } from './defis.ts'
 import {
+  jobLabel,
   jobOptions,
+  MAX_WORKERS,
   playAll,
   playInWorker,
   type GridJob,
   type Playing,
 } from './threads.ts'
 
-// Playing each difficulty on its own worker thread: that it plays what
-// runBalance() plays, and that one failure stops every other thread.
+// Playing each job on its own worker thread: that it plays what
+// runBalance(), runOwners() or runDefi() plays, a few at once, and that one
+// failure stops every other thread.
 
 const BASE: Strategy = {
   priceChange: 0,
@@ -83,6 +87,69 @@ describe('playAll', () => {
   })
 })
 
+describe('playAll with a limit', () => {
+  const difficulties = ['facile', 'moyen', 'difficile', 'facile'] as const
+  const jobs = difficulties.map(job)
+
+  function play(controls: ReturnType<typeof controlled>[]) {
+    const started: number[] = []
+    return {
+      started,
+      play: (played: GridJob) => {
+        const index = jobs.indexOf(played)
+        started.push(index)
+        return controls[index]?.playing ?? controlled().playing
+      },
+    }
+  }
+
+  it('starts at most the limit at once, the next as one ends, and resolves in the order of the jobs', async () => {
+    const controls = jobs.map(() => controlled())
+    const { started, play: start } = play(controls)
+    const all = playAll(jobs, () => undefined, start, 2)
+    expect(started).toEqual([0, 1])
+    controls[1]?.resolve(difficultyRun('moyen'))
+    await vi.waitFor(() => expect(started).toEqual([0, 1, 2]))
+    controls[2]?.resolve(difficultyRun('difficile'))
+    await vi.waitFor(() => expect(started).toEqual([0, 1, 2, 3]))
+    controls[3]?.resolve(difficultyRun('facile'))
+    controls[0]?.resolve(difficultyRun('facile'))
+    expect((await all).map(({ difficulty }) => difficulty)).toEqual(
+      difficulties,
+    )
+    for (const { stop } of controls) expect(stop).toHaveBeenCalledOnce()
+  })
+
+  it('on a failure, stops the jobs running and starts none of those waiting', async () => {
+    const controls = jobs.map(() => controlled())
+    const { started, play: start } = play(controls)
+    const all = playAll(jobs, () => undefined, start, 2)
+    controls[0]?.reject(new Error('Facile broke'))
+    await expect(all).rejects.toThrow('Facile broke')
+    expect(started).toEqual([0, 1])
+    expect(controls[0]?.stop).toHaveBeenCalledOnce()
+    expect(controls[1]?.stop).toHaveBeenCalledOnce()
+    expect(controls[2]?.stop).not.toHaveBeenCalled()
+    expect(controls[3]?.stop).not.toHaveBeenCalled()
+  })
+
+  it('shares the machine: 3 at once by default, and at least 1', async () => {
+    expect(MAX_WORKERS).toBe(3)
+    await expect(playAll(jobs, () => undefined, undefined, 0)).rejects.toThrow(
+      'Limit must be a whole number from 1: 0',
+    )
+  })
+})
+
+describe('jobLabel', () => {
+  it('names the difficulty or the Défi', () => {
+    expect(jobLabel(job('moyen'))).toBe('moyen')
+    expect(
+      jobLabel({ kind: 'defis', defi: 'moisSansConge', games: 1, search: 1 }),
+    ).toBe('moisSansConge')
+  })
+})
+
 describe('jobOptions', () => {
   it("is what runBalance plays for the job's one difficulty, its events policy included", () => {
     expect(
@@ -145,6 +212,21 @@ describe('playInWorker', () => {
       expect(await run).toEqual(
         runOwners({ years: 1, games: 1, difficulty: 'moyen' }),
       )
+    } finally {
+      await stop()
+    }
+  }, 30_000)
+
+  it('plays a Défi on its thread as runDefi plays it on this one', async () => {
+    const job = {
+      kind: 'defis',
+      defi: 'semaineDesMilleDollars',
+      games: 2,
+      search: 1,
+    } as const
+    const { run, stop } = playInWorker(job)
+    try {
+      expect(await run).toEqual(runDefi(job))
     } finally {
       await stop()
     }

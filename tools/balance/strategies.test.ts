@@ -105,6 +105,11 @@ describe('changedPrice', () => {
       }
     }
   })
+
+  it('moves another starting price when given one', () => {
+    expect(changedPrice(20, 'croissant', FOOD_TRUCK, cents(400))).toBe(480)
+    expect(changedPrice(0, 'cafe', FOOD_TRUCK, cents(410))).toBe(410)
+  })
 })
 
 describe('strategyChanges', () => {
