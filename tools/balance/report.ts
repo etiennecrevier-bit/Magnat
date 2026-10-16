@@ -211,7 +211,9 @@ function header(run: BalanceRun): string[] {
     ...(run.contracts === undefined
       ? []
       : [
-          `The grocers offer their contracts${events === 'none' ? ', their cards alone coming up,' : ''} and the player ${CONTRACT_ANSWERS[run.contracts]}.`,
+          events === 'none' && run.contracts === 'none'
+            ? "No card comes up, not even the grocers': no contract is offered or signed."
+            : `The grocers offer their contracts${events === 'none' ? ', their cards alone coming up,' : ''} and the player ${CONTRACT_ANSWERS[run.contracts]}.`,
           '',
         ]),
     '## Columns',

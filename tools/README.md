@@ -40,7 +40,7 @@ Plays scripted strategies headless at each difficulty, to see whether the econom
 | `--years` | 1                         | Years each game plays, a whole number from 1.                                            |
 | `--games` | 30                        | Games per strategy and difficulty, on seeds 1 to this, a whole number from 1.            |
 | `--events` | `none` | How the event cards are answered: `first`, `random` or `none`, as for `npm run sim`. The default keeps the report the economy without events. |
-| `--contracts` | as the events | How the grocers' cards are answered: `all`, `none` or `first`, as for `npm run sim`. With `--events none` and `all` or `first`, the grocers' cards come alone, so a grid can test the contracts without the other cards. |
+| `--contracts` | as the events | How the grocers' cards are answered: `all`, `none` or `first`, as for `npm run sim`. With `--events none` and `all` or `first`, the grocers' cards come alone, so a grid can test the contracts without the other cards; with `--events none` and `none`, no card comes up and no contract is offered. |
 | `--out`   | `docs/balance/phase-2.md` | File the report goes to, relative to the current folder (the repo root under `npm run`). |
 
 With `--events first` or `random`, the report's command shows the option, a line under "What each game plays" says how the player answers the cards, and a "Street changes" section, after the design targets, gives at each difficulty the median days of a game each kind of change to the street was in effect, over every game whatever its strategy; with `none`, the report mentions neither.
