@@ -47,10 +47,10 @@ export function servers(
   staff: StaffContent = STAFF,
 ): readonly Server[] {
   const crew = crewOf(state.staff, state.ownerAway)
-  const employees = Array.from(
-    { length: crew.atTruck },
-    (): Server => ({ speed: staff.truckSpeed, owner: false }),
-  )
+  const employees = Array.from({ length: crew.atTruck }, (): Server => ({
+    speed: staff.truckSpeed,
+    owner: false,
+  }))
   if (!crew.ownerServes) return employees
   const { serviceTimeIncrease } = effectsOf(state.energy, energy)
   return [
