@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import type { EventContent } from '../content/schema.ts'
+import { EVENTS } from '../engine/day.ts'
 import type { EventRecord } from '../engine/types.ts'
 import { recentEvents } from './eventLog.ts'
+
+// Every space in an amount is a no-break space (U+00A0).
+const S = '\u00a0'
 
 function record(
   day: number,
@@ -20,7 +25,7 @@ describe('recentEvents', () => {
       record(61, 'rienFaire'),
       record(400, 'relancer', 1),
     ]
-    expect(recentEvents(history, 400)).toEqual([
+    expect(recentEvents(history, 400, 'moyen', EVENTS)).toEqual([
       {
         day: 400,
         title: "La carte d'essai",
@@ -46,11 +51,42 @@ describe('recentEvents', () => {
           record(4, 'relancer', 0),
         ],
         10,
+        'moyen',
+        EVENTS,
       ).map(({ day }) => day),
     ).toEqual([4])
   })
 
   it('lists nothing before any event', () => {
-    expect(recentEvents([], 100)).toEqual([])
+    expect(recentEvents([], 100, 'moyen', EVENTS)).toEqual([])
+  })
+
+  it('writes the amounts as the game played them, as the card showed them', () => {
+    const scaling: Pick<EventContent, 'scaling'> = {
+      scaling: {
+        lowestFactor: 0.1,
+        difficulties: {
+          facile: { gains: 1, losses: 0.7 },
+          moyen: { gains: 1.3, losses: 1.3 },
+          difficile: { gains: 0.7, losses: 1.2 },
+        },
+      },
+    }
+    const history = [
+      record(5, 'payer', 0, 'influenceuse'),
+      record(6, 'aiderNormand', 0, 'premierJuillet'),
+    ]
+    expect(
+      recentEvents(history, 10, 'moyen', scaling).map(({ choice, result }) => [
+        choice,
+        result.split('. ').at(-1),
+      ]),
+    ).toEqual([
+      ['Aider Normand', `Normand vous glisse 78${S}$ et une bière tiède.`],
+      [`Payer 520${S}$`, expect.any(String)],
+    ])
+    expect(recentEvents(history, 10, 'difficile', {})[1]?.choice).toBe(
+      `Payer 400${S}$`,
+    )
   })
 })

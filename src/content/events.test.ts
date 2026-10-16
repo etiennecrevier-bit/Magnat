@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import eventsJson from './events.json'
-import { eventEffectSchema, loadEventContent } from './schema.ts'
+import {
+  eventEffectSchema,
+  loadEventContent,
+  type DifficultyId,
+  type TimedEventEffect,
+} from './schema.ts'
 
 // The event cards: the shipped file, and what the schema refuses.
 
@@ -24,6 +29,14 @@ const CARDS = [
   'premierJuillet',
 ]
 
+/** The cards of issue #137, which Facile draws by the player's standing. */
+const STANDING_CARDS = [
+  'gateauFete',
+  'traiteurPresse',
+  'placementMiracle',
+  'peintureLuxe',
+]
+
 /** The portraits of issue #95, one per character but the silhouette. */
 const PORTRAITS = [
   'gillesLacasse',
@@ -37,6 +50,14 @@ const PORTRAITS = [
   'normand',
   'jeanPhilippe',
   'meteorologue',
+]
+
+/** The characters of issue #137, who have no portrait yet. */
+const WITHOUT_PORTRAITS = [
+  'mmeOuellette',
+  'rosaireGagnon',
+  'stevieDuvent',
+  'ginettePelletier',
 ]
 
 /** A copy of the shipped file to break, as plain JSON. */
@@ -94,6 +115,46 @@ function withEffects(...effects: unknown[]): Json {
   ])
 }
 
+/**
+ * Whether `effect` applies at `difficulty` (#137): it names no difficulty,
+ * or that one among those it names.
+ */
+function appliesAt(
+  { difficulties }: TimedEventEffect,
+  difficulty: DifficultyId,
+): boolean {
+  return difficulties === undefined || difficulties.includes(difficulty)
+}
+
+/**
+ * Whether `effect` costs the player something (#137): a charge, energy or
+ * the owner's own cash going down, a change to the street below 1, the
+ * truck closed or a product it cannot sell, stock given away, or a client
+ * who pays late or never.
+ */
+function costs(effect: TimedEventEffect): boolean {
+  switch (effect.kind) {
+    case 'charge':
+    case 'closed':
+    case 'unavailable':
+    case 'delayReceivable':
+    case 'writeOff':
+      return true
+    case 'energy':
+      return effect.amount < 0
+    case 'personal':
+      return effect.amountCents < 0
+    case 'walkIns':
+    case 'appeal':
+    case 'willingness':
+      return effect.factor < 1
+    case 'useStock':
+      return effect.to === 'giveaway'
+    default:
+      return false
+  }
+}
+
 function rejects(raw: unknown, ...reasons: string[]): void {
   let message = ''
   try {
@@ -121,8 +182,12 @@ describe('events.json', () => {
     expect(essai?.weight).toBe(0)
   })
 
-  it('holds the essai card, then the twelve cards of issue #93 in order', () => {
-    expect(content.events.map(({ id }) => id)).toEqual(['essai', ...CARDS])
+  it('holds the essai card, the twelve cards of issue #93, then the four of #137, in order', () => {
+    expect(content.events.map(({ id }) => id)).toEqual([
+      'essai',
+      ...CARDS,
+      ...STANDING_CARDS,
+    ])
   })
 
   it('may draw every card but essai, unless it only comes as a follow-up', () => {
@@ -166,11 +231,110 @@ describe('events.json', () => {
     }
   })
 
-  it('names the characters by the ids of their portraits in issue #95', () => {
+  it('charges for every outcome of every choice at Difficile, refusing included', () => {
+    const free = content.events
+      .slice(1)
+      .flatMap(({ id, choices }) =>
+        choices.flatMap(({ id: choice, outcomes }) =>
+          outcomes.flatMap(({ effects }, outcome) =>
+            effects.some(
+              (effect) => appliesAt(effect, 'difficile') && costs(effect),
+            )
+              ? []
+              : [`${id}, ${choice}, outcome ${outcome}`],
+          ),
+        ),
+      )
+    expect(free).toEqual([])
+  })
+
+  it('scales the cards by difficulty as #137 tuned them', () => {
+    expect(content.scaling).toEqual({
+      _note: expect.any(String),
+      lowestFactor: 0.1,
+      difficulties: {
+        facile: { gains: 1, losses: 0.9 },
+        moyen: { gains: 1.1, losses: 1.1 },
+        difficile: { gains: 0.85, losses: 1.15 },
+      },
+    })
+  })
+
+  it('draws by the standing at Facile only, from the 30th and 70th percentiles and a month of fixed costs', () => {
+    expect(content.adaptiveDraw).toEqual({
+      _note: expect.any(String),
+      difficulties: ['facile'],
+      behindBelowPercentile: 30,
+      aheadAbovePercentile: 70,
+      behindBelowMonthsOfFixedCosts: 1,
+    })
+  })
+
+  it('weighs the cards of #137 toward their standing, and only those', () => {
+    const weights = Object.fromEntries(
+      content.events.flatMap(({ id, weight, weightByStanding }) =>
+        weightByStanding === undefined
+          ? []
+          : [
+              [
+                id,
+                [
+                  weightByStanding.behind ?? weight,
+                  weightByStanding.average ?? weight,
+                  weightByStanding.ahead ?? weight,
+                ],
+              ],
+            ],
+      ),
+    )
+    expect(Object.keys(weights)).toEqual(STANDING_CARDS)
+    for (const id of ['gateauFete', 'traiteurPresse']) {
+      const [behind = 0, average = 0, ahead = 0] = weights[id] ?? []
+      expect(behind, id).toBeGreaterThan(average)
+      expect(average, id).toBeGreaterThan(ahead)
+    }
+    for (const id of ['placementMiracle', 'peintureLuxe']) {
+      const [behind = 0, average = 0, ahead = 0] = weights[id] ?? []
+      expect(ahead, id).toBeGreaterThan(average)
+      expect(average, id).toBeGreaterThan(behind)
+    }
+  })
+
+  it('writes no amount into a tag by hand: the effect it names gives it', () => {
+    const typed = content.events.flatMap(({ id, choices }) =>
+      choices.flatMap(({ id: choice, tags }) =>
+        tags
+          .map((tag) => (typeof tag === 'string' ? tag : tag.text))
+          .filter((text) => /\d\s*[$%]|Énergie [+−]\d/.test(text))
+          .map((text) => `${id}, ${choice}: ${text}`),
+      ),
+    )
+    expect(typed).toEqual([])
+  })
+
+  it('writes no amount of money into a card’s text by hand: the effects it names give it', () => {
+    const typed = content.events.flatMap((event) =>
+      [
+        event.situation,
+        event.quote ?? '',
+        ...event.choices.flatMap(({ label, outcomes }) => [
+          label,
+          ...outcomes.map(({ result }) => result),
+        ]),
+      ]
+        .filter((text) => /\d\s*\$/.test(text))
+        .map((text) => `${event.id}: ${text}`),
+    )
+    expect(typed).toEqual([])
+  })
+
+  it('names the characters by the ids of their portraits in issue #95, or of #137', () => {
     const characters = new Set(
       content.events.slice(1).map(({ character }) => character.id),
     )
-    expect([...characters].sort()).toEqual([...PORTRAITS].sort())
+    expect([...characters].sort()).toEqual(
+      [...PORTRAITS, ...WITHOUT_PORTRAITS].sort(),
+    )
   })
 
   it('tries every kind of effect, both timings and an outcome left to chance on the essai card', () => {
@@ -248,6 +412,42 @@ describe('events.json', () => {
     }
     const loaded = loadEventContent(file([card({ conditions })]))
     expect(loaded.events[0]?.conditions).toEqual(conditions)
+  })
+})
+
+describe('loadEventContent loads', () => {
+  it('an effect for some difficulties, named for its tags, and a tag for some difficulties', () => {
+    const effect = {
+      kind: 'energy',
+      amount: -5,
+      difficulties: ['difficile'],
+      name: 'energie',
+    }
+    const tags = [
+      { text: 'Rien ne change', difficulties: ['facile', 'moyen'] },
+      { text: 'Énergie −{montant}', effect: 'energie' },
+    ]
+    const loaded = loadEventContent(
+      file([
+        card({
+          weightByStanding: { behind: 3, ahead: 0 },
+          choices: [
+            choice('a', { tags, outcomes: [outcome({ effects: [effect] })] }),
+            choice('b'),
+          ],
+        }),
+      ]),
+    )
+    const [event] = loaded.events
+    expect(event?.weightByStanding).toEqual({ behind: 3, ahead: 0 })
+    expect(event?.choices[0]?.tags).toEqual(tags)
+    expect(event?.choices[0]?.outcomes[0]?.effects).toEqual([effect])
+  })
+
+  it('a file with no scaling and no adaptive draw', () => {
+    const loaded = loadEventContent(file())
+    expect(loaded.scaling).toBeUndefined()
+    expect(loaded.adaptiveDraw).toBeUndefined()
   })
 })
 
@@ -503,6 +703,229 @@ describe('loadEventContent rejects', () => {
     ],
   ])('a key the game does not know %s', (_, change) => {
     rejects(change(file()), 'Unrecognized key: "extra"')
+  })
+
+  it('an effect of no difficulty, or of one the game does not know', () => {
+    rejects(
+      withEffects({ kind: 'energy', amount: -5, difficulties: [] }),
+      '→ at events[0].choices[0].outcomes[0].effects[0].difficulties',
+    )
+    rejects(
+      withEffects({ kind: 'energy', amount: -5, difficulties: ['extreme'] }),
+      '→ at events[0].choices[0].outcomes[0].effects[0].difficulties[0]',
+    )
+  })
+
+  it('a tag showing {montant} without naming its effect', () => {
+    rejects(
+      file([
+        card({
+          choices: [
+            choice('a', { tags: [{ text: 'Ventes +{montant}' }] }),
+            choice('b'),
+          ],
+        }),
+      ]),
+      'a tag showing {montant} names its effect',
+    )
+  })
+
+  it('a tag naming no effect of its choice', () => {
+    rejects(
+      file([
+        card({
+          choices: [
+            choice('a', {
+              tags: [{ text: 'Ventes +{montant}', effect: 'vente' }],
+            }),
+            choice('b'),
+          ],
+        }),
+      ]),
+      'no effect of this choice is named vente',
+      '→ at events[0].choices[0].tags[0].effect',
+    )
+  })
+
+  it('a tag showing the amount of effects of different units, or of none', () => {
+    const tagged = (...effects: Json[]) =>
+      file([
+        card({
+          choices: [
+            choice('a', {
+              tags: [{ text: 'Coûts −{montant}', effect: 'cout' }],
+              outcomes: [outcome({ effects })],
+            }),
+            choice('b'),
+          ],
+        }),
+      ])
+    rejects(
+      tagged(
+        { kind: 'energy', amount: -5, name: 'cout' },
+        { kind: 'charge', amountCents: 100, description: 'Taxi', name: 'cout' },
+      ),
+      'the effects named cout have no amount of one unit to show',
+    )
+    rejects(
+      tagged({ kind: 'closed', days: 1, name: 'cout' }),
+      'the effects named cout have no amount of one unit to show',
+    )
+  })
+
+  it('an amount in a card’s text naming no effect where it looks, or not at every difficulty', () => {
+    /** A card with `texts`, its first choice's label `label`. */
+    const named = (
+      {
+        label,
+        ...texts
+      }: { label?: string; quote?: string; situation?: string },
+      effects: Json[] = [],
+    ) =>
+      file([
+        card({
+          ...texts,
+          choices: [
+            choice('a', {
+              outcomes: [outcome({ effects })],
+              ...(label === undefined ? {} : { label }),
+            }),
+            choice('b'),
+          ],
+        }),
+      ])
+    const sale = {
+      kind: 'cashSale',
+      amountCents: 67_500,
+      description: 'Vente',
+      name: 'vente',
+    }
+    expect(() =>
+      loadEventContent(named({ quote: 'Payé {montant:vente}.' }, [sale])),
+    ).not.toThrow()
+    rejects(
+      named({ quote: 'Payé {montant:prix}.' }, [sale]),
+      'no effect named prix applies at facile',
+      '→ at events[0].quote',
+    )
+    rejects(
+      named({ situation: 'Payé {montant:vente}.' }, [
+        { ...sale, difficulties: ['facile', 'moyen'] },
+      ]),
+      'no effect named vente applies at difficile',
+      '→ at events[0].situation',
+    )
+    rejects(
+      named({ label: 'Vendre {montant:vente}' }),
+      'no effect named vente applies at facile',
+      '→ at events[0].choices[0].label',
+    )
+  })
+
+  it('an amount in an outcome’s result taken from another outcome', () => {
+    const sale = {
+      kind: 'cashSale',
+      amountCents: 67_500,
+      description: 'Vente',
+      name: 'vente',
+    }
+    rejects(
+      file([
+        card({
+          choices: [
+            choice('a', {
+              outcomes: [
+                outcome({ chance: 0.5, effects: [sale] }),
+                outcome({ chance: 0.5, result: 'Payé {montant:vente}.' }),
+              ],
+              tags: ['Risqué'],
+            }),
+            choice('b'),
+          ],
+        }),
+      ]),
+      'no effect named vente applies at facile',
+      '→ at events[0].choices[0].outcomes[1].result',
+    )
+  })
+
+  it('an amount in a card’s text of effects of different units, or written otherwise', () => {
+    const effects = [
+      { kind: 'energy', amount: -5, name: 'cout' },
+      { kind: 'charge', amountCents: 100, description: 'Taxi', name: 'cout' },
+    ]
+    rejects(
+      file([
+        card({
+          quote: 'Ça coûte {montant:cout}.',
+          choices: [
+            choice('a', { outcomes: [outcome({ effects })] }),
+            choice('b'),
+          ],
+        }),
+      ]),
+      'the effects named cout have no amount of one unit to show',
+    )
+    for (const quote of ['Ça coûte {montant}.', 'Ça coûte {montant:Cout}.']) {
+      rejects(
+        file([card({ quote })]),
+        "a card's text shows an amount as {montant:name}",
+        '→ at events[0].quote',
+      )
+    }
+  })
+
+  it('a tag shown at no difficulty, or with a key the game does not know', () => {
+    const tagged = (tag: Json) =>
+      file([card({ choices: [choice('a', { tags: [tag] }), choice('b')] })])
+    rejects(
+      tagged({ text: 'Rien', difficulties: [] }),
+      '→ at events[0].choices[0].tags[0]',
+    )
+    rejects(
+      tagged({ text: 'Rien', extra: 1 }),
+      '→ at events[0].choices[0].tags[0]',
+    )
+  })
+
+  it('a weight by standing below 0, or of a standing the game does not know', () => {
+    rejects(
+      file([card({ weightByStanding: { behind: -1 } })]),
+      '→ at events[0].weightByStanding.behind',
+    )
+    rejects(
+      file([card({ weightByStanding: { perdu: 1 } })]),
+      '→ at events[0].weightByStanding',
+    )
+  })
+
+  it('a lowest factor above 1, or a difficulty the scaling leaves out', () => {
+    const { scaling } = shipped() as { scaling: Json }
+    rejects(
+      { ...file(), scaling: { ...scaling, lowestFactor: 1.5 } },
+      '→ at scaling.lowestFactor',
+    )
+    rejects(
+      {
+        ...file(),
+        scaling: {
+          ...scaling,
+          difficulties: { facile: { gains: 1, losses: 1 } },
+        },
+      },
+      '→ at scaling.difficulties',
+    )
+  })
+
+  it('an adaptive draw whose « en avance » starts below « en difficulté »', () => {
+    const { adaptiveDraw } = shipped() as { adaptiveDraw: Json }
+    rejects(
+      {
+        ...file(),
+        adaptiveDraw: { ...adaptiveDraw, aheadAbovePercentile: 20 },
+      },
+      'behindBelowPercentile is at most aheadAbovePercentile',
+    )
   })
 
   it('an effect key the game does not know', () => {

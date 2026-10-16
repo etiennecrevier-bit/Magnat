@@ -1,7 +1,9 @@
-import type { EventContent } from '../content/schema.ts'
+import type { DifficultyId, EventContent } from '../content/schema.ts'
 import { EVENTS } from '../engine/day.ts'
 import { isKept } from '../engine/personal.ts'
+import { cardText } from '../engine/scaling.ts'
 import type { Day, EventRecord } from '../engine/types.ts'
+import { formatCardText } from './eventTags.ts'
 
 /** An event that came up, as « Journal des événements » lists it. */
 export interface EventLogEntry {
@@ -9,20 +11,24 @@ export interface EventLogEntry {
   readonly day: Day
   /** The event's title. */
   readonly title: string
-  /** The label of the choice made. */
+  /** The label of the choice made, its amounts written. */
   readonly choice: string
-  /** What came of it. */
+  /** What came of it, its amounts written. */
   readonly result: string
 }
 
 /**
  * The events of `history` from the calendar month of `today` and the 11
- * before, as the owner's account keeps its movements, newest first. An
- * event, choice or outcome `content` no longer holds is left out.
+ * before, as the owner's account keeps its movements, newest first, their
+ * amounts as `difficulty` and `scaling` set them, as the card showed them
+ * (see `cardText`). An event, choice or outcome `content` no longer holds
+ * is left out.
  */
 export function recentEvents(
   history: readonly EventRecord[],
   today: Day,
+  difficulty: DifficultyId,
+  scaling: Pick<EventContent, 'scaling'>,
   content: EventContent = EVENTS,
 ): EventLogEntry[] {
   const entries: EventLogEntry[] = []
@@ -37,8 +43,12 @@ export function recentEvents(
     entries.push({
       day: record.day,
       title: event.title,
-      choice: choice.label,
-      result: outcome.result,
+      choice: formatCardText(
+        cardText(choice.label, choice, difficulty, scaling),
+      ),
+      result: formatCardText(
+        cardText(outcome.result, outcome, difficulty, scaling),
+      ),
     })
   }
   return entries.reverse()

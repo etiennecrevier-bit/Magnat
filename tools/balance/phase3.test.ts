@@ -8,7 +8,12 @@ import {
 import { EVENTS } from '../../src/engine/day.ts'
 import { cents } from '../../src/engine/money.ts'
 import type { EventSample } from './eventBranches.ts'
-import { ownerStrategy, PERCENTILES, type OwnerGame } from './owners.ts'
+import {
+  ownerStrategy,
+  PERCENTILES,
+  type OwnerGame,
+  type StandingDraw,
+} from './owners.ts'
 import {
   formatPercentileJson,
   formatPhase3Report,
@@ -19,12 +24,16 @@ import {
 // What `npm run balance -- --percentiles` writes, from owners made up here:
 // the percentile table the engine loads, and the report.
 
-/** A game whose bénéfice net goes by `step` a week, with `events`. */
+/**
+ * A game whose bénéfice net goes by `step` a week, with `events`, and
+ * `draws` at Facile.
+ */
 function game(
   seed: number,
   weeks: number,
   step: number,
   events: readonly EventSample[] = [],
+  draws: readonly StandingDraw[] = [],
 ): OwnerGame {
   return {
     seed,
@@ -32,18 +41,30 @@ function game(
     weeklyNetIncome: Array.from({ length: weeks }, (_, week) =>
       cents(step * (week + 1)),
     ),
+    draws,
     events,
+  }
+}
+
+/** One choice's result, the owner's money left as the baseline's. */
+function result(choice: string, cash: number, netIncome: number = cash) {
+  return {
+    choice,
+    cash: cents(cash),
+    netIncome: cents(netIncome),
+    personal: cents(0),
   }
 }
 
 /** grosseCommande, where « Accepter » is best on both. */
 const ORDER: EventSample = {
   event: 'grosseCommande',
+  measures: 'business',
   day: 15,
   choices: [
-    { choice: 'accepter', cash: cents(100), netIncome: cents(500) },
-    { choice: 'payeLivraison', cash: cents(50), netIncome: cents(50) },
-    { choice: 'refuser', cash: cents(0), netIncome: cents(0) },
+    result('accepter', 100, 500),
+    result('payeLivraison', 50),
+    result('refuser', 0),
   ],
 }
 
@@ -51,20 +72,38 @@ const ORDER: EventSample = {
 function fine(day: number, contest: number): EventSample {
   return {
     event: 'formulaire14B',
+    measures: 'business',
+    day,
+    choices: [result('payer', -15_000), result('contester', contest)],
+  }
+}
+
+/** placementMiracle, judged on the owner's money: the bet paid or not. */
+function placement(day: number, paid: boolean): EventSample {
+  return {
+    event: 'placementMiracle',
+    measures: 'ownMoney',
     day,
     choices: [
-      { choice: 'payer', cash: cents(-15_000), netIncome: cents(-15_000) },
-      { choice: 'contester', cash: cents(contest), netIncome: cents(contest) },
+      { ...result('investir', 0), personal: cents(paid ? 50_000 : -100_000) },
+      result('refuser', 0),
     ],
   }
 }
+
+const DRAWS: readonly StandingDraw[] = [
+  { event: 'gateauFete', standing: 'behind' },
+  { event: 'gateauFete', standing: 'behind' },
+  { event: 'peintureLuxe', standing: 'ahead' },
+  { event: 'gateauFete', standing: 'average' },
+]
 
 function run(weeks: number): PercentileRun {
   const owners = (difficulty: DifficultyId) => ({
     difficulty,
     games: [
-      game(1, weeks, -1000, [ORDER, fine(30, -20_000)]),
-      game(2, weeks, 2000, [fine(40, 0)]),
+      game(1, weeks, -1000, [ORDER, fine(30, -20_000), placement(50, true)]),
+      game(2, weeks, 2000, [fine(40, 0), placement(60, false)], DRAWS),
       game(3, weeks, 500),
     ],
   })
@@ -119,7 +158,10 @@ describe('formatPhase3Report', () => {
       '### Moyen',
       '### Difficile',
       '## Event cards',
+      '### Targets at Facile',
       '### Targets at Moyen',
+      '### Targets at Difficile',
+      '### Draws by standing at Facile',
       '### Facile',
       '### Moyen',
       '### Difficile',
@@ -140,21 +182,27 @@ describe('formatPhase3Report', () => {
     )
   })
 
-  it('judges every card a game may draw at Moyen, those that never came up included', () => {
-    const start = report.indexOf('### Targets at Moyen')
-    const targets = report
-      .slice(start, report.indexOf('### Facile', start))
-      .split('\n')
-      .filter((line) => line.startsWith('| ') && !/^\| (Event|---) /.test(line))
-    expect(targets.map((line) => line.split(' | ')[0]?.slice(2))).toEqual(
-      EVENTS.events.filter(({ weight }) => weight > 0).map(({ id }) => id),
-    )
-    expect(targets).toContain(
-      '| grosseCommande | 1 | ✗ accepter best on both in 100.0%; payeLivraison best on neither in 100.0%; refuser best on neither in 100.0% |',
-    )
-    expect(targets).toContain('| formulaire14B | 2 | ✓ |')
-    expect(targets).toContain('| chalet | 0 | n/a: never came up |')
-  })
+  it.each(['Facile', 'Moyen', 'Difficile'])(
+    'judges every card a game may draw at %s, those that never came up included',
+    (name) => {
+      const start = report.indexOf(`### Targets at ${name}`)
+      const targets = report
+        .slice(start, report.indexOf('\n### ', start + 1))
+        .split('\n')
+        .filter(
+          (line) => line.startsWith('| ') && !/^\| (Event|---) /.test(line),
+        )
+      expect(targets.map((line) => line.split(' | ')[0]?.slice(2))).toEqual(
+        EVENTS.events.filter(({ weight }) => weight > 0).map(({ id }) => id),
+      )
+      expect(targets).toContain(
+        '| grosseCommande | 1 | ✗ accepter best on both in 100.0%; payeLivraison best on neither in 100.0%; refuser best on neither in 100.0% |',
+      )
+      expect(targets).toContain('| formulaire14B | 2 | ✓ |')
+      expect(targets).toContain('| chalet | 0 | n/a: never came up |')
+      expect(targets).toContain('| placementMiracle | 2 | ✓ (vos finances) |')
+    },
+  )
 
   it('sums up each choice over the games its card came up in', () => {
     expect(report).toContain(
@@ -164,5 +212,38 @@ describe('formatPhase3Report', () => {
       '| formulaire14B | contester | 2 | -$100.00 | -$100.00 | 50.0% | 50.0% | 50.0% | 50.0% |',
     )
     expect(report).toContain('| chalet | never came up | 0 |  |  |  |  |  |  |')
+  })
+
+  it('judges a card that moves only the owner’s money on it, over its whole window', () => {
+    expect(report).toContain('(placementMiracle, 91 days)')
+    expect(report).not.toMatch(
+      /^\| placementMiracle \| investir \| 2 \| .* \| .* \| .* \| .* \| .* \| .* \|$/m,
+    )
+    expect(report).toContain(
+      '| placementMiracle | investir | 2 | -$250.00 | 50.0% | 50.0% |',
+    )
+    expect(report).toContain(
+      '| placementMiracle | refuser | 2 | $0.00 | 50.0% | 50.0% |',
+    )
+  })
+
+  it('counts the cards each standing drew at Facile, and their share', () => {
+    const start = report.indexOf('### Draws by standing at Facile')
+    const table = report.slice(start, report.indexOf('\n### ', start + 1))
+    expect(table).toContain(
+      '| Event | En difficulté | Dans la moyenne | En avance |',
+    )
+    expect(table).toContain(
+      '| gateauFete | 2 (100.0%) | 1 (100.0%) | 0 (0.0%) |',
+    )
+    expect(table).toContain(
+      '| peintureLuxe | 0 (0.0%) | 0 (0.0%) | 1 (100.0%) |',
+    )
+    expect(table).toContain(
+      '| grosseCommande | 0 (0.0%) | 0 (0.0%) | 0 (0.0%) |',
+    )
+    expect(table).toContain('| All cards | 2 | 1 | 1 |')
+    expect(table).not.toContain('chequeDansLaMalle')
+    expect(report.match(/### Draws by standing/g)).toHaveLength(1)
   })
 })

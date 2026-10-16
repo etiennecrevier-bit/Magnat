@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EVENTS } from '../../src/engine/day.ts'
 import { cents } from '../../src/engine/money.ts'
+import { PERCENTILES as SHIPPED } from '../../src/engine/percentiles.ts'
 import { incomeStatement } from '../../src/finance/statements.ts'
 import {
   eventChooser,
@@ -10,20 +11,24 @@ import {
   startGame,
 } from '../sim/simulate.ts'
 import {
+  adapts,
   DAYS_PER_WEEK,
   halfAwayFromZero,
   ownerStrategy,
+  percentileRow,
   percentileRows,
   playOwner,
   quantileCents,
   runOwners,
+  stagedPercentiles,
   type OwnerGame,
 } from './owners.ts'
 import { STRATEGIES, strategyChanges } from './strategies.ts'
 
 // The simulated owners: the strategy each holds, the bénéfice net noted at
-// each Sunday's close, the occurrence of each card branched, and the
-// percentiles of a week.
+// each Sunday's close, the occurrence of each card branched, the standing
+// that drew each card at Facile, the table they make against themselves,
+// and the percentiles of a week.
 
 describe('ownerStrategy', () => {
   it('draws the same strategy of the grid for a seed, every time', () => {
@@ -114,6 +119,28 @@ describe('playOwner', () => {
     expect(playOwner(seed, 'moyen', weeks)).toEqual(game)
   })
 
+  it('notes the standing that drew each card where the draw follows it, and only there', () => {
+    expect(adapts(EVENTS, 'facile')).toBe(true)
+    expect(adapts(EVENTS, 'moyen')).toBe(false)
+    expect(game.draws).toEqual([])
+    const facile = playOwner(seed, 'facile', weeks, { branch: false })
+    const played = simulate(
+      seed,
+      weeks * DAYS_PER_WEEK,
+      'facile',
+      strategyChanges(ownerStrategy(seed)),
+      'random',
+    )
+    expect(facile.draws.map(({ event }) => event)).toEqual(
+      played.eventHistory
+        .filter(({ followUp }) => !followUp)
+        .map(({ event }) => event),
+    )
+    for (const { standing } of facile.draws) {
+      expect(['behind', 'average', 'ahead']).toContain(standing)
+    }
+  })
+
   it.each([0, 1.5, -2])('throws on %d weeks', (bad) => {
     expect(() => playOwner(seed, 'moyen', bad)).toThrow(RangeError)
   })
@@ -127,6 +154,35 @@ describe('runOwners', () => {
     for (const { weeklyNetIncome } of run.games) {
       expect(weeklyNetIncome).toHaveLength(52)
     }
+  }, 30_000)
+
+  it('plays the Facile owners against the table they make, so it does not depend on the table before', () => {
+    // The owners of a generation play against the table shipped by the one
+    // before. With the table these owners make shipped, the next generation
+    // plays the same games, and so makes the same table.
+    const games = 12
+    const weeks = 10
+    const table = stagedPercentiles(games, 'facile', weeks)
+    const rows = table.difficulties.facile
+    expect(rows).toHaveLength(weeks)
+    const next = Array.from({ length: games }, (_, index) =>
+      playOwner(index + 1, 'facile', weeks, {
+        branch: false,
+        percentiles: table,
+      }),
+    )
+    expect(percentileRows(next)).toEqual(rows)
+    // Not by chance: against the shipped table, the same owners stand
+    // elsewhere, so the table each owner reads matters.
+    const shipped = Array.from({ length: games }, (_, index) =>
+      playOwner(index + 1, 'facile', weeks, {
+        branch: false,
+        percentiles: SHIPPED,
+      }),
+    )
+    expect(shipped.map(({ draws }) => draws)).not.toEqual(
+      next.map(({ draws }) => draws),
+    )
   }, 30_000)
 
   it.each([
@@ -196,6 +252,7 @@ describe('percentileRows', () => {
       seed,
       strategy: ownerStrategy(seed),
       weeklyNetIncome: weekly.map(cents),
+      draws: [],
       events: [],
     }
   }
@@ -209,6 +266,12 @@ describe('percentileRows', () => {
     expect(percentileRows(games, [10, 50, 90])).toEqual([
       [120, 200, 280],
       [-28, -20, -12],
+    ])
+  })
+
+  it('takes the amounts of one week in any order', () => {
+    expect(percentileRow([300, 100, 200], [10, 50, 90])).toEqual([
+      120, 200, 280,
     ])
   })
 

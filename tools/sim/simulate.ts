@@ -3,11 +3,13 @@ import type {
   DifficultyId,
   EventCard,
   EventContent,
+  PercentileContent,
   StreetModifierKind,
 } from '../../src/content/schema.ts'
 import { createInitialState, tick, toCalendar } from '../../src/engine/clock.ts'
 import {
   CUSTOMERS,
+  DEFIS,
   DIFFICULTIES,
   ENERGY,
   EVENTS,
@@ -24,6 +26,7 @@ import { PRODUCTS } from '../../src/engine/inventory.ts'
 import type { Cents } from '../../src/engine/money.ts'
 import { defaultProfile } from '../../src/engine/profile.ts'
 import { int, seedRng } from '../../src/engine/rng.ts'
+import { PERCENTILES } from '../../src/engine/percentiles.ts'
 import { MODIFIER_KINDS } from '../../src/engine/street.ts'
 import type {
   Day,
@@ -252,12 +255,14 @@ export function answerEvent(
 /**
  * Answers the event waiting on `state`'s morning, if any, with `choose` (see
  * `answerEvent`), then plays the day with the shipped content and the event
- * cards of `content`, and returns the next morning.
+ * cards of `content`, the player's standing read against `percentiles`, by
+ * default the shipped table, and returns the next morning.
  */
 export function playMorning(
   state: GameState,
   content: EventContent,
   choose: ((event: EventCard) => string) | null,
+  percentiles: PercentileContent = PERCENTILES,
 ): GameState {
   return tick(
     answerEvent(state, content, choose),
@@ -267,6 +272,8 @@ export function playMorning(
     PERSONAL,
     ENERGY,
     content,
+    DEFIS,
+    percentiles,
   )
 }
 

@@ -654,7 +654,8 @@ export type EventEffect = z.output<typeof eventEffectSchema>
 /**
  * An effect as the content writes it: now, or later, after `inDays` days or
  * on the next `onNextWeekday` (4 is next Thursday, a week away on a
- * Thursday), never both.
+ * Thursday), never both; at every difficulty, or only at the `difficulties`
+ * listed; and with the `name` its choice's tags know it by, if any.
  */
 const timedEffectSchema = z
   .discriminatedUnion(
@@ -662,6 +663,8 @@ const timedEffectSchema = z
     effectSchemas({
       inDays: z.int().positive().optional(),
       onNextWeekday: weekday.optional(),
+      difficulties: z.array(difficultyIdSchema).min(1).optional(),
+      name: idSchema.optional(),
     }),
   )
   .refine(
@@ -671,6 +674,140 @@ const timedEffectSchema = z
   )
 
 export type TimedEventEffect = z.output<typeof timedEffectSchema>
+
+/** What a tag shows of an effect: money, energy or a percentage. */
+export type TagUnit = 'money' | 'energy' | 'percent'
+
+/**
+ * The kinds of effect a tag may show the amount of, with what it shows:
+ * money for a charge, a sale or the owner's own cash, points of energy, and
+ * how far a change to the street moves from 1, as a percentage.
+ */
+export const TAG_UNITS = {
+  charge: 'money',
+  cashSale: 'money',
+  creditSale: 'money',
+  personal: 'money',
+  energy: 'energy',
+  walkIns: 'percent',
+  appeal: 'percent',
+  willingness: 'percent',
+} as const satisfies Partial<Record<TimedEventEffect['kind'], TagUnit>>
+
+/** Where a tag's text shows the amount of the effect it names. */
+export const TAG_AMOUNT = '{montant}'
+
+/**
+ * Where a card's situation, quote, choice label or outcome result shows the
+ * amount of the effects named `name`: `{montant:name}`.
+ */
+const TEXT_AMOUNT = /\{montant:([a-z][A-Za-z0-9]*)\}/g
+
+/** A piece of a card's text: words, or the name of the effects shown. */
+export type TextPart = string | { readonly amountOf: string }
+
+/** `text` as its words and the amounts it shows (see `TEXT_AMOUNT`). */
+export function textParts(text: string): TextPart[] {
+  const parts: TextPart[] = []
+  let from = 0
+  for (const match of text.matchAll(TEXT_AMOUNT)) {
+    const [whole, name] = match
+    if (match.index > from) parts.push(text.slice(from, match.index))
+    if (name !== undefined) parts.push({ amountOf: name })
+    from = match.index + whole.length
+  }
+  if (from < text.length) parts.push(text.slice(from))
+  return parts
+}
+
+/**
+ * The effects of `outcomes` named `name` that apply at `difficulty`, in the
+ * first outcome holding one; none when no outcome does.
+ */
+export function namedEffects(
+  outcomes: readonly (readonly TimedEventEffect[])[],
+  name: string,
+  difficulty: DifficultyId,
+): TimedEventEffect[] {
+  for (const effects of outcomes) {
+    const named = effects.filter(
+      (effect) =>
+        effect.name === name &&
+        (effect.difficulties === undefined ||
+          effect.difficulties.includes(difficulty)),
+    )
+    if (named.length > 0) return named
+  }
+  return []
+}
+
+/**
+ * Checks `text`, at `path`: every amount it shows names effects of
+ * `outcomes` (see `namedEffects`) at every difficulty, all of one unit, and
+ * it has no other braces, so that no amount shows as written.
+ */
+function checkTextAmounts(
+  text: string,
+  outcomes: readonly (readonly TimedEventEffect[])[],
+  path: readonly (string | number)[],
+  ctx: z.RefinementCtx,
+): void {
+  for (const part of textParts(text)) {
+    if (typeof part === 'string') {
+      if (/[{}]/.test(part)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `a card's text shows an amount as {montant:name}`,
+          path: [...path],
+        })
+      }
+      continue
+    }
+    for (const difficulty of difficultyIdSchema.options) {
+      const named = namedEffects(outcomes, part.amountOf, difficulty)
+      const units = new Set(
+        named.map(({ kind }) =>
+          kind in TAG_UNITS ? TAG_UNITS[kind as keyof typeof TAG_UNITS] : null,
+        ),
+      )
+      if (named.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `no effect named ${part.amountOf} applies at ${difficulty}`,
+          path: [...path],
+        })
+      } else if (units.size !== 1 || units.has(null)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `the effects named ${part.amountOf} have no amount of one unit to show`,
+          path: [...path],
+        })
+      }
+    }
+  }
+}
+
+/**
+ * What the owner would know of a choice before making it: a text shown as
+ * it is, or a text shown only at the `difficulties` listed and, when it
+ * names an `effect`, only where that effect applies, with `{montant}`
+ * replaced by its amount at the game's difficulty.
+ */
+const choiceTagSchema = z.union([
+  frenchText(),
+  z
+    .strictObject({
+      text: frenchText(),
+      effect: idSchema.optional(),
+      difficulties: z.array(difficultyIdSchema).min(1).optional(),
+    })
+    .refine(
+      ({ text, effect }) => effect !== undefined || !text.includes(TAG_AMOUNT),
+      { message: `a tag showing ${TAG_AMOUNT} names its effect` },
+    ),
+])
+
+export type ChoiceTagContent = z.output<typeof choiceTagSchema>
 
 /** One way a choice can turn out; the player never sees its chance. */
 const eventOutcomeSchema = z.strictObject({
@@ -686,7 +823,7 @@ const eventChoiceSchema = z
     id: idSchema,
     label: frenchText(CHOICE_LABEL_MAX_LENGTH),
     /** What the owner would know before choosing, as the card shows it. */
-    tags: z.array(frenchText()).min(1),
+    tags: z.array(choiceTagSchema).min(1),
     /** Their chances sum to 1. */
     outcomes: z.array(eventOutcomeSchema).min(1),
   })
@@ -699,6 +836,43 @@ const eventChoiceSchema = z
       path: ['outcomes'],
     },
   )
+  .superRefine(({ tags, outcomes }, ctx) => {
+    // The unit of each effect name of the choice; null when a name is
+    // shared by effects that show different units, or none.
+    const units = new Map<string, TagUnit | null>()
+    for (const { effects } of outcomes) {
+      for (const effect of effects) {
+        if (effect.name === undefined) continue
+        const unit: TagUnit | null =
+          effect.kind in TAG_UNITS
+            ? TAG_UNITS[effect.kind as keyof typeof TAG_UNITS]
+            : null
+        const known = units.get(effect.name)
+        units.set(
+          effect.name,
+          known === undefined || known === unit ? unit : null,
+        )
+      }
+    }
+    tags.forEach((tag, t) => {
+      if (typeof tag === 'string' || tag.effect === undefined) return
+      const path = ['tags', t, 'effect']
+      const unit = units.get(tag.effect)
+      if (unit === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `no effect of this choice is named ${tag.effect}`,
+          path,
+        })
+      } else if (unit === null && tag.text.includes(TAG_AMOUNT)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `the effects named ${tag.effect} have no amount of one unit to show`,
+          path,
+        })
+      }
+    })
+  })
 
 export type EventChoice = z.output<typeof eventChoiceSchema>
 
@@ -745,22 +919,69 @@ const eventConditionsSchema = z.strictObject({
 
 export type EventConditions = z.output<typeof eventConditionsSchema>
 
-const eventSchema = z.strictObject({
-  id: idSchema,
-  /** Relative odds among the events whose conditions hold; 0 never draws. */
-  weight: z.number().nonnegative(),
-  /** Who brings the dilemma: a portrait id, a French name and a role. */
-  character: z.strictObject({
+/**
+ * How the player stands on a morning, at a difficulty whose draw adapts to
+ * them: « en difficulté », « dans la moyenne » or « en avance ».
+ */
+export const standingSchema = z.enum(['behind', 'average', 'ahead'])
+
+export type Standing = z.infer<typeof standingSchema>
+
+/** Relative odds among the events whose conditions hold; 0 never draws. */
+const eventWeight = z.number().nonnegative()
+
+const eventSchema = z
+  .strictObject({
     id: idSchema,
-    name: frenchText(),
-    role: frenchText(),
-  }),
-  title: frenchText(),
-  situation: frenchText(SITUATION_MAX_LENGTH),
-  quote: frenchText().optional(),
-  conditions: eventConditionsSchema.optional(),
-  choices: z.array(eventChoiceSchema).min(2).max(3),
-})
+    weight: eventWeight,
+    /**
+     * The weight at a difficulty whose draw adapts to the player, for each
+     * standing it gives; `weight` for the others.
+     */
+    weightByStanding: z.partialRecord(standingSchema, eventWeight).optional(),
+    /** Who brings the dilemma: a portrait id, a French name and a role. */
+    character: z.strictObject({
+      id: idSchema,
+      name: frenchText(),
+      role: frenchText(),
+    }),
+    title: frenchText(),
+    /**
+     * The situation, the quote, each choice's label and each outcome's
+     * result may show amounts as `{montant:name}` (see `textParts`): the
+     * effects so named in the event's choices, the choice's outcomes or the
+     * outcome, in that order.
+     */
+    situation: frenchText(SITUATION_MAX_LENGTH),
+    quote: frenchText().optional(),
+    conditions: eventConditionsSchema.optional(),
+    choices: z.array(eventChoiceSchema).min(2).max(3),
+  })
+  .superRefine(({ situation, quote, choices }, ctx) => {
+    const everyOutcome = choices.flatMap(({ outcomes }) =>
+      outcomes.map(({ effects }) => effects),
+    )
+    checkTextAmounts(situation, everyOutcome, ['situation'], ctx)
+    if (quote !== undefined) {
+      checkTextAmounts(quote, everyOutcome, ['quote'], ctx)
+    }
+    choices.forEach(({ label, outcomes }, c) => {
+      checkTextAmounts(
+        label,
+        outcomes.map(({ effects }) => effects),
+        ['choices', c, 'label'],
+        ctx,
+      )
+      outcomes.forEach(({ result, effects }, o) => {
+        checkTextAmounts(
+          result,
+          [effects],
+          ['choices', c, 'outcomes', o, 'result'],
+          ctx,
+        )
+      })
+    })
+  })
 
 export type EventCard = z.output<typeof eventSchema>
 
@@ -774,10 +995,61 @@ const eventPacingSchema = z.strictObject({
   dailyChance: share,
 })
 
+/** How a difficulty scales what a choice gives and what it takes. */
+const eventScaleSchema = z.strictObject({
+  /** Multiplies every gain: a sale, a change to the street above 1. */
+  gains: z.number().positive(),
+  /** Multiplies every loss: a charge, a change to the street below 1. */
+  losses: z.number().positive(),
+})
+
+export type EventScale = z.output<typeof eventScaleSchema>
+
+/**
+ * How each difficulty scales the effects of the choices; none does without
+ * it. A change to the street scales by its distance from 1, never below
+ * `lowestFactor`.
+ */
+const eventScalingSchema = z.strictObject({
+  _note: z.string().optional(),
+  lowestFactor: z.number().positive().max(1),
+  difficulties: z.record(difficultyIdSchema, eventScaleSchema),
+})
+
+export type EventScaling = z.output<typeof eventScalingSchema>
+
+/**
+ * Where the draw follows the player's standing (see `weightByStanding`);
+ * nowhere without it. The player is « en difficulté » below the percentile
+ * `behindBelowPercentile` of their difficulty and week, or with an encaisse
+ * below `behindBelowMonthsOfFixedCosts` months of fixed costs; « en
+ * avance » above the percentile `aheadAbovePercentile`.
+ */
+const adaptiveDrawSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    difficulties: z.array(difficultyIdSchema).min(1),
+    behindBelowPercentile: z.number().min(0).max(100),
+    aheadAbovePercentile: z.number().min(0).max(100),
+    behindBelowMonthsOfFixedCosts: z.number().nonnegative(),
+  })
+  .refine(
+    ({ behindBelowPercentile, aheadAbovePercentile }) =>
+      behindBelowPercentile <= aheadAbovePercentile,
+    {
+      message: 'behindBelowPercentile is at most aheadAbovePercentile',
+      path: ['aheadAbovePercentile'],
+    },
+  )
+
+export type AdaptiveDraw = z.output<typeof adaptiveDrawSchema>
+
 export const eventContentSchema = z
   .strictObject({
     _note: z.string().optional(),
     pacing: eventPacingSchema,
+    scaling: eventScalingSchema.optional(),
+    adaptiveDraw: adaptiveDrawSchema.optional(),
     events: z.array(eventSchema),
   })
   .superRefine(({ events }, ctx) => {
@@ -1370,11 +1642,13 @@ export function loadEnergyContent(raw: unknown = energyJson): EnergyContent {
 }
 
 /**
- * Validates the event cards and their pacing and returns them typed, with
- * money as `Cents`. Throws an Error naming every invalid field: besides
- * each field, event ids must be unique, choice ids unique within their
- * event, each choice's chances must sum to 1 and every follow-up must name
- * an event of the file. Pass `raw` only to check other data; by default it
+ * Validates the event cards, their pacing, their scaling by difficulty and
+ * the adaptive draw, and returns them typed, with money as `Cents`. Throws
+ * an Error naming every invalid field: besides each field, event ids must
+ * be unique, choice ids unique within their event, each choice's chances
+ * must sum to 1, every follow-up must name an event of the file, and every
+ * effect a tag names must be one of its choice's, of one unit when the tag
+ * shows its amount. Pass `raw` only to check other data; by default it
  * reads `events.json`.
  */
 export function loadEventContent(raw: unknown = eventsJson): EventContent {

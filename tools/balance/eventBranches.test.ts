@@ -5,6 +5,7 @@ import {
 } from '../../src/content/schema.ts'
 import { EVENTS } from '../../src/engine/day.ts'
 import { NO_EVENTS } from '../../src/engine/events.ts'
+import { effectsAt } from '../../src/engine/scaling.ts'
 import { cents } from '../../src/engine/money.ts'
 import { isRngState } from '../../src/engine/rng.ts'
 import type { GameState } from '../../src/engine/types.ts'
@@ -14,10 +15,12 @@ import {
   choiceVerdicts,
   dayStream,
   eventTarget,
+  measuresOf,
   outcomeStream,
   playWindow,
   streamOf,
   WINDOW_DAYS,
+  windowOf,
   type EventSample,
 } from './eventBranches.ts'
 
@@ -62,6 +65,10 @@ function contentOf(...events: unknown[]): EventContent {
 
 function charge(amountCents: number, more: Record<string, unknown> = {}) {
   return { kind: 'charge', amountCents, description: 'Frais', ...more }
+}
+
+function personal(amountCents: number, more: Record<string, unknown> = {}) {
+  return { kind: 'personal', amountCents, label: 'Placement', ...more }
 }
 
 /** Seed 42 at Moyen, 20 days played with no card, then `event` waiting. */
@@ -158,11 +165,11 @@ describe('playWindow', () => {
 })
 
 describe('branchEvent', () => {
-  it('measures nothing for a choice that changes nothing, and the charge alone for a charge', () => {
+  it('measures nothing for a choice that changes nothing, and the charge alone for a charge, as Moyen scales it', () => {
     const payer = EVENTS.events
       .find(({ id }) => id === 'formulaire14B')
       ?.choices.find(({ id }) => id === 'payer')
-    const fine = payer?.outcomes[0]?.effects[0]
+    const [fine] = effectsAt(payer?.outcomes[0]?.effects ?? [], 'moyen', EVENTS)
     if (fine?.kind !== 'charge') throw new Error('No fine to pay')
     expect(
       results(branchEvent(morningWith('formulaire14B'), SEED)).payer,
@@ -226,6 +233,28 @@ describe('branchEvent', () => {
     )
   })
 
+  it('measures the owner’s own money, over the whole window of a card that moves only it', () => {
+    const content = contentOf(
+      card('placement', {
+        miser: [[personal(-100_000), personal(150_000, { inDays: 90 })]],
+        refuser: [[{ kind: 'energy', amount: -5 }]],
+      }),
+    )
+    const sample = branchEvent(morningWith('placement'), SEED, content)
+    expect(sample.measures).toBe('ownMoney')
+    expect(
+      sample.choices.map(({ choice, personal: own }) => [choice, own]),
+    ).toEqual([
+      ['miser', 50_000],
+      ['refuser', 0],
+    ])
+    // Over the usual window, the return has not come yet.
+    expect(
+      branchEvent(morningWith('placement'), SEED, content, WINDOW_DAYS)
+        .choices[0]?.personal,
+    ).toBe(-100_000)
+  })
+
   it('throws when no card waits, or the content does not hold it', () => {
     const morning = morningWith('inconnu')
     expect(() =>
@@ -245,14 +274,46 @@ function sample(
 ): EventSample {
   return {
     event: 'carte',
+    measures: 'business',
     day: 0,
     choices: (['a', 'b', 'c'] as const).map((choice, index) => ({
       choice,
       cash: cents(cash[index] ?? 0),
       netIncome: cents(netIncome[index] ?? 0),
+      personal: cents(0),
     })),
   }
 }
+
+/** One game of a card judged on the owner's money, a and b measured so. */
+function ownMoney(own: readonly [number, number]): EventSample {
+  return {
+    event: 'carte',
+    measures: 'ownMoney',
+    day: 0,
+    choices: (['a', 'b'] as const).map((choice, index) => ({
+      choice,
+      cash: cents(0),
+      netIncome: cents(0),
+      personal: cents(own[index] ?? 0),
+    })),
+  }
+}
+
+describe('measuresOf and windowOf', () => {
+  it('judge a card that moves only the owner’s money, and their energy, on that money, over long enough for all of it', () => {
+    const placement = EVENTS.events.find(({ id }) => id === 'placementMiracle')
+    if (placement === undefined) throw new Error('No placementMiracle')
+    expect(measuresOf(placement)).toBe('ownMoney')
+    expect(windowOf(placement)).toBe(91)
+    for (const other of EVENTS.events.filter(
+      ({ id }) => id !== 'placementMiracle',
+    )) {
+      expect(measuresOf(other), other.id).toBe('business')
+      expect(windowOf(other), other.id).toBe(WINDOW_DAYS)
+    }
+  })
+})
 
 describe('choiceVerdicts', () => {
   it('counts a choice best on a measure when no other did strictly better, ties included', () => {
@@ -262,10 +323,16 @@ describe('choiceVerdicts', () => {
       sample([-1, -3, -2], [-1, -2, -3]),
       sample([1, 2, 3], [3, 2, 1]),
     ])
+    const same = {
+      measures: 'business',
+      games: 4,
+      medianPersonal: 0,
+      bestOnPersonal: 4,
+    }
     expect(verdicts).toEqual([
       {
         choice: 'a',
-        games: 4,
+        ...same,
         medianCash: 1,
         medianNetIncome: 6,
         bestOnCash: 2,
@@ -275,7 +342,7 @@ describe('choiceVerdicts', () => {
       },
       {
         choice: 'b',
-        games: 4,
+        ...same,
         medianCash: 4,
         medianNetIncome: 2,
         bestOnCash: 2,
@@ -285,7 +352,7 @@ describe('choiceVerdicts', () => {
       },
       {
         choice: 'c',
-        games: 4,
+        ...same,
         medianCash: 2,
         medianNetIncome: 1,
         bestOnCash: 2,
@@ -294,6 +361,26 @@ describe('choiceVerdicts', () => {
         bestOnNeither: 2,
       },
     ])
+  })
+
+  it('judges a card on the owner’s money alone when that is all it moves', () => {
+    const [a, b] = choiceVerdicts([
+      ownMoney([50_000, 0]),
+      ownMoney([-100_000, 0]),
+      ownMoney([-100_000, 0]),
+    ])
+    expect(a).toMatchObject({
+      measures: 'ownMoney',
+      medianPersonal: -100_000,
+      bestOnPersonal: 1,
+      bestOnBoth: 1,
+      bestOnNeither: 2,
+    })
+    expect(b).toMatchObject({
+      bestOnPersonal: 2,
+      bestOnBoth: 2,
+      bestOnNeither: 1,
+    })
   })
 
   it('gives nothing for no games, and throws when the games disagree on the choices', () => {

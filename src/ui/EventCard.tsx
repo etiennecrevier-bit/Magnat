@@ -1,7 +1,13 @@
 import { useEffect, useRef, type Ref } from 'react'
-import type { EventCard as Card } from '../content/schema.ts'
+import type {
+  EventCard as Card,
+  DifficultyId,
+  EventContent,
+} from '../content/schema.ts'
 import { allowedChoices } from '../engine/challenge.ts'
 import { DEFIS, EVENTS } from '../engine/day.ts'
+import { scalingOf } from '../engine/events.ts'
+import { cardText, choiceTags, type TextScope } from '../engine/scaling.ts'
 import type { EventRecord, GameState } from '../engine/types.ts'
 import {
   allowedChoiceForKey,
@@ -10,6 +16,7 @@ import {
 } from './choiceKeys.ts'
 import { FORCED_CHOICE_REASON } from './defis.ts'
 import { choiceChanges, formatChangeLine } from './eventChanges.ts'
+import { formatCardText, formatChoiceTag } from './eventTags.ts'
 import { portraitUrl } from './portraits.ts'
 import { gameStore, useGame } from './store.ts'
 import './panel.css'
@@ -22,9 +29,9 @@ const CLOSE_QUOTE = ' »'
 
 /** What came of the player's choice, as the card shows it. */
 export interface EventResult {
-  /** The label of the choice made. */
+  /** The label of the choice made, its amounts written. */
   readonly choice: string
-  /** What came of it, as the content writes it. */
+  /** What came of it, as the content writes it, its amounts written. */
   readonly text: string
   /** What it changed, one plain line each (see eventChanges.ts). */
   readonly changes: readonly string[]
@@ -32,6 +39,13 @@ export interface EventResult {
 
 interface EventCardViewProps {
   card: Card
+  /** The game's difficulty, which sets the amounts the card shows. */
+  difficulty: DifficultyId
+  /**
+   * How the game scales the cards (see `scalingOf`); the shipped scaling
+   * by default.
+   */
+  scaling?: Pick<EventContent, 'scaling'>
   /** The URL of the character's portrait; null shows a silhouette. */
   portrait: string | null
   /** Null while the player chooses; then what came of the choice. */
@@ -51,12 +65,16 @@ interface EventCardViewProps {
 
 /**
  * An event card: who brings it, the title, the situation and their words,
- * then a large button for each choice, with its key and the tags the
- * content gives it. Once chosen, what came of it takes the choices' place,
- * with « Continuer ». There is no way to close it before choosing.
+ * then a large button for each choice, with its key and its tags at the
+ * game's difficulty (see `choiceTags`); the amounts in the text are those
+ * of that difficulty too (see `cardText`). Once chosen, what came of it takes
+ * the choices' place, with « Continuer ». There is no way to close it
+ * before choosing.
  */
 export function EventCardView({
   card,
+  difficulty,
+  scaling = EVENTS,
   portrait,
   result,
   allowed,
@@ -66,6 +84,8 @@ export function EventCardView({
   resultRef,
 }: EventCardViewProps) {
   const { character, title, situation, quote, choices } = card
+  const text = (written: string, scope: TextScope) =>
+    formatCardText(cardText(written, scope, difficulty, scaling))
   return (
     <div className="panel__content event-card__content">
       <div className="event-card__who">
@@ -93,12 +113,12 @@ export function EventCardView({
       >
         {title}
       </h2>
-      <p className="event-card__situation">{situation}</p>
+      <p className="event-card__situation">{text(situation, card)}</p>
       {quote !== undefined && (
         <blockquote className="event-card__quote">
           <p>
             {OPEN_QUOTE}
-            {quote}
+            {text(quote, card)}
             {CLOSE_QUOTE}
           </p>
         </blockquote>
@@ -121,14 +141,20 @@ export function EventCardView({
                   <span className="event-card__key" aria-hidden="true">
                     {choiceKey(index)}
                   </span>{' '}
-                  <span className="event-card__label">{choice.label}</span>{' '}
+                  <span className="event-card__label">
+                    {text(choice.label, choice)}
+                  </span>{' '}
                   <span className="event-card__tags">
-                    {choice.tags.map((tag, tagIndex) => (
-                      <span key={tagIndex}>
-                        {tagIndex > 0 && ' '}
-                        <span className="event-card__tag">{tag}</span>
-                      </span>
-                    ))}
+                    {choiceTags(choice, difficulty, scaling).map(
+                      (tag, tagIndex) => (
+                        <span key={tagIndex}>
+                          {tagIndex > 0 && ' '}
+                          <span className="event-card__tag">
+                            {formatChoiceTag(tag)}
+                          </span>
+                        </span>
+                      ),
+                    )}
                   </span>
                 </button>
                 {forbidden && (
@@ -190,7 +216,8 @@ function Silhouette() {
 
 /**
  * What came of `record`, the choice made on `card` between `before` and
- * `after`; null if the card has no such choice or outcome.
+ * `after`, with the amounts of `after`'s game; null if the card has no such
+ * choice or outcome.
  */
 function eventResult(
   card: Card,
@@ -201,9 +228,13 @@ function eventResult(
   const choice = card.choices.find(({ id }) => id === record.choice)
   const outcome = choice?.outcomes[record.outcome]
   if (choice === undefined || outcome === undefined) return null
+  const { difficulty } = after.profile
+  const scaling = scalingOf(after)
   return {
-    choice: choice.label,
-    text: outcome.result,
+    choice: formatCardText(cardText(choice.label, choice, difficulty, scaling)),
+    text: formatCardText(
+      cardText(outcome.result, outcome, difficulty, scaling),
+    ),
     changes: choiceChanges(before, after).map((line) =>
       formatChangeLine(line, before.day),
     ),
@@ -285,6 +316,8 @@ export default function EventCard() {
     >
       <EventCardView
         card={card}
+        difficulty={game.profile.difficulty}
+        scaling={scalingOf(game)}
         portrait={portraitUrl(card.character.id)}
         result={result}
         allowed={allowed}

@@ -403,8 +403,8 @@ describe('the week of « La grosse commande »', () => {
     const { state } = bigOrderWeek('payeLivraison')
     const paid = lastWeekOf(state).days.find(({ day }) => day === THURSDAY)
     const cashSales = cashSalesOn(state.journal, THURSDAY)
-    expect(paid?.sales).toBe(cashSales + 67_500)
-    expect(paid?.cashReceived).toBe(cashSales + 67_500)
+    expect(paid?.sales).toBe(cashSales + 62_500)
+    expect(paid?.cashReceived).toBe(cashSales + 62_500)
   })
 
   it('counts what Gilles pays later as cash received that day, not as ventes', () => {
@@ -445,11 +445,17 @@ describe('a year of weeks', () => {
     let checked = 0
     let eventful = 0
     let onCredit = 0
+    const random = chooser(7, EVENTS)
     const { weeks } = play(
       startedAs(),
       7 * 53,
       EVENTS,
-      chooser(7, EVENTS),
+      // The order taken on credit, so that some week sells on credit; every
+      // other card answered at random.
+      (state) =>
+        state.events.pending?.event === 'grosseCommande'
+          ? 'accepter'
+          : random(state),
       (state) => {
         const report = lastWeekOf(state)
         expectAsTheBooks(report, state.journal, openingCash())

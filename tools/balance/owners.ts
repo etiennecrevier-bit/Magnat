@@ -1,17 +1,32 @@
-import type { DifficultyId, EventContent } from '../../src/content/schema.ts'
+import type {
+  DifficultyId,
+  EventContent,
+  PercentileContent,
+  Standing,
+} from '../../src/content/schema.ts'
 import { EVENTS } from '../../src/engine/day.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
+import { PERCENTILES as SHIPPED_PERCENTILES } from '../../src/engine/percentiles.ts'
 import { int, isRngState, seedRng } from '../../src/engine/rng.ts'
+import { standingOf } from '../../src/engine/standing.ts'
 import type { GameState } from '../../src/engine/types.ts'
 import { incomeStatement } from '../../src/finance/statements.ts'
-import { eventChooser, playMorning, startGame } from '../sim/simulate.ts'
+import {
+  answerEvent,
+  eventChooser,
+  playMorning,
+  startGame,
+} from '../sim/simulate.ts'
 import { branchEvent, sampleStream, type EventSample } from './eventBranches.ts'
 import { STRATEGIES, strategyChanges, type Strategy } from './strategies.ts'
 
 // The owners `npm run balance -- --percentiles` compares the player with:
 // games that each hold a strategy of the grid drawn from their seed, answer
 // the event cards at random, and note the bénéfice net at each Sunday's
-// close. No I/O: phase3.ts writes the results.
+// close. At a difficulty whose draw follows the player's standing, the
+// owners draw against the table they make, built week by week, so it never
+// depends on the table shipped before. No I/O: phase3.ts writes the
+// results.
 
 // A calendar fact, not a tunable: day 0 is a Monday, so week n runs from
 // day 7(n - 1) to its Sunday, day 7n - 1.
@@ -47,6 +62,12 @@ export function ownerStrategy(
   return strategy
 }
 
+/** A card drawn by weight, and the owner's standing the morning it came. */
+export interface StandingDraw {
+  readonly event: string
+  readonly standing: Standing
+}
+
 /** One owner's game. */
 export interface OwnerGame {
   readonly seed: number
@@ -57,6 +78,12 @@ export interface OwnerGame {
    */
   readonly weeklyNetIncome: readonly Cents[]
   /**
+   * At a difficulty whose draw follows the standing (see `adapts`), each
+   * card drawn by weight, in the order they came, with the standing that
+   * drew it; empty at the others. Follow-ups are not drawn by weight.
+   */
+  readonly draws: readonly StandingDraw[]
+  /**
    * One occurrence of each card that came up, drawn at random among its
    * occurrences, every choice played out (see `branchEvent`); in the order
    * of the cards in the content. Empty unless the game branches.
@@ -64,10 +91,19 @@ export interface OwnerGame {
   readonly events: readonly EventSample[]
 }
 
+/** Whether `content`'s draw follows the player's standing at `difficulty`. */
+export function adapts(
+  content: EventContent,
+  difficulty: DifficultyId,
+): boolean {
+  return content.adaptiveDraw?.difficulties.includes(difficulty) ?? false
+}
+
 /**
  * Plays game `seed` at `difficulty` for `weeks` weeks from day 0, its owner
  * holding `ownerStrategy(seed)` and answering the cards of `content` with
- * `eventChooser('random', seed)`, as `npm run sim -- --events random` does.
+ * `eventChooser('random', seed)`, as `npm run sim -- --events random` does,
+ * the standing read against `percentiles`, by default the shipped table.
  * With `branch`, each card that came up then has one of its occurrences
  * drawn with `sampleStream(seed)` and branched. Throws a RangeError unless
  * `weeks` is a whole number from 1.
@@ -79,9 +115,11 @@ export function playOwner(
   {
     content = EVENTS,
     branch = true,
+    percentiles = SHIPPED_PERCENTILES,
   }: {
     readonly content?: EventContent
     readonly branch?: boolean
+    readonly percentiles?: PercentileContent
   } = {},
 ): OwnerGame {
   if (!Number.isSafeInteger(weeks) || weeks < 1) {
@@ -89,9 +127,11 @@ export function playOwner(
   }
   const strategy = ownerStrategy(seed)
   const choose = eventChooser('random', seed)
+  const rules = adapts(content, difficulty) ? content.adaptiveDraw : undefined
   let state = startGame(seed, difficulty, strategyChanges(strategy))
   const mornings = new Map<string, GameState[]>()
   const weeklyNetIncome: Cents[] = []
+  const draws: StandingDraw[] = []
   for (let day = 0; day < weeks * DAYS_PER_WEEK; day += 1) {
     const { pending } = state.events
     if (branch && pending !== null) {
@@ -100,7 +140,13 @@ export function playOwner(
         state,
       ])
     }
-    state = playMorning(state, content, choose)
+    if (rules !== undefined && pending !== null && !pending.followUp) {
+      draws.push({
+        event: pending.event,
+        standing: standingOf(state, rules, percentiles),
+      })
+    }
+    state = playMorning(state, content, choose, percentiles)
     if ((day + 1) % DAYS_PER_WEEK === 0) {
       weeklyNetIncome.push(
         incomeStatement(state.journal, 0, day).netIncome.amount,
@@ -118,7 +164,7 @@ export function playOwner(
     const morning = seen[index]
     if (morning !== undefined) events.push(branchEvent(morning, seed, content))
   }
-  return { seed, strategy, weeklyNetIncome, events }
+  return { seed, strategy, weeklyNetIncome, draws, events }
 }
 
 /** Every owner's game at one difficulty, in seed order. */
@@ -129,17 +175,23 @@ export interface OwnersRun {
 
 /**
  * Plays seeds 1 to `games` at `difficulty` for `years` years of 52 weeks
- * (see `playOwner`). Throws a RangeError unless both are whole numbers from
- * 1.
+ * with the cards of `content` (see `playOwner`). Where the draw follows the
+ * standing, the owners read it against the table they make themselves (see
+ * `stagedPercentiles`), so the table they make is the one they played
+ * against; elsewhere no table is read. Throws a RangeError unless both are
+ * whole numbers from 1, and an Error if the owners did not play the games
+ * the table came from, which would be a bug.
  */
 export function runOwners({
   years,
   games,
   difficulty,
+  content = EVENTS,
 }: {
   readonly years: number
   readonly games: number
   readonly difficulty: DifficultyId
+  readonly content?: EventContent
 }): OwnersRun {
   for (const [name, value] of [
     ['Years', years],
@@ -149,12 +201,84 @@ export function runOwners({
       throw new RangeError(`${name} must be a whole number from 1: ${value}`)
     }
   }
-  return {
-    difficulty,
-    games: Array.from({ length: games }, (_, index) =>
-      playOwner(index + 1, difficulty, years * WEEKS_PER_YEAR),
-    ),
+  const weeks = years * WEEKS_PER_YEAR
+  const staged = adapts(content, difficulty)
+    ? stagedPercentiles(games, difficulty, weeks, content)
+    : undefined
+  const played = Array.from({ length: games }, (_, index) =>
+    playOwner(index + 1, difficulty, weeks, {
+      content,
+      percentiles: staged,
+    }),
+  )
+  if (
+    staged !== undefined &&
+    JSON.stringify(percentileRows(played)) !==
+      JSON.stringify(staged.difficulties[difficulty])
+  ) {
+    throw new Error(`The ${difficulty} owners left the table they made`)
   }
+  return { difficulty, games: played }
+}
+
+/**
+ * The percentile table of seeds 1 to `games` at `difficulty`, `weeks` weeks
+ * each, the owners drawing by their standing against the table as it is
+ * built: all the owners play each week side by side, and once each has
+ * closed its Sunday, the week's row is made from their bénéfice net, before
+ * any of them draws the card of the Monday, the first morning that reads
+ * that row. So the table is the one the owners played against, whatever the
+ * table shipped. The other difficulties copy this one's rows: none reads
+ * them. No branching: `runOwners` plays the games again for that.
+ */
+export function stagedPercentiles(
+  games: number,
+  difficulty: DifficultyId,
+  weeks: number,
+  content: EventContent = EVENTS,
+): PercentileContent {
+  const owners = Array.from({ length: games }, (_, index) => {
+    const seed = index + 1
+    return {
+      choose: eventChooser('random', seed),
+      state: startGame(seed, difficulty, strategyChanges(ownerStrategy(seed))),
+    }
+  })
+  const rows: Cents[][] = []
+  const table = (): PercentileContent => ({
+    games,
+    percentiles: [...PERCENTILES],
+    difficulties: { facile: rows, moyen: rows, difficile: rows },
+  })
+  for (let week = 1; week <= weeks; week += 1) {
+    const sunday = week * DAYS_PER_WEEK - 1
+    for (const owner of owners) {
+      while (owner.state.day < sunday) {
+        owner.state = playMorning(owner.state, content, owner.choose, table())
+      }
+      // Answered once, so the chooser draws once for the Sunday.
+      owner.state = answerEvent(owner.state, content, owner.choose)
+    }
+    // Monday's draw reads this week's row, made from Sunday's close: each
+    // Sunday is played once for its close, whatever Monday draws then, and
+    // played again once the row is made.
+    rows.push(
+      percentileRow(
+        owners.map(
+          ({ state }) =>
+            incomeStatement(
+              playMorning(state, content, null, table()).journal,
+              0,
+              sunday,
+            ).netIncome.amount,
+        ),
+      ),
+    )
+    for (const owner of owners) {
+      owner.state = playMorning(owner.state, content, null, table())
+    }
+  }
+  return table()
 }
 
 /**
@@ -195,12 +319,21 @@ export function percentileRows(
   if (games.some(({ weeklyNetIncome }) => weeklyNetIncome.length !== weeks)) {
     throw new RangeError('The games played different numbers of weeks')
   }
-  return Array.from({ length: weeks }, (_, week) => {
-    const sorted = games
-      .map(({ weeklyNetIncome }) => weeklyNetIncome[week] ?? 0)
-      .sort((a, b) => a - b)
-    return percentiles.map((percentile) => quantileCents(sorted, percentile))
-  })
+  return Array.from({ length: weeks }, (_, week) =>
+    percentileRow(
+      games.map(({ weeklyNetIncome }) => weeklyNetIncome[week] ?? 0),
+      percentiles,
+    ),
+  )
+}
+
+/** The `percentiles` of `amounts`, in any order (see `quantileCents`). */
+export function percentileRow(
+  amounts: readonly number[],
+  percentiles: readonly number[] = PERCENTILES,
+): Cents[] {
+  const sorted = [...amounts].sort((a, b) => a - b)
+  return percentiles.map((percentile) => quantileCents(sorted, percentile))
 }
 
 /**
