@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createInitialState, toCalendar } from '../engine/clock.ts'
+import {
+  createInitialState,
+  startChallenge,
+  toCalendar,
+} from '../engine/clock.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import type { Day, GameState } from '../engine/types.ts'
 import { startAutosave, type AutosaveHost } from './autosave.ts'
@@ -104,6 +108,33 @@ describe('startAutosave', () => {
     page.setHidden(true)
     expect(write).toHaveBeenCalledOnce()
     expect(page.listeners()).toBe(0)
+  })
+
+  it('never saves a Défi, which would replace the long game', () => {
+    // « Les travaux de la rue Saint-Denis » crosses into June.
+    const store = createGameStore(
+      startChallenge('travauxSaintDenis', 42),
+      NO_EVENTS,
+    )
+    const write = vi.fn<(game: GameState) => void>()
+    const page = createFakeHost()
+    startAutosave(store, write, page.host)
+    store.getState().advance(LAST_OF_MAY)
+    page.setHidden(true)
+    expect(toCalendar(store.getState().game.day).month).toBe(6)
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('saves the game that follows a Défi in the same store', () => {
+    const store = createGameStore(
+      startChallenge('travauxSaintDenis', 42),
+      NO_EVENTS,
+    )
+    const write = vi.fn<(game: GameState) => void>()
+    startAutosave(store, write, createFakeHost().host)
+    store.getState().startGame(createInitialState(42))
+    store.getState().advance(LAST_OF_MAY + 1)
+    expect(write).toHaveBeenCalledExactlyOnceWith(store.getState().game)
   })
 })
 

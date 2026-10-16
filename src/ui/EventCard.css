@@ -95,6 +95,26 @@
   background: #fbe7c2;
 }
 
+/* A choice the Défi leaves out: plainly out of reach, with the reason
+   under it. */
+.event-card__choice:disabled {
+  border-color: #c9b48f;
+  background: #f6ecd9;
+  color: #5c5048;
+  cursor: not-allowed;
+}
+
+.event-card__choice:disabled .event-card__key {
+  background: #7b6f63;
+}
+
+.event-card__forbidden {
+  margin: 0.25rem 0 0;
+  color: #5c5048;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 .event-card__choice:focus-visible,
 .event-card__continue:focus-visible {
   outline: 3px solid #2186eb;

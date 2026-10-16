@@ -1,0 +1,56 @@
+/* The card itself is the shared .panel (panel.css). Text colours keep at
+   least 4.5:1 against its cream #fff7e8. */
+.defi-end {
+  --panel-width: 32rem;
+}
+
+.defi-end__content {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.defi-end__defi {
+  margin: 0;
+  color: #5c5048;
+  font-weight: 600;
+}
+
+.defi-end__content h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+}
+
+.defi-end__content h2:focus {
+  outline: none;
+}
+
+.defi-end__medal {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.defi-end__why {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid #a61b1b;
+  background: #fbe7c2;
+  font-weight: 600;
+}
+
+.defi-end__figures {
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.defi-end__figures li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid #e3d3b4;
+}
+
+.defi-end__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

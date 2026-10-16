@@ -1,8 +1,11 @@
 import { useEffect, useId, useRef } from 'react'
 import { useStore } from 'zustand'
 import type { ReportText } from '../content/reportText.ts'
+import { defiById } from '../engine/challenge.ts'
+import { DEFIS } from '../engine/day.ts'
 import type { Cents } from '../engine/money.ts'
-import type { WeekReport } from '../engine/types.ts'
+import type { ChallengeState, WeekReport } from '../engine/types.ts'
+import { DefiProgressView } from './DefiPanel.tsx'
 import {
   formatDayAndMonth,
   formatGamePeriod,
@@ -267,23 +270,43 @@ export function WeekChart({
   )
 }
 
+/** The Défi under way, as the report shows it: where it stands. */
+function DefiInProgress({ challenge }: { challenge: ChallengeState }) {
+  const defi = defiById(DEFIS, challenge.id)
+  return (
+    <section className="weekly-report__defi" aria-label="Défi en cours">
+      <p className="weekly-report__defi-title">
+        Défi en cours{COLON} {defi.title}
+      </p>
+      <p className="weekly-report__defi-days">
+        {challenge.progress.daysPlayed} jours joués sur {defi.lengthDays}
+      </p>
+      <DefiProgressView challenge={challenge} defi={defi} />
+    </section>
+  )
+}
+
 interface WeeklyReportViewProps {
   report: WeekReport
   /** Whether « Ouvrir le bilan chaque semaine » is on. */
   everyWeek: boolean
   onEveryWeekChange: (everyWeek: boolean) => void
+  /** The game's Défi; the report shows it while it is under way. */
+  challenge?: ChallengeState | null
   text?: ReportText
 }
 
 /**
  * The « Bilan de la semaine » of `report`: its dates, ventes, bénéfice and
  * encaisse, the chart of its days, its facts, La Presse-Citron's headline,
- * and the switch that opens it every week. It never explains a term.
+ * and the switch that opens it every week, with the Défi under way, if
+ * any, after the figures. It never explains a term.
  */
 export function WeeklyReportView({
   report,
   everyWeek,
   onEveryWeekChange,
+  challenge = null,
   text = REPORT_TEXT,
 }: WeeklyReportViewProps) {
   const facts = factLines(report, text)
@@ -293,6 +316,9 @@ export function WeeklyReportView({
         {formatGamePeriod(report.firstDay, report.firstDay + DAYS_PER_WEEK - 1)}
       </p>
       <WeekFigures report={report} className="weekly-report__figures" />
+      {challenge?.status === 'enCours' && (
+        <DefiInProgress challenge={challenge} />
+      )}
       <WeekChart days={weekChart(report)} notes={creditNotes(report, text)} />
       {facts.length > 0 && (
         <ul className="weekly-report__facts">
@@ -318,13 +344,17 @@ export function WeeklyReportView({
   )
 }
 
-/** The report of the app store's last week, with the switch wired. */
+/**
+ * The report of the app store's last week, with the switch wired, and the
+ * game's Défi under way.
+ */
 export function LastWeekReport({
   settings = settingsStore,
 }: {
   settings?: SettingsStore
 }) {
   const report = useGame((state) => state.game.lastWeek)
+  const challenge = useGame((state) => state.game.challenge)
   const everyWeek = useStore(settings, (state) => state.openReportEveryWeek)
   const setEveryWeek = useStore(
     settings,
@@ -337,6 +367,7 @@ export function LastWeekReport({
       report={report}
       everyWeek={everyWeek}
       onEveryWeekChange={setEveryWeek}
+      challenge={challenge}
     />
   )
 }

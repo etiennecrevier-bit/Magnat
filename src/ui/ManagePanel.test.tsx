@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { DecisionKind } from '../content/schema.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { startingDecisions } from '../engine/decisions.ts'
 import { cents } from '../engine/money.ts'
@@ -7,7 +8,7 @@ import type { DaySummary, Decisions } from '../engine/types.ts'
 import ManagePanel, { ManagePanelView } from './ManagePanel.tsx'
 import { NumberFieldView } from './NumberField.tsx'
 import { segmentFacts } from './segmentFacts.ts'
-import { gameStore, type GameStoreState } from './store.ts'
+import { gameStore, newChallenge, type GameStoreState } from './store.ts'
 
 // A static render reads a Zustand store's initial state, so the connected
 // panel reads the app store's current state through this stand-in.
@@ -30,11 +31,13 @@ const S = ' '
 function render(
   decisions: Decisions = startingDecisions(),
   lastDay: DaySummary | null = null,
+  locked: readonly DecisionKind[] = [],
 ) {
   return renderToStaticMarkup(
     <ManagePanelView
       decisions={decisions}
       lastDay={lastDay}
+      locked={locked}
       onChange={() => {}}
       onClose={() => {}}
     />,
@@ -271,6 +274,76 @@ describe('ManagePanelView', () => {
     expect(html).toMatch(/<tfoot><tr><th scope="row">Total<\/th>/)
   })
 
+  it('disables the days a Défi locks, saying why, and leaves the rest', () => {
+    const html = render(startingDecisions(), null, ['daysOpen'])
+    expect(html).toContain(
+      '<h3 id="manage-days">Horaire</h3><p id="manage-locked-daysOpen" class="manage__locked">Le Défi fixe l&#x27;horaire.</p>',
+    )
+    const days = tags(html, 'button').filter(
+      (tag) => attribute(tag, 'aria-pressed') !== undefined,
+    )
+    expect(days).toHaveLength(7)
+    for (const day of days) {
+      expect(day).toContain(' disabled=""')
+      expect(attribute(day, 'aria-describedby')).toBe('manage-locked-daysOpen')
+    }
+    expect(html.match(/ disabled=""/g)).toHaveLength(7)
+    expect(html.match(/class="manage__locked"/g)).toHaveLength(1)
+  })
+
+  it('disables each field and stepper of the other kinds a Défi locks', () => {
+    const html = render(startingDecisions(), null, [
+      'price',
+      'restock',
+      'ownerWeeklyPay',
+      'marketingDaily',
+    ])
+    expect(
+      [
+        ...html.matchAll(/<p id="([^"]*)" class="manage__locked">([^<]*)</g),
+      ].map(([, id, text]) => [id, text]),
+    ).toEqual([
+      ['manage-locked-price', 'Le Défi fixe les prix.'],
+      ['manage-locked-restock', 'Le Défi fixe les commandes.'],
+      ['manage-locked-ownerWeeklyPay', 'Le Défi fixe votre salaire.'],
+      ['manage-locked-marketingDaily', 'Le Défi fixe le budget de marketing.'],
+    ])
+    const fields = tags(html, 'input')
+    expect(fields.length).toBeGreaterThan(0)
+    for (const field of fields) {
+      expect(field).toContain(' disabled=""')
+      const id = attribute(field, 'id') ?? ''
+      const kind = id.startsWith('manage-price-')
+        ? 'price'
+        : id.startsWith('manage-restock-')
+          ? 'restock'
+          : id === 'manage-pay-weekly'
+            ? 'ownerWeeklyPay'
+            : 'marketingDaily'
+      expect(attribute(field, 'aria-describedby')).toBe(
+        `${id}-unit manage-locked-${kind}`,
+      )
+    }
+    const steppers = tags(html, 'button').filter((tag) =>
+      tag.includes('manage__step'),
+    )
+    expect(steppers.length).toBeGreaterThan(0)
+    for (const stepper of steppers) {
+      expect(stepper).toContain(' disabled=""')
+      expect(attribute(stepper, 'aria-describedby')).toBe('manage-locked-price')
+    }
+    // The days stay free.
+    expect(
+      tags(html, 'button').filter((tag) => tag.includes('aria-pressed')),
+    ).not.toContainEqual(expect.stringContaining('disabled'))
+  })
+
+  it('locks nothing outside a Défi', () => {
+    const html = render()
+    expect(html).not.toContain('manage__locked')
+    expect(html).not.toContain('disabled=""')
+  })
+
   it('makes every button a plain button and keeps the reading order', () => {
     const html = render(startingDecisions(), playedDay())
     expect(html).not.toMatch(/<button(?![^>]*type="button")/)
@@ -303,6 +376,14 @@ describe('NumberFieldView', () => {
 })
 
 describe('ManagePanel', () => {
+  it('disables what the Défi played locks', () => {
+    gameStore.getState().startGame(newChallenge('?seed=7', 'moisSansConge'))
+    const html = renderToStaticMarkup(<ManagePanel />)
+    expect(html).toContain('Le Défi fixe l&#x27;horaire.')
+    expect(button(html, 'lundi')).toContain(' disabled=""')
+    expect(input(html, 'manage-pay-weekly')).not.toContain('disabled')
+  })
+
   it('is a modal dialog labelled by its title', () => {
     expect(renderToStaticMarkup(<ManagePanel />)).toMatch(
       /^<dialog class="panel manage" aria-labelledby="manage-title"><div class="panel__content">.*<\/dialog>$/,

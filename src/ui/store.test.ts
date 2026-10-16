@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import eventsJson from '../content/events.json'
 import { loadEventContent } from '../content/schema.ts'
-import { createInitialState, tick } from '../engine/clock.ts'
+import { createInitialState, startChallenge, tick } from '../engine/clock.ts'
 import {
   CUSTOMERS,
   DIFFICULTIES,
@@ -20,6 +20,7 @@ import {
   PAUSED,
   createGameStore,
   gameStore,
+  newChallenge,
   newGame,
   seedFromSearch,
 } from './store.ts'
@@ -850,6 +851,165 @@ describe('the weekly report', () => {
     expect(reported).toEqual(
       [7, 14, 21, 28].filter((monday) => monday <= game.day),
     )
+  })
+})
+
+/** The Défi `defiId` on `seed`, played with no event to its end. */
+function playedOut(defiId: string, seed: number): GameState {
+  let game = startChallenge(defiId, seed)
+  while (game.challenge?.status === 'enCours') game = tick(game)
+  return game
+}
+
+describe('newChallenge', () => {
+  it('starts the Défi on the seed the page names, without drawing one', () => {
+    const random = stubRandomSeed(123)
+    expect(newChallenge('?seed=42', 'travauxSaintDenis')).toEqual(
+      startChallenge('travauxSaintDenis', 42),
+    )
+    expect(random).not.toHaveBeenCalled()
+  })
+
+  it.each(['', '?seed=1e3', '?seed=4294967296'])(
+    'starts "%s" on a random seed',
+    (search) => {
+      const random = stubRandomSeed(123)
+      expect(newChallenge(search, 'travauxSaintDenis')).toEqual(
+        startChallenge('travauxSaintDenis', 123),
+      )
+      expect(random).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it("keeps the player's business name and avatar, at the Défi's difficulty", () => {
+    const profile: Profile = {
+      businessName: 'Chez Mimi',
+      avatar: 'femme',
+      difficulty: 'difficile',
+    }
+    expect(
+      newChallenge('?seed=42', 'travauxSaintDenis', profile).profile,
+    ).toEqual({ ...profile, difficulty: 'moyen' })
+  })
+
+  it('throws for a Défi that does not exist, whatever the seed', () => {
+    stubRandomSeed(123)
+    expect(() => newChallenge('?seed=42', 'inconnu')).toThrow(RangeError)
+    expect(() => newChallenge('', 'inconnu')).toThrow(RangeError)
+  })
+})
+
+describe('a Défi', () => {
+  it('stops on the morning after its last day, on its end in place of the week, paused for good', () => {
+    // « La semaine des 1 000 $ » runs from Monday, May 8 (day 7), to
+    // Sunday, May 14: its end comes on a Monday the full report would show.
+    const store = createGameStore(
+      newChallenge('?seed=7', 'semaineDesMilleDollars'),
+      EVENTS,
+      REPORT_AT_FIRST,
+    )
+    store.getState().setSpeed(3)
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      game: { day: 14, challenge: { status: 'reussi' } },
+      panel: 'defiEnd',
+      speed: PAUSED,
+      resumeSpeed: 3,
+      reportWaiting: false,
+      slideIn: null,
+    })
+
+    // Nothing plays a day, closes the end, or resumes the game.
+    const { game } = store.getState()
+    store.getState().advance(10)
+    store.getState().closePanel()
+    store.getState().togglePause()
+    store.getState().setSpeed(10)
+    store.getState().openPanel('manage')
+    expect(store.getState()).toMatchObject({
+      panel: 'defiEnd',
+      speed: PAUSED,
+    })
+    expect(store.getState().game).toBe(game)
+  })
+
+  it('stops on the morning a condition breaks, before its last day', () => {
+    // On seed 7, the owner of « Le mois sans congé » falls asleep on day 15.
+    const store = createGameStore(newChallenge('?seed=7', 'moisSansConge'))
+    store.getState().advance(40)
+    expect(store.getState()).toMatchObject({
+      game: {
+        day: 15,
+        challenge: {
+          status: 'echoue',
+          medal: null,
+          progress: { daysPlayed: 15 },
+        },
+      },
+      panel: 'defiEnd',
+      speed: PAUSED,
+    })
+    expect(() => store.getState().advance(1)).not.toThrow()
+    expect(store.getState().game.day).toBe(15)
+  })
+
+  it('opens its end once the panel open when it ended closes', () => {
+    // Every panel pauses the game, so only a test gets here.
+    const store = createGameStore(
+      newChallenge('?seed=7', 'semaineDesMilleDollars'),
+    )
+    store.getState().setSpeed(3)
+    store.getState().openPanel('defi')
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      game: { day: 14 },
+      panel: 'defi',
+      speed: PAUSED,
+      resumeSpeed: 3,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: 'defiEnd',
+      speed: PAUSED,
+      resumeSpeed: 3,
+    })
+  })
+
+  it('opens its panel from the top bar, pausing the game until it closes', () => {
+    const store = createGameStore(newChallenge('?seed=7', 'travauxSaintDenis'))
+    store.getState().setSpeed(3)
+    store.getState().openPanel('defi')
+    expect(store.getState()).toMatchObject({
+      panel: 'defi',
+      speed: PAUSED,
+      resumeSpeed: 3,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ panel: null, speed: 3 })
+  })
+
+  it('opens a Défi over on its end, paused, and the next game as usual', () => {
+    const store = createGameStore(createInitialState(1))
+    store.getState().startGame(playedOut('semaineDesMilleDollars', 7))
+    expect(store.getState()).toMatchObject({
+      game: { day: 14 },
+      panel: 'defiEnd',
+      speed: PAUSED,
+      resumeSpeed: NORMAL_SPEED,
+    })
+    store.getState().closePanel()
+    expect(store.getState().panel).toBe('defiEnd')
+
+    // « Rejouer »
+    store
+      .getState()
+      .startGame(newChallenge('?seed=8', 'semaineDesMilleDollars'))
+    expect(store.getState()).toMatchObject({
+      game: { day: 7, challenge: { status: 'enCours' } },
+      panel: null,
+      speed: NORMAL_SPEED,
+      resumeSpeed: null,
+    })
   })
 })
 

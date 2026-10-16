@@ -18,6 +18,10 @@ interface NumberFieldViewProps {
   /** Controls on either side of the field, such as steppers. */
   before?: ReactNode
   after?: ReactNode
+  /** Whether the field cannot be changed, such as in a Défi that locks it. */
+  disabled?: boolean
+  /** The id of what else describes the field, such as why it is locked. */
+  describedBy?: string
 }
 
 /** A labelled text field for an amount or a number of units. */
@@ -32,9 +36,16 @@ export function NumberFieldView({
   onCommit,
   before,
   after,
+  disabled = false,
+  describedBy,
 }: NumberFieldViewProps) {
   const unitId = `${id}-unit`
   const errorId = `${id}-error`
+  const describedByIds = [
+    unitId,
+    ...(error === null ? [] : [errorId]),
+    ...(describedBy === undefined ? [] : [describedBy]),
+  ]
   return (
     <div className="field">
       <label className="field__label" htmlFor={id}>
@@ -49,8 +60,9 @@ export function NumberFieldView({
           inputMode={inputMode}
           autoComplete="off"
           value={text}
+          disabled={disabled}
           aria-invalid={error !== null}
-          aria-describedby={error === null ? unitId : `${unitId} ${errorId}`}
+          aria-describedby={describedByIds.join(' ')}
           onChange={(event) => onTextChange(event.target.value)}
           onBlur={onCommit}
           onKeyDown={(event) => {

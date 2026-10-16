@@ -1,8 +1,14 @@
 import { useEffect, useRef, type Ref } from 'react'
 import type { EventCard as Card } from '../content/schema.ts'
-import { EVENTS } from '../engine/day.ts'
+import { allowedChoices } from '../engine/challenge.ts'
+import { DEFIS, EVENTS } from '../engine/day.ts'
 import type { EventRecord, GameState } from '../engine/types.ts'
-import { choiceForKey, choiceKey, handleCardEscape } from './choiceKeys.ts'
+import {
+  allowedChoiceForKey,
+  choiceKey,
+  handleCardEscape,
+} from './choiceKeys.ts'
+import { FORCED_CHOICE_REASON } from './defis.ts'
 import { choiceChanges, formatChangeLine } from './eventChanges.ts'
 import { portraitUrl } from './portraits.ts'
 import { gameStore, useGame } from './store.ts'
@@ -30,6 +36,11 @@ interface EventCardViewProps {
   portrait: string | null
   /** Null while the player chooses; then what came of the choice. */
   result: EventResult | null
+  /**
+   * The ids of the choices a Défi leaves the player; null leaves every
+   * choice. The others are disabled, with the reason.
+   */
+  allowed: readonly string[] | null
   onChoose: (choiceId: string) => void
   onContinue: () => void
   /** The title, which takes the focus when the card opens. */
@@ -48,6 +59,7 @@ export function EventCardView({
   card,
   portrait,
   result,
+  allowed,
   onChoose,
   onContinue,
   titleRef,
@@ -93,29 +105,40 @@ export function EventCardView({
       )}
       {result === null ? (
         <ol className="event-card__choices">
-          {choices.map((choice, index) => (
-            <li key={choice.id}>
-              <button
-                type="button"
-                className="event-card__choice"
-                aria-keyshortcuts={choiceKey(index)}
-                onClick={() => onChoose(choice.id)}
-              >
-                <span className="event-card__key" aria-hidden="true">
-                  {choiceKey(index)}
-                </span>{' '}
-                <span className="event-card__label">{choice.label}</span>{' '}
-                <span className="event-card__tags">
-                  {choice.tags.map((tag, tagIndex) => (
-                    <span key={tagIndex}>
-                      {tagIndex > 0 && ' '}
-                      <span className="event-card__tag">{tag}</span>
-                    </span>
-                  ))}
-                </span>
-              </button>
-            </li>
-          ))}
+          {choices.map((choice, index) => {
+            const forbidden = allowed !== null && !allowed.includes(choice.id)
+            const reasonId = `event-choice-${choice.id}-reason`
+            return (
+              <li key={choice.id}>
+                <button
+                  type="button"
+                  className="event-card__choice"
+                  aria-keyshortcuts={forbidden ? undefined : choiceKey(index)}
+                  disabled={forbidden}
+                  aria-describedby={forbidden ? reasonId : undefined}
+                  onClick={() => onChoose(choice.id)}
+                >
+                  <span className="event-card__key" aria-hidden="true">
+                    {choiceKey(index)}
+                  </span>{' '}
+                  <span className="event-card__label">{choice.label}</span>{' '}
+                  <span className="event-card__tags">
+                    {choice.tags.map((tag, tagIndex) => (
+                      <span key={tagIndex}>
+                        {tagIndex > 0 && ' '}
+                        <span className="event-card__tag">{tag}</span>
+                      </span>
+                    ))}
+                  </span>
+                </button>
+                {forbidden && (
+                  <p id={reasonId} className="event-card__forbidden">
+                    {FORCED_CHOICE_REASON}
+                  </p>
+                )}
+              </li>
+            )
+          })}
         </ol>
       ) : (
         <section
@@ -210,6 +233,7 @@ export default function EventCard() {
   const id = pending?.event ?? chosen?.event
   const card = EVENTS.events.find((event) => event.id === id)
   const choosing = pending !== null ? card : undefined
+  const allowed = choosing === undefined ? null : allowedChoices(game, DEFIS)
   const result =
     card === undefined || chosen === undefined || before === null
       ? null
@@ -231,15 +255,14 @@ export default function EventCard() {
   useEffect(() => {
     if (choosing === undefined) return
     const onKeyDown = (event: KeyboardEvent) => {
-      const index = choiceForKey(event, choosing.choices.length)
-      const choice = index === null ? undefined : choosing.choices[index]
-      if (choice === undefined) return
+      const choice = allowedChoiceForKey(event, choosing.choices, allowed)
+      if (choice === null) return
       event.preventDefault()
-      chooseEvent(choice.id)
+      chooseEvent(choice)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [choosing, chooseEvent])
+  }, [choosing, allowed, chooseEvent])
 
   if (card === undefined) return null
   const onContinue = () => dialogRef.current?.close()
@@ -264,6 +287,7 @@ export default function EventCard() {
         card={card}
         portrait={portraitUrl(card.character.id)}
         result={result}
+        allowed={allowed}
         onChoose={chooseEvent}
         onContinue={onContinue}
         titleRef={titleRef}

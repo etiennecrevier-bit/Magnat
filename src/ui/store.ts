@@ -1,8 +1,10 @@
 import { createStore, useStore, type StoreApi } from 'zustand'
 import type { EventContent } from '../content/schema.ts'
-import { createInitialState, tick } from '../engine/clock.ts'
+import { defiById } from '../engine/challenge.ts'
+import { createInitialState, startChallenge, tick } from '../engine/clock.ts'
 import {
   CUSTOMERS,
+  DEFIS,
   DIFFICULTIES,
   ENERGY,
   EVENTS,
@@ -13,6 +15,7 @@ import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
 import { resolveEvent } from '../engine/events.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { Day, GameState, Profile, WeekReport } from '../engine/types.ts'
+import { isChallengeOver } from './defis.ts'
 import { settingsStore } from './settings.ts'
 import { newWeekOf, opensFullReport } from './weeklyReport.ts'
 
@@ -21,12 +24,14 @@ export const PAUSED = 0
 export const NORMAL_SPEED = 1
 
 /**
- * The panels: « Gérer le camion » and « Vos finances », which the top bar
- * opens, the event card, which opens on its own when an event comes up, and
- * the « Bilan de la semaine », which opens on its own on a Monday morning
- * or from the card that slides in.
+ * The panels: « Gérer le camion », « Vos finances » and the Défi's, which
+ * the top bar opens, the event card, which opens on its own when an event
+ * comes up, the « Bilan de la semaine », which opens on its own on a Monday
+ * morning or from the card that slides in, and the end of a Défi, which
+ * opens on its own once the Défi is over and never closes.
  */
-export type Panel = 'manage' | 'finances' | 'event' | 'report'
+export type Panel =
+  'manage' | 'finances' | 'defi' | 'event' | 'report' | 'defiEnd'
 
 /** How the store shows the « Bilan de la semaine ». */
 export interface WeeklyReportOptions {
@@ -86,19 +91,27 @@ export interface GameStoreState {
    * and the game goes on. Does nothing while the full report is open or
    * waits for a panel to close, since the next Monday would replace the
    * week it shows.
+   *
+   * In a Défi, it stops on the morning after the day that ends it, the
+   * engine playing no day past that, and opens the end of the Défi in
+   * place of that morning's report, pausing the game for good; with a
+   * panel already open, it opens when that panel closes. Once the Défi is
+   * over it does nothing.
    */
   advance: (days: number) => void
   /**
    * Opens `panel`: remembers the speed, even `PAUSED`, and pauses. Does
    * nothing if a panel is already open, so that panel and the speed it
-   * remembered stay. The event card only opens on its own. The report takes
-   * the card sliding in away.
+   * remembered stay. The event card and the end of a Défi only open on
+   * their own. The report takes the card sliding in away.
    */
-  openPanel: (panel: Exclude<Panel, 'event'>) => void
+  openPanel: (panel: Exclude<Panel, 'event' | 'defiEnd'>) => void
   /**
-   * Closes the panel and resumes at the speed it remembered. The full report
-   * waiting opens first, then, while an event waits for the player's
-   * choice, the event card, which stays open; the game stays paused.
+   * Closes the panel and resumes at the speed it remembered. Once the Défi
+   * is over, its end opens, or stays, in place, and the game stays paused.
+   * Otherwise the full report waiting opens first, then, while an event
+   * waits for the player's choice, the event card, which stays open; the
+   * game stays paused.
    */
   closePanel: () => void
   /** Takes the card sliding in away. */
@@ -118,7 +131,8 @@ export interface GameStoreState {
   decide: (change: DecisionChange) => void
   /**
    * Plays `game` from now on, new or loaded, at normal speed: paused on the
-   * event card if an event waits for the player's choice.
+   * event card if an event waits for the player's choice, and on the end of
+   * the Défi if it is a Défi over.
    */
   startGame: (game: GameState) => void
 }
@@ -165,18 +179,55 @@ export function newGame(
 }
 
 /**
+ * The Défi `defiId` for `profile`'s business name and avatar, on the seed
+ * `search` names, or on a random one, as `newGame` picks it. Throws a
+ * RangeError if no Défi has the id, or if the engine rejects `profile`.
+ */
+export function newChallenge(
+  search: string,
+  defiId: string,
+  profile: Profile = defaultProfile(),
+): GameState {
+  // Checked first, so the RangeError of a seed the engine rejects is the
+  // only one that falls back to a random seed.
+  defiById(DEFIS, defiId)
+  const start = (seed: number) =>
+    startChallenge(defiId, seed, FOOD_TRUCK, DEFIS, DIFFICULTIES, profile)
+  const seed = seedFromSearch(search)
+  if (seed !== null) {
+    try {
+      return start(seed)
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error
+    }
+  }
+  return start(randomSeed())
+}
+
+/**
+ * The panel a game opens on: the end of its Défi if it is a Défi over, the
+ * event card if an event waits for the player's choice; null otherwise.
+ */
+function openingPanel(game: GameState): 'defiEnd' | 'event' | null {
+  if (isChallengeOver(game)) return 'defiEnd'
+  return game.events.pending !== null ? 'event' : null
+}
+
+/**
  * The store's state for playing `game` from its start, at normal speed: on
- * the event card, paused, if an event waits for the player's choice. The
- * weekly report of a game loaded on a Monday does not show again.
+ * the end of the Défi or the event card, paused, if it opens on one (see
+ * `openingPanel`). The weekly report of a game loaded on a Monday does not
+ * show again.
  */
 function playing(game: GameState) {
-  const waiting = game.events.pending !== null
+  const panel = openingPanel(game)
+  const waiting = panel !== null
   return {
     game,
     speed: waiting ? PAUSED : NORMAL_SPEED,
     lastSpeed: NORMAL_SPEED,
     resumeSpeed: waiting ? NORMAL_SPEED : null,
-    panel: waiting ? ('event' as const) : null,
+    panel,
     eventBefore: null,
     reportWaiting: false,
     slideIn: null,
@@ -209,6 +260,7 @@ export function createGameStore(
       const { game: start, speed, resumeSpeed, panel, reportWaiting } = get()
       if (
         days <= 0 ||
+        isChallengeOver(start) ||
         start.events.pending !== null ||
         panel === 'event' ||
         panel === 'report' ||
@@ -220,7 +272,10 @@ export function createGameStore(
       let week: WeekReport | null = null
       for (
         let i = 0;
-        i < days && next.events.pending === null && week === null;
+        i < days &&
+        next.events.pending === null &&
+        week === null &&
+        !isChallengeOver(next);
         i += 1
       ) {
         const before = next
@@ -234,6 +289,22 @@ export function createGameStore(
           events,
         )
         if (weeklyReport !== null) week = newWeekOf(before, next)
+      }
+      // The end of the Défi has the numbers, so it takes the place of the
+      // week's report, or of its card sliding in, that morning.
+      if (isChallengeOver(next)) {
+        set(
+          resumeSpeed === null
+            ? {
+                game: next,
+                panel: 'defiEnd',
+                resumeSpeed: speed,
+                speed: PAUSED,
+                slideIn: null,
+              }
+            : { game: next, slideIn: null },
+        )
+        return
       }
       const eventComes = next.events.pending !== null
       // The weekly report goes first on a morning that brings both: it
@@ -275,6 +346,12 @@ export function createGameStore(
     closePanel: () => {
       const { resumeSpeed, panel, game: current, reportWaiting } = get()
       if (resumeSpeed === null) return
+      if (isChallengeOver(current)) {
+        if (panel !== 'defiEnd') {
+          set({ panel: 'defiEnd', reportWaiting: false, eventBefore: null })
+        }
+        return
+      }
       if (reportWaiting) {
         set({ panel: 'report', reportWaiting: false })
         return

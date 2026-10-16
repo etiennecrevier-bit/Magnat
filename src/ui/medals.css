@@ -1,0 +1,23 @@
+/* A medal's name with a disc of its colour before it: or, argent, bronze. */
+[class*='defi-medal--']::before {
+  content: '';
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  margin-right: 0.375em;
+  border: 1px solid #2b2622;
+  border-radius: 50%;
+  vertical-align: -0.05em;
+}
+
+.defi-medal--or::before {
+  background: #f0b429;
+}
+
+.defi-medal--argent::before {
+  background: #cbd2d9;
+}
+
+.defi-medal--bronze::before {
+  background: #c47a3f;
+}

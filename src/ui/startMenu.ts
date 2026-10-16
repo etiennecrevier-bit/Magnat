@@ -48,6 +48,8 @@ export interface StartMenuWiring {
   onImportError: (error: string | null) => void
   /** Opens the new game form. */
   onNewGame: () => void
+  /** Opens the list of the Défis. */
+  onDefis: () => void
 }
 
 export interface StartMenuActions {
@@ -60,6 +62,8 @@ export interface StartMenuActions {
   continueGame: () => void
   /** Opens the new game form, dropping the file being read. */
   newGame: () => void
+  /** Opens the list of the Défis, dropping the file being read. */
+  openDefis: () => void
   /**
    * Reads `file` and plays its game, or shows why it was rejected, unless
    * the player has since picked another file or moved on.
@@ -74,10 +78,17 @@ export function startMenuActions({
   onStart,
   onImportError,
   onNewGame,
+  onDefis,
 }: StartMenuWiring): StartMenuActions {
   const start = (game: GameState) => {
     imports.cancel()
     onStart(game)
+  }
+  /** Leaves the menu for another page, dropping the file being read. */
+  const leave = (open: () => void) => () => {
+    imports.cancel()
+    onImportError(null)
+    open()
   }
   return {
     start,
@@ -85,11 +96,8 @@ export function startMenuActions({
       const stored = readStored()
       if (stored.status === 'found') start(stored.game)
     },
-    newGame: () => {
-      imports.cancel()
-      onImportError(null)
-      onNewGame()
-    },
+    newGame: leave(onNewGame),
+    openDefis: leave(onDefis),
     importFile: async (file) => {
       onImportError(null)
       const result = await imports.read(file)

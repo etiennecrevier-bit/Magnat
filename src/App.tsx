@@ -39,7 +39,10 @@ export default function App() {
       {playing ? (
         <>
           <TopBar />
-          <GameScreens autosaveFailed={autosaveFailed} />
+          <GameScreens
+            autosaveFailed={autosaveFailed}
+            onMenu={() => setPlaying(false)}
+          />
         </>
       ) : (
         <StartScreen onStart={start} />

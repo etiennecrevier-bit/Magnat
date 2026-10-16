@@ -8,7 +8,7 @@ import { cents } from '../engine/money.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
 import { balance } from '../finance/journal.ts'
-import { gameStore, type GameStoreState } from './store.ts'
+import { gameStore, newChallenge, type GameStoreState } from './store.ts'
 import TopBar, { TopBarView } from './TopBar.tsx'
 
 // A static render reads a Zustand store's initial state, so the connected
@@ -35,6 +35,7 @@ function render(
   cash = cents(1_000_000),
   businessName = "Le P'tit Camion",
   energy = 100,
+  defiLabel: string | null = null,
 ) {
   return renderToStaticMarkup(
     <TopBarView
@@ -48,6 +49,8 @@ function render(
       onSpeedChange={() => {}}
       onManage={() => {}}
       onFinances={() => {}}
+      defiLabel={defiLabel}
+      onDefi={() => {}}
     />,
   )
 }
@@ -110,6 +113,24 @@ describe('TopBarView', () => {
     )
   })
 
+  it('shows the Défi chip under the date, which opens its dialog', () => {
+    const html = render(
+      21,
+      1,
+      cents(0),
+      "Le P'tit Camion",
+      100,
+      'Défi · semaine 2 de 3',
+    )
+    expect(html).toContain(
+      '<p class="top-bar__date">Lundi 22 mai, an 1</p><button type="button" class="top-bar__defi" aria-haspopup="dialog">Défi · semaine 2 de 3</button></div>',
+    )
+  })
+
+  it('has no chip outside a Défi', () => {
+    expect(render(0, 1)).not.toContain('top-bar__defi')
+  })
+
   it('has a labelled group of pause and speed buttons', () => {
     const html = render(0, 1)
     expect(html).toContain('role="group" aria-label="Vitesse du jeu"')
@@ -151,6 +172,26 @@ describe('TopBar', () => {
       label: 'Vitesse normale',
       pressed: 'true',
     })
+  })
+
+  it("shows the Défi's week in the chip, and its panel only while it is open", () => {
+    // « Les travaux de la rue Saint-Denis » runs 3 weeks from May 15.
+    gameStore.getState().startGame(newChallenge('?seed=7', 'travauxSaintDenis'))
+    gameStore.getState().advance(7)
+    // The week's report opens on the Monday, the Défi's second.
+    expect(gameStore.getState().panel).toBe('report')
+    gameStore.getState().closePanel()
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toContain('Lundi 22 mai, an 1')
+    expect(html).toContain(
+      '<button type="button" class="top-bar__defi" aria-haspopup="dialog">Défi · semaine 2 de 3</button>',
+    )
+    expect(html).not.toContain('<dialog')
+
+    gameStore.getState().openPanel('defi')
+    expect(renderToStaticMarkup(<TopBar />)).toMatch(
+      /^<header class="top-bar">.*<\/header><dialog class="panel defi-panel" aria-labelledby="defi-title">.*<\/dialog>$/,
+    )
   })
 
   it('shows the Gérer le camion panel only while it is open, paused', () => {

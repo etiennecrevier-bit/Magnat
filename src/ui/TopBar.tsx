@@ -1,12 +1,16 @@
 import { useEffect, useMemo } from 'react'
 import pacing from '../content/pacing.json'
 import type { Avatar } from '../content/schema.ts'
+import { defiById } from '../engine/challenge.ts'
+import { DEFIS } from '../engine/day.ts'
 import type { Cents } from '../engine/money.ts'
 import type { Day } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
 import { CashGaugeView } from './CashGauge.tsx'
 import { monthlyFixedCosts } from './cashLevel.ts'
+import DefiPanel from './DefiPanel.tsx'
+import { chipLabel } from './defis.ts'
 import { EnergyGaugeView } from './EnergyGauge.tsx'
 import EventCard from './EventCard.tsx'
 import FinancesPanel from './FinancesPanel.tsx'
@@ -48,6 +52,10 @@ interface TopBarViewProps {
   onManage: () => void
   /** Opens the « Vos finances » panel. */
   onFinances: () => void
+  /** The chip of the Défi played, « Défi · semaine 2 de 3 »; null if none. */
+  defiLabel: string | null
+  /** Opens the Défi's panel. */
+  onDefi: () => void
 }
 
 export function TopBarView({
@@ -61,12 +69,24 @@ export function TopBarView({
   onSpeedChange,
   onManage,
   onFinances,
+  defiLabel,
+  onDefi,
 }: TopBarViewProps) {
   return (
     <header className="top-bar">
       <div className="top-bar__title">
         <p className="top-bar__name">{businessName}</p>
         <p className="top-bar__date">{formatGameDate(day)}</p>
+        {defiLabel !== null && (
+          <button
+            type="button"
+            className="top-bar__defi"
+            aria-haspopup="dialog"
+            onClick={onDefi}
+          >
+            {defiLabel}
+          </button>
+        )}
       </div>
       <div className="top-bar__gauges">
         <CashGaugeView cash={cash} fixedCosts={fixedCosts} />
@@ -110,7 +130,8 @@ export function TopBarView({
 
 /**
  * The top bar wired to the app store, with the Space shortcut, and the
- * panel open: one it opened, the event card or the weekly report.
+ * panel open: one it opened, the event card or the weekly report. In a
+ * Défi, the chip under the date opens the Défi's panel.
  */
 export default function TopBar() {
   const businessName = useGame((state) => state.game.profile.businessName)
@@ -119,6 +140,7 @@ export default function TopBar() {
   const day = useGame((state) => state.game.day)
   const journal = useGame((state) => state.game.journal)
   const energy = useGame((state) => state.game.energy)
+  const challenge = useGame((state) => state.game.challenge)
   const speed = useGame((state) => state.speed)
   const setSpeed = useGame((state) => state.setSpeed)
   const togglePause = useGame((state) => state.togglePause)
@@ -141,10 +163,16 @@ export default function TopBar() {
     () => balance(journal, CASH, { toDay: day }),
     [journal, day],
   )
+  // A Défi's truck came on its first day, from which its loan counts.
+  const firstDay = challenge?.startDay ?? 0
   const fixedCosts = useMemo(
-    () => monthlyFixedCosts(day, difficulty),
-    [day, difficulty],
+    () => monthlyFixedCosts(day, difficulty, firstDay),
+    [day, difficulty, firstDay],
   )
+  const defiLabel =
+    challenge === null
+      ? null
+      : chipLabel(challenge, defiById(DEFIS, challenge.id), day)
 
   return (
     <>
@@ -159,9 +187,12 @@ export default function TopBar() {
         onSpeedChange={setSpeed}
         onManage={() => openPanel('manage')}
         onFinances={() => openPanel('finances')}
+        defiLabel={defiLabel}
+        onDefi={() => openPanel('defi')}
       />
       {panel === 'manage' && <ManagePanel />}
       {panel === 'finances' && <FinancesPanel />}
+      {panel === 'defi' && <DefiPanel />}
       {panel === 'event' && <EventCard />}
       {panel === 'report' && <WeeklyReportPanel />}
     </>

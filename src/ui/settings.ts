@@ -1,4 +1,5 @@
 import { createStore, type StoreApi } from 'zustand'
+import { medalSchema, type Medal } from '../content/schema.ts'
 
 // The player's settings, kept in this browser between games. Storage can
 // throw on every access, as with the saves (see saves.ts), so each one is
@@ -22,11 +23,14 @@ export interface Settings {
    * for the first weeks of a game.
    */
   readonly openReportEveryWeek: boolean
+  /** The best medal won in each Défi, by its id, in any game. */
+  readonly bestMedals: Readonly<Record<string, Medal>>
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   visualEffects: 'full',
   openReportEveryWeek: false,
+  bestMedals: {},
 }
 
 /** The localStorage key the settings are kept under. */
@@ -39,6 +43,11 @@ export type SettingsStorage = Pick<Storage, 'getItem' | 'setItem'>
 export interface SettingsState extends Settings {
   setVisualEffects: (visualEffects: VisualEffects) => void
   setOpenReportEveryWeek: (openReportEveryWeek: boolean) => void
+  /**
+   * Keeps `medal` as the best won in the Défi `defiId` unless a better one,
+   * or the same, already is.
+   */
+  recordMedal: (defiId: string, medal: Medal) => void
 }
 
 export type SettingsStore = StoreApi<SettingsState>
@@ -65,7 +74,7 @@ export function readSettings(storage: SettingsStorage | null): Settings {
     return DEFAULT_SETTINGS
   }
   if (typeof stored !== 'object' || stored === null) return DEFAULT_SETTINGS
-  const { visualEffects, openReportEveryWeek } = stored as Record<
+  const { visualEffects, openReportEveryWeek, bestMedals } = stored as Record<
     string,
     unknown
   >
@@ -77,7 +86,39 @@ export function readSettings(storage: SettingsStorage | null): Settings {
       typeof openReportEveryWeek === 'boolean'
         ? openReportEveryWeek
         : DEFAULT_SETTINGS.openReportEveryWeek,
+    bestMedals: readMedals(bestMedals),
   }
+}
+
+/** The medals of `stored` that are medals; none unless it is an object. */
+function readMedals(stored: unknown): Readonly<Record<string, Medal>> {
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) {
+    return DEFAULT_SETTINGS.bestMedals
+  }
+  return Object.fromEntries(
+    Object.entries(stored).filter(([, medal]) =>
+      medalSchema.options.includes(medal as Medal),
+    ),
+  ) as Record<string, Medal>
+}
+
+/** The better of two medals: « Or » before « Argent » before « Bronze ». */
+export function betterMedal(a: Medal, b: Medal): Medal {
+  const { options } = medalSchema
+  return options.indexOf(a) <= options.indexOf(b) ? a : b
+}
+
+/** The better medal of `a` and `b` in each Défi either holds one for. */
+export function mergeMedals(
+  a: Readonly<Record<string, Medal>>,
+  b: Readonly<Record<string, Medal>>,
+): Readonly<Record<string, Medal>> {
+  const merged: Record<string, Medal> = { ...a }
+  for (const [defiId, medal] of Object.entries(b)) {
+    const kept = merged[defiId]
+    merged[defiId] = kept === undefined ? medal : betterMedal(kept, medal)
+  }
+  return merged
 }
 
 /** Keeps `settings` in `storage`. Returns whether it did; never throws. */
@@ -97,22 +138,34 @@ export function writeSettings(
 
 /**
  * A settings store that starts from `storage` and writes each change to it,
- * with every setting, so changing one keeps the others.
+ * with every setting, so changing one keeps the others. Another tab may
+ * have kept medals since this one read them, so each write keeps the better
+ * of the stored and this tab's medal in each Défi: no tab loses one.
  */
 export function createSettingsStore(
   storage: SettingsStorage | null,
 ): SettingsStore {
   return createStore<SettingsState>()((set, get) => {
     const change = (settings: Partial<Settings>) => {
-      set(settings)
+      const bestMedals = mergeMedals(
+        readSettings(storage).bestMedals,
+        settings.bestMedals ?? get().bestMedals,
+      )
+      set({ ...settings, bestMedals })
       const { visualEffects, openReportEveryWeek } = get()
-      writeSettings(storage, { visualEffects, openReportEveryWeek })
+      writeSettings(storage, { visualEffects, openReportEveryWeek, bestMedals })
     }
     return {
       ...readSettings(storage),
       setVisualEffects: (visualEffects) => change({ visualEffects }),
       setOpenReportEveryWeek: (openReportEveryWeek) =>
         change({ openReportEveryWeek }),
+      recordMedal: (defiId, medal) => {
+        const { bestMedals } = get()
+        const best = bestMedals[defiId]
+        if (best !== undefined && betterMedal(best, medal) === best) return
+        change({ bestMedals: { ...bestMedals, [defiId]: medal } })
+      },
     }
   })
 }
