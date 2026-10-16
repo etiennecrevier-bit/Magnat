@@ -879,6 +879,110 @@ describe('startStreet: the spill', () => {
   })
 })
 
+/** Anything a customer could drink from. */
+const DRINKS = ['cup', 'mug']
+
+/** Whether `node` shows: it and every parent up to `root`. */
+function showsIn(root: Container, node: Container): boolean {
+  for (let at: Container | null = node; at !== root; at = at.parent) {
+    if (at === null || !at.visible) return false
+  }
+  return true
+}
+
+/** Whether `walker` holds something to drink, in the drawing that shows. */
+function holdsDrink(walker: Container): boolean {
+  const figure = figureOf(walker)
+  return DRINKS.some((label) =>
+    figure
+      .getChildrenByLabel(label, true)
+      .some((node) => showsIn(figure, node)),
+  )
+}
+
+/** Whether `walker` is leaving the counter, their mood bubble showing. */
+function leavesCounter(walker: Container): boolean {
+  return walker.getChildByLabel('bubble')?.visible === true
+}
+
+/** Starts the day `store` replays over, rather than playing the next one. */
+function replayAgain(store: GameStore): void {
+  const { game } = store.getState()
+  store.setState({ game: { ...game, lastDay: { ...game.lastDay! } } })
+}
+
+/**
+ * Plays 30 s of the day `store` replays, over again every 4 s, and checks
+ * every customer on each frame: none holds a drink before reaching the
+ * counter. Returns the segments of those who left the counter holding a
+ * drink, and of those who left without one.
+ */
+function drinksAtCounter(
+  app: ReturnType<typeof createFakeApp>,
+  store: GameStore,
+): { withDrink: Set<SegmentId>; without: Set<SegmentId> } {
+  const reached = new Set<Container>()
+  const left = {
+    withDrink: new Set<SegmentId>(),
+    without: new Set<SegmentId>(),
+  }
+  for (let t = 16; t <= 30_000; t += 16) {
+    app.frame(16)
+    for (const walker of walkers(app)) {
+      if (walker.x === CROWD.counterX) reached.add(walker)
+      if (!reached.has(walker) && holdsDrink(walker)) {
+        expect.fail(`A ${segmentOf(walker)} holds a drink before the counter`)
+      }
+      if (!leavesCounter(walker)) continue
+      const segment = segmentOf(walker)
+      if (holdsDrink(walker)) left.withDrink.add(segment)
+      else left.without.add(segment)
+    }
+    if (t % 4000 < 16) replayAgain(store)
+  }
+  return left
+}
+
+const SEGMENTS = Object.keys(SEGMENT_ACCESSORY) as SegmentId[]
+
+describe('startStreet: what customers carry', () => {
+  it.each(['cafe', 'chocolat'] as const)(
+    'hands one who bought a %s a cup at the counter, never before',
+    async (drink) => {
+      const app = createFakeApp()
+      const store = visitsStore((visit, i) => ({
+        ...ended(visit, 'bought', 0),
+        segment: SEGMENTS[i % SEGMENTS.length]!,
+        bought: {
+          cafe: drink === 'cafe' ? 1 : 0,
+          chocolat: drink === 'chocolat' ? 1 : 0,
+          croissant: 0,
+        },
+      }))
+      await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+
+      const left = drinksAtCounter(app, store)
+      expect([...left.withDrink].sort()).toEqual([...SEGMENTS].sort())
+      expect([...left.without]).toEqual([])
+    },
+  )
+
+  it('sends one who bought no drink away empty-handed', async () => {
+    const app = createFakeApp()
+    // Every other customer bought a croissant; the rest, nothing.
+    const store = visitsStore((visit, i) => ({
+      ...ended(visit, i % 2 === 0 ? 'bought' : 'tooExpensive', 0),
+      segment: SEGMENTS[i % SEGMENTS.length]!,
+      bought: { cafe: 0, chocolat: 0, croissant: i % 2 === 0 ? 1 : 0 },
+    }))
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+
+    const left = drinksAtCounter(app, store)
+    expect([...left.without].sort()).toEqual([...SEGMENTS].sort())
+    expect([...left.withDrink]).toEqual([])
+  })
+})
+
 /** Where `node` is drawn on the stage, whose pixels are the page's. */
 function boxOf(node: Container): Box {
   const { minX, minY, maxX, maxY } = node.getBounds()

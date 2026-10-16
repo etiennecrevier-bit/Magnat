@@ -47,7 +47,7 @@ export interface FanPick {
 /** The accessory that shows each segment. */
 export const SEGMENT_ACCESSORY: Readonly<Record<SegmentId, string>> = {
   aubaine: 'bag',
-  habitue: 'mug',
+  habitue: 'newspaper',
   chic: 'coat',
 }
 
@@ -98,8 +98,8 @@ export function pickLook(
 /**
  * Draws a customer as `look` describes, with their accessory, office cue,
  * fan and child labelled by name. A child stands to the left of the adult.
- * A regular holds their mug in the hand on the left, and a fan is held in
- * the hand on the right.
+ * With `cup`, once served a drink, they hold its cup in the hand on the
+ * left; a fan is held in the hand on the right.
  * The drawing is for a customer turned to `facing` by mirroring it (its
  * container's `scale.x`): either way, it is lit on the side that shows on
  * the screen's left.
@@ -109,12 +109,13 @@ export function drawCustomer(
   style: DrawStyle,
   looks: CrowdSettings['looks'],
   facing: Facing = 1,
+  cup = false,
 ): Container {
   const h = look.height
   const root = new Container({ label: 'customer' })
   const sleeves = look.segment === 'chic' ? looks.coat : look.clothes
   const holding: Side[] = []
-  if (look.segment === 'habitue') holding.push('left')
+  if (cup) holding.push('left')
   if (look.fan !== null) holding.push('right')
   const sun: Side = facing === 1 ? 'left' : 'right'
   const neck = -h * 0.77
@@ -162,6 +163,28 @@ export function drawCustomer(
         .poly(toteShade(sun).map((share) => share * h))
         .fill(tonesOf(looks.tote, style.light).shade)
         .poly(TOTE.map((share) => share * h))
+        .stroke(line(style)),
+    )
+  }
+  // A regular's folded newspaper, La Presse-Citron, is tucked under the arm
+  // on the left, behind it, so the hand on its side shows.
+  if (look.segment === 'habitue') {
+    const [x, y, w, d] = [-h * 0.29, -h * 0.66, h * 0.17, h * 0.18]
+    const band = tonesOf(style.palette.mustard, style.light)
+    const lit = w * (1 - SHADE_SHARE)
+    root.addChild(
+      shadedRect(
+        new Graphics({ label: 'newspaper' }),
+        [x, y, w, d, 2],
+        style.palette.cream,
+        style,
+        sun,
+      )
+        .rect(x, y + d * 0.2, w, d * 0.25)
+        .fill(band.shade)
+        .rect(sun === 'left' ? x : x + w - lit, y + d * 0.2, lit, d * 0.25)
+        .fill(band.lit)
+        .roundRect(x, y, w, d, 2)
         .stroke(line(style)),
     )
   }
@@ -217,12 +240,12 @@ export function drawCustomer(
         .stroke(line(style, style.outline * 0.6)),
     )
   }
-  if (holding.includes('left')) {
+  if (cup) {
     drawHeld(
       root,
       h,
       'left',
-      new Graphics({ label: 'mug' })
+      new Graphics({ label: 'cup' })
         .roundRect(-h * 0.025, -h * 0.13, h * 0.09, h * 0.14, 3)
         .fill(style.palette.cream)
         .stroke(line(style))
@@ -253,7 +276,7 @@ export function drawCustomer(
 
 /**
  * A folding fan held upright, its pivot at 0, 0 in the hand: its leaves
- * spread above, outlined like the mug, with the pleats in shade.
+ * spread above, outlined like the cup, with the pleats in shade.
  */
 function drawFan(h: number, color: string, style: DrawStyle): Graphics {
   const reach = h * FAN.reach

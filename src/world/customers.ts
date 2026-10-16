@@ -1,8 +1,13 @@
 import { Container, Graphics, Text } from 'pixi.js'
 import type { CustomerLines } from '../content/lines.ts'
-import type { Avatar, EnergyContent, WalkIns } from '../content/schema.ts'
+import type {
+  Avatar,
+  EnergyContent,
+  ProductId,
+  WalkIns,
+} from '../content/schema.ts'
 import { fatigueOf, type Fatigue } from '../engine/energy.ts'
-import type { GameState } from '../engine/types.ts'
+import type { GameState, Visit } from '../engine/types.ts'
 import { bobOf, createCrowd, type Customer, type Span } from './crowd.ts'
 import type { CrowdSettings } from './crowdSettings.ts'
 import {
@@ -127,6 +132,9 @@ export interface CustomersSetup {
  * The player can pick one customer at a time, which rings their feet and
  * opens their card (see `cardOf`), with a line picked the first time. The
  * card closes once they walk off the screen or the street clears.
+ *
+ * A customer who bought a café or a chocolat holds its cup from when the
+ * avatar serves them; no one holds one before.
  */
 export function startCustomers(setup: CustomersSetup): Customers {
   const { street, style, shadows, crowd: settings, random } = setup
@@ -343,6 +351,11 @@ export function startCustomers(setup: CustomersSetup): Customers {
           spillClock.show()
           showSpill(1)
         }
+        for (const { kind, customer } of arrived) {
+          const view = views.get(customer.id)
+          if (kind === 'served' && view !== undefined && drinks(customer.visit))
+            holdCup(view, style, settings.looks)
+        }
       }
       avatar?.update(deltaMs * walking.pace)
       avatar?.idle(deltaMs)
@@ -380,6 +393,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
 }
 
 interface CustomerView {
+  readonly look: Look
   readonly root: Container
   /** The person, turned to face where they walk. */
   readonly figure: Container
@@ -387,13 +401,13 @@ interface CustomerView {
    * The person drawn to face right and to face left, mirrored by the
    * figure, each lit from the screen's left: only one shows.
    */
-  readonly facesRight: Container
-  readonly facesLeft: Container
+  facesRight: Container
+  facesLeft: Container
   readonly bubble: Container
   /** The ring at their feet while their card is open. */
   readonly mark: Container
   /** The fan they hold, as drawn to face each way; none without one. */
-  readonly fans: readonly Container[]
+  fans: readonly Container[]
   /**
    * The shadows on the ground of the customer and of the child they come
    * with, `at` that far right of their feet as they face right.
@@ -405,6 +419,14 @@ interface CustomerView {
   }[]
   /** Their card, from the first time the player picks them. */
   card: CustomerCard | null
+}
+
+/** What a customer carries off in a cup. */
+const DRINKS: readonly ProductId[] = ['cafe', 'chocolat']
+
+/** Whether `visit` bought something to drink. */
+function drinks(visit: Visit): boolean {
+  return DRINKS.some((product) => visit.bought[product] > 0)
 }
 
 /** How far out of step each customer's fan swings from the last one's. */
@@ -422,11 +444,7 @@ function createCustomerView(
   bubble: Container,
   mark: Container,
 ): CustomerView {
-  const facesRight = drawCustomer(look, style, looks, 1)
-  const facesLeft = drawCustomer(look, style, looks, -1)
-  facesRight.label = 'facesRight'
-  facesLeft.label = 'facesLeft'
-  facesLeft.visible = false
+  const [facesRight, facesLeft] = drawFacings(look, style, looks, false)
   const figure = new Container({
     label: 'figure',
     children: [facesRight, facesLeft],
@@ -454,18 +472,55 @@ function createCustomerView(
     ),
   }))
   return {
+    look,
     root,
     figure,
     facesRight,
     facesLeft,
     bubble,
     mark,
-    fans: [facesRight, facesLeft].flatMap(
-      (drawn) => drawn.getChildByLabel('fan') ?? [],
-    ),
+    fans: fansOf(facesRight, facesLeft),
     shadows: grounded,
     card: null,
   }
+}
+
+/** `look` drawn to face right, then left, holding a cup with `cup`. */
+function drawFacings(
+  look: Look,
+  style: DrawStyle,
+  looks: CrowdSettings['looks'],
+  cup: boolean,
+): [Container, Container] {
+  const facesRight = drawCustomer(look, style, looks, 1, cup)
+  const facesLeft = drawCustomer(look, style, looks, -1, cup)
+  facesRight.label = 'facesRight'
+  facesLeft.label = 'facesLeft'
+  facesLeft.visible = false
+  return [facesRight, facesLeft]
+}
+
+/** The fans held in `drawings`. */
+function fansOf(...drawings: Container[]): Container[] {
+  return drawings.flatMap((drawn) => drawn.getChildByLabel('fan') ?? [])
+}
+
+/**
+ * Draws `view`'s customer again, the same but holding the cup they were
+ * served, in place of the drawings they had.
+ */
+function holdCup(
+  view: CustomerView,
+  style: DrawStyle,
+  looks: CrowdSettings['looks'],
+): void {
+  const [facesRight, facesLeft] = drawFacings(view.look, style, looks, true)
+  view.facesRight.destroy({ children: true })
+  view.facesLeft.destroy({ children: true })
+  view.figure.addChild(facesRight, facesLeft)
+  view.facesRight = facesRight
+  view.facesLeft = facesLeft
+  view.fans = fansOf(facesRight, facesLeft)
 }
 
 /** Takes a customer off the street, with their shadows. */
