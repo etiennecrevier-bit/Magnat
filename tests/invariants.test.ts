@@ -49,6 +49,15 @@ const GAMES: readonly { seed: number; difficulty: DifficultyId }[] = [
 ]
 const DAYS = 3650
 const BUDGET_MS = 60_000
+/**
+ * How many times longer a day of the last year may take than a day of the
+ * first, to play and to check. Unlike the budget, this does not depend on
+ * the runner's speed: it catches a cost that grows with the game, such as
+ * reading or copying the whole journal every day, which makes ten years cost
+ * far more than ten times one (issue #176).
+ */
+const MAX_SLOWDOWN = 3
+const YEAR = 365
 /** Failures kept per invariant, so a broken rule does not flood the report. */
 const MAX_FAILURES = 10
 
@@ -96,9 +105,26 @@ interface Checked {
   drawn: number
   /** The days each kind of change to the street was in effect. */
   modifierDays: Record<StreetModifierKind, number>
+  /** Milliseconds each day took to play, then to check, in day order. */
+  playMs: number[]
+  checkMs: number[]
   checkedHash: string
   replayHash: string
   replayYears: readonly YearSummary[]
+}
+
+/**
+ * How many times longer the median day of the last year took than the median
+ * day of the first: the median, so a garbage collection or a busy runner on
+ * a few days does not count.
+ */
+function slowdown(dayMs: readonly number[]): number {
+  return median(dayMs.slice(-YEAR)) / median(dayMs.slice(0, YEAR))
+}
+
+function median(values: readonly number[]): number {
+  const sorted = values.toSorted((a, b) => a - b)
+  return sorted[Math.floor(sorted.length / 2)] ?? 0
 }
 
 /**
@@ -161,6 +187,8 @@ function check(seed: number, difficulty: DifficultyId): Checked {
     modifierDays: Object.fromEntries(
       MODIFIER_KINDS.map((kind) => [kind, 0]),
     ) as Record<StreetModifierKind, number>,
+    playMs: [],
+    checkMs: [],
     checkedHash: '',
     replayHash: '',
     replayYears: [],
@@ -182,6 +210,7 @@ function check(seed: number, difficulty: DifficultyId): Checked {
   let monthStart: Day = 0
   while (state.day < DAYS) {
     const day = state.day
+    const dayStarted = performance.now()
     const { pending } = state.events
     if (pending !== null) {
       checked.events += 1
@@ -211,6 +240,8 @@ function check(seed: number, difficulty: DifficultyId): Checked {
       ENERGY,
       EVENTS_IN_PLAY,
     )
+    const dayPlayed = performance.now()
+    checked.playMs.push(dayPlayed - dayStarted)
     const { journal } = state
     tally.count(journal)
     checked.days += 1
@@ -308,6 +339,7 @@ function check(seed: number, difficulty: DifficultyId): Checked {
       }
       monthStart = day + 1
     }
+    checked.checkMs.push(performance.now() - dayPlayed)
   }
 
   checked.checkedHash = journalHash(state.journal)
@@ -391,6 +423,14 @@ describe.each(GAMES)(
           toDay: index * 365 + 364,
         })),
       )
+    })
+
+    it(`plays a day of the last year within ${MAX_SLOWDOWN} times a day of the first`, () => {
+      expect(slowdown(checked.playMs)).toBeLessThan(MAX_SLOWDOWN)
+    })
+
+    it(`checks a day of the last year within ${MAX_SLOWDOWN} times a day of the first`, () => {
+      expect(slowdown(checked.checkMs)).toBeLessThan(MAX_SLOWDOWN)
     })
   },
 )
