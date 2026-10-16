@@ -246,7 +246,11 @@ describe('drawEvent', () => {
       followUps: queue.map(([day, event]) => ({ day, event })),
     })
     const events = content(
-      [card('a'), card('suite', { conditions: { followUpOnly: true } })],
+      [
+        card('a'),
+        card('b'),
+        card('suite', { conditions: { followUpOnly: true } }),
+      ],
       { firstDay: 50, minDaysBetween: 5, dailyChance: 0.5 },
     )
 
@@ -265,15 +269,24 @@ describe('drawEvent', () => {
     })
 
     it('come up one a morning, the next one waiting', () => {
-      const state = { ...on(10), events: followUps([8, 'a'], [10, 'suite']) }
+      const state = { ...on(10), events: followUps([8, 'a'], [10, 'b']) }
       const first = drawEvent(state, events)
       expect(first.events.pending?.event).toBe('a')
       const chosen = resolveEvent(first, 'non', events)
       expect(drawEvent(chosen, events)).toBe(chosen)
       const second = play(chosen, events)
       expect(second.day).toBe(11)
-      expect(second.events.pending).toEqual({ event: 'suite', followUp: true })
+      expect(second.events.pending).toEqual({ event: 'b', followUp: true })
       expect(second.events.followUps).toEqual([])
+    })
+
+    it('of a card that only comes as a follow-up come first, the rest of a story keeping its day', () => {
+      const state = { ...on(10), events: followUps([8, 'a'], [10, 'suite']) }
+      const first = drawEvent(state, events)
+      expect(first.events.pending).toEqual({ event: 'suite', followUp: true })
+      expect(first.events.followUps).toEqual([{ day: 8, event: 'a' }])
+      const second = play(resolveEvent(first, 'non', events), events)
+      expect(second.events.pending).toEqual({ event: 'a', followUp: true })
     })
 
     it('stay queued while the content does not hold their event', () => {
@@ -287,6 +300,149 @@ describe('drawEvent', () => {
         card('suite', { conditions: { followUpOnly: true } }),
       ])
       expect(draws(MORNING, only)).toBeNull()
+    })
+  })
+
+  describe('an event dated that day', () => {
+    // Day 60 is Friday, June 30, and the shipped truck opens on Saturdays.
+    const JUNE_30 = { date: { month: 6, dayOfMonth: 30 } }
+    const PACING = { firstDay: 10, minDaysBetween: 30, dailyChance: 0.5 }
+    /** The morning of `day`, the last event drawn on `lastDrawnDay`. */
+    const at = (day: number, lastDrawnDay: number | null = 55): GameState => ({
+      ...on(day),
+      events: { ...MORNING.events, lastDrawnDay },
+    })
+    const history = (...records: [number, string, boolean][]) =>
+      records.map(([day, event, followUp]) => ({
+        day,
+        event,
+        followUp,
+        choice: 'non',
+        outcome: 0,
+      }))
+
+    it('comes up on its day inside the gap, with no draw, and sets the gap from it', () => {
+      const events = content([card('juin', { conditions: JUNE_30 })], PACING)
+      expect(toCalendar(60)).toMatchObject({ month: 6, dayOfMonth: 30 })
+      const state = at(60)
+      const drawn = drawEvent(state, events)
+      expect(drawn.events.pending).toEqual({ event: 'juin', followUp: false })
+      expect(drawn.events.lastDrawnDay).toBe(60)
+      expect(drawn.rngState).toBe(state.rngState)
+      expect(draws(at(59), events)).toBeNull()
+      expect(draws(at(61, 60), events)).toBeNull()
+    })
+
+    it('comes up before a draw of the others', () => {
+      const events = content(
+        [card('a', { weight: 9 }), card('juin', { conditions: JUNE_30 })],
+        { ...PACING, minDaysBetween: 0 },
+      )
+      for (let seed = 0; seed < 50; seed += 1) {
+        const state = { ...at(60), rngState: seed * 7919 }
+        const drawn = drawEvent(state, events)
+        expect(drawn.events.pending?.event).toBe('juin')
+        expect(drawn.rngState).toBe(state.rngState)
+      }
+    })
+
+    it('picks by weight among several, with one draw', () => {
+      const events = content(
+        [
+          card('lourd', { weight: 3, conditions: JUNE_30 }),
+          card('a', { weight: 100 }),
+          card('leger', { weight: 1, conditions: JUNE_30 }),
+        ],
+        PACING,
+      )
+      const counts = new Map<string, number>()
+      for (let seed = 0; seed < 4000; seed += 1) {
+        const state = { ...at(60), rngState: seed * 7919 }
+        const drawn = drawEvent(state, events)
+        const id = drawn.events.pending?.event ?? 'none'
+        counts.set(id, (counts.get(id) ?? 0) + 1)
+        expect(drawn.rngState).toBe(next(state.rngState)[1])
+      }
+      expect([...counts.keys()].sort()).toEqual(['leger', 'lourd'])
+      const heavy = (counts.get('lourd') ?? 0) / 4000
+      expect(heavy).toBeGreaterThan(0.72)
+      expect(heavy).toBeLessThan(0.78)
+    })
+
+    it('comes up before a follow-up of a card that may be drawn, which waits a morning', () => {
+      const events = content(
+        [card('a'), card('juin', { conditions: JUNE_30 })],
+        PACING,
+      )
+      const state = {
+        ...at(60),
+        events: { ...at(60).events, followUps: [{ day: 60, event: 'a' }] },
+      }
+      const first = drawEvent(state, events)
+      expect(first.events.pending).toEqual({ event: 'juin', followUp: false })
+      expect(first.events.followUps).toEqual([{ day: 60, event: 'a' }])
+      const second = play(resolveEvent(first, 'non', events), events)
+      expect(second.day).toBe(61)
+      expect(second.events.pending).toEqual({ event: 'a', followUp: true })
+      expect(second.events.lastDrawnDay).toBe(60)
+    })
+
+    it('waits behind a follow-up of a card that only comes as one, and is gone the next morning', () => {
+      const events = content(
+        [
+          card('suite', { conditions: { followUpOnly: true } }),
+          card('juin', { conditions: JUNE_30 }),
+        ],
+        PACING,
+      )
+      const state = {
+        ...at(60),
+        events: { ...at(60).events, followUps: [{ day: 60, event: 'suite' }] },
+      }
+      const first = drawEvent(state, events)
+      expect(first.events.pending).toEqual({ event: 'suite', followUp: true })
+      const second = play(resolveEvent(first, 'non', events), events)
+      expect(second.events.pending).toBeNull()
+    })
+
+    it('keeps its other conditions: once per game, the cooldown, tomorrow open', () => {
+      const dated = (conditions: Record<string, unknown>) =>
+        content([card('juin', { conditions: { ...JUNE_30, ...conditions } })], {
+          ...PACING,
+          minDaysBetween: 0,
+        })
+      const lastYear = (state: GameState): GameState => ({
+        ...state,
+        events: { ...state.events, history: history([60, 'juin', false]) },
+      })
+      const nextYear = at(60 + 365)
+      expect(draws(nextYear, dated({ oncePerGame: true }))).toBe('juin')
+      expect(draws(lastYear(nextYear), dated({ oncePerGame: true }))).toBeNull()
+      expect(draws(lastYear(nextYear), dated({ cooldownDays: 365 }))).toBe(
+        'juin',
+      )
+      expect(draws(lastYear(nextYear), dated({ cooldownDays: 366 }))).toBeNull()
+      expect(draws(at(60), dated({ openTomorrow: false }))).toBeNull()
+      expect(draws(at(60), dated({ weekdays: [1] }))).toBeNull()
+    })
+
+    it('falls back on the gap and the chance when its conditions do not hold', () => {
+      const events = content(
+        [card('a'), card('juin', { conditions: { ...JUNE_30, fromDay: 100 } })],
+        { ...PACING, minDaysBetween: 0, dailyChance: 1 },
+      )
+      expect(draws(at(60), events)).toBe('a')
+      expect(draws(at(60), { ...events, pacing: PACING })).toBeNull()
+    })
+
+    it('never comes before firstDay, nor at a chance of 0', () => {
+      const events = content([card('juin', { conditions: JUNE_30 })], PACING)
+      expect(
+        draws(at(60), { ...events, pacing: { ...PACING, firstDay: 61 } }),
+      ).toBeNull()
+      expect(
+        draws(at(60), { ...events, pacing: { ...PACING, dailyChance: 0 } }),
+      ).toBeNull()
     })
   })
 
@@ -438,6 +594,73 @@ describe('drawEvent', () => {
       })
       expect(draws(state(49), events)).toBeNull()
       expect(draws(state(50), events)).toBe('a')
+    })
+
+    /** `on(day)` with `records` of `[day, event, followUp, choice]`. */
+    const after = (
+      day: number,
+      ...records: [number, string, boolean, string][]
+    ): GameState => ({
+      ...on(day),
+      events: {
+        ...MORNING.events,
+        history: records.map(([at, event, followUp, choice]) => ({
+          day: at,
+          event,
+          followUp,
+          choice,
+          outcome: 0,
+        })),
+      },
+    })
+
+    it('maxPerGame: until it came up that many times, follow-ups included', () => {
+      const events = content([card('a', { conditions: { maxPerGame: 2 } })])
+      expect(draws(after(100), events)).toBe('a')
+      expect(draws(after(100, [3, 'a', false, 'non']), events)).toBe('a')
+      expect(
+        draws(
+          after(100, [3, 'a', false, 'non'], [9, 'b', false, 'oui']),
+          events,
+        ),
+      ).toBe('a')
+      expect(
+        draws(
+          after(100, [3, 'a', false, 'non'], [9, 'a', true, 'oui']),
+          events,
+        ),
+      ).toBeNull()
+    })
+
+    it('chosen: one of the choices listed was made before, follow-ups included', () => {
+      const conditions = {
+        chosen: [
+          { event: 'b', choice: 'oui' },
+          { event: 'c', choice: 'oui' },
+        ],
+      }
+      const events = content([card('a', { conditions }), card('b'), card('c')])
+      const [a] = events.events
+      if (a === undefined) throw new Error('No event')
+      const holds = (state: GameState) => conditionsHold(a, state, new Map())
+      expect(holds(after(100))).toBe(false)
+      expect(holds(after(100, [9, 'b', false, 'non']))).toBe(false)
+      expect(holds(after(100, [9, 'a', false, 'oui']))).toBe(false)
+      expect(holds(after(100, [9, 'b', false, 'oui']))).toBe(true)
+      expect(holds(after(100, [9, 'c', true, 'oui']))).toBe(true)
+    })
+
+    it('notChosen: none of the choices listed was ever made', () => {
+      const conditions = { notChosen: [{ event: 'b', choice: 'oui' }] }
+      const events = content([card('a', { conditions }), card('b')])
+      const [a] = events.events
+      if (a === undefined) throw new Error('No event')
+      const holds = (state: GameState) => conditionsHold(a, state, new Map())
+      expect(holds(after(100))).toBe(true)
+      expect(holds(after(100, [9, 'b', false, 'non']))).toBe(true)
+      expect(
+        holds(after(100, [9, 'b', false, 'non'], [40, 'b', true, 'oui'])),
+      ).toBe(false)
     })
 
     it('all at once', () => {

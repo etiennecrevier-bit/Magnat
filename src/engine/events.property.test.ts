@@ -19,19 +19,34 @@ import { int, seedRng } from './rng.ts'
 import { defaultProfile } from './profile.ts'
 import type { Day, GameState } from './types.ts'
 
-// Conditions, cooldowns and the gap hold over ten years of mornings: random
-// event lists with random conditions and pacing, drawn every morning with
-// the owner's energy moving from one day to the next, each choice made at
-// random. Every event that comes up is checked against the rules, written
-// out here apart from the engine; with a daily chance of 1, so is every
-// morning that brings none. The days are not played, only their mornings,
-// so ten years stay cheap.
+// Conditions, cooldowns, follow-ups, dated events and the gap hold over ten
+// years of mornings: random event lists with random conditions and pacing,
+// drawn every morning with the owner's energy moving from one day to the
+// next, each choice made at random. Every event that comes up is checked
+// against the rules, written out here apart from the engine; with a daily
+// chance of 1, so is every morning that brings none, and every morning
+// whose dated event may come. The days are not played, only their
+// mornings, so ten years stay cheap.
 
 const DAYS = 3650
 const NUM_RUNS = 50
 /** Games of the fixed sample that checks every rule is put to the test. */
 const SAMPLED = 100
 const IDS = ['e0', 'e1', 'e2', 'e3'] as const
+const CHOICES = ['agir', 'attendre'] as const
+
+/** Up to two choices of the events, as `chosen` and `notChosen` list them. */
+const choiceRefs = fc.uniqueArray(
+  fc.record({
+    event: fc.constantFrom(...IDS),
+    choice: fc.constantFrom(...CHOICES),
+  }),
+  {
+    minLength: 1,
+    maxLength: 2,
+    selector: ({ event, choice }) => event + choice,
+  },
+)
 
 // Every condition a card may set; each card keeps up to two of them, so
 // most cards still come up now and then.
@@ -61,7 +76,10 @@ const conditionValues = fc.record({
   cashAboveCents: fc.constantFrom(-1_000_000, 500_000, 1_500_000, 3_000_000),
   cashBelowCents: fc.constantFrom(0, 1_000_000, 2_000_000, 4_000_000),
   oncePerGame: fc.boolean(),
+  maxPerGame: fc.integer({ min: 1, max: 3 }),
   cooldownDays: fc.integer({ min: 1, max: 120 }),
+  chosen: choiceRefs,
+  notChosen: choiceRefs,
   productOnMenu: fc.constantFrom('cafe', 'chocolat', 'croissant'),
   openTomorrow: fc.boolean(),
   followUpOnly: fc.boolean(),
@@ -81,7 +99,10 @@ const CONDITION_KEYS: readonly ConditionKey[] = [
   'cashAboveCents',
   'cashBelowCents',
   'oncePerGame',
+  'maxPerGame',
   'cooldownDays',
+  'chosen',
+  'notChosen',
   'productOnMenu',
   'openTomorrow',
   'followUpOnly',
@@ -195,7 +216,8 @@ type Game = typeof game extends fc.Arbitrary<infer T> ? T : never
 /**
  * The rules that keep `card` from coming up on the morning of `state.day`,
  * by name, written apart from the engine: none when it may come up. `seen`
- * holds the last day each event came up, follow-ups included.
+ * holds the last day each event came up, and the history every event that
+ * came up, follow-ups included.
  */
 function heldBackBy(
   card: EventCard,
@@ -223,6 +245,11 @@ function heldBackBy(
     !state.events.delayed.some(
       ({ day, effect }) => effect.kind === 'closed' && closes(day, effect.days),
     )
+  const { history } = state.events
+  const made = (refs: readonly { event: string; choice: string }[]) =>
+    refs.some(({ event, choice }) =>
+      history.some((r) => r.event === event && r.choice === choice),
+    )
   const rules: Record<string, boolean> = {
     weight: card.weight > 0,
     followUpOnly: c.followUpOnly !== true,
@@ -237,6 +264,11 @@ function heldBackBy(
     cashAboveCents: c.cashAboveCents === undefined || cash > c.cashAboveCents,
     cashBelowCents: c.cashBelowCents === undefined || cash < c.cashBelowCents,
     oncePerGame: c.oncePerGame !== true || last === undefined,
+    maxPerGame:
+      c.maxPerGame === undefined ||
+      history.filter(({ event }) => event === card.id).length < c.maxPerGame,
+    chosen: c.chosen === undefined || made(c.chosen),
+    notChosen: c.notChosen === undefined || !made(c.notChosen),
     cooldownDays:
       c.cooldownDays === undefined ||
       last === undefined ||
@@ -255,10 +287,22 @@ const RULES = [
   ...CONDITION_KEYS.filter((key) => key !== 'followUpOnly'),
 ]
 
+/** Whether `card` is dated the morning of `day`. */
+function datedOn(card: EventCard, day: Day): boolean {
+  const { month, dayOfMonth } = toCalendar(day)
+  const date = card.conditions?.date
+  return date?.month === month && date.dayOfMonth === dayOfMonth
+}
+
 /** What the mornings of some games brought, across them. */
 interface Tally {
   drawn: number
   followUps: number
+  /** Dated events that came up, and those of them inside the gap. */
+  dated: number
+  datedInGap: number
+  /** Follow-ups due that waited a morning for a dated event. */
+  waitedForDated: number
   /**
    * For each rule, the cards it alone held back on a morning with a sure
    * draw, which may have brought them otherwise.
@@ -276,19 +320,23 @@ function walk(
   { pacing, count, events, seed, difficulty, offMenu }: Game,
   tally: Tally,
 ): void {
+  const known = (event: string) =>
+    IDS.indexOf(event as (typeof IDS)[number]) < count
   const content: EventContent = loadEventContent({
     pacing,
     events: events.slice(0, count).map((made) => ({
       ...made,
+      // Choices remembered only of events of the list.
+      ...(made.conditions === undefined
+        ? {}
+        : { conditions: rememberingKnown(made.conditions, known) }),
       choices: made.choices.map((choice) => ({
         ...choice,
         outcomes: choice.outcomes.map((outcome) => ({
           ...outcome,
           // Follow-ups only to events of the list.
           effects: outcome.effects.filter(
-            (e) =>
-              e.kind !== 'followUp' ||
-              IDS.indexOf(e.event as (typeof IDS)[number]) < count,
+            (e) => e.kind !== 'followUp' || known(e.event),
           ),
         })),
       })),
@@ -326,16 +374,45 @@ function walk(
     const morning: GameState = { ...state, day, energy: draw(0, 100) }
     const drawn = drawEvent(morning, content)
     const { pending } = drawn.events
-    const due = morning.events.followUps.find(
+    const dueNow = morning.events.followUps.filter(
       (followUp) => followUp.day <= day && cards.has(followUp.event),
     )
+    const story = dueNow.find(
+      ({ event }) => cards.get(event)?.conditions?.followUpOnly === true,
+    )
+    const [due] = dueNow
+    const drawing = day >= pacing.firstDay
+    const dated = drawing
+      ? content.events.filter(
+          (card) =>
+            datedOn(card, day) && heldBackBy(card, morning, seen).length === 0,
+        )
+      : []
     const open =
-      day >= pacing.firstDay &&
+      drawing &&
       (lastDrawn === null || day - lastDrawn >= pacing.minDaysBetween)
 
-    if (due !== undefined) {
-      // The first follow-up due comes up, whatever the rest, and leaves the
-      // gap where it was.
+    if (story !== undefined) {
+      // The first follow-up due of a card that only comes as one comes up,
+      // whatever the rest, and leaves the gap where it was.
+      expect(pending).toEqual({ event: story.event, followUp: true })
+      expect(drawn.events.lastDrawnDay).toBe(lastDrawn)
+      tally.followUps += 1
+    } else if (dated.length > 0) {
+      // A dated event that may come comes, whatever the gap and the chance,
+      // and the follow-ups due wait.
+      expect(pending?.followUp, `a dated event on day ${day}`).toBe(false)
+      expect(dated.map(({ id }) => id)).toContain(pending?.event)
+      expect(drawn.events.lastDrawnDay).toBe(day)
+      expect(drawn.events.followUps).toEqual(morning.events.followUps)
+      if (dated.length === 1) expect(drawn.rngState).toBe(morning.rngState)
+      tally.dated += 1
+      if (!open) tally.datedInGap += 1
+      if (due !== undefined) tally.waitedForDated += 1
+      lastDrawn = day
+    } else if (due !== undefined) {
+      // Otherwise the first follow-up due comes up, whatever the rest, and
+      // leaves the gap where it was.
       expect(pending).toEqual({ event: due.event, followUp: true })
       expect(drawn.events.lastDrawnDay).toBe(lastDrawn)
       tally.followUps += 1
@@ -361,7 +438,12 @@ function walk(
         ).not.toEqual([])
       }
     }
-    if (due === undefined && pacing.dailyChance === 1 && open) {
+    if (
+      due === undefined &&
+      dated.length === 0 &&
+      pacing.dailyChance === 1 &&
+      open
+    ) {
       // A card one rule alone holds back on a morning with a sure draw:
       // the draw would bring it now and then if the engine missed the rule.
       for (const card of content.events) {
@@ -400,8 +482,34 @@ function walk(
   }
 }
 
+/**
+ * `conditions` with only the choices of events `known` holds in `chosen`
+ * and `notChosen`, and without either once it lists none.
+ */
+function rememberingKnown(
+  conditions: Record<string, unknown>,
+  known: (event: string) => boolean,
+): Record<string, unknown> {
+  const kept = { ...conditions }
+  for (const key of ['chosen', 'notChosen']) {
+    const refs = kept[key] as { event: string }[] | undefined
+    if (refs === undefined) continue
+    const left = refs.filter(({ event }) => known(event))
+    if (left.length === 0) delete kept[key]
+    else kept[key] = left
+  }
+  return kept
+}
+
 function emptyTally(): Tally {
-  return { drawn: 0, followUps: 0, heldBack: new Map() }
+  return {
+    drawn: 0,
+    followUps: 0,
+    dated: 0,
+    datedInGap: 0,
+    waitedForDated: 0,
+    heldBack: new Map(),
+  }
 }
 
 describe('event cards over ten years', () => {
@@ -422,6 +530,9 @@ describe('event cards over ten years', () => {
     }
     expect(tally.drawn).toBeGreaterThan(SAMPLED * 20)
     expect(tally.followUps).toBeGreaterThan(SAMPLED * 5)
+    expect(tally.dated).toBeGreaterThan(0)
+    expect(tally.datedInGap).toBeGreaterThan(0)
+    expect(tally.waitedForDated).toBeGreaterThan(0)
     expect(
       Object.fromEntries(RULES.map((rule) => [rule, tally.heldBack.has(rule)])),
     ).toEqual(Object.fromEntries(RULES.map((rule) => [rule, true])))

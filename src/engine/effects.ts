@@ -32,6 +32,7 @@ const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
 const SALES: AccountCode = '4000'
 const COST_OF_GOODS_SOLD: AccountCode = '5000'
+const INVENTORY_LOSSES: AccountCode = '5100'
 const MARKETING: AccountCode = '6300'
 const OTHER_CHARGES: AccountCode = '6900'
 
@@ -43,7 +44,18 @@ const MEMO = {
   purchases: 'Achat de marchandises',
   costOfSales: 'Coût des marchandises vendues',
   giveaway: 'Marchandises offertes',
+  loss: 'Marchandises perdues',
 } as const
+
+/** Where stock taken out goes, by `useStock`'s `to`: its memo and account. */
+const STOCK_USED = {
+  order: [MEMO.costOfSales, COST_OF_GOODS_SOLD],
+  giveaway: [MEMO.giveaway, MARKETING],
+  loss: [MEMO.loss, INVENTORY_LOSSES],
+} as const satisfies Record<
+  Extract<EventEffect, { kind: 'useStock' }>['to'],
+  readonly [string, AccountCode]
+>
 
 const ZERO = cents(0)
 
@@ -90,12 +102,14 @@ export function untimed(effect: TimedEventEffect): EventEffect {
  *   (« Mauvaise créance », Dr 6950 Créances irrécouvrables / Cr 1100), one
  *   entry each. A client who owes nothing changes nothing.
  * - `delayReceivable`: each receivable of the client comes due `days` later.
- * - `buyStock`: a new lot after the others, at the product's unit cost:
- *   « Achat de marchandises », Dr 1200 Stocks / Cr 1000.
+ * - `buyStock`: a new lot after the others, at its `unitCostCents` or else
+ *   the product's unit cost: « Achat de marchandises », Dr 1200 Stocks / Cr
+ *   1000.
  * - `useStock`: up to `units` taken out of the stock, oldest lot first, at
  *   what they cost: « Coût des marchandises vendues », Dr 5000 / Cr 1200,
- *   for an order, or « Marchandises offertes », Dr 6300 Marketing / Cr 1200,
- *   for a giveaway.
+ *   for an order, « Marchandises offertes », Dr 6300 Marketing / Cr 1200,
+ *   for a giveaway, or « Marchandises perdues », Dr 5100 Pertes sur stocks /
+ *   Cr 1200, for a loss.
  * - `energy`: the owner's energy moves by `amount`, held between 0 and 100,
  *   and a Défi counts where it ends (see `withEnergyAt`).
  * - `personal`: a movement of the owner's own account, with no entry.
@@ -159,7 +173,8 @@ export function applyEffect(
       }
     case 'buyStock': {
       const { product, units } = effect
-      const unitCost = content.products[product].unitCostCents
+      const unitCost =
+        effect.unitCostCents ?? content.products[product].unitCostCents
       return {
         ...state,
         inventory: [
@@ -184,10 +199,8 @@ export function applyEffect(
         effect.product,
         effect.units,
       )
-      const entry =
-        effect.to === 'order'
-          ? transfer(day, MEMO.costOfSales, COST_OF_GOODS_SOLD, INVENTORY, cost)
-          : transfer(day, MEMO.giveaway, MARKETING, INVENTORY, cost)
+      const [memo, account] = STOCK_USED[effect.to]
+      const entry = transfer(day, memo, account, INVENTORY, cost)
       return { ...state, inventory: lots, journal: post(state.journal, entry) }
     }
     case 'energy': {

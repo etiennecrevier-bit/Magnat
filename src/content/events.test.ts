@@ -37,6 +37,23 @@ const STANDING_CARDS = [
   'peintureLuxe',
 ]
 
+/** The cards of issue #155, in its order, the rain under the awning added. */
+const R06_CARDS = [
+  'panneCourant',
+  'stagiaire',
+  'feteQuartier',
+  'fournisseurRetard',
+  'carteFidelite',
+  'inspection',
+  'pluie',
+  'pluieAuvent',
+  'clientMystere',
+  'camionVoisin',
+  'commandite',
+  'volCaisse',
+  'reportage',
+]
+
 /** The portraits of issue #95, one per character but the silhouette. */
 const PORTRAITS = [
   'gillesLacasse',
@@ -129,8 +146,8 @@ function appliesAt(
 /**
  * Whether `effect` costs the player something (#137): a charge, energy or
  * the owner's own cash going down, a change to the street below 1, the
- * truck closed or a product it cannot sell, stock given away, or a client
- * who pays late or never.
+ * truck closed or a product it cannot sell, stock given away or lost, or a
+ * client who pays late or never.
  */
 function costs(effect: TimedEventEffect): boolean {
   switch (effect.kind) {
@@ -149,7 +166,7 @@ function costs(effect: TimedEventEffect): boolean {
     case 'willingness':
       return effect.factor < 1
     case 'useStock':
-      return effect.to === 'giveaway'
+      return effect.to !== 'order'
     default:
       return false
   }
@@ -169,11 +186,61 @@ function rejects(raw: unknown, ...reasons: string[]): void {
 describe('events.json', () => {
   const content = loadEventContent()
 
-  it('paces events as the issue says: from day 7, 5 days apart, 15 % a morning', () => {
+  it('paces events as #155 and its decision say: from day 10, 14 days apart, 8 % a morning', () => {
     expect(content.pacing).toEqual({
-      firstDay: 7,
-      minDaysBetween: 5,
-      dailyChance: 0.15,
+      firstDay: 10,
+      minDaysBetween: 14,
+      dailyChance: 0.08,
+    })
+  })
+
+  it('caps the cards that came too often (#155)', () => {
+    const caps = Object.fromEntries(
+      content.events.flatMap(({ id, conditions }) =>
+        conditions?.maxPerGame === undefined
+          ? []
+          : [[id, conditions.maxPerGame]],
+      ),
+    )
+    expect(caps).toEqual({ machineTousse: 3, influenceuse: 2, concurrence: 2 })
+  })
+
+  it('brings the chalet on any tired summer morning, four times as often as a card of weight 1', () => {
+    const chalet = content.events.find(({ id }) => id === 'chalet')
+    expect(chalet?.weight).toBe(4)
+    expect(chalet?.conditions).toEqual({
+      energyBelow: 100,
+      months: [6, 7, 8, 9],
+      cooldownDays: 60,
+    })
+  })
+
+  it('remembers the choices that change later cards: the awning, the neighbour’s machine', () => {
+    const remembers = Object.fromEntries(
+      content.events.flatMap(({ id, conditions }) =>
+        conditions?.chosen === undefined && conditions?.notChosen === undefined
+          ? []
+          : [
+              [
+                id,
+                { chosen: conditions.chosen, notChosen: conditions.notChosen },
+              ],
+            ],
+      ),
+    )
+    expect(remembers).toEqual({
+      machineTousse: {
+        chosen: undefined,
+        notChosen: [{ event: 'camionVoisin', choice: 'machine' }],
+      },
+      pluie: {
+        chosen: undefined,
+        notChosen: [{ event: 'pluie', choice: 'auvent' }],
+      },
+      pluieAuvent: {
+        chosen: [{ event: 'pluie', choice: 'auvent' }],
+        notChosen: undefined,
+      },
     })
   })
 
@@ -182,12 +249,20 @@ describe('events.json', () => {
     expect(essai?.weight).toBe(0)
   })
 
-  it('holds the essai card, the twelve cards of issue #93, then the four of #137, in order', () => {
+  it('holds the essai card, the twelve cards of issue #93, the four of #137, then the thirteen of #155, in order', () => {
     expect(content.events.map(({ id }) => id)).toEqual([
       'essai',
       ...CARDS,
       ...STANDING_CARDS,
+      ...R06_CARDS,
     ])
+  })
+
+  it('dates only « Le 1er juillet », on June 30', () => {
+    const dated = content.events.flatMap(({ id, conditions }) =>
+      conditions?.date === undefined ? [] : [[id, conditions.date]],
+    )
+    expect(dated).toEqual([['premierJuillet', { month: 6, dayOfMonth: 30 }]])
   })
 
   it('may draw every card but essai, unless it only comes as a follow-up', () => {
@@ -198,12 +273,13 @@ describe('events.json', () => {
   })
 
   it('brings each follow-up-only card as the follow-up of another, and only those', () => {
+    // A card that may come back by itself, as the theft does, aside.
     const followUps = new Set(
-      content.events.flatMap(({ choices }) =>
+      content.events.flatMap(({ id, choices }) =>
         choices.flatMap(({ outcomes }) =>
           outcomes.flatMap(({ effects }) =>
             effects.flatMap((effect) =>
-              effect.kind === 'followUp' && effect.event !== 'essai'
+              effect.kind === 'followUp' && effect.event !== id
                 ? [effect.event]
                 : [],
             ),
@@ -406,13 +482,32 @@ describe('events.json', () => {
       cashAboveCents: -50_000,
       cashBelowCents: 100_000,
       oncePerGame: true,
+      maxPerGame: 2,
       cooldownDays: 60,
+      chosen: [{ event: 'grosseCommande', choice: 'accepter' }],
+      notChosen: [
+        { event: 'grosseCommande', choice: 'refuser' },
+        { event: 'grosseCommande', choice: 'accepter' },
+      ],
       productOnMenu: 'chocolat',
       openTomorrow: true,
       followUpOnly: false,
     }
-    const loaded = loadEventContent(file([card({ conditions })]))
+    const loaded = loadEventContent(
+      file([
+        card({ conditions, choices: [choice('accepter'), choice('refuser')] }),
+      ]),
+    )
     expect(loaded.events[0]?.conditions).toEqual(conditions)
+  })
+
+  it('loads stock lost, and stock bought now at its own unit cost', () => {
+    const effects = [
+      { kind: 'useStock', product: 'cafe', units: 300, to: 'loss' },
+      { kind: 'buyStock', product: 'cafe', units: 300, unitCostCents: 20 },
+    ]
+    const loaded = loadEventContent(withEffects(...effects))
+    expect(loaded.events[0]?.choices[0]?.outcomes[0]?.effects).toEqual(effects)
   })
 })
 
@@ -518,6 +613,45 @@ describe('loadEventContent rejects', () => {
     )
   })
 
+  it('a choice remembered of an event the file does not hold, or that it does not have', () => {
+    rejects(
+      file([
+        card({
+          conditions: { chosen: [{ event: 'pluie', choice: 'auvent' }] },
+        }),
+      ]),
+      'no event has the id pluie',
+      '→ at events[0].conditions.chosen[0]',
+    )
+    rejects(
+      file([
+        card({
+          conditions: {
+            notChosen: [{ event: 'grosseCommande', choice: 'refuser' }],
+          },
+          choices: [choice('accepter'), choice('payer')],
+        }),
+      ]),
+      'the event grosseCommande has no choice refuser',
+      '→ at events[0].conditions.notChosen[0]',
+    )
+  })
+
+  it('stock bought later at its own unit cost, which the card could not show', () => {
+    for (const timing of [{ inDays: 1 }, { onNextWeekday: 4 }]) {
+      rejects(
+        withEffects({
+          kind: 'buyStock',
+          product: 'cafe',
+          units: 300,
+          unitCostCents: 20,
+          ...timing,
+        }),
+        'a purchase at its own unit cost happens now',
+      )
+    }
+  })
+
   it('a follow-up to an event the file does not hold', () => {
     rejects(
       withEffects({ kind: 'followUp', event: 'chequeDansLaMalle', days: 60 }),
@@ -568,6 +702,9 @@ describe('loadEventContent rejects', () => {
     [{ cooldownDays: 0 }, 'cooldownDays'],
     [{ productOnMenu: 'poutine' }, 'productOnMenu'],
     [{ oncePerGame: 'oui' }, 'oncePerGame'],
+    [{ maxPerGame: 0 }, 'maxPerGame'],
+    [{ chosen: [] }, 'chosen'],
+    [{ notChosen: [{ event: 'grosseCommande' }] }, 'notChosen[0].choice'],
     [{ openTomorrow: 1 }, 'openTomorrow'],
   ])('the condition %j', (conditions, field) => {
     rejects(file([card({ conditions })]), `→ at events[0].conditions.${field}`)
@@ -595,6 +732,10 @@ describe('loadEventContent rejects', () => {
     [{ kind: 'delayReceivable', client: 'A', days: 0 }, 'days'],
     [{ kind: 'buyStock', product: 'poutine', units: 1 }, 'product'],
     [{ kind: 'buyStock', product: 'cafe', units: 0 }, 'units'],
+    [
+      { kind: 'buyStock', product: 'cafe', units: 1, unitCostCents: 0 },
+      'unitCostCents',
+    ],
     [{ kind: 'useStock', product: 'cafe', units: 1, to: 'poubelle' }, 'to'],
     [{ kind: 'energy', amount: 0 }, 'amount'],
     [{ kind: 'energy', amount: -101 }, 'amount'],

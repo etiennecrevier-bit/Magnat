@@ -67,13 +67,19 @@ const STOCKS: AccountCode = '1200'
 const ZERO = cents(0)
 
 /**
+ * The essai card's weight in play: since events grew rarer and the cards
+ * more numerous (#155), enough for every kind of change to the street and
+ * a follow-up to come up in ten years.
+ */
+const ESSAI_WEIGHT = 4
+/**
  * The shipped events with the essai card in play: it never comes up in a
  * real game, and it tries every effect.
  */
 const EVENTS_IN_PLAY: EventContent = {
   ...EVENTS,
   events: EVENTS.events.map((event) =>
-    event.id === 'essai' ? { ...event, weight: 1 } : event,
+    event.id === 'essai' ? { ...event, weight: ESSAI_WEIGHT } : event,
   ),
 }
 /** Fewer events than this over ten years would leave them untested. */
@@ -220,12 +226,18 @@ function check(seed: number, difficulty: DifficultyId): Checked {
     const { pending } = state.events
     if (pending !== null) {
       checked.events += 1
+      const card = EVENTS_IN_PLAY.events.find(({ id }) => id === pending.event)
+      if (card === undefined) throw new Error(`Unknown event ${pending.event}`)
       if (!pending.followUp) {
         checked.drawn += 1
         if (day < firstDay) {
           fail('pacing', `day ${day}: an event before day ${firstDay}`)
         }
-        if (lastDrawn !== null && day - lastDrawn < minDaysBetween) {
+        // An event dated that day comes whatever the gap (#155).
+        const { date } = card.conditions ?? {}
+        const { month, dayOfMonth } = toCalendar(day)
+        const dated = date?.month === month && date.dayOfMonth === dayOfMonth
+        if (!dated && lastDrawn !== null && day - lastDrawn < minDaysBetween) {
           fail(
             'pacing',
             `day ${day}: an event ${day - lastDrawn} days after the last`,
@@ -233,8 +245,6 @@ function check(seed: number, difficulty: DifficultyId): Checked {
         }
         lastDrawn = day
       }
-      const card = EVENTS_IN_PLAY.events.find(({ id }) => id === pending.event)
-      if (card === undefined) throw new Error(`Unknown event ${pending.event}`)
       state = resolveEvent(state, choose(card), EVENTS_IN_PLAY)
     }
     state = tick(
@@ -395,7 +405,7 @@ describe.each(GAMES)(
       expect(checked.failures.receivables).toEqual([])
     })
 
-    it(`draws events from day ${EVENTS_IN_PLAY.pacing.firstDay} on, at least ${EVENTS_IN_PLAY.pacing.minDaysBetween} days apart, follow-ups aside`, () => {
+    it(`draws events from day ${EVENTS_IN_PLAY.pacing.firstDay} on, at least ${EVENTS_IN_PLAY.pacing.minDaysBetween} days apart, follow-ups and dated events aside`, () => {
       expect(checked.events).toBeGreaterThanOrEqual(MIN_EVENTS)
       expect(checked.events).toBeGreaterThan(checked.drawn)
       expect(checked.failures.pacing).toEqual([])

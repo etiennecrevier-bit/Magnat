@@ -8,7 +8,7 @@ import {
   FOOD_TRUCK,
   PERSONAL,
 } from '../engine/day.ts'
-import { conditionsHold, resolveEvent } from '../engine/events.ts'
+import { conditionsHold, drawEvent, resolveEvent } from '../engine/events.ts'
 import { FULL_ENERGY } from '../engine/energy.ts'
 import { onHand } from '../engine/inventory.ts'
 import { next } from '../engine/rng.ts'
@@ -19,17 +19,19 @@ import { balance, entriesOf, type JournalEntry } from '../finance/journal.ts'
 import { balanceSheet } from '../finance/statements.ts'
 import type { EventCard, EventChoice, EventContent } from './schema.ts'
 
-// The event cards of issues #93 and #137, each choice played out in a game of
-// seed 42: every outcome of every choice, from the first morning the card
-// may come up, until nothing it started is left. chequeDansLaMalle, which
-// only comes as a follow-up, plays from the late payment of grosseCommande.
-// The cards play as written, with no difficulty scaling them: the game is
-// at Moyen, so the effects of Difficile only never apply.
+// The event cards of issues #93, #137 and #155, each choice played out in a
+// game of seed 42: every outcome of every choice, from the first morning the
+// card may come up, until nothing it started is left. chequeDansLaMalle,
+// which only comes as a follow-up, plays from the late payment of
+// grosseCommande. The cards play as written, with no difficulty scaling
+// them: the game is at Moyen, so the effects of Difficile only never apply.
 
 const SEED = 42
 const CASH: AccountCode = '1000'
 const RECEIVABLES: AccountCode = '1100'
 const SALES: AccountCode = '4000'
+const INVENTORY: AccountCode = '1200'
+const INVENTORY_LOSSES: AccountCode = '5100'
 const RENT_AND_PERMIT: AccountCode = '6100'
 const MARKETING: AccountCode = '6300'
 const BAD_DEBTS: AccountCode = '6950'
@@ -80,15 +82,21 @@ function choiceOf(event: string, id: string): EventChoice {
 const WHOLE_WEEK = [1, 2, 3, 4, 5, 6, 7]
 
 /**
- * A new seed-42 game for `event`, with the starting decisions. With the
- * truck closed on Mondays, the owner's energy rarely drops below 60 from
- * Monday to Wednesday, so the chalet's game opens every day.
+ * A new seed-42 game for `event`, with the starting decisions, and in its
+ * history the first choice a card that remembers one asks for, made on day
+ * 0.
  */
 function startOf(event: string): GameState {
   const state = createInitialState(SEED)
-  return event === 'chalet'
-    ? { ...state, decisions: { ...state.decisions, daysOpen: WHOLE_WEEK } }
-    : state
+  const [made] = cardOf(event).conditions?.chosen ?? []
+  if (made === undefined) return state
+  return {
+    ...state,
+    events: {
+      ...state.events,
+      history: [{ day: 0, followUp: false, outcome: 0, ...made }],
+    },
+  }
 }
 
 const firstMornings = new Map<string, GameState>()
@@ -113,6 +121,13 @@ function firstMorning(event: string): GameState {
     state = tick(state)
   }
   throw new Error(`${event} never comes up in the first year`)
+}
+
+/** A generator state whose next draw `test` holds for. */
+function seedWhere(test: (value: number) => boolean): number {
+  for (let state = 0; ; state += 1) {
+    if (test(next(state)[0])) return state
+  }
 }
 
 /** A generator state whose next draw picks outcome `index` of `choice`. */
@@ -163,7 +178,7 @@ function settled({ events, receivables }: GameState): boolean {
 /**
  * Plays `state` on with no event drawn, until it has `settled` and at least
  * `minDays` days are played, a month by default, answering each follow-up
- * with `answer`.
+ * with `answer`, or with its first choice when it has none so named.
  * Returns the morning after each day played, in order: its `lastDay` sums
  * up that day.
  */
@@ -174,8 +189,15 @@ function playOut(
   const mornings: GameState[] = []
   let current = state
   for (let played = 0; played < MAX_DAYS; played += 1) {
-    if (current.events.pending !== null) {
-      current = resolveEvent(current, answer, AS_WRITTEN)
+    const { pending } = current.events
+    if (pending !== null) {
+      const { choices } = cardOf(pending.event)
+      const known = choices.some(({ id }) => id === answer)
+      current = resolveEvent(
+        current,
+        known ? answer : (choices[0]?.id ?? answer),
+        AS_WRITTEN,
+      )
     }
     if (played >= minDays && settled(current)) return mornings
     current = step(current)
@@ -674,6 +696,8 @@ describe('the energy the cards cost and give', () => {
     ['formulaire14B', 'contester', 0, 'payer'],
     ['formulaire14B', 'contester', 1, 'payer'],
     ['premierJuillet', 'aiderNormand', 0, 'habitude'],
+    ['reportage', 'accepter', 0, 'decliner'],
+    ['reportage', 'accepter', 1, 'decliner'],
   ] as const)(
     '%s: « %s », outcome %i, closes a day of work that tires more than « %s »',
     (event, choiceId, outcome, free) => {
@@ -702,5 +726,233 @@ describe('the energy the cards cost and give', () => {
     const open = playOut(choose(morning, 'chalet', 'resterOuvert'))
     expect(energyAtCloseOf(away, sunday)).toBe(FULL_ENERGY)
     expect(energyAtCloseOf(open, sunday)).toBeLessThan(FULL_ENERGY)
+  })
+})
+
+describe('the cards of #155', () => {
+  it('panneCourant: « Tout jeter et racheter » loses the café and the chocolate on hand to Pertes sur stocks', () => {
+    const morning = firstMorning('panneCourant')
+    const { day } = morning
+    const chosen = choose(morning, 'panneCourant', 'jeter')
+    const lost = entries(chosen, 'Marchandises perdues').map(shape)
+    expect(lost.map(({ debited, credited }) => [debited, credited])).toEqual([
+      [INVENTORY_LOSSES, INVENTORY],
+      [INVENTORY_LOSSES, INVENTORY],
+    ])
+    const total = lost.reduce((sum, { amount }) => sum + amount, 0)
+    expect(total).toBeGreaterThan(0)
+    expect(balance(chosen.journal, INVENTORY_LOSSES, { toDay: day })).toBe(
+      balance(morning.journal, INVENTORY_LOSSES, { toDay: day }) + total,
+    )
+    for (const [product, units] of [
+      ['cafe', 300],
+      ['chocolat', 150],
+    ] as const) {
+      expect(onHand(chosen.inventory, product)).toBe(
+        Math.max(0, onHand(morning.inventory, product) - units),
+      )
+    }
+  })
+
+  it('stagiaire: the intern who finds the hot chocolate loses 40 portions', () => {
+    const morning = firstMorning('stagiaire')
+    const chosen = choose(morning, 'stagiaire', 'prendre', 1)
+    expect(onHand(chosen.inventory, 'chocolat')).toBe(
+      Math.max(0, onHand(morning.inventory, 'chocolat') - 40),
+    )
+    expect(entries(chosen, 'Marchandises perdues')).toHaveLength(1)
+    expect(
+      entries(
+        choose(morning, 'stagiaire', 'prendre', 0),
+        'Marchandises perdues',
+      ),
+    ).toEqual([])
+  })
+
+  it('fournisseurRetard: « Fermer demain » closes tomorrow only', () => {
+    const morning = firstMorning('fournisseurRetard')
+    const { day } = morning
+    const days = playOut(choose(morning, 'fournisseurRetard', 'fermer'))
+    expect(daysWhen(days, day, day + 3, ({ closed }) => closed)).toEqual([
+      day + 1,
+    ])
+  })
+
+  it('fournisseurRetard: « Acheter au dépanneur » pays the supplement tomorrow', () => {
+    const morning = firstMorning('fournisseurRetard')
+    const { day } = morning
+    const end = last(playOut(choose(morning, 'fournisseurRetard', 'depanneur')))
+    expect(
+      entries(end, 'Supplément, croissants du dépanneur').map(shape),
+    ).toEqual([{ day: day + 1, debited: '6900', credited: CASH, amount: 8000 }])
+  })
+
+  it('fournisseurRetard: « Ouvrir sans croissants » sells none tomorrow, and buys none', () => {
+    const morning = firstMorning('fournisseurRetard')
+    const { day } = morning
+    const days = playOut(choose(morning, 'fournisseurRetard', 'sansCroissants'))
+    expect(
+      daysWhen(days, day, day + 3, (street) => street.unavailable.croissant),
+    ).toEqual([day + 1])
+    const tomorrow = days.find(({ lastDay }) => lastDay?.day === day + 1)
+    expect(tomorrow?.lastDay?.sold.croissant).toBe(0)
+    expect(tomorrow?.lastDay?.spoiled.croissant).toBe(0)
+  })
+
+  it('pluie: « Acheter un auvent » turns the rains to come into pluieAuvent', () => {
+    const morning = firstMorning('pluie')
+    // A morning of September, months of rain, past every cooldown.
+    const later = (state: GameState): GameState => ({ ...state, day: 130 })
+    expect(toCalendar(130).month).toBe(9)
+    const holds = (event: string, state: GameState) =>
+      conditionsHold(cardOf(event), later(state), new Map())
+    const awning = choose(morning, 'pluie', 'auvent')
+    expect(holds('pluie', awning)).toBe(false)
+    expect(holds('pluieAuvent', awning)).toBe(true)
+    const waited = choose(morning, 'pluie', 'attendre')
+    expect(holds('pluie', waited)).toBe(true)
+    expect(holds('pluieAuvent', waited)).toBe(false)
+  })
+
+  it('pluieAuvent: « Ouvrir sous l’auvent » takes half of what the rain took without it', () => {
+    const factor = (event: string, choiceId: string) => {
+      const morning = firstMorning(event)
+      const days = playOut(choose(morning, event, choiceId))
+      return streetOnDay(days, morning.day).walkIns.chic
+    }
+    expect(1 - factor('pluieAuvent', 'ouvrir')).toBeCloseTo(
+      (1 - factor('pluie', 'attendre')) / 2,
+    )
+  })
+
+  it('camionVoisin: « Racheter son café » buys 300 portions below their usual cost', () => {
+    const morning = firstMorning('camionVoisin')
+    const { day } = morning
+    const chosen = choose(morning, 'camionVoisin', 'stock')
+    expect(chosen.inventory.at(-1)).toEqual({
+      product: 'cafe',
+      quantity: 300,
+      unitCost: 20,
+      boughtOnDay: day,
+    })
+    expect(20).toBeLessThan(FOOD_TRUCK.products.cafe.unitCostCents)
+    const bought = entries(chosen, 'Achat de marchandises').slice(
+      entries(morning, 'Achat de marchandises').length,
+    )
+    expect(bought.map(shape)).toEqual([
+      { day, debited: INVENTORY, credited: CASH, amount: 6000 },
+    ])
+  })
+
+  it('camionVoisin: « Acheter sa machine » stops machineTousse for good', () => {
+    const morning = firstMorning('camionVoisin')
+    const coughs = (state: GameState) =>
+      conditionsHold(cardOf('machineTousse'), state, new Map())
+    expect(coughs(morning)).toBe(true)
+    expect(coughs(choose(morning, 'camionVoisin', 'machine'))).toBe(false)
+    expect(coughs(choose(morning, 'camionVoisin', 'stock'))).toBe(true)
+  })
+
+  it('volCaisse: « Prendre le risque » brings the theft back 30 days later at 10 %, though it comes once a game', () => {
+    const morning = firstMorning('volCaisse')
+    const { day } = morning
+    const risk = (test: (value: number) => boolean) =>
+      choose({ ...morning, rngState: seedWhere(test) }, 'volCaisse', 'risque')
+    expect(cardOf('volCaisse').conditions?.oncePerGame).toBe(true)
+    expect(risk((value) => value >= 0.1).events.followUps).toEqual([])
+    const again = risk((value) => value < 0.1)
+    expect(again.events.followUps).toEqual([
+      { day: day + 30, event: 'volCaisse' },
+    ])
+    expect(entries(again, 'Vol de la caisse').map(shape)).toEqual([
+      { day, debited: '6900', credited: CASH, amount: 30_000 },
+    ])
+    const back = untilPending(again)
+    expect(back.day).toBe(day + 30)
+    expect(back.events.pending).toEqual({ event: 'volCaisse', followUp: true })
+  })
+
+  it('volCaisse: « Acheter un coffre-fort » pays the theft and the safe, and the thief never comes back', () => {
+    const morning = firstMorning('volCaisse')
+    const chosen = choose(morning, 'volCaisse', 'coffre')
+    expect(entries(chosen, 'Vol de la caisse').map(shape)).toEqual([
+      { day: morning.day, debited: '6900', credited: CASH, amount: 30_000 },
+    ])
+    expect(entries(chosen, 'Coffre-fort').map(shape)).toEqual([
+      { day: morning.day, debited: '6900', credited: CASH, amount: 25_000 },
+    ])
+    expect(chosen.events.followUps).toEqual([])
+  })
+
+  it.each([
+    [0, 'reportageElogieux', 1.2],
+    [1, 'reportageMoqueur', 1],
+  ] as const)(
+    'reportage: « Accepter l’entrevue », outcome %i, closes tomorrow, and the piece comes out the day after',
+    (outcome, headline, chic) => {
+      const morning = firstMorning('reportage')
+      const { day } = morning
+      const days = playOut(choose(morning, 'reportage', 'accepter', outcome))
+      expect(daysWhen(days, day, day + 3, ({ closed }) => closed)).toEqual([
+        day + 1,
+      ])
+      expect(last(days).events.headlines).toContainEqual({
+        day: day + 2,
+        id: headline,
+      })
+      expect(streetOnDay(days, day + 1).walkIns.chic).toBe(1)
+      expect(streetOnDay(days, day + 2).walkIns.chic).toBe(chic)
+      expect(streetOnDay(days, day + 22).walkIns.chic).toBe(chic)
+      expect(streetOnDay(days, day + 23).walkIns.chic).toBe(1)
+    },
+  )
+})
+
+describe('the morning of June 30 with a follow-up due (#155)', () => {
+  // « Le 1er juillet » comes on its day, inside the gap and with no draw.
+  // A card coming back, such as the theft, waits for July 1; the rest of a
+  // story, such as Gilles's cheque on the morning his payment is due, keeps
+  // its day, before the payment would be collected by itself.
+  const june30 = firstMorning('premierJuillet')
+  const due = (event: string): GameState => ({
+    ...june30,
+    events: {
+      ...june30.events,
+      lastDrawnDay: june30.day - 1,
+      followUps: [{ day: june30.day, event }],
+    },
+  })
+
+  it('brings premierJuillet, the theft coming back the next morning', () => {
+    const drawn = drawEvent(due('volCaisse'), AS_WRITTEN)
+    expect(drawn.events.pending).toEqual({
+      event: 'premierJuillet',
+      followUp: false,
+    })
+    expect(drawn.events.followUps).toEqual([
+      { day: june30.day, event: 'volCaisse' },
+    ])
+    const july1 = tick(
+      resolveEvent(drawn, 'habitude', AS_WRITTEN),
+      FOOD_TRUCK,
+      CUSTOMERS,
+      DIFFICULTIES,
+      PERSONAL,
+      ENERGY,
+      AS_WRITTEN,
+    )
+    expect(july1.day).toBe(june30.day + 1)
+    expect(july1.events.pending).toEqual({ event: 'volCaisse', followUp: true })
+  })
+
+  it('brings Gilles’s cheque the morning it is due, before premierJuillet', () => {
+    expect(conditionsHold(cardOf('premierJuillet'), june30, new Map())).toBe(
+      true,
+    )
+    const drawn = drawEvent(due('chequeDansLaMalle'), AS_WRITTEN)
+    expect(drawn.events.pending).toEqual({
+      event: 'chequeDansLaMalle',
+      followUp: true,
+    })
   })
 })
