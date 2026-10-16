@@ -10,6 +10,7 @@ import {
   type RestockRule,
 } from '../content/schema.ts'
 import type { JournalEntry } from '../finance/journal.ts'
+import { BAKERY } from './bakery.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
 import { perSegment } from './customers.ts'
 import { CUSTOMERS, FOOD_TRUCK, currentPrice } from './day.ts'
@@ -199,6 +200,9 @@ describe('the starting decisions', () => {
       daysOpen: STARTING.daysOpen,
       ownerWeeklyPay: STARTING.ownerWeeklyPayCents,
       marketingDaily: STARTING.marketingDailyCents,
+      bakery: null,
+      croissantSource: BAKERY.startingDecisions.croissantSource,
+      bake: BAKERY.startingDecisions.bake,
     })
     expect(state.decisions).toEqual(startingDecisions())
     expect(state.pendingDecisions).toBeNull()
@@ -462,8 +466,13 @@ describe('applyDecision', () => {
 })
 
 describe('the kinds of change', () => {
-  it('are those a Défi may lock, no more and no less', () => {
-    expectTypeOf<DecisionKind>().toEqualTypeOf<DecisionChange['kind']>()
+  it("are those a Défi may lock, and the bakery's, which none may", () => {
+    expectTypeOf<
+      Extract<DecisionChange['kind'], DecisionKind>
+    >().toEqualTypeOf<DecisionKind>()
+    expectTypeOf<Exclude<DecisionChange['kind'], DecisionKind>>().toEqualTypeOf<
+      'openBakery' | 'closeBakery' | 'croissantSource' | 'bake'
+    >()
     expect(decisionKindSchema.options).toEqual([
       'price',
       'restock',
@@ -471,6 +480,129 @@ describe('the kinds of change', () => {
       'ownerWeeklyPay',
       'marketingDaily',
     ])
+  })
+})
+
+describe('the bakery', () => {
+  const OPEN_LEASED: DecisionChange = { kind: 'openBakery', oven: 'louer' }
+  const OPEN_BOUGHT: DecisionChange = { kind: 'openBakery', oven: 'acheter' }
+  const CLOSE: DecisionChange = { kind: 'closeBakery' }
+
+  /** Tomorrow's morning of `state`, with `changes` made today. */
+  function after(state: GameState, ...changes: DecisionChange[]): GameState {
+    return tick(changes.reduce((next, c) => applyDecision(next, c), state))
+  }
+
+  /** The morning of day 2, with the bakery planned on day 0 open since day 1. */
+  function opened(oven: 'louer' | 'acheter'): GameState {
+    const state = tick(after(monday(), { kind: 'openBakery', oven }))
+    expect(state.bakery).toMatchObject({ openedOnDay: 1, oven })
+    return state
+  }
+
+  it('plans a bakery with its oven, and drops the plan', () => {
+    expect(pendingAfter(OPEN_LEASED).bakery).toEqual({ oven: 'louer' })
+    expect(pendingAfter(OPEN_BOUGHT).bakery).toEqual({ oven: 'acheter' })
+    const planned = applyDecision(monday(), OPEN_BOUGHT)
+    expect(pendingAfter(CLOSE, planned).bakery).toBeNull()
+  })
+
+  it('rejects a second plan, and a close with none', () => {
+    const planned = applyDecision(monday(), OPEN_LEASED)
+    expectRejected(OPEN_BOUGHT, 'already planned', planned)
+    expectRejected(CLOSE, 'no bakery is planned', monday())
+    expectRejected(OPEN_LEASED, 'already planned', after(monday(), OPEN_LEASED))
+    expectRejected(OPEN_LEASED, 'already planned', opened('louer'))
+  })
+
+  it('leases no oven once the business owns one, open or closed', () => {
+    const notice = tick(after(opened('acheter'), CLOSE))
+    expect(notice.bakery.closesAfterDay).not.toBeNull()
+    expectRejected(OPEN_LEASED, 'cannot be louer', notice)
+    expect(pendingAfter(OPEN_BOUGHT, notice).bakery).toEqual({
+      oven: 'acheter',
+    })
+    // A leased bakery may be bought later, once it has closed.
+    let leased = tick(after(opened('louer'), CLOSE))
+    const last = leased.bakery.closesAfterDay ?? 0
+    while (leased.day <= last + 1) leased = tick(leased)
+    expect(leased.bakery.openedOnDay).toBeNull()
+    expect(pendingAfter(OPEN_BOUGHT, leased).bakery).toEqual({
+      oven: 'acheter',
+    })
+  })
+
+  it('keeps the oven terms of a bakery that holds its premises', () => {
+    const running = opened('louer')
+    // Closed and opened again the same day, before the notice starts.
+    const closed = applyDecision(running, CLOSE)
+    expectRejected(OPEN_BOUGHT, 'must stay louer', closed)
+    expect(pendingAfter(OPEN_LEASED, closed).bakery).toEqual({ oven: 'louer' })
+    // Opened again during the notice.
+    const notice = tick(after(running, CLOSE))
+    expect(notice.bakery.closesAfterDay).not.toBeNull()
+    expectRejected(OPEN_BOUGHT, 'must stay louer', notice)
+    expect(pendingAfter(OPEN_LEASED, notice).bakery).toEqual({ oven: 'louer' })
+  })
+
+  it('counts the bakery the day under way opens, and the oven it buys', () => {
+    // The morning of day 1, when the bakery planned on day 0 opens.
+    const leasing = applyDecision(after(monday(), OPEN_LEASED), CLOSE)
+    expect(leasing.bakery.openedOnDay).toBeNull()
+    expectRejected(OPEN_BOUGHT, 'must stay louer', leasing)
+    expect(pendingAfter(OPEN_LEASED, leasing).bakery).toEqual({
+      oven: 'louer',
+    })
+    const buying = applyDecision(after(monday(), OPEN_BOUGHT), CLOSE)
+    expect(buying.bakery.ovenBoughtOnDay).toBeNull()
+    expectRejected(OPEN_LEASED, 'owns an oven since day 1', buying)
+    expect(pendingAfter(OPEN_BOUGHT, buying).bakery).toEqual({
+      oven: 'acheter',
+    })
+  })
+
+  it('takes other oven terms on the last day of a notice', () => {
+    let state = tick(after(opened('louer'), CLOSE))
+    const last = state.bakery.closesAfterDay ?? 0
+    while (state.day < last) {
+      expectRejected(OPEN_BOUGHT, 'must stay louer', state)
+      state = tick(state)
+    }
+    expect(pendingAfter(OPEN_BOUGHT, state).bakery).toEqual({
+      oven: 'acheter',
+    })
+  })
+
+  it('takes either source and either kind of bake rule, within capacity', () => {
+    const fabriquer = pendingAfter({
+      kind: 'croissantSource',
+      source: 'fabriquer',
+    })
+    expect(fabriquer.croissantSource).toBe('fabriquer')
+    const max = BAKERY.capacityPerDay
+    const daily = { kind: 'buyDaily', quantity: max } as const
+    expect(pendingAfter({ kind: 'bake', rule: daily }).bake).toEqual(daily)
+    const top = { kind: 'topUp', whenBelow: 10, upTo: 120 } as const
+    expect(pendingAfter({ kind: 'bake', rule: top }).bake).toEqual(top)
+    expectRejected(
+      { kind: 'bake', rule: { kind: 'buyDaily', quantity: max + 1 } },
+      'bake.quantity',
+    )
+    expectRejected(
+      { kind: 'bake', rule: { kind: 'topUp', whenBelow: 20, upTo: 10 } },
+      'bake.whenBelow',
+    )
+    expectRejected(
+      { kind: 'croissantSource', source: 'voler' } as unknown as DecisionChange,
+      'croissantSource',
+    )
+  })
+
+  it('copies the bake rule it is given', () => {
+    const rule = { kind: 'buyDaily' as const, quantity: 90 }
+    const bake = pendingAfter({ kind: 'bake', rule }).bake
+    expect(bake).toEqual(rule)
+    expect(bake).not.toBe(rule)
   })
 })
 
@@ -504,6 +636,35 @@ describe('validateDecisions', () => {
       },
     ],
     ['daysOpen', { ...valid, daysOpen: [3, 2] }],
+    [
+      'bakery',
+      { ...valid, bakery: { oven: 'emprunter' } } as unknown as Decisions,
+    ],
+    [
+      'bakery',
+      {
+        ...valid,
+        bakery: { oven: 'louer', extra: 1 },
+      } as unknown as Decisions,
+    ],
+    [
+      'croissantSource',
+      { ...valid, croissantSource: 'voler' } as unknown as Decisions,
+    ],
+    [
+      'bake.quantity',
+      {
+        ...valid,
+        bake: { kind: 'buyDaily', quantity: BAKERY.capacityPerDay + 1 },
+      } as Decisions,
+    ],
+    [
+      'bake',
+      {
+        ...valid,
+        bake: { kind: 'bakeWeekly', quantity: 5 },
+      } as unknown as Decisions,
+    ],
   ])('rejects decisions a save could hold: %s', (field, decisions) => {
     expect(() => validateDecisions(decisions, LIMITS)).toThrow(RangeError)
     expect(() => validateDecisions(decisions, LIMITS)).toThrow(field)
@@ -723,6 +884,9 @@ describe('determinism with decisions', () => {
       daysOpen: [2, 4, 6],
       ownerWeeklyPay: 50_000,
       marketingDaily: 1_000,
+      bakery: null,
+      croissantSource: 'acheter',
+      bake: BAKERY.startingDecisions.bake,
     })
   })
 })

@@ -25,6 +25,7 @@ const CHART: { code: string; name: string; type: AccountType }[] = [
   { code: '6000', name: 'Salaires', type: 'charge' },
   { code: '6100', name: 'Loyer et permis', type: 'charge' },
   { code: '6120', name: 'Location du camion', type: 'charge' },
+  { code: '6130', name: 'Location du fournil', type: 'charge' },
   { code: '6150', name: 'Assurances', type: 'charge' },
   { code: '6200', name: 'Carburant et entretien', type: 'charge' },
   { code: '6300', name: 'Marketing', type: 'charge' },

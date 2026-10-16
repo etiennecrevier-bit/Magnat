@@ -1,0 +1,199 @@
+import { describe, expect, it } from 'vitest'
+import type { DifficultyId } from '../../src/content/schema.ts'
+import { cents } from '../../src/engine/money.ts'
+import {
+  OVENS,
+  PRICE_SETS,
+  TRUCK_STRATEGIES,
+  type BakeryGame,
+  type BakeryRun,
+} from './bakery.ts'
+import {
+  bakeryCommand,
+  bakeryTargets,
+  energyPerOpenDay,
+  formatBakeryReport,
+  madePerOpenDay,
+  medianPayback,
+  soldPerOpenDay,
+  type BakeryReportRun,
+} from './bakeryReport.ts'
+import { HAND_WRITTEN, withHandWritten } from './report.ts'
+
+const DIFFICULTIES: readonly DifficultyId[] = ['facile', 'moyen', 'difficile']
+
+/** A game of 10 open days, its two month ends at `cash`. */
+function game(
+  cash: readonly number[],
+  sold: number,
+  made = 0,
+  energy = 50,
+): BakeryGame {
+  return {
+    cashAtMonthEnds: cash.map((amount) => cents(amount)),
+    openDays: 10,
+    croissantsSold: sold * 10,
+    croissantsMade: made * 10,
+    energyAtOpenCloses: energy * 10,
+  }
+}
+
+/**
+ * A run of two seeds at every difficulty and strategy, whose twins sell
+ * each strategy's croissants less 20 a day, or `sold` when given, and
+ * whose bakeries end at `bakeryCash` against twins at 0.
+ */
+function run(
+  bakeryCash: readonly number[] = [-100, -50],
+  sold?: number,
+): BakeryReportRun {
+  const runs = DIFFICULTIES.flatMap((difficulty) =>
+    TRUCK_STRATEGIES.map(({ name, croissantsPerDay }): BakeryRun => ({
+      difficulty,
+      strategy: name,
+      games: 2,
+      months: 2,
+      twins: [0, 1].map(() =>
+        game([0, 0], sold ?? croissantsPerDay - 20, 0, 70),
+      ),
+      cells: PRICE_SETS.flatMap(({ name: set }) =>
+        OVENS.map((oven) => ({
+          set,
+          oven,
+          games: [0, 1].map(() =>
+            game(
+              bakeryCash,
+              (sold ?? croissantsPerDay - 20) - 2,
+              croissantsPerDay,
+              12,
+            ),
+          ),
+          paybacks: [0, 1].map(() =>
+            (bakeryCash.at(-1) ?? 0) >= 0 ? 2 : null,
+          ),
+        })),
+      ),
+    })),
+  )
+  return { games: 2, months: 2, runs }
+}
+
+describe('per open day', () => {
+  it('divides by the days the truck opened, 0 with none', () => {
+    const played = game([0], 52, 70, 33)
+    expect(soldPerOpenDay(played)).toBe(52)
+    expect(madePerOpenDay(played)).toBe(70)
+    expect(energyPerOpenDay(played)).toBe(33)
+    const closed = { ...played, openDays: 0 }
+    expect(soldPerOpenDay(closed)).toBe(0)
+    expect(madePerOpenDay(closed)).toBe(0)
+    expect(energyPerOpenDay(closed)).toBe(0)
+  })
+})
+
+describe('medianPayback', () => {
+  it('is the middle month, or never when it falls on a game that never pays back', () => {
+    expect(medianPayback([1, 2, null])).toBe('2.0')
+    expect(medianPayback([3, 4])).toBe('3.5')
+    expect(medianPayback([null, null, 3])).toBe('never')
+    expect(medianPayback([null, 3])).toBe('never')
+    expect(() => medianPayback([])).toThrow(RangeError)
+  })
+})
+
+describe('bakeryTargets', () => {
+  it('finds made croissants cheaper, and no slow truck paying back', () => {
+    const [cheaper, slow, ...wins] = bakeryTargets(run())
+    expect(cheaper).toEqual({
+      target: 'A croissant made costs less than one bought, $1.10',
+      measured: 'low $0.45, mid $0.55, high $0.65',
+      met: true,
+    })
+    expect(slow).toEqual({
+      target:
+        'Under 80 croissants sold an open day, the bakery never pays back within 2 months',
+      measured:
+        '0 of 36 games pay back, their twins selling at most 50.0 an open day',
+      met: true,
+    })
+    expect(wins.map(({ target }) => target)).toEqual([
+      'Making 150 croissants a day, the bakery wins at the low prices',
+      'Making 150 croissants a day, the bakery wins at the mid prices',
+      'Making 150 croissants a day, the bakery wins at the high prices',
+    ])
+    expect(wins[0]?.measured).toBe(
+      'leased -$58.04, bought +$333.63 a month in the books; 0 of 12 games pay back',
+    )
+    expect(wins.every(({ met }) => !met)).toBe(true)
+  })
+
+  it('fails the slow truck when its bakery pays back, and passes the win when the books and the games say so', () => {
+    const [, slow, low, mid] = bakeryTargets(run([-100, 10]))
+    expect(slow?.met).toBe(false)
+    expect(slow?.measured).toMatch(/^36 of 36 games pay back/)
+    // Making 150 wins in the books only at the low prices.
+    expect(low?.met).toBe(true)
+    expect(mid?.met).toBe(false)
+  })
+
+  it('cannot meet the slow truck target with no truck selling under 80', () => {
+    const [, slow] = bakeryTargets(run([-100, -50], 90))
+    expect(slow).toMatchObject({
+      measured: 'no truck sold under that',
+      met: false,
+    })
+  })
+})
+
+describe('formatBakeryReport', () => {
+  const report = formatBakeryReport(run())
+
+  it('says how to write it again', () => {
+    expect(bakeryCommand(run())).toBe(
+      'npm run balance -- --bakery --games 2 --months 2',
+    )
+    expect(report).toContain(
+      'Generated by `npm run balance -- --bakery --games 2 --months 2`',
+    )
+  })
+
+  it('has its sections, a table per difficulty', () => {
+    const headings = report.split('\n').filter((line) => line.startsWith('#'))
+    expect(headings).toEqual([
+      '# Balance report: phase 4',
+      '## What each game plays',
+      '## Targets (#157)',
+      '## Break-even in the books',
+      '## Payback by difficulty',
+      '### Facile',
+      '### Moyen',
+      '### Difficile',
+    ])
+  })
+
+  it('shows each strategy, price set and oven at each difficulty', () => {
+    const rows = report
+      .split('\n')
+      .filter((line) =>
+        /^\| (start|busy|150 a day) \| (low|mid|high) \|/.test(line),
+      )
+    expect(rows).toHaveLength(3 * TRUCK_STRATEGIES.length * 6)
+    expect(rows[0]).toBe(
+      '| start | low | leased | 70.0 | 48.0 (50.0) | 12.0 (70.0) | 0 of 2 | never | -$0.50 |',
+    )
+  })
+
+  it('shows the break-even of each price set and oven', () => {
+    expect(report).toContain(
+      '| mid | leased | $3,000.00 | $0.55 | 209.2 | -$1,852.86 | -$849.11 |',
+    )
+    expect(report).toContain('| start | 70 | $3.75 | $0.00 |')
+    expect(report).toContain('| 150 a day | 150 | $3.00 | $80.00 |')
+  })
+
+  it('ends with one line break, and keeps the hand-written part', () => {
+    expect(report.endsWith('|\n')).toBe(true)
+    const kept = withHandWritten(`old\n${HAND_WRITTEN}\n\nMine.\n`, report)
+    expect(kept).toBe(`${report.trimEnd()}\n\n${HAND_WRITTEN}\n\nMine.\n`)
+  })
+})

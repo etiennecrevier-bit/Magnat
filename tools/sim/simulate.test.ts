@@ -5,7 +5,12 @@ import {
   type EventContent,
 } from '../../src/content/schema.ts'
 import { createInitialState, tick } from '../../src/engine/clock.ts'
-import { ENERGY, EVENTS, FOOD_TRUCK } from '../../src/engine/day.ts'
+import {
+  DIFFICULTIES,
+  ENERGY,
+  EVENTS,
+  FOOD_TRUCK,
+} from '../../src/engine/day.ts'
 import {
   applyDecision,
   type DecisionChange,
@@ -224,6 +229,39 @@ describe('simulate with decision changes', () => {
         { kind: 'price', product: 'cafe', price: cents(327) },
       ]),
     ).toThrow(RangeError)
+  })
+})
+
+describe('simulate with other difficulties', () => {
+  it('opens and plays every day with them', () => {
+    const open: DecisionChange[] = [{ kind: 'openBakery', oven: 'louer' }]
+    const rentOn = (result: SimulationResult, day: number) =>
+      result.journal
+        .filter(
+          (entry) => entry.day === day && entry.memo === 'Loyer du fournil',
+        )
+        .map(({ lines }) => lines[0]?.debit)
+    const prices = {
+      monthlyRentCents: cents(123_400),
+      ingredientCostCents: cents(40),
+    }
+    const cheap = {
+      ...DIFFICULTIES,
+      bakery: { facile: prices, moyen: prices, difficile: prices },
+    }
+    const shipped = simulate(3, 32, 'moyen', open)
+    const tried = simulate(3, 32, 'moyen', open, 'none', EVENTS, cheap)
+    const { monthlyRentCents } = DIFFICULTIES.bakery.moyen
+    // Opened on May 1st, day 0, and charged again on June 1st, day 31.
+    expect([rentOn(shipped, 0), rentOn(shipped, 31)]).toEqual([
+      [monthlyRentCents],
+      [monthlyRentCents],
+    ])
+    expect([rentOn(tried, 0), rentOn(tried, 31)]).toEqual([
+      [123_400],
+      [123_400],
+    ])
+    expect(tried.daySummaries).toEqual(shipped.daySummaries)
   })
 })
 

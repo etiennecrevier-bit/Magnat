@@ -15,6 +15,8 @@ import {
   type Journal,
 } from '../finance/journal.ts'
 import { incomeStatement } from '../finance/statements.ts'
+import { BAKERY, closedBakery } from './bakery.ts'
+import { endOfMonth } from './calendar.ts'
 import { allowedChoices } from './challenge.ts'
 import {
   createInitialState,
@@ -32,7 +34,7 @@ import {
   PERSONAL,
   playDay,
 } from './day.ts'
-import { applyDecision } from './decisions.ts'
+import { applyDecision, type DecisionChange } from './decisions.ts'
 import { FULL_ENERGY } from './energy.ts'
 import { drawEvent, noEvents, resolveEvent } from './events.ts'
 import { inventoryValue } from './inventory.ts'
@@ -288,13 +290,42 @@ function v9(state: GameState): string {
 
 /**
  * Takes the week in numbers out of `save`, as version 9 wrote it, and the
- * Défi, which came later.
+ * Défi and the bakery, which came later.
  */
 function withoutWeek(save: Json): void {
   delete save.weekSoFar
   delete save.lastWeek
   delete save.weekHistory
   delete save.challenge
+  withoutBakery(save)
+}
+
+/**
+ * Takes the bakery out of `save`, as version 11 wrote it: the save of a game
+ * that never planned one, with the croissants bought.
+ */
+function withoutBakery(save: Json): void {
+  expect(save.bakery).toEqual(closedBakery())
+  delete save.bakery
+  for (const key of ['decisions', 'pendingDecisions']) {
+    const decisions = save[key] as Json | null
+    if (decisions === null) continue
+    expect(decisions).toMatchObject({
+      bakery: null,
+      croissantSource: BAKERY.startingDecisions.croissantSource,
+      bake: BAKERY.startingDecisions.bake,
+    })
+    delete decisions.bakery
+    delete decisions.croissantSource
+    delete decisions.bake
+  }
+}
+
+/** `state`, with no bakery, saved as version 11, before the bakery. */
+function v11(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutBakery(save)
+  return JSON.stringify({ ...save, saveVersion: 11 })
 }
 
 /** `state`, not a Défi, saved as version 10, before the Défis. */
@@ -302,6 +333,7 @@ function v10(state: GameState): string {
   const save = JSON.parse(serialize(state)) as Json
   expect(save.challenge).toBeNull()
   delete save.challenge
+  withoutBakery(save)
   return JSON.stringify({ ...save, saveVersion: 10 })
 }
 
@@ -351,8 +383,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(11)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 11 })
+    expect(SAVE_VERSION).toBe(12)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 12 })
   })
 
   it.each<Profile>([
@@ -706,6 +738,25 @@ describe('serialize and deserialize', () => {
     )
   })
 
+  it('load a version 11 game as one with no bakery and the croissants bought', () => {
+    const pending = applyDecision(THURSDAY, {
+      kind: 'marketingDaily',
+      budget: cents(1_000),
+    })
+    for (const state of [
+      createInitialState(SEED),
+      THURSDAY,
+      pending,
+      SUNDAY_CLOSE,
+      DAY_400,
+      CHOSEN,
+    ]) {
+      expect(deserialize(v11(state))).toStrictEqual(state)
+    }
+    const defi = startChallenge('travauxSaintDenis', SEED)
+    expect(deserialize(v11(played(5, defi)))).toStrictEqual(played(5, defi))
+  })
+
   it('load a version 10 game as one that is not a Défi', () => {
     for (const state of [
       createInitialState(SEED),
@@ -852,7 +903,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 6, 12, '11', '10', '9', '8', '7', null])(
+  it.each([0, 1, 6, 13, '12', '11', '10', '9', '8', '7', null])(
     'saveVersion %j',
     (version) => {
       expectInvalid(withValue('saveVersion', version), [
@@ -1621,6 +1672,7 @@ describe('deserialize rejects', () => {
     it('with the difficulty difficile on the books of a facile game of the same cash', () => {
       const { facile, difficile } = DIFFICULTIES.difficulties
       const sameCash = loadDifficultyContent({
+        ...DIFFICULTIES,
         difficulties: {
           ...DIFFICULTIES.difficulties,
           difficile: {
@@ -1733,6 +1785,30 @@ describe('deserialize rejects', () => {
         }),
         ['→ at receivables[0].client'],
       )
+    })
+  })
+
+  describe('a version 11 game', () => {
+    it.each(['bakery', 'decisions.croissantSource', 'pendingDecisions.bake'])(
+      'with %s, which came in version 12',
+      (path) => {
+        const pending = applyDecision(FORTNIGHT, {
+          kind: 'marketingDaily',
+          budget: cents(1_000),
+        })
+        const save = JSON.parse(v11(pending)) as Json
+        const keys = path.split('.')
+        const key = keys.pop() ?? ''
+        const at = keys.reduce((json, k) => json[k] as Json, save)
+        at[key] = (JSON.parse(serialize(pending)) as Json)[key] ?? null
+        expectInvalid(JSON.stringify(save), [`Unrecognized key: "${key}"`])
+      },
+    )
+
+    it('with a field it breaks', () => {
+      const save = JSON.parse(v11(FORTNIGHT)) as Json
+      save.energy = 101
+      expectInvalid(JSON.stringify(save), ['→ at energy'])
     })
   })
 
@@ -3076,5 +3152,206 @@ describe('a Défi', () => {
         'an event was drawn on day 12 of the Défi semaine, which has no random event',
       ])
     })
+  })
+})
+
+describe('the bakery', () => {
+  const OPEN_LEASED = { kind: 'openBakery', oven: 'louer' } as const
+  const OPEN_BOUGHT = { kind: 'openBakery', oven: 'acheter' } as const
+  const CLOSE = { kind: 'closeBakery' } as const
+  const MADE = { kind: 'croissantSource', source: 'fabriquer' } as const
+
+  /** A new game played to the morning of `toDay`, with `plan`'s changes. */
+  function playedWith(
+    toDay: number,
+    plan: Readonly<Record<number, readonly DecisionChange[]>>,
+  ): GameState {
+    let state = createInitialState(SEED)
+    while (state.day < toDay) {
+      for (const change of plan[state.day] ?? []) {
+        state = applyDecision(state, change)
+      }
+      state = tick(state)
+    }
+    return state
+  }
+
+  // Planned on day 0, the bakery opens on day 1. Closed on day 20, it
+  // gives notice on day 21 to June 30th, day 60, and closes on July 1st.
+  const PLANNED = playedWith(1, { 0: [OPEN_LEASED, MADE] })
+  const LEASED = playedWith(20, { 0: [OPEN_LEASED, MADE] })
+  const LEASED_CLOSE = playDay(LEASED)
+  const LEASED_PLAN = { 0: [OPEN_LEASED, MADE], 20: [CLOSE] }
+  const NOTICE = playedWith(25, LEASED_PLAN)
+  const NOTICE_OVER = playedWith(61, LEASED_PLAN)
+  const BOUGHT = playedWith(20, { 0: [OPEN_BOUGHT, MADE] })
+  const OWNED = playedWith(70, { 0: [OPEN_BOUGHT, MADE], 5: [CLOSE] })
+  const PLANNED_BOUGHT = playedWith(1, { 0: [OPEN_BOUGHT, MADE] })
+  // Closed and planned again on the morning it opens, with the same oven.
+  const PLANNED_AGAIN = applyDecision(
+    applyDecision(PLANNED, CLOSE),
+    OPEN_LEASED,
+  )
+  // On the last day of its notice, the next bakery planned with a bought oven.
+  const NOTICE_LAST_DAY = applyDecision(
+    playedWith(60, LEASED_PLAN),
+    OPEN_BOUGHT,
+  )
+
+  /** The save of `state` with its plan pending for the next morning. */
+  function pendingBakery(plan: unknown, state: GameState): string {
+    return withValue(
+      'pendingDecisions',
+      { ...state.decisions, bakery: plan },
+      serialize(state),
+    )
+  }
+
+  it('holds the bakery each state needs', () => {
+    expect(PLANNED.bakery).toEqual(closedBakery())
+    expect(LEASED.bakery).toMatchObject({ openedOnDay: 1, oven: 'louer' })
+    expect(NOTICE.bakery.closesAfterDay).toBe(60)
+    expect(NOTICE_OVER.bakery.closesAfterDay).toBe(60)
+    expect(BOUGHT.bakery.ovenBoughtOnDay).toBe(1)
+    expect(OWNED.bakery).toEqual({ ...closedBakery(), ovenBoughtOnDay: 1 })
+    expect(PLANNED_BOUGHT.decisions.bakery).toEqual({ oven: 'acheter' })
+    expect(PLANNED_AGAIN.pendingDecisions?.bakery).toEqual({ oven: 'louer' })
+    expect(NOTICE_LAST_DAY.bakery.closesAfterDay).toBe(60)
+    expect(NOTICE_LAST_DAY.pendingDecisions?.bakery).toEqual({
+      oven: 'acheter',
+    })
+  })
+
+  it.each([
+    ['planned, before it opens', PLANNED],
+    ['closed and planned again on the morning it opens', PLANNED_AGAIN],
+    ['running with a leased oven', LEASED],
+    ['at the close of a day it ran', LEASED_CLOSE],
+    ['under notice', NOTICE],
+    ['on the morning after its notice, before it closes', NOTICE_OVER],
+    [
+      'on the last day of its notice, the next one planned with other terms',
+      NOTICE_LAST_DAY,
+    ],
+    ['running with a bought oven', BOUGHT],
+    ['closed, with the oven it bought', OWNED],
+  ])('loads back %s, and plays on as if it had never stopped', (_, state) => {
+    const back = reloaded(state)
+    expect(back).toStrictEqual(state)
+    expect(serialize(played(3, back))).toBe(serialize(played(3, state)))
+  })
+
+  const LEASED_SAVE = serialize(LEASED)
+  const OWNED_SAVE = serialize(OWNED)
+  const NOTICE_OVER_SAVE = serialize(NOTICE_OVER)
+
+  it.each<[string, string, string]>([
+    [
+      'oven terms with no bakery',
+      withValue('bakery.oven', 'louer'),
+      'both or neither',
+    ],
+    [
+      'a bakery with no oven terms',
+      withValue('bakery.oven', null, LEASED_SAVE),
+      'both or neither',
+    ],
+    [
+      'a bakery opened after the last day played',
+      withValue('bakery.openedOnDay', 20, LEASED_SAVE),
+      'bakery.openedOnDay is day 20, not a day played from day 0 to day 19',
+    ],
+    [
+      'a notice with no bakery',
+      withValue('bakery.closesAfterDay', 30),
+      'bakery.closesAfterDay is day 30, with no bakery',
+    ],
+    [
+      'a notice that ends mid-month',
+      withValue('bakery.closesAfterDay', 59, LEASED_SAVE),
+      'bakery.closesAfterDay is day 59, not the last day of a month',
+    ],
+    [
+      'a notice over before the last day played',
+      withValue('bakery.closesAfterDay', 30, NOTICE_OVER_SAVE),
+      'bakery.closesAfterDay is day 30',
+    ],
+    [
+      'a notice longer than the content gives',
+      withValue('bakery.closesAfterDay', endOfMonth(19, 2), LEASED_SAVE),
+      `bakery.closesAfterDay is day ${endOfMonth(19, 2)}`,
+    ],
+    [
+      'a bought oven the business does not own',
+      withValue('bakery.oven', 'acheter', LEASED_SAVE),
+      'bakery.oven is acheter, but the business owns no oven',
+    ],
+    [
+      'a leased oven when the business owns one',
+      withValue('bakery.oven', 'louer', serialize(BOUGHT)),
+      'bakery.oven is louer, but the business owns an oven since day 1',
+    ],
+    [
+      'an oven owned with no purchase in the books',
+      withValue('bakery.ovenBoughtOnDay', 3),
+      'the journal does not hold one « Achat du four »',
+    ],
+    [
+      'an oven bought on another day than the books say',
+      withValue('bakery.ovenBoughtOnDay', 2, OWNED_SAVE),
+      'on day 2',
+    ],
+    [
+      'a purchase in the books with no oven owned',
+      withValue('bakery.ovenBoughtOnDay', null, OWNED_SAVE),
+      'the journal holds « Achat du four » on day 1, but the business owns no oven',
+    ],
+    [
+      'a plan to lease an oven when the business owns one',
+      withValue('decisions.bakery', { oven: 'louer' }, OWNED_SAVE),
+      'decisions.bakery leases an oven',
+    ],
+    [
+      'a plan with other oven terms than the running bakery',
+      withValue('decisions.bakery', { oven: 'acheter' }, LEASED_SAVE),
+      'decisions.bakery.oven is acheter on day 20, but the bakery runs with louer',
+    ],
+    [
+      'a plan pending with other oven terms than the bakery opening that day',
+      pendingBakery({ oven: 'acheter' }, PLANNED),
+      'pendingDecisions.bakery.oven is acheter on day 2, but the bakery runs with louer',
+    ],
+    [
+      'a plan pending to lease an oven bought that day',
+      pendingBakery({ oven: 'louer' }, PLANNED_BOUGHT),
+      'pendingDecisions.bakery leases an oven, but the business owns one since day 1',
+    ],
+    [
+      'a plan pending with other oven terms than the bakery under notice',
+      pendingBakery({ oven: 'acheter' }, NOTICE),
+      'pendingDecisions.bakery.oven is acheter on day 26, but the bakery runs with louer',
+    ],
+    [
+      'a close with a running bakery and none planned',
+      withValue('decisions.bakery', null, serialize(LEASED_CLOSE)),
+      'the bakery runs at the close of day 20, with none planned',
+    ],
+    [
+      'a bake rule beyond the capacity',
+      withValue('decisions.bake.quantity', BAKERY.capacityPerDay + 1),
+      'decisions: Invalid decision: bake.quantity',
+    ],
+    [
+      'an unknown oven',
+      withValue('bakery.oven', 'emprunter', LEASED_SAVE),
+      '→ at bakery.oven',
+    ],
+    [
+      'an unknown key in the bakery',
+      withValue('bakery.four', 1, LEASED_SAVE),
+      'Unrecognized key: "four"',
+    ],
+  ])('rejects %s', (_, text, reason) => {
+    expectInvalid(text, [reason])
   })
 })

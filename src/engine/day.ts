@@ -1,4 +1,5 @@
 import {
+  type BakeryContent,
   loadCustomerContent,
   loadDefiContent,
   loadDifficultyContent,
@@ -16,17 +17,17 @@ import {
   type FoodTruckContent,
   type PersonalContent,
   type ProductId,
-  type RestockRule,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
-import {
-  emptyJournal,
-  entriesOf,
-  postEntry,
-  type Journal,
-  type JournalLine,
-} from '../finance/journal.ts'
+import { emptyJournal, entriesOf, type Journal } from '../finance/journal.ts'
 import { loanSchedule } from '../finance/loan.ts'
+import {
+  BAKED,
+  BAKERY,
+  bake,
+  bakeryMorning,
+  isBakeryRunning,
+} from './bakery.ts'
 import { monthsSinceStart, toCalendar } from './calendar.ts'
 import {
   challengeDifficulties,
@@ -46,6 +47,7 @@ import { effectsOf, energyAtClose } from './energy.ts'
 import {
   PRODUCTS,
   onHand,
+  orderSize,
   perProduct,
   removeExpired,
   takeFifo,
@@ -53,6 +55,7 @@ import {
 import { marketingCrowd, rememberSpend } from './marketing.ts'
 import { add, cents, mulInt, mulRatio, sub, type Cents } from './money.ts'
 import { inDebt, livePersonalDay } from './personal.ts'
+import { credit, debit, depreciate, pay, post } from './posting.ts'
 import { servers } from './service.ts'
 import { inEffect, streetOn } from './street.ts'
 import type { Day, Decisions, GameState, Lot } from './types.ts'
@@ -91,7 +94,6 @@ export const DEFIS: DefiContent = loadDefiContent(undefined, EVENTS)
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
 const EQUIPMENT: AccountCode = '1500'
-const ACCUMULATED_DEPRECIATION: AccountCode = '1510'
 const BANK_LOANS: AccountCode = '2500'
 const SHARE_CAPITAL: AccountCode = '3000'
 const SALES: AccountCode = '4000'
@@ -104,7 +106,6 @@ const TRUCK_LEASE: AccountCode = '6120'
 const INSURANCE: AccountCode = '6150'
 const FUEL_AND_MAINTENANCE: AccountCode = '6200'
 const MARKETING: AccountCode = '6300'
-const DEPRECIATION: AccountCode = '6400'
 const CARD_FEES: AccountCode = '6500'
 const INTEREST: AccountCode = '7000'
 
@@ -191,37 +192,38 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
 /**
  * Plays business day `morning.day` with `morning.decisions`. Throws an Error
  * while an event waits for the player's choice, and once the game's Défi, if
- * any, is over. First the start of the day:
- * the delayed effects of the events' choices due that day, then the
- * receivables due (see `startOfDay`). Then the street that day, with the
- * changes in effect folded together (see `streetOn`). On the 1st of the
- * month, open or closed: the month's charges (see `monthlyCharges`), the
- * truck's counted in months from the game's first day, day 0 or a Défi's
- * first day, as if the truck came to the business then. On a
- * day the truck opens, one of the days open the street does not close: the
- * morning restock of every product the street leaves on sale, then the
- * walk-in customers, with those the marketing of the days before brings on
- * top (see `marketingCrowd`) and as the street changes them, lining up at
- * the counter, where `servers()` serve them from the stock on hand, none of
- * a product that cannot be sold, slower and botching units the more tired
- * the owner is that morning (see `effectsOf`), what the sales cost in
- * packaging and card fees, the fuel and the day's marketing budget. On a
- * day it is closed, nobody comes, nothing is bought and nothing is spent on
- * marketing, so the generator does not move. On payday, open or closed, the
- * owner's weekly pay. Every day: the spoilage at the close. Every entry is
- * dated `morning.day`. Then the owner's own day, outside the books, with
- * `personal` as their living costs (see `livePersonalDay`), and what the
- * day did to their energy, with `energy` as what tires them (see
+ * any, is over. First the start of the day: the delayed effects of the events'
+ * choices due that day, then the receivables due (see `startOfDay`). Then the
+ * street that day, with the changes in effect folded together (see `streetOn`).
+ * On the 1st of the month, open or closed: the month's charges (see
+ * `monthlyCharges`), the truck's counted in months from the game's first day,
+ * day 0 or a Défi's first day, as if the truck came to the business then. Then,
+ * open or closed, the bakery's morning with `bakeryContent` and the prices of
+ * the game's difficulty (see `bakeryMorning`). On a day the truck opens, one of
+ * the days open the street does not close: the morning restock of every product
+ * the street leaves on sale, but the croissants when they come from the bakery
+ * and it runs, which then makes them (see `bake`), then the walk-in customers,
+ * with those the marketing of the days before brings on top (see
+ * `marketingCrowd`) and as the street changes them, lining up at the counter,
+ * where `servers()` serve them from the stock on hand, none of a product that
+ * cannot be sold, slower and botching units the more tired the owner is that
+ * morning (see `effectsOf`), what the sales cost in packaging and card fees,
+ * the fuel and the day's marketing budget. On a day it is closed, nobody comes,
+ * nothing is bought and nothing is spent on marketing, so the generator does
+ * not move. On payday, open or closed, the owner's weekly pay. Every day: the
+ * spoilage at the close. Every entry is dated `morning.day`. Then the owner's
+ * own day, outside the books, with `personal` as their living costs (see
+ * `livePersonalDay`), and what the day did to their energy, with `energy` as
+ * what tires them, and a day of baking taking `bakingEnergyCost` more (see
  * `energyAtClose`). Returns a new state on the same day with the books, the
- * stock, the generator, the marketing history, `lastDay`, with the changes
- * to the street in effect that day, the owner's personal account, their
+ * bakery, the stock, the generator, the marketing history, `lastDay`, with the
+ * changes to the street in effect that day, the owner's personal account, their
  * energy, the events, without the changes whose last day it was, the
- * receivables brought up to the close, the day added to the week under
- * way, summed up on a Sunday (see `recordDay`), and, in a Défi of `defis`,
- * the day added to its progress, which may end it (see
- * `recordChallengeDay`), with the owner's lowest energy since the last
- * close, the start of the day's effects included, and at this one; never
- * mutates `morning`. Cash may go negative.
+ * receivables brought up to the close, the day added to the week under way,
+ * summed up on a Sunday (see `recordDay`), and, in a Défi of `defis`, the day
+ * added to its progress, which may end it (see `recordChallengeDay`), with the
+ * owner's lowest energy since the last close, the start of the day's effects
+ * included, and at this one; never mutates `morning`. Cash may go negative.
  */
 export function playDay(
   morning: GameState,
@@ -231,6 +233,7 @@ export function playDay(
   personal: PersonalContent = PERSONAL,
   energy: EnergyContent = ENERGY,
   defis: DefiContent = DEFIS,
+  bakeryContent: BakeryContent = BAKERY,
 ): GameState {
   const { pending } = morning.events
   if (pending !== null) {
@@ -261,19 +264,46 @@ export function playDay(
     const month = monthsSinceStart(day) - monthsSinceStart(firstDay(state))
     journal = monthlyCharges(journal, day, month, content, truck)
   }
+  const prices = difficulties.bakery[state.profile.difficulty]
+  const bakery = bakeryMorning(
+    journal,
+    state.bakery,
+    decisions.bakery,
+    day,
+    prices,
+    bakeryContent,
+  )
+  journal = bakery.journal
+  let baked = 0
 
   if (open) {
+    const baking =
+      decisions.croissantSource === 'fabriquer' &&
+      isBakeryRunning(bakery.bakery) &&
+      !street.unavailable[BAKED]
     const restocked = restock(
       lots,
       day,
       decisions.restock,
       content,
-      street.unavailable,
+      baking ? { ...street.unavailable, [BAKED]: true } : street.unavailable,
     )
     journal = post(journal, day, MEMO.purchases, [
       debit(INVENTORY, restocked.cost),
       credit(CASH, restocked.cost),
     ])
+    const made = baking
+      ? bake(
+          journal,
+          restocked.lots,
+          day,
+          decisions.bake,
+          prices,
+          bakeryContent,
+        )
+      : { journal, lots: restocked.lots, quantity: 0 }
+    journal = made.journal
+    baked = made.quantity
 
     const price = (product: ProductId) => currentPrice(state, product)
     served = serveWalkIns(
@@ -283,7 +313,7 @@ export function playDay(
       customers,
       price,
       perProduct((product) =>
-        street.unavailable[product] ? 0 : onHand(restocked.lots, product),
+        street.unavailable[product] ? 0 : onHand(made.lots, product),
       ),
       {
         service: content.service,
@@ -297,12 +327,7 @@ export function playDay(
     // The sale, its cost and what it costs to make are separate entries, so
     // each cash entry's other lines stay on one row of the état des flux de
     // trésorerie.
-    const sales = sell(
-      restocked.lots,
-      served.withdrawals,
-      price,
-      content.products,
-    )
+    const sales = sell(made.lots, served.withdrawals, price, content.products)
     journal = post(journal, day, MEMO.sales, [
       debit(CASH, sales.revenue),
       credit(SALES, sales.revenue),
@@ -362,6 +387,7 @@ export function playDay(
         ({ servedMinute }) => servedMinute !== null,
       ).length,
       stressed: weekday === content.ownerPayWeekday && inDebt(account),
+      bakingCost: baked > 0 ? bakeryContent.bakingEnergyCost : 0,
     },
     energy,
   )
@@ -401,6 +427,7 @@ export function playDay(
       lasting.length === modifiers.length
         ? state.events
         : { ...state.events, modifiers: lasting },
+    bakery: bakery.bakery,
   }
   const recorded = { ...closing, ...recordDay(closing, open, expired.cost) }
   if (challenge === null) return recorded
@@ -445,10 +472,10 @@ function monthlyCharges(
   books = pay(books, day, MEMO.insurance, INSURANCE, insurance)
   switch (truck.kind) {
     case 'owned':
-      return depreciate(books, day, month, content.truck)
+      return depreciate(books, day, month, content.truck, MEMO.depreciation)
     case 'loan':
       books = repay(books, day, month, truck)
-      return depreciate(books, day, month, content.truck)
+      return depreciate(books, day, month, content.truck, MEMO.depreciation)
     case 'lease':
       return pay(books, day, MEMO.lease, TRUCK_LEASE, truck.monthlyLeaseCents)
   }
@@ -472,28 +499,6 @@ function repay(journal: Journal, day: Day, month: number, loan: Loan): Journal {
   if (payment === undefined) return journal
   const books = pay(journal, day, MEMO.interest, INTEREST, payment.interest)
   return pay(books, day, MEMO.principal, BANK_LOANS, payment.principal)
-}
-
-/**
- * Month `month`'s straight-line depreciation of the truck: its price over
- * its useful life, rounded down to the cent, with the last month taking what
- * the rounding left, so the months add up to the price. Nothing after.
- */
-function depreciate(
-  journal: Journal,
-  day: Day,
-  month: number,
-  { priceCents, usefulLifeMonths }: FoodTruckContent['truck'],
-): Journal {
-  if (month >= usefulLifeMonths) return journal
-  const remainder = priceCents % usefulLifeMonths
-  const monthly = cents((priceCents - remainder) / usefulLifeMonths)
-  const amount =
-    month === usefulLifeMonths - 1 ? add(monthly, cents(remainder)) : monthly
-  return post(journal, day, MEMO.depreciation, [
-    debit(DEPRECIATION, amount),
-    credit(ACCUMULATED_DEPRECIATION, amount),
-  ])
 }
 
 /** A closed day's walk-ins: nobody, with no draw from `rngState`. */
@@ -542,15 +547,6 @@ function restock(
   return { lots: [...lots, ...bought], cost }
 }
 
-function orderSize(rule: RestockRule, onHandNow: number): number {
-  switch (rule.kind) {
-    case 'buyDaily':
-      return rule.quantity
-    case 'topUp':
-      return onHandNow < rule.whenBelow ? rule.upTo - onHandNow : 0
-  }
-}
-
 interface Sales {
   lots: readonly Lot[]
   revenue: Cents
@@ -597,42 +593,4 @@ function sell(
     }
   }
   return { lots: left, revenue, cost, botchedCost, packaging }
-}
-
-/**
- * Posts an entry made of the lines with an amount; the journal takes no
- * zero line, so an entry with none is not posted at all.
- */
-function post(
-  journal: Journal,
-  day: Day,
-  memo: string,
-  lines: readonly JournalLine[],
-): Journal {
-  const moved = lines.filter(({ debit, credit }) => debit > 0 || credit > 0)
-  return moved.length === 0
-    ? journal
-    : postEntry(journal, { day, memo, lines: moved })
-}
-
-/** An entry paying `amount` out of Encaisse, charged to `account`. */
-function pay(
-  journal: Journal,
-  day: Day,
-  memo: string,
-  account: AccountCode,
-  amount: Cents,
-): Journal {
-  return post(journal, day, memo, [
-    debit(account, amount),
-    credit(CASH, amount),
-  ])
-}
-
-function debit(account: AccountCode, amount: Cents): JournalLine {
-  return { account, debit: amount, credit: ZERO }
-}
-
-function credit(account: AccountCode, amount: Cents): JournalLine {
-  return { account, debit: ZERO, credit: amount }
 }

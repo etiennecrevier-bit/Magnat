@@ -1,0 +1,16 @@
+{
+  "_note": "The bakery, le fournil (#157), as Étienne decided it on October 16, 2026. Its rent and the cost of a croissant's ingredients depend on the difficulty: they are in difficulty.json.",
+  "oven": {
+    "priceCents": 2500000,
+    "usefulLifeMonths": 120,
+    "monthlyLeaseCents": 60000
+  },
+  "capacityPerDay": 300,
+  "movingCostCents": 150000,
+  "noticeMonths": 1,
+  "bakingEnergyCost": 8,
+  "startingDecisions": {
+    "croissantSource": "acheter",
+    "bake": { "kind": "buyDaily", "quantity": 70 }
+  }
+}

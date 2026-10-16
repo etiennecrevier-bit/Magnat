@@ -6,6 +6,8 @@ import { difficultyIdSchema } from '../../src/content/schema.ts'
 import { DEFIS, DIFFICULTIES } from '../../src/engine/day.ts'
 import { eventPolicy, wholeNumber } from '../sim/cli.ts'
 import { EVENT_POLICIES, type EventPolicy } from '../sim/simulate.ts'
+import { TRUCK_STRATEGIES, type BakeryJob } from './bakery.ts'
+import { formatBakeryReport } from './bakeryReport.ts'
 import {
   defisSection,
   formatDefiPercentileJson,
@@ -27,8 +29,10 @@ import {
 // replaces. With `--percentiles`, plays the simulated owners instead and
 // writes their percentile table and the phase-3 report; with `--defis`,
 // plays each Défi, a few side by side, and writes their percentile table
-// and the Défis section of the phase-3 report. The time each job took goes
-// to the console only, so the same options always write the same files.
+// and the Défis section of the phase-3 report; with `--bakery`, plays the
+// bakery against its twins at each difficulty and writes the phase-4
+// report. The time each job took goes to the console only, so the same
+// options always write the same files.
 
 /** The grid of strategies, `docs/balance/phase-2.md`. */
 export interface GridArgs {
@@ -65,7 +69,18 @@ export interface DefisArgs {
   readonly json: string
 }
 
-export type BalanceArgs = GridArgs | PercentileArgs | DefisArgs
+/** The bakery, `--bakery`. */
+export interface BakeryArgs {
+  readonly mode: 'bakery'
+  /** Seeds each difficulty, strategy, price set and oven plays. */
+  readonly games: number
+  /** Months each game plays. */
+  readonly months: number
+  /** Absolute path of the report. */
+  readonly out: string
+}
+
+export type BalanceArgs = GridArgs | PercentileArgs | DefisArgs | BakeryArgs
 
 function repoFile(path: string): string {
   return fileURLToPath(new URL(`../../${path}`, import.meta.url))
@@ -92,10 +107,17 @@ const DEFIS_DEFAULTS = {
   json: repoFile('src/content/defis-percentiles.json'),
 }
 
+const BAKERY_DEFAULTS = {
+  games: 30,
+  months: 24,
+  out: repoFile('docs/balance/phase-4.md'),
+}
+
 export const USAGE = [
   `Usage: npm run balance -- [--years <n>] [--games <n>] [--events ${EVENT_POLICIES.join('|')}] [--out <file>]`,
   '       npm run balance -- --percentiles [--years <n>] [--games <n>] [--out <file>] [--json <file>]',
   '       npm run balance -- --defis [--games <n>] [--search <n>] [--out <file>] [--json <file>]',
+  '       npm run balance -- --bakery [--games <n>] [--months <n>] [--out <file>]',
 ].join('\n')
 
 /**
@@ -105,10 +127,12 @@ export const USAGE = [
  * report stays the economy without events); with it, `--json` (resolved the
  * same way), and other defaults. With `--defis`, `--games`, `--search` (a
  * whole number from 1), `--out` and `--json`, and defaults of their own.
- * Throws on anything else, including positional arguments, `--events` with
- * `--percentiles` or `--defis`, whose owners always answer at random,
- * `--years` or `--percentiles` with `--defis`, `--search` without it, and
- * `--json` with neither.
+ * With `--bakery`, `--games`, `--months` (a whole number from 1) and
+ * `--out`, and defaults of their own. Throws on anything else, including
+ * positional arguments, `--events` with `--percentiles` or `--defis`, whose
+ * owners always answer at random, `--years` or `--percentiles` with
+ * `--defis`, `--search` without it, `--json` with neither, any other option
+ * with `--bakery`, and `--months` without it.
  */
 export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
   const { values } = parseArgs({
@@ -116,7 +140,9 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
     options: {
       percentiles: { type: 'boolean' },
       defis: { type: 'boolean' },
+      bakery: { type: 'boolean' },
       years: { type: 'string' },
+      months: { type: 'string' },
       search: { type: 'string' },
       games: { type: 'string' },
       events: { type: 'string' },
@@ -126,6 +152,30 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
     strict: true,
     allowPositionals: false,
   })
+  if (values.bakery === true) {
+    for (const [option, value] of [
+      ['--percentiles', values.percentiles],
+      ['--defis', values.defis],
+      ['--years', values.years],
+      ['--search', values.search],
+      ['--events', values.events],
+      ['--json', values.json],
+    ] as const) {
+      if (value !== undefined) {
+        throw new RangeError(`${option} does not go with --bakery`)
+      }
+    }
+    const defaults = BAKERY_DEFAULTS
+    return {
+      mode: 'bakery',
+      games: wholeNumber('--games', values.games, defaults.games, 1),
+      months: wholeNumber('--months', values.months, defaults.months, 1),
+      out: resolve(values.out ?? defaults.out),
+    }
+  }
+  if (values.months !== undefined) {
+    throw new RangeError('--months goes only with --bakery')
+  }
   if (values.defis === true) {
     for (const [option, value] of [
       ['--percentiles', values.percentiles],
@@ -202,6 +252,9 @@ export async function main(argv: readonly string[]): Promise<number> {
         break
       case 'grid':
         await writeGrid(args, started)
+        break
+      case 'bakery':
+        await writeBakery(args, started)
         break
     }
     return 0
@@ -292,6 +345,30 @@ async function writeDefis(
   console.log(
     `Wrote ${json} and ${out} in ${seconds(performance.now() - started)}`,
   )
+}
+
+async function writeBakery(
+  { games, months, out }: BakeryArgs,
+  started: number,
+): Promise<void> {
+  const runs = await playAll(
+    difficultyIdSchema.options.flatMap((difficulty) =>
+      TRUCK_STRATEGIES.map(({ name }): BakeryJob => ({
+        kind: 'bakery',
+        difficulty,
+        strategy: name,
+        games,
+        months,
+      })),
+    ),
+    ({ difficulty, strategy, cells }) => {
+      console.log(
+        `${DIFFICULTIES.difficulties[difficulty].name}, ${strategy}: ${cells.length} bakeries × ${games} games and their twins in ${seconds(performance.now() - started)}`,
+      )
+    },
+  )
+  writeReport(out, formatBakeryReport({ games, months, runs }))
+  console.log(`Wrote ${out} in ${seconds(performance.now() - started)}`)
 }
 
 /** Writes `report` to `out`, keeping the hand-written part already there. */

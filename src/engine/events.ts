@@ -12,6 +12,7 @@ import {
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
+import { supplyRule } from './bakery.ts'
 import { toCalendar } from './calendar.ts'
 import { allowedChoices } from './challenge.ts'
 import { DEFIS, EVENTS, FOOD_TRUCK } from './day.ts'
@@ -202,9 +203,11 @@ function picking(
  * with `seen` as the last day each event came up: the day is no earlier than
  * `fromDay`; the game's difficulty, the month, the date (month and day of
  * the month) and the weekday are among those listed; the owner's energy is
- * below `energyBelow`; the product of `productOnMenu` has a restock rule
- * that buys some; the truck opens the next day, or stays closed, as
- * `openTomorrow` says (see `opensOn`); the event never came up, for
+ * below `energyBelow`; the product of `productOnMenu` has a rule that
+ * supplies some, the bake rule for croissants the bakery makes that day and
+ * the restock rule otherwise (see `supplyRule`); the truck opens the next
+ * day, or stays closed, as `openTomorrow` says (see `opensOn`); the event
+ * never came up, for
  * `oncePerGame`, came up fewer than `maxPerGame` times, or came up at least
  * `cooldownDays` days ago, follow-ups included; the history holds one of the
  * choices `chosen` lists, and none of those `notChosen` lists; and Encaisse
@@ -254,7 +257,7 @@ export function conditionsHold(
   if (energyBelow !== undefined && !(state.energy < energyBelow)) return false
   if (
     productOnMenu !== undefined &&
-    !onMenu(state.decisions.restock[productOnMenu])
+    !onMenu(supplyRule(state.bakery, state.decisions, day, productOnMenu))
   ) {
     return false
   }
@@ -394,7 +397,7 @@ function madeOneOf(
   )
 }
 
-/** Whether a restock rule buys some of its product. */
+/** Whether a restock or bake rule supplies some of its product. */
 function onMenu(rule: RestockRule): boolean {
   return rule.kind === 'buyDaily' ? rule.quantity > 0 : rule.upTo > 0
 }

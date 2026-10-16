@@ -1,4 +1,8 @@
-import { productIdSchema, type ProductId } from '../content/schema.ts'
+import {
+  productIdSchema,
+  type ProductId,
+  type RestockRule,
+} from '../content/schema.ts'
 import { add, cents, mulInt, type Cents } from './money.ts'
 import type { Day, Lot, PerProduct } from './types.ts'
 
@@ -29,6 +33,19 @@ export function inventoryValue(lots: readonly Lot[]): Cents {
     (total, { quantity, unitCost }) => add(total, mulInt(unitCost, quantity)),
     cents(0),
   )
+}
+
+/**
+ * The units `rule` orders with `onHandNow` units on hand: `buyDaily` its
+ * `quantity`, `topUp` back up to `upTo` once below `whenBelow`, else none.
+ */
+export function orderSize(rule: RestockRule, onHandNow: number): number {
+  switch (rule.kind) {
+    case 'buyDaily':
+      return rule.quantity
+    case 'topUp':
+      return onHandNow < rule.whenBelow ? rule.upTo - onHandNow : 0
+  }
 }
 
 export interface Taken {

@@ -83,7 +83,8 @@ export function challengeDifficulties(
 /**
  * `base`, the decisions a game starts with, with the Défi's setup in their
  * place: product by product for the prices and the restock, the days open
- * in ascending order. Checks nothing: `validateDecisions()` does.
+ * in ascending order. The bakery's stay `base`'s. Checks nothing:
+ * `validateDecisions()` does.
  */
 export function setupDecisions(defi: Defi, base: Decisions): Decisions {
   const { setup } = defi
@@ -106,6 +107,9 @@ export function setupDecisions(defi: Defi, base: Decisions): Decisions {
         : [...setup.daysOpen].sort((a, b) => a - b),
     ownerWeeklyPay: setup.ownerWeeklyPayCents ?? base.ownerWeeklyPay,
     marketingDaily: setup.marketingDailyCents ?? base.marketingDaily,
+    bakery: base.bakery === null ? null : { ...base.bakery },
+    croissantSource: base.croissantSource,
+    bake: { ...base.bake },
   }
 }
 

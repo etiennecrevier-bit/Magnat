@@ -1,5 +1,5 @@
 {
-  "_note": "The three ways to start a game (#44): the cash in the bank once the truck is settled, how the truck comes, and the owner's own savings (#83). The truck's price and useful life are in foodtruck.json.",
+  "_note": "The three ways to start a game (#44): the cash in the bank once the truck is settled, how the truck comes, and the owner's own savings (#83). The truck's price and useful life are in foodtruck.json. The bakery's rent and the cost of a croissant's ingredients from Meunerie Bonpain (#157) are per difficulty: every difficulty has the middle set of the balance run until P4-01 adds the contracts and picks a set for each (docs/balance/phase-4.md).",
   "difficulties": {
     "facile": {
       "name": "Facile",
@@ -24,5 +24,10 @@
       "startingPersonalCashCents": 100000,
       "truck": { "kind": "lease", "monthlyLeaseCents": 180000 }
     }
+  },
+  "bakery": {
+    "facile": { "monthlyRentCents": 240000, "ingredientCostCents": 55 },
+    "moyen": { "monthlyRentCents": 240000, "ingredientCostCents": 55 },
+    "difficile": { "monthlyRentCents": 240000, "ingredientCostCents": 55 }
   }
 }

@@ -164,11 +164,20 @@ describe('playAll with a limit', () => {
 })
 
 describe('jobLabel', () => {
-  it('names the difficulty or the Défi', () => {
+  it('names the difficulty, the Défi, or the difficulty and the strategy', () => {
     expect(jobLabel(job('moyen'))).toBe('moyen')
     expect(
       jobLabel({ kind: 'defis', defi: 'moisSansConge', games: 1, search: 1 }),
     ).toBe('moisSansConge')
+    expect(
+      jobLabel({
+        kind: 'bakery',
+        difficulty: 'facile',
+        strategy: 'busy',
+        games: 1,
+        months: 1,
+      }),
+    ).toBe('facile busy')
   })
 })
 

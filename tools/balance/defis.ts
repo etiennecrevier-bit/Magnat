@@ -124,7 +124,7 @@ export function defiOwnerChanges(
     { kind: 'daysOpen', weekdays: WEEKDAYS[strategy.daysOpen] },
     { kind: 'ownerWeeklyPay', pay: strategy.ownerWeeklyPay },
   ]
-  return changes.filter(({ kind }) => !defi.locked.includes(kind))
+  return changes.filter(({ kind }) => !locks(defi, kind))
 }
 
 /**
@@ -137,9 +137,15 @@ export function gridOwnerChanges(
   strategy: Strategy,
   defi: Defi,
 ): DecisionChange[] {
-  return strategyChanges(strategy).filter(
-    ({ kind }) => !defi.locked.includes(kind),
-  )
+  return strategyChanges(strategy).filter(({ kind }) => !locks(defi, kind))
+}
+
+/**
+ * Whether `defi` locks changes of `kind`: never the bakery's, which no Défi
+ * may lock.
+ */
+export function locks(defi: Defi, kind: DecisionChange['kind']): boolean {
+  return (defi.locked as readonly DecisionChange['kind'][]).includes(kind)
 }
 
 /** How an owner's strategy turns into the changes made in a Défi. */

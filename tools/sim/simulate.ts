@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type {
+  DifficultyContent,
   DifficultyId,
   EventCard,
   EventContent,
@@ -164,8 +165,9 @@ export interface SimulationResult {
  * where the player's would wait for the next morning. With an `events`
  * policy other than `none`, the event cards of `eventContent` come up, and
  * each morning one does, before the owner's energy is read, `eventChooser`
- * answers it for the game's seed. Throws a RangeError unless `days` is a safe
- * integer of at least 1, `seed` and `difficulty` are ones
+ * answers it for the game's seed. The game opens, and plays every day, with
+ * `difficulties`, by default the shipped ones. Throws a RangeError unless
+ * `days` is a safe integer of at least 1, `seed` and `difficulty` are ones
  * `createInitialState` accepts and every change is one `applyDecision`
  * accepts.
  */
@@ -176,12 +178,13 @@ export function simulate(
   changes: readonly DecisionChange[] = [],
   events: EventPolicy = 'none',
   eventContent: EventContent = EVENTS,
+  difficulties: DifficultyContent = DIFFICULTIES,
 ): SimulationResult {
   if (!Number.isSafeInteger(days) || days < 1) {
     throw new RangeError(`Days to play must be a whole number from 1: ${days}`)
   }
 
-  let state = startGame(seed, difficulty, changes)
+  let state = startGame(seed, difficulty, changes, difficulties)
   const content = events === 'none' ? NO_EVENTS : eventContent
   const choose = events === 'none' ? null : eventChooser(events, seed)
   const daySummaries: DaySummary[] = []
@@ -190,7 +193,7 @@ export function simulate(
   for (let day = 0; day < days; day += 1) {
     state = answerEvent(state, content, choose)
     morningEnergy.push(state.energy)
-    state = playMorning(state, content, null)
+    state = playMorning(state, content, null, PERCENTILES, difficulties)
     if (state.lastDay === null) throw new Error(`Day ${day} left no summary`)
     daySummaries.push(state.lastDay)
     if (state.personal.unpaidRents.at(-1) === day) unpaidRents.push(day)
@@ -213,9 +216,10 @@ export function simulate(
 
 /**
  * A new game from `seed` at `difficulty`, by default the new game screen's,
- * on the morning of day 0, with `changes` made to the starting decisions, in
- * order, and already in effect, where the player's would wait for the next
- * morning. Throws a RangeError unless `seed` and `difficulty` are ones
+ * opened with `difficulties`, by default the shipped ones, on the morning of
+ * day 0, with `changes` made to the starting decisions, in order, and
+ * already in effect, where the player's would wait for the next morning.
+ * Throws a RangeError unless `seed` and `difficulty` are ones
  * `createInitialState` accepts and every change is one `applyDecision`
  * accepts.
  */
@@ -223,11 +227,14 @@ export function startGame(
   seed: number,
   difficulty: DifficultyId = defaultProfile().difficulty,
   changes: readonly DecisionChange[] = [],
+  difficulties: DifficultyContent = DIFFICULTIES,
 ): GameState {
-  let state = createInitialState(seed, FOOD_TRUCK, {
-    ...defaultProfile(),
-    difficulty,
-  })
+  let state = createInitialState(
+    seed,
+    FOOD_TRUCK,
+    { ...defaultProfile(), difficulty },
+    difficulties,
+  )
   for (const change of changes) state = applyDecision(state, change)
   // What tick() does each morning, before day 0 is played.
   return {
@@ -254,21 +261,23 @@ export function answerEvent(
 
 /**
  * Answers the event waiting on `state`'s morning, if any, with `choose` (see
- * `answerEvent`), then plays the day with the shipped content and the event
- * cards of `content`, the player's standing read against `percentiles`, by
- * default the shipped table, and returns the next morning.
+ * `answerEvent`), then plays the day with the shipped content but
+ * `difficulties`, by default the shipped ones too, and the event cards of
+ * `content`, the player's standing read against `percentiles`, by default
+ * the shipped table, and returns the next morning.
  */
 export function playMorning(
   state: GameState,
   content: EventContent,
   choose: ((event: EventCard) => string) | null,
   percentiles: PercentileContent = PERCENTILES,
+  difficulties: DifficultyContent = DIFFICULTIES,
 ): GameState {
   return tick(
     answerEvent(state, content, choose),
     FOOD_TRUCK,
     CUSTOMERS,
-    DIFFICULTIES,
+    difficulties,
     PERSONAL,
     ENERGY,
     content,

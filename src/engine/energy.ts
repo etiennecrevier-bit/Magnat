@@ -37,6 +37,8 @@ export interface Workday {
   readonly customersServed: number
   /** Whether it was payday with the owner's personal cash below zero. */
   readonly stressed: boolean
+  /** What baking at the bakery took that morning; 0 on a day without. */
+  readonly bakingCost: number
 }
 
 /**
@@ -63,20 +65,21 @@ export function effectsOf(
 /**
  * The owner's energy at the close of a day they started with `energy`. A
  * day they work costs `openDayCost`, plus `costPerCustomerServed` for each
- * customer served; a day off gives `closedDayRecovery` back.
- * Then, on a payday in debt, the stress takes `debtStress`. Each change
- * stops at 0 and at `FULL_ENERGY`.
+ * customer served, plus `bakingCost`; a day off gives `closedDayRecovery`
+ * back. Then, on a payday in debt, the stress takes `debtStress`. Each
+ * change stops at 0 and at `FULL_ENERGY`.
  */
 export function energyAtClose(
   energy: number,
-  { worked, customersServed, stressed }: Workday,
+  { worked, customersServed, stressed, bakingCost }: Workday,
   content: EnergyContent,
 ): number {
   let level = worked
     ? clampEnergy(
         energy -
           (content.openDayCost +
-            content.costPerCustomerServed * customersServed),
+            content.costPerCustomerServed * customersServed +
+            bakingCost),
       )
     : clampEnergy(energy + content.closedDayRecovery)
   if (stressed) level = clampEnergy(level - content.debtStress)
