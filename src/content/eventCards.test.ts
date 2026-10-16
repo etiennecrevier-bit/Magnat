@@ -600,6 +600,55 @@ describe('the changes to the street', () => {
   })
 })
 
+describe('premierJuillet on a June 30 whose July 1 the truck is closed', () => {
+  // « Ouvrir tôt pour les déménageurs » and « Ouvrir comme d'habitude »
+  // promise customers on July 1. When the schedule closes the weekday July 1
+  // falls on, either the card does not come up that June 30, or the choice
+  // opens the truck on July 1 (#149). The starting schedule, closed on
+  // Mondays, meets this in year 3; this game meets it on a Saturday.
+
+  /** The first morning of premierJuillet, the schedule closing July 1. */
+  function closedOnJuly1(): GameState {
+    const morning = firstMorning('premierJuillet')
+    const july1 = toCalendar(morning.day + 1).weekday
+    return {
+      ...morning,
+      decisions: {
+        ...morning.decisions,
+        daysOpen: WHOLE_WEEK.filter((weekday) => weekday !== july1),
+      },
+    }
+  }
+
+  /**
+   * What the player meets on July 1 after choosing `choiceId` on the
+   * morning of June 30, `morning`.
+   */
+  function july1After(morning: GameState, choiceId: string): string {
+    if (!conditionsHold(cardOf('premierJuillet'), morning, new Map())) {
+      return 'no card on June 30'
+    }
+    const july1 = morning.day + 1
+    const days = playOut(choose(morning, 'premierJuillet', choiceId), {
+      minDays: 2,
+    })
+    const summary = days.find(({ lastDay }) => lastDay?.day === july1)?.lastDay
+    if (summary === undefined || summary === null) {
+      throw new Error(`Day ${july1} was not played`)
+    }
+    return summary.visits.length > 0 ? 'customers served' : 'truck closed'
+  }
+
+  it.each(['ouvrirTot', 'habitude'])(
+    '« %s » never promises customers to the closed truck',
+    (choiceId) => {
+      expect(['no card on June 30', 'customers served']).toContain(
+        july1After(closedOnJuly1(), choiceId),
+      )
+    },
+  )
+})
+
 describe('the energy the cards cost and give', () => {
   // A card that closes the truck for a day of work costs energy: the owner
   // bakes all night, queues at the permit counter or carries a divan. From

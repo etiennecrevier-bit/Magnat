@@ -1197,7 +1197,10 @@
       "title": "Le 1er juillet",
       "situation": "Normand, votre voisin, vous attend devant le camion avec un rouleau de papier bulle et un sourire inquiétant.",
       "quote": "Demain, c'est le 1er juillet. La moitié du Plateau déménage. Tu m'aides avec mon divan? Il passe pas dans l'escalier, mais on va essayer.",
-      "conditions": { "date": { "month": 6, "dayOfMonth": 30 } },
+      "conditions": {
+        "date": { "month": 6, "dayOfMonth": 30 },
+        "openTomorrow": true
+      },
       "choices": [
         {
           "id": "ouvrirTot",

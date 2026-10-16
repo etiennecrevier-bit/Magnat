@@ -917,6 +917,11 @@ const eventConditionsSchema = z.strictObject({
   cooldownDays: z.int().positive().optional(),
   /** The product's restock rule buys some. */
   productOnMenu: productIdSchema.optional(),
+  /**
+   * Whether the truck opens the next day: the days open hold its weekday
+   * and no change to the street closes it.
+   */
+  openTomorrow: z.boolean().optional(),
   /** Only ever comes as another event's follow-up. */
   followUpOnly: z.boolean().optional(),
 })
