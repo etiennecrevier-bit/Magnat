@@ -14,7 +14,9 @@ import { PERCENTILES, percentileOf } from './percentiles.ts'
 import type { GameState } from './types.ts'
 
 // How the player is doing on a morning, which Facile's draw of the event
-// cards follows (#137). It is read from the state, so it needs no save.
+// cards follows (#137), and where they stand among the owners, which the
+// « Bilan de la semaine » tells. It is read from the state, so it needs no
+// save.
 
 const CASH: AccountCode = '1000'
 
@@ -28,10 +30,9 @@ const DAYS_PER_WEEK = 7
  * bénéfice net, from the truck's first day to the close of the last week
  * played, reads below the percentile `behindBelowPercentile` of
  * `percentiles` at the game's difficulty and that week (see
- * `percentileOf`); « en avance » (`ahead`) when it reads above
+ * `percentileOnMorning`); « en avance » (`ahead`) when it reads above
  * `aheadAbovePercentile`; « dans la moyenne » (`average`) otherwise, and
- * before the first week is over. A Défi counts its weeks from its first
- * day.
+ * before the first week is over.
  */
 export function standingOf(
   state: GameState,
@@ -41,29 +42,44 @@ export function standingOf(
   difficulties: DifficultyContent = DIFFICULTIES,
 ): Standing {
   const { day, journal, challenge } = state
-  const { difficulty } = state.profile
-  const firstDay = challenge?.startDay ?? 0
   const fixedCosts = monthlyFixedCosts(
     day,
-    difficulty,
-    firstDay,
+    state.profile.difficulty,
+    challenge?.startDay ?? 0,
     foodTruck,
     difficulties,
   )
   const cash = balance(journal, CASH, { toDay: day })
   if (cash < fixedCosts * rules.behindBelowMonthsOfFixedCosts) return 'behind'
 
+  const percentile = percentileOnMorning(state, percentiles)
+  if (percentile === null) return 'average'
+  if (percentile < rules.behindBelowPercentile) return 'behind'
+  if (percentile > rules.aheadAbovePercentile) return 'ahead'
+  return 'average'
+}
+
+/**
+ * Where the player stands among the owners of `percentiles` on the morning
+ * of `state.day`, by `percentileOf`: the bénéfice net from the truck's first
+ * day to the close of the last week played, at the game's difficulty and
+ * that week, so the week `lastWeek` reports. Null before the first week is
+ * over. A Défi counts its weeks from its first day.
+ */
+export function percentileOnMorning(
+  state: GameState,
+  percentiles: PercentileContent = PERCENTILES,
+): number | null {
+  const { day, journal, challenge } = state
+  const firstDay = challenge?.startDay ?? 0
   const week = Math.floor((day - firstDay) / DAYS_PER_WEEK)
-  if (week < 1) return 'average'
+  if (week < 1) return null
   const lastSunday = firstDay + week * DAYS_PER_WEEK - 1
   const { netIncome } = incomeStatement(journal, firstDay, lastSunday)
-  const percentile = percentileOf(
-    difficulty,
+  return percentileOf(
+    state.profile.difficulty,
     week,
     netIncome.amount,
     percentiles,
   )
-  if (percentile < rules.behindBelowPercentile) return 'behind'
-  if (percentile > rules.aheadAbovePercentile) return 'ahead'
-  return 'average'
 }

@@ -13,10 +13,11 @@ import { monthlyFixedCosts } from './fixedCosts.ts'
 import { cents } from './money.ts'
 import { PERCENTILES } from './percentiles.ts'
 import { defaultProfile } from './profile.ts'
-import { standingOf } from './standing.ts'
+import { percentileOnMorning, standingOf } from './standing.ts'
 import type { Day, GameState } from './types.ts'
 
-// The player's standing, which Facile's draw follows (#137).
+// The player's standing, which Facile's draw follows (#137), and where they
+// stand among the owners, which the « Bilan de la semaine » tells (#147).
 
 const CASH: AccountCode = '1000'
 const RECEIVABLES: AccountCode = '1100'
@@ -70,10 +71,14 @@ function withIncome(
   }
 }
 
-/** The bénéfice net at the table's `percentile` in `week` at Facile. */
-function incomeAt(percentile: number, week: number): number {
+/** The bénéfice net at the table's `percentile` in `week` at `difficulty`. */
+function incomeAt(
+  percentile: number,
+  week: number,
+  difficulty: DifficultyId = 'facile',
+): number {
   const index = PERCENTILES.percentiles.indexOf(percentile)
-  return PERCENTILES.difficulties.facile[week - 1]?.[index] ?? 0
+  return PERCENTILES.difficulties[difficulty][week - 1]?.[index] ?? 0
 }
 
 describe('standingOf', () => {
@@ -121,9 +126,39 @@ describe('standingOf', () => {
   })
 })
 
+describe('percentileOnMorning', () => {
+  it('reads nothing before the first week is over', () => {
+    const state = withIncome(gameAt('difficile'), 6, incomeAt(50, 1))
+    expect(percentileOnMorning(state)).toBeNull()
+  })
+
+  it('reads the bénéfice net from day 0 to the close of the last week played, at the game’s difficulty', () => {
+    // On day 16, the last week closed is week 2: days 0 to 13.
+    const at = (difficulty: DifficultyId, income: number, onDay?: Day) =>
+      percentileOnMorning(withIncome(gameAt(difficulty), 16, income, onDay))
+    expect(at('difficile', incomeAt(50, 2, 'difficile'))).toBe(50)
+    expect(at('facile', incomeAt(80, 2, 'facile'))).toBe(80)
+    // Day 14 is in week 3, which is not over.
+    expect(at('difficile', incomeAt(50, 2, 'difficile'), 14)).toBe(
+      percentileOnMorning({ ...gameAt('difficile'), day: 16 }),
+    )
+  })
+})
+
 describe('a Défi', () => {
   // « Payé dans 60 jours » plays at Moyen and forces « La grosse commande ».
   const opening = startChallenge('payeDans60Jours', 7)
+
+  it('counts its weeks from its first day', () => {
+    const start = opening.day
+    const income = incomeAt(50, 1, 'moyen')
+    expect(
+      percentileOnMorning(withIncome(opening, start + 6, income, start)),
+    ).toBeNull()
+    expect(
+      percentileOnMorning(withIncome(opening, start + 7, income, start)),
+    ).toBe(50)
+  })
 
   it('plays the cards as written, whatever its difficulty', () => {
     const waiting: GameState = {

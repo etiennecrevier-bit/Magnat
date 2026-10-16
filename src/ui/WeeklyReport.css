@@ -80,6 +80,12 @@
   margin-top: 0.25rem;
 }
 
+/* How the owner compares with the simulated owners. */
+.weekly-report__percentile {
+  margin: 0 0 1rem;
+  font-weight: 600;
+}
+
 /* A newspaper's band, as the ticker draws La Presse-Citron. */
 .weekly-report__headline {
   margin: 0 0 1rem;
