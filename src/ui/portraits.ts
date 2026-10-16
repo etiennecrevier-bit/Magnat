@@ -19,6 +19,9 @@ export const PORTRAIT_URLS: ReadonlyMap<string, string> = new Map(
   ]),
 )
 
+/** Mme Prudhomme, the banker who gives the reports their advice. */
+export const BANKER = 'mmePrudhomme'
+
 /** The URL of `character`'s portrait; null when it has none yet. */
 export function portraitUrl(
   character: string,

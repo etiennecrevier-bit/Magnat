@@ -20,7 +20,8 @@ import WeeklyReportPanel, {
   LastWeekReport,
   WeeklyReportView,
 } from './WeeklyReport.tsx'
-import { factLines, reportHeadline } from './weeklyReport.ts'
+import { BANKER, portraitUrl } from './portraits.ts'
+import { factLines, reportAdvice, reportHeadline } from './weeklyReport.ts'
 
 // A static render reads a Zustand store's initial state, so the connected
 // report reads the app store's current state through this stand-in.
@@ -136,6 +137,29 @@ describe('WeeklyReportView', () => {
     )
     expect(render({ ...WEEK, spoiledCost: cents(0) })).not.toContain(
       'weekly-report__facts',
+    )
+  })
+
+  it("gives « Le conseil de Mme Prudhomme » on the week's first fact, under the facts", () => {
+    const report = { ...WEEK, unpaidRents: [2] }
+    const html = render(report)
+    expect(html).toMatch(
+      /<\/ul><section class="prudhomme-advice" aria-label="Le conseil de Mme Prudhomme">.*?<\/section><p class="weekly-report__headline">/,
+    )
+    expect(html).toContain(
+      `<p class="prudhomme-advice__text">«${S}${escaped(reportAdvice(report))}${S}»</p>`,
+    )
+    expect(html).toContain(
+      `<img class="prudhomme-advice__portrait" src="${portraitUrl(BANKER)}"`,
+    )
+  })
+
+  it('gives quiet advice to a week with no fact', () => {
+    const quiet = { ...WEEK, spoiledCost: cents(0) }
+    const html = render(quiet)
+    expect(html).not.toContain('weekly-report__facts')
+    expect(html).toContain(
+      `<p class="prudhomme-advice__text">«${S}${escaped(reportAdvice(quiet))}${S}»</p>`,
     )
   })
 

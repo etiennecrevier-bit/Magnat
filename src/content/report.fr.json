@@ -1,5 +1,5 @@
 {
-  "_note": "The « Bilan de la semaine » (src/ui/weeklyReport.ts). facts: the text of each fact of a week (report.json), at least 2 variants each, the weeks taking them in turn; each variant uses every number of its fact: profitUpCashDown {netIncome} {cashChange} (with its sign), unpaidRent {day}, receivableDue {client} {amount} {dueDay}, spoilage {cost} {units}, bestWeek {sales} {previousBest}, lostToLine {visits}, daysOpenInARow {days}. The counts are always 2 or more, so write them in the plural. headlines: La Presse-Citron's headline for a week whose first fact is that one, at least 2 each; they may use the fact's numbers. quietHeadlines: for a week with no fact. creditSaleNote: the chart's note on the day of a sale on credit, with {amount} {client} {dueDay}. Describe the week; never explain a term.",
+  "_note": "The « Bilan de la semaine » (src/ui/weeklyReport.ts). facts: the text of each fact of a week (report.json), at least 2 variants each, the weeks taking them in turn; each variant uses every number of its fact: profitUpCashDown {netIncome} {cashChange} (with its sign), unpaidRent {day}, receivableDue {client} {amount} {dueDay}, spoilage {cost} {units}, bestWeek {sales} {previousBest}, lostToLine {visits}, daysOpenInARow {days}. The counts are always 2 or more, so write them in the plural. headlines: La Presse-Citron's headline for a week whose first fact is that one, at least 2 each; they may use the fact's numbers. quietHeadlines: for a week with no fact. advice: « Le conseil de Mme Prudhomme », the banker's dry one-liner on a week whose first fact is that one, at least 3 each; it may use the fact's numbers, and points at the thing to look at without saying why. quietAdvice: hers for a week with no fact, at least 5, with no number. creditSaleNote: the chart's note on the day of a sale on credit, with {amount} {client} {dueDay}. Describe the week; never explain a term.",
   "facts": {
     "profitUpCashDown": [
       "Bénéfice de {netIncome} cette semaine. Encaisse : {cashChange}.",
@@ -70,6 +70,50 @@
   "quietHeadlines": [
     "Semaine tranquille sur la rue. La Presse-Citron cherche encore une nouvelle à mettre en une.",
     "Rien à signaler cette semaine, à part les cônes orange qui tiennent bon."
+  ],
+  "advice": {
+    "profitUpCashDown": [
+      "Un beau bénéfice. Dommage qu'il ne soit pas dans votre encaisse.",
+      "{netIncome} de bénéfice. Essayez donc de payer votre loyer avec ça.",
+      "Votre bénéfice dit {netIncome}. Votre encaisse dit {cashChange}. Moi, je crois l'encaisse."
+    ],
+    "unpaidRent": [
+      "Votre propriétaire a appelé. Deux fois.",
+      "Le loyer du {day} attend toujours. Votre propriétaire, lui, n'attendra pas longtemps.",
+      "Le {day}, il fallait payer le loyer. Regardez ce qu'il restait dans l'encaisse la veille."
+    ],
+    "receivableDue": [
+      "{client} vous doit {amount}. Moi, j'encerclerais le {dueDay} sur le calendrier.",
+      "Une vente, c'est bien. Une vente payée, c'est mieux.",
+      "{client} a promis {amount} pour le {dueDay}. Promettre, ça ne coûte rien."
+    ],
+    "spoilage": [
+      "Vous avez jeté {cost} de marchandise. Les poubelles du Plateau mangent bien.",
+      "{units} unités à la poubelle. Combien en commandez-vous, déjà?",
+      "La marchandise qu'on jette, on l'a payée quand même."
+    ],
+    "bestWeek": [
+      "{sales} de ventes. Bravo. Maintenant, regardez ce qu'il en reste.",
+      "Un record de ventes. Votre bénéfice a-t-il suivi?",
+      "Mieux que {previousBest}, je vous l'accorde. Reste à savoir où est passé l'argent."
+    ],
+    "lostToLine": [
+      "{visits} clients sont repartis sans rien acheter. Ils reviendront peut-être. Peut-être.",
+      "Une file, c'est flatteur. Une file qui s'en va, beaucoup moins.",
+      "{visits} clients ont abandonné la file. Votre comptoir va-t-il assez vite?"
+    ],
+    "daysOpenInARow": [
+      "{days} jours sans congé. Le camion tient le coup. Et vous?",
+      "Ouvrir tous les jours, c'est courageux. Dormir, c'est utile aussi.",
+      "{days} jours de suite. Votre énergie, elle, compte aussi les jours."
+    ]
+  },
+  "quietAdvice": [
+    "Une semaine sans histoire. Profitez-en pour relire votre bilan.",
+    "Rien à redire cette semaine. Ça ne durera pas, mais rien à redire.",
+    "Une semaine tranquille. Les banquiers aiment les semaines tranquilles.",
+    "Je n'ai rien à vous reprocher. Ne vous habituez pas.",
+    "Pas de nouvelle, bonne nouvelle. Regardez quand même votre encaisse."
   ],
   "creditSaleNote": "{amount} de {client} : à recevoir le {dueDay}"
 }

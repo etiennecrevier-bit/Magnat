@@ -242,6 +242,21 @@ export function factLines(
 }
 
 /**
+ * The week's variant of a line on its first fact, from `byFact` with that
+ * fact's numbers, or of a quiet one from `quiet` when it has none.
+ */
+function topFactLine(
+  report: WeekReport,
+  byFact: Readonly<Record<WeekFactId, readonly string[]>>,
+  quiet: readonly string[],
+): string {
+  const [top] = weekFacts(report)
+  return top === undefined
+    ? variant(quiet, report)
+    : fillTemplate(variant(byFact[top.id], report), factValues(top))
+}
+
+/**
  * La Presse-Citron's headline on the week: on its first fact, or a quiet
  * one when there is none.
  */
@@ -249,8 +264,16 @@ export function reportHeadline(
   report: WeekReport,
   text: ReportText = REPORT_TEXT,
 ): string {
-  const [top] = weekFacts(report)
-  return top === undefined
-    ? variant(text.quietHeadlines, report)
-    : fillTemplate(variant(text.headlines[top.id], report), factValues(top))
+  return topFactLine(report, text.headlines, text.quietHeadlines)
+}
+
+/**
+ * « Le conseil de Mme Prudhomme » on the week: on its first fact, or a
+ * quiet one when there is none.
+ */
+export function reportAdvice(
+  report: WeekReport,
+  text: ReportText = REPORT_TEXT,
+): string {
+  return topFactLine(report, text.advice, text.quietAdvice)
 }

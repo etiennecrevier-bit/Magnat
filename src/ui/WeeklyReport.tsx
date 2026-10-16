@@ -13,12 +13,15 @@ import {
   formatWeekdayName,
 } from './formatGameDate.ts'
 import { formatBriefMoney, formatMoney } from './formatMoney.ts'
+import { BANKER, portraitUrl } from './portraits.ts'
+import { PrudhommeAdvice } from './PrudhommeAdvice.tsx'
 import { useGame } from './store.ts'
 import {
   chartScale,
   creditNotes,
   factLines,
   REPORT_TEXT,
+  reportAdvice,
   reportHeadline,
   weekChart,
   type ChartDay,
@@ -300,7 +303,8 @@ interface WeeklyReportViewProps {
 
 /**
  * The « Bilan de la semaine » of `report`: its dates, ventes, bénéfice and
- * encaisse, the chart of its days, its facts, how the owner compares,
+ * encaisse, the chart of its days, its facts, « Le conseil de Mme
+ * Prudhomme » on them, even in a week with none, how the owner compares,
  * and La Presse-Citron's headline, with the Défi under way, if any, after
  * the figures. The percentile is rounded down. It never explains a term.
  */
@@ -328,6 +332,10 @@ export function WeeklyReportView({
           ))}
         </ul>
       )}
+      <PrudhommeAdvice
+        advice={reportAdvice(report, text)}
+        portrait={portraitUrl(BANKER)}
+      />
       {percentile !== null && (
         <p className="weekly-report__percentile">
           {`Mieux que ${Math.floor(percentile)}${PERCENT} des propriétaires`}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { REPORT_PLACEHOLDERS } from '../content/reportText.ts'
+import { PLACEHOLDER, REPORT_PLACEHOLDERS } from '../content/reportText.ts'
 import { weekFactIdSchema, type WeekFactId } from '../content/schema.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
 import {
@@ -23,6 +23,7 @@ import {
   opensFullReport,
   recentWeeks,
   REPORT_TEXT,
+  reportAdvice,
   reportHeadline,
   weekChart,
   WEEKS_LISTED,
@@ -298,6 +299,26 @@ describe('the facts in words', () => {
     },
   )
 
+  it.each(SAMPLES)(
+    "renders every piece of Mme Prudhomme's advice on $id with the numbers it names",
+    (fact) => {
+      const values = factValues(fact)
+      for (const template of REPORT_TEXT.advice[fact.id]) {
+        const text = fillTemplate(template, values)
+        expect(text, template).not.toMatch(/[{}]/)
+        for (const [, name = ''] of template.matchAll(PLACEHOLDER)) {
+          expect(text, template).toContain(WRITTEN[fact.id][name])
+        }
+      }
+    },
+  )
+
+  it('renders the quiet advice with no number', () => {
+    for (const advice of REPORT_TEXT.quietAdvice) {
+      expect(fillTemplate(advice, {}), advice).not.toMatch(/[{}]/)
+    }
+  })
+
   it('throws for a placeholder without its number', () => {
     expect(() => fillTemplate('Le {day}.', {})).toThrow('{day}')
     expect(() => fillTemplate('{constructor}', {})).toThrow('{constructor}')
@@ -340,6 +361,50 @@ describe('factLines and reportHeadline', () => {
     const nextQuiet = weekOf(7, { spoiledCost: cents(0) })
     expect(REPORT_TEXT.quietHeadlines).toContain(reportHeadline(nextQuiet))
     expect(reportHeadline(nextQuiet)).not.toBe(reportHeadline(quiet))
+  })
+})
+
+describe('reportAdvice', () => {
+  /** The week of day `firstDay`, the owner's rent unpaid on its Tuesday. */
+  function rentWeek(firstDay: number): WeekReport {
+    return weekOf(firstDay, { unpaidRents: [firstDay + 1] })
+  }
+
+  it('advises on the first fact, in the week’s variant, with its numbers', () => {
+    const variants = REPORT_TEXT.advice.unpaidRent
+    // The first week whose variant names the day, so it shows filled in.
+    const week = variants.findIndex((advice) => advice.includes('{day}'))
+    expect(week).toBeGreaterThanOrEqual(0)
+    const report = rentWeek(week * 7)
+    const facts = weekFacts(report)
+    expect(facts[0]!.id).toBe('unpaidRent')
+    expect(facts.length).toBeGreaterThan(1)
+    const day = factValues(facts[0]!).day!
+    expect(reportAdvice(report)).toBe(variants[week]!.replaceAll('{day}', day))
+    expect(reportAdvice(report)).toContain(day)
+  })
+
+  it('takes the variant of the week: week 4 of the game the second of 3', () => {
+    const variants = REPORT_TEXT.advice.unpaidRent
+    expect(reportAdvice(rentWeek(28))).toBe(
+      fillTemplate(variants[4 % variants.length]!, { day: '30 mai' }),
+    )
+  })
+
+  it('reads the same each time, and changes from one week to the next', () => {
+    expect(reportAdvice(rentWeek(7))).toBe(reportAdvice(rentWeek(7)))
+    expect(reportAdvice(rentWeek(7))).not.toBe(reportAdvice(rentWeek(14)))
+  })
+
+  it('gives quiet advice to a week with no fact, a new one the next week', () => {
+    const quiet = weekOf(0, { spoiledCost: cents(0) })
+    const nextQuiet = weekOf(7, { spoiledCost: cents(0) })
+    expect(weekFacts(quiet)).toEqual([])
+    expect(weekFacts(nextQuiet)).toEqual([])
+    const { quietAdvice } = REPORT_TEXT
+    expect(reportAdvice(quiet)).toBe(quietAdvice[0 % quietAdvice.length])
+    expect(reportAdvice(nextQuiet)).toBe(quietAdvice[1 % quietAdvice.length])
+    expect(reportAdvice(nextQuiet)).not.toBe(reportAdvice(quiet))
   })
 })
 
