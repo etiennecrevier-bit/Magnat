@@ -1,5 +1,5 @@
 {
-  "_note": "The facts of a week (#97) the « Bilan de la semaine » tells, at most maxFacts of them, the highest weight first; profitUpCashDown always comes first when it holds. profitUpCashDown: a bénéfice net above 0 while the encaisse went down, or went up at least minGapCents less than the bénéfice. unpaidRent: the owner's rent went unpaid. receivableDue: a customer owes something due within withinDays of the Sunday. spoilage: the stock written off cost more than aboveCents. bestWeek: ventes above every earlier week of the game. lostToLine: more than aboveVisits visits left the line. daysOpenInARow: the truck opened at least atLeast days in a row.",
+  "_note": "The facts of a week (#97) the « Bilan de la semaine » tells, at most maxFacts of them, the highest weight first; profitUpCashDown always comes first when it holds. profitUpCashDown: a bénéfice net above 0 while the encaisse went down, or went up at least minGapCents less than the bénéfice. unpaidRent: the owner's rent went unpaid. receivableDue: a customer owes something due within withinDays of the Sunday. spoilage: the stock written off cost more than aboveCents. bestWeek: ventes above every earlier week of the game. lostToLine: more than aboveVisits visits left the line. daysOpenInARow: the truck opened at least atLeast days in a row. contractsReceivable: the grocers of the contracts (grocers.json) owe more than aboveCents.",
   "maxFacts": 4,
   "facts": {
     "profitUpCashDown": { "weight": 100, "minGapCents": 40000 },
@@ -8,6 +8,7 @@
     "spoilage": { "weight": 70, "aboveCents": 5000 },
     "bestWeek": { "weight": 60 },
     "lostToLine": { "weight": 50, "aboveVisits": 20 },
-    "daysOpenInARow": { "weight": 40, "atLeast": 10 }
+    "daysOpenInARow": { "weight": 40, "atLeast": 10 },
+    "contractsReceivable": { "weight": 85, "aboveCents": 100000 }
   }
 }

@@ -6,6 +6,7 @@ import type {
   EnergyContent,
   EventContent,
   FoodTruckContent,
+  GrocerContent,
   PercentileContent,
   PersonalContent,
 } from '../content/schema.ts'
@@ -21,6 +22,7 @@ import {
   startDayOf,
   startingEnergy,
 } from './challenge.ts'
+import { GROCERS, noContracts } from './contracts.ts'
 import {
   CUSTOMERS,
   DEFIS,
@@ -60,7 +62,8 @@ export { toCalendar, type CalendarDate } from './calendar.ts'
  * the owner's personal account holding the difficulty's starting savings, the
  * owner at full energy, no event yet, nobody owing the business anything, a
  * first week to come, partial, from the cash the books open with (see
- * `openingWeek`), no Défi and no bakery, with the croissants bought. Throws a
+ * `openingWeek`), no Défi, no bakery, with the croissants bought, and no
+ * contract. Throws a
  * RangeError unless `seed` is an integer in [0, 2^32), if the starting
  * decisions break the content's limits, if `profile` breaks
  * `validateProfile()`, or if the difficulty leaves a negative Mise de fonds.
@@ -99,6 +102,7 @@ export function createInitialState(
     weekHistory: [],
     challenge: null,
     bakery: closedBakery(),
+    contracts: noContracts(),
   }
 }
 
@@ -178,7 +182,8 @@ export function startChallenge(
 
 /**
  * Plays business day `state.day` with `state.decisions` (see `playDay`, with
- * `bakery` as the bakery's content), then moves on to the next morning, where
+ * `bakery` as the bakery's content and `grocers` as the contracts'), then
+ * moves on to the next morning, where
  * the pending decisions, if any, take effect, after a night that gives the
  * owner some energy back (see `nightRest`), and where an event of `events` may
  * come up (see `drawEvent`, which reads the player's standing against
@@ -201,6 +206,7 @@ export function tick(
   defis: DefiContent = DEFIS,
   percentiles: PercentileContent = PERCENTILES,
   bakery: BakeryContent = BAKERY,
+  grocers: GrocerContent = GROCERS,
 ): GameState {
   const played = playDay(
     state,
@@ -211,6 +217,7 @@ export function tick(
     energy,
     defis,
     bakery,
+    grocers,
   )
   const morning: GameState = {
     ...played,
@@ -220,7 +227,9 @@ export function tick(
     energy: nightRest(played.energy, energy),
   }
   const { challenge } = morning
-  if (challenge === null) return drawEvent(morning, events, percentiles)
+  if (challenge === null) {
+    return drawEvent(morning, events, percentiles, grocers)
+  }
   if (challenge.status !== 'enCours') return morning
   const forced = withForcedEvent(morning, defis)
   if (forced !== morning) return forced
@@ -230,6 +239,7 @@ export function tick(
       ? events
       : { ...events, pacing: { ...events.pacing, dailyChance: 0 } },
     percentiles,
+    grocers,
   )
 }
 

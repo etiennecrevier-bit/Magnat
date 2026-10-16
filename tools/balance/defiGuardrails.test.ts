@@ -133,8 +133,9 @@ function playedWith(
 
 /**
  * What P3-13's owners won on seeds 1 to 200, each Défi as now tuned. The
- * random events of « Payé dans 60 jours » came rarer with #155: its counts
- * are those of the new pacing and cards, until the balance run that follows.
+ * random events of « Payé dans 60 jours » came rarer with #155, and the
+ * grocers' offers joined them with #156: its counts are those of the new
+ * pacing and cards, until the balance run that follows.
  */
 const P3_13_OWNERS: Readonly<Record<string, ReturnType<typeof medalCounts>>> = {
   travauxSaintDenis: {
@@ -167,10 +168,10 @@ const P3_13_OWNERS: Readonly<Record<string, ReturnType<typeof medalCounts>>> = {
   },
   payeDans60Jours: {
     games: 200,
-    broken: 40,
-    or: 29,
+    broken: 41,
+    or: 27,
     argentOrBetter: 97,
-    bronzeOrBetter: 160,
+    bronzeOrBetter: 159,
   },
   moisSansConge: {
     games: 200,

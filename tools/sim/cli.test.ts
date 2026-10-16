@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
+import { DIFFICULTIES, EVENTS } from '../../src/engine/day.ts'
 import { cents } from '../../src/engine/money.ts'
 import { formatDollars, formatReport, parseSimArgs, USAGE } from './cli.ts'
 import { simulate, type SimulationResult } from './simulate.ts'
@@ -20,6 +21,7 @@ describe('parseSimArgs', () => {
       seed: 42,
       difficulty: 'moyen',
       events: 'random',
+      contracts: null,
       out: join(root, 'out'),
     })
   })
@@ -34,6 +36,8 @@ describe('parseSimArgs', () => {
         'difficile',
         '--events',
         'first',
+        '--contracts',
+        'all',
         '--out',
         'tmp/sims',
       ]),
@@ -42,9 +46,23 @@ describe('parseSimArgs', () => {
       seed: 0,
       difficulty: 'difficile',
       events: 'first',
+      contracts: 'all',
       out: resolve('tmp/sims'),
     })
   })
+
+  it.each(['all', 'none', 'first'])('reads the contracts policy %s', (id) => {
+    expect(parseSimArgs([`--contracts=${id}`]).contracts).toBe(id)
+  })
+
+  it.each(['', 'All', 'random', ' all'])(
+    'rejects the contracts policy %j',
+    (text) => {
+      expect(() => parseSimArgs(['--contracts', text])).toThrow(
+        `--contracts must be one of all, none, first: ${text}`,
+      )
+    },
+  )
 
   it.each(['first', 'random', 'none'])('reads the events policy %s', (id) => {
     expect(parseSimArgs([`--events=${id}`]).events).toBe(id)
@@ -154,6 +172,7 @@ describe('formatReport', () => {
       journal: [],
       owner: { morningEnergy: [], personalCash: cents(0), unpaidRents: [] },
       events: 'first',
+      contracts: null,
       eventHistory: [],
       modifierDays: {
         walkIns: 15,
@@ -171,6 +190,9 @@ describe('formatReport', () => {
       'Street changes: walkIns 15 days, appeal 5 days, willingness 1 days, unavailable 0 days, closed 1 days',
       `Journal sha256: ${'ab'.repeat(32)}`,
     ])
+    expect(formatReport({ ...result, contracts: 'first' })[0]).toBe(
+      'Seed 7, 400 days, difficulty facile, events first, contracts first',
+    )
   })
 })
 
@@ -233,6 +255,36 @@ describe('npm run sim', () => {
       readFileSync(join(out, 'sim-9-moyen.json'), 'utf8'),
     ) as { events: string }
     expect(written.events).toBe('none')
+  }, 30_000)
+
+  it('plays the contracts policy it is given', () => {
+    const { status, stdout } = sim(
+      '--days',
+      '90',
+      '--seed',
+      '9',
+      '--events',
+      'none',
+      '--contracts',
+      'all',
+      '--out',
+      out,
+    )
+    expect(status).toBe(0)
+    expect(stdout.split('\n')[0]).toBe(
+      'Seed 9, 90 days, difficulty moyen, events none, contracts all',
+    )
+    const written = JSON.parse(
+      readFileSync(join(out, 'sim-9-moyen.json'), 'utf8'),
+    ) as SimulationResult
+    expect(written.contracts).toBe('all')
+    expect(written).toEqual(
+      JSON.parse(
+        JSON.stringify(
+          simulate(9, 90, 'moyen', [], 'none', EVENTS, DIFFICULTIES, 'all'),
+        ),
+      ),
+    )
   }, 30_000)
 
   it('exits with 1 and the usage on a bad option, writing nothing', () => {

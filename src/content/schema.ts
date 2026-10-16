@@ -7,6 +7,7 @@ import difficultyJson from './difficulty.json'
 import energyJson from './energy.json'
 import eventsJson from './events.json'
 import foodTruckJson from './foodtruck.json'
+import grocersJson from './grocers.json'
 import percentilesJson from './percentiles.json'
 import personalJson from './personal.json'
 import profileJson from './profile.json'
@@ -77,6 +78,15 @@ export const difficultyIdSchema = z.enum(['facile', 'moyen', 'difficile'])
 export type DifficultyId = z.infer<typeof difficultyIdSchema>
 
 export const avatarSchema = z.enum(['femme', 'homme'])
+
+/** The grocers who may sign a weekly croissant contract (#156). */
+export const grocerIdSchema = z.enum([
+  'chezNormand',
+  'marcheBioLogique',
+  'depanneur2424',
+])
+
+export type GrocerId = z.infer<typeof grocerIdSchema>
 
 export type Avatar = z.infer<typeof avatarSchema>
 
@@ -720,6 +730,23 @@ function effectSchemas<Extra extends z.core.$ZodShape>(extra: Extra) {
      * `work`, the owner works those days away from the counter.
      */
     z.strictObject({ ...STREET_CHANGES.closed, days: streetDays, ...extra }),
+    /**
+     * Starts a weekly contract with `grocer`, at its price times
+     * `priceFactor`, 1 by default.
+     */
+    z.strictObject({
+      kind: z.literal('contract'),
+      grocer: grocerIdSchema,
+      priceFactor: factor.optional(),
+      ...extra,
+    }),
+    /** For `days` days, `grocer` offers no contract. */
+    z.strictObject({
+      kind: z.literal('grocerAway'),
+      grocer: grocerIdSchema,
+      days: z.int().positive(),
+      ...extra,
+    }),
   ] as const
 }
 
@@ -760,6 +787,14 @@ const timedEffectSchema = z
       effect.unitCostCents === undefined ||
       (effect.inDays === undefined && effect.onNextWeekday === undefined),
     { message: 'a purchase at its own unit cost happens now' },
+  )
+  // A contract starts the morning it is signed, so its deliveries count
+  // from there, and the grocer who walks away does it then.
+  .refine(
+    (effect) =>
+      (effect.kind !== 'contract' && effect.kind !== 'grocerAway') ||
+      (effect.inDays === undefined && effect.onNextWeekday === undefined),
+    { message: 'a contract, or a grocer walking away, happens now' },
   )
 
 export type TimedEventEffect = z.output<typeof timedEffectSchema>
@@ -1023,6 +1058,11 @@ const eventConditionsSchema = z.strictObject({
   openTomorrow: z.boolean().optional(),
   /** Only ever comes as another event's follow-up. */
   followUpOnly: z.boolean().optional(),
+  /**
+   * The grocer may offer a contract: none of theirs runs, fewer than the
+   * most at once do, and they are not away.
+   */
+  grocer: grocerIdSchema.optional(),
 })
 
 export type EventConditions = z.output<typeof eventConditionsSchema>
@@ -1226,6 +1266,59 @@ export const eventContentSchema = z
 
 export type EventContent = z.output<typeof eventContentSchema>
 
+/** One grocer and the contract they offer. */
+const grocerSchema = z.strictObject({
+  /** The shop, as the journal names the client. */
+  name: frenchText(),
+  /** Who runs it. */
+  owner: frenchText(),
+  /** Croissants delivered each week. */
+  unitsPerWeek: z.int().positive(),
+  /** What the grocer pays for each croissant. */
+  unitPriceCents: positiveMoney,
+  /** Days after a delivery the grocer pays for it. */
+  paymentDays: z.int().positive(),
+  /** Deliveries a contract runs for, one a week. */
+  weeks: z.int().positive(),
+  /** What the grocer pays more for each croissant the bakery made. */
+  artisanalPremiumCents: money,
+  /**
+   * The event that offers to renew the contract, the morning after its last
+   * delivery: a `followUpOnly` card.
+   */
+  renewalEvent: idSchema,
+})
+
+export type Grocer = z.output<typeof grocerSchema>
+
+/** The grocers' weekly croissant contracts (#156). */
+export const grocerContentSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    /** The most contracts that run at once. */
+    maxContracts: z.int().positive(),
+    /** The ISO weekday of the deliveries, open or closed. */
+    deliveryWeekday: weekday,
+    /** What a delivery takes from the owner's energy. */
+    deliveryEnergyCost: energyAmount,
+    grocers: z.record(grocerIdSchema, grocerSchema),
+  })
+  .superRefine(({ grocers }, ctx) => {
+    const seen = new Set<string>()
+    for (const [id, { name }] of Object.entries(grocers)) {
+      if (seen.has(name)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `two grocers are named ${name}, so their debts would mix`,
+          path: ['grocers', id, 'name'],
+        })
+      }
+      seen.add(name)
+    }
+  })
+
+export type GrocerContent = z.output<typeof grocerContentSchema>
+
 /**
  * The facts of a week the « Bilan de la semaine » may tell, in the order
  * that breaks a tie between equal weights.
@@ -1238,6 +1331,7 @@ export const weekFactIdSchema = z.enum([
   'bestWeek',
   'lostToLine',
   'daysOpenInARow',
+  'contractsReceivable',
 ])
 
 export type WeekFactId = z.infer<typeof weekFactIdSchema>
@@ -1270,6 +1364,11 @@ const weekFactsSchema = z.strictObject({
   daysOpenInARow: z.strictObject({
     weight: factWeight,
     atLeast: z.int().positive(),
+  }),
+  /** The grocers of the contracts owe more than `aboveCents`. */
+  contractsReceivable: z.strictObject({
+    weight: factWeight,
+    aboveCents: money,
   }),
 } satisfies Record<WeekFactId, z.ZodType>)
 
@@ -1705,6 +1804,28 @@ function defiContentFor(events: EventContent) {
 }
 
 /**
+ * The grocers' content, checked against `events`: each renewal is a card of
+ * it that only comes as a follow-up.
+ */
+function grocerContentFor(events: EventContent) {
+  const cards = new Map(events.events.map((card) => [card.id, card]))
+  return grocerContentSchema.superRefine(({ grocers }, ctx) => {
+    for (const [id, { renewalEvent }] of Object.entries(grocers)) {
+      const card = cards.get(renewalEvent)
+      if (card?.conditions?.followUpOnly === true) continue
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          card === undefined
+            ? `no event has the id ${renewalEvent}`
+            : `the event ${renewalEvent} does not come only as a follow-up`,
+        path: ['grocers', id, 'renewalEvent'],
+      })
+    }
+  })
+}
+
+/**
  * Validates the food truck's content and returns it typed, with money as
  * `Cents`. Throws an Error naming every invalid field. Pass `raw` only to
  * check other data; by default it reads `foodtruck.json`.
@@ -1781,7 +1902,8 @@ export function loadEnergyContent(raw: unknown = energyJson): EnergyContent {
  * the adaptive draw, and returns them typed, with money as `Cents`. Throws
  * an Error naming every invalid field: besides each field, event ids must
  * be unique, choice ids unique within their event, each choice's chances
- * must sum to 1, every follow-up must name an event of the file, and every
+ * must sum to 1, every follow-up must name an event of the file, a contract
+ * and a grocer walking away happen when the choice is made, and every
  * effect a tag names must be one of its choice's, of one unit when the tag
  * shows its amount. Pass `raw` only to check other data; by default it
  * reads `events.json`.
@@ -1815,6 +1937,21 @@ export function loadDefiContent(
   events: EventContent = loadEventContent(),
 ): DefiContent {
   return parsed(defiContentFor(events), raw, 'defis.json')
+}
+
+/**
+ * Validates the grocers' contracts against the event cards `events` and
+ * returns them typed, with money as `Cents`. Throws an Error naming every
+ * invalid field: besides each field, the grocers' names differ, and each
+ * renewal names a card of `events` that only comes as a follow-up. Pass
+ * `raw` only to check other data; by default it reads `grocers.json`,
+ * against `events.json`.
+ */
+export function loadGrocerContent(
+  raw: unknown = grocersJson,
+  events: EventContent = loadEventContent(),
+): GrocerContent {
+  return parsed(grocerContentFor(events), raw, 'grocers.json')
 }
 
 /**

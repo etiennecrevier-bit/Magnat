@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { DIFFICULTIES, EVENTS } from '../../src/engine/day.ts'
 import { cents } from '../../src/engine/money.ts'
 import { simulate } from '../sim/simulate.ts'
 import { playStrategy, runBalance } from './play.ts'
 import { strategyChanges, type Strategy } from './strategies.ts'
 
-// The balance bot hands its events policy on to every game it plays: a spy
-// on simulate() checks what each game was asked to play.
+// The balance bot hands its events and contracts policies on to every game
+// it plays: a spy on simulate() checks what each game was asked to play.
 
 vi.mock('../sim/simulate.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../sim/simulate.ts')>()
@@ -27,17 +28,40 @@ function policies(): unknown[] {
   return vi.mocked(simulate).mock.calls.map((call) => call[4])
 }
 
+/** The contracts policy each call to simulate() was given. */
+function contractPolicies(): unknown[] {
+  return vi.mocked(simulate).mock.calls.map((call) => call[7])
+}
+
 afterEach(() => {
   vi.mocked(simulate).mockClear()
 })
 
 describe('playStrategy', () => {
-  it('plays the events policy it is given, none by default', () => {
-    playStrategy(BASE, 'facile', 1, DAYS, 'first')
+  it('plays the events and contracts policies it is given, none by default', () => {
+    playStrategy(BASE, 'facile', 1, DAYS, 'first', 'all')
     playStrategy(BASE, 'facile', 1, DAYS)
     expect(vi.mocked(simulate).mock.calls).toEqual([
-      [1, DAYS, 'facile', strategyChanges(BASE), 'first'],
-      [1, DAYS, 'facile', strategyChanges(BASE), 'none'],
+      [
+        1,
+        DAYS,
+        'facile',
+        strategyChanges(BASE),
+        'first',
+        EVENTS,
+        DIFFICULTIES,
+        'all',
+      ],
+      [
+        1,
+        DAYS,
+        'facile',
+        strategyChanges(BASE),
+        'none',
+        EVENTS,
+        DIFFICULTIES,
+        null,
+      ],
     ])
   })
 })
@@ -64,5 +88,19 @@ describe('runBalance', () => {
     })
     expect(run.events).toBe('none')
     expect(policies()).toEqual(['none'])
+    expect(run.contracts).toBeUndefined()
+    expect(contractPolicies()).toEqual([null])
+  })
+
+  it('plays every game with its contracts policy, and says which', () => {
+    const run = runBalance({
+      years: 1,
+      games: 2,
+      strategies: [BASE],
+      difficulties: ['moyen'],
+      contracts: 'first',
+    })
+    expect(run.contracts).toBe('first')
+    expect(contractPolicies()).toEqual(['first', 'first'])
   })
 })

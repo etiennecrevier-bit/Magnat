@@ -35,6 +35,8 @@ const AWAITING_PORTRAIT: readonly string[] = [
   'rosaireGagnon',
   'stevieDuvent',
   'ginettePelletier',
+  'solangeTremblayLevesque',
+  'monsieurKim',
 ]
 
 const CHARACTERS: readonly string[] = [

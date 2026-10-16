@@ -16,6 +16,7 @@ import {
 } from '../finance/statements.ts'
 import { mondayOf, sundayOf, toCalendar } from './calendar.ts'
 import { createInitialState, tick } from './clock.ts'
+import { noContracts, startContract } from './contracts.ts'
 import {
   CUSTOMERS,
   DIFFICULTIES,
@@ -450,10 +451,15 @@ describe('a year of weeks', () => {
       startedAs(),
       7 * 53,
       EVENTS,
-      // The order taken on credit, so that some week sells on credit; every
-      // other card answered at random.
+      // The order taken on credit, and the grocers' contracts, so that some
+      // week sells on credit; every other card answered at random.
       (state) =>
-        state.events.pending?.event === 'grosseCommande'
+        [
+          'grosseCommande',
+          'contratNormand',
+          'contratBioLogique',
+          'contratDepanneur',
+        ].includes(state.events.pending?.event ?? '')
           ? 'accepter'
           : random(state),
       (state) => {
@@ -707,6 +713,44 @@ describe('the best week', () => {
   })
 })
 
+describe("the weeks of a grocer's contract", () => {
+  // Seed 42 at Moyen with a contract signed on day 0 with Dépanneur 24/24:
+  // 500 croissants at 1,95 $ each Monday from day 7, paid 45 days later.
+  const KIM = 500 * 195
+  const SIGNED: GameState = {
+    ...startedAs(),
+    contracts: startContract(noContracts(), 0, 'depanneur2424'),
+  }
+  const { weeks, state } = play(SIGNED, 7 * 9)
+  const dayOf = (day: number) =>
+    weeks.flatMap(({ days }) => days).find((record) => record.day === day)
+  const everyFact = { ...REPORT, maxFacts: weekFactIdSchema.options.length }
+
+  it('counts a delivery in the ventes of its Monday, and in the cash received only the day the grocer pays', () => {
+    expect(dayOf(7)).toMatchObject({ open: false, sales: KIM, cashReceived: 0 })
+    expect(dayOf(52)?.cashReceived).toBe(cashSalesOn(state.journal, 52) + KIM)
+    expect(dayOf(52)?.sales).toBe(cashSalesOn(state.journal, 52))
+    for (const week of weeks) {
+      expectAsTheBooks(week, state.journal, openingCash())
+    }
+  })
+
+  it('tells what the grocers owe once it is more than aboveCents', () => {
+    const owing = (firstDay: number) =>
+      weekFacts(
+        weeks.find((week) => week.firstDay === firstDay) as WeekReport,
+        everyFact,
+      ).find(({ id }) => id === 'contractsReceivable')
+    expect(REPORT.facts.contractsReceivable.aboveCents).toBeGreaterThan(KIM)
+    expect(owing(7)).toBeUndefined()
+    expect(owing(14)).toEqual({
+      id: 'contractsReceivable',
+      weight: REPORT.facts.contractsReceivable.weight,
+      numbers: { amount: 2 * KIM, grocers: ['Dépanneur 24/24'] },
+    })
+  })
+})
+
 describe('weekFacts', () => {
   const RULES: ReportContent = loadReportContent({
     maxFacts: 4,
@@ -718,6 +762,7 @@ describe('weekFacts', () => {
       bestWeek: { weight: 60 },
       lostToLine: { weight: 50, aboveVisits: 20 },
       daysOpenInARow: { weight: 40, atLeast: 10 },
+      contractsReceivable: { weight: 85, aboveCents: 100_000 },
     },
   })
 
@@ -763,6 +808,12 @@ describe('weekFacts', () => {
     receivables: [
       { ...OWED, dueDay: 62 },
       { ...OWED, client: 'Client douteux', dueDay: 62 },
+      {
+        client: 'Marché Bio-Logique',
+        amount: cents(281_250),
+        soldOnDay: 21,
+        dueDay: 81,
+      },
     ],
     unpaidRents: [31],
   }
@@ -774,6 +825,11 @@ describe('weekFacts', () => {
       numbers: { netIncome: cents(100_000), cashChange: cents(-10_000) },
     },
     { id: 'unpaidRent', weight: 90, numbers: { day: 31 } },
+    {
+      id: 'contractsReceivable',
+      weight: 85,
+      numbers: { amount: cents(281_250), grocers: ['Marché Bio-Logique'] },
+    },
     {
       id: 'receivableDue',
       weight: 80,
@@ -792,13 +848,41 @@ describe('weekFacts', () => {
   const facts = (change: Partial<WeekReport>, rules = RULES) =>
     weekFacts({ ...QUIET, ...change }, rules)
 
+  it("tells what the grocers owe above aboveCents, each grocer once, the one due soonest first, and no other client's debt", () => {
+    const owed = (client: string, amount: number, dueDay: number) => ({
+      client,
+      amount: cents(amount),
+      soldOnDay: 21,
+      dueDay,
+    })
+    const told = (receivables: WeekReport['receivables']) =>
+      facts({ receivables }).find(({ id }) => id === 'contractsReceivable')
+    expect(told([owed('Gilles Lacasse', 500_000, 60)])).toBeUndefined()
+    expect(told([owed('Marché Bio-Logique', 100_000, 81)])).toBeUndefined()
+    expect(
+      told([
+        owed('Gilles Lacasse', 500_000, 60),
+        owed('Dépanneur 24/24', 50_000, 66),
+        owed('Marché Bio-Logique', 50_001, 81),
+        owed('Dépanneur 24/24', 50_000, 73),
+      ]),
+    ).toEqual({
+      id: 'contractsReceivable',
+      weight: 85,
+      numbers: {
+        amount: cents(150_001),
+        grocers: ['Dépanneur 24/24', 'Marché Bio-Logique'],
+      },
+    })
+  })
+
   it('tells nothing of a quiet week', () => {
     expect(facts({})).toEqual([])
   })
 
   it('tells at most maxFacts, most important first', () => {
     expect(weekFacts(LOUD, RULES)).toEqual(ALL.slice(0, 4))
-    expect(weekFacts(LOUD, { ...RULES, maxFacts: 7 })).toEqual(ALL)
+    expect(weekFacts(LOUD, { ...RULES, maxFacts: 8 })).toEqual(ALL)
     expect(weekFacts(LOUD, { ...RULES, maxFacts: 1 })).toEqual(ALL.slice(0, 1))
   })
 
@@ -933,15 +1017,15 @@ describe('weekFacts', () => {
     expect(weekFacts(LOUD, rules).map(({ id }) => id)).toEqual([
       'profitUpCashDown',
       'unpaidRent',
+      'contractsReceivable',
       'receivableDue',
-      'spoilage',
     ])
   })
 
   it('tells the others by weight, a tie in the order of the ids', () => {
     const rules: ReportContent = {
       ...RULES,
-      maxFacts: 7,
+      maxFacts: 8,
       facts: {
         ...RULES.facts,
         daysOpenInARow: { ...RULES.facts.daysOpenInARow, weight: 95 },
@@ -952,6 +1036,7 @@ describe('weekFacts', () => {
       'profitUpCashDown',
       'daysOpenInARow',
       'unpaidRent',
+      'contractsReceivable',
       'receivableDue',
       'lostToLine',
       'spoilage',
@@ -959,7 +1044,7 @@ describe('weekFacts', () => {
     ])
     const ties: ReportContent = {
       ...RULES,
-      maxFacts: 7,
+      maxFacts: 8,
       facts: Object.fromEntries(
         Object.entries(RULES.facts).map(([id, rule]) => [
           id,

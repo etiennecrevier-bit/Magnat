@@ -1,5 +1,5 @@
 {
-  "_note": "The « Bilan de la semaine » (src/ui/weeklyReport.ts). facts: the text of each fact of a week (report.json), at least 2 variants each, the weeks taking them in turn; each variant uses every number of its fact: profitUpCashDown {netIncome} {cashChange} (with its sign), unpaidRent {day}, receivableDue {client} {amount} {dueDay}, spoilage {cost} {units}, bestWeek {sales} {previousBest}, lostToLine {visits}, daysOpenInARow {days}. The counts are always 2 or more, so write them in the plural. headlines: La Presse-Citron's headline for a week whose first fact is that one, at least 2 each; they may use the fact's numbers. quietHeadlines: for a week with no fact. advice: « Le conseil de Mme Prudhomme », the banker's dry one-liner on a week whose first fact is that one, at least 3 each; it may use the fact's numbers, and points at the thing to look at without saying why. quietAdvice: hers for a week with no fact, at least 5, with no number. creditSaleNote: the chart's note on the day of a sale on credit, with {amount} {client} {dueDay}. Describe the week; never explain a term.",
+  "_note": "The « Bilan de la semaine » (src/ui/weeklyReport.ts). facts: the text of each fact of a week (report.json), at least 2 variants each, the weeks taking them in turn; each variant uses every number of its fact: profitUpCashDown {netIncome} {cashChange} (with its sign), unpaidRent {day}, receivableDue {client} {amount} {dueDay}, spoilage {cost} {units}, bestWeek {sales} {previousBest}, lostToLine {visits}, daysOpenInARow {days}, contractsReceivable {amount} {grocers} (the grocers' names, joined with « et »). The counts are always 2 or more, so write them in the plural. headlines: La Presse-Citron's headline for a week whose first fact is that one, at least 2 each; they may use the fact's numbers. quietHeadlines: for a week with no fact. advice: « Le conseil de Mme Prudhomme », the banker's dry one-liner on a week whose first fact is that one, at least 3 each; it may use the fact's numbers, and points at the thing to look at without saying why. quietAdvice: hers for a week with no fact, at least 5, with no number. creditSaleNote: the chart's note on the day of a sale on credit, with {amount} {client} {dueDay}. Describe the week; never explain a term.",
   "facts": {
     "profitUpCashDown": [
       "Bénéfice de {netIncome} cette semaine. Encaisse : {cashChange}.",
@@ -35,6 +35,11 @@
       "{days} jours d'affilée sans fermer le camion.",
       "Le camion a ouvert {days} jours de suite.",
       "{days} jours de suite derrière le comptoir."
+    ],
+    "contractsReceivable": [
+      "Contrats : {amount} à recevoir de {grocers}.",
+      "À recevoir de {grocers} : {amount} de croissants livrés.",
+      "{amount} de croissants livrés, pas encore payés par {grocers}."
     ]
   },
   "headlines": {
@@ -65,6 +70,10 @@
     "daysOpenInARow": [
       "Un camion de rue ouvert tous les jours. Ses voisins se demandent s'il dort dedans.",
       "Ouvert beau temps, mauvais temps : un camion de rue oublie ce qu'est un congé."
+    ],
+    "contractsReceivable": [
+      "Les épiceries du quartier adorent les croissants d'un camion de rue. Elles les paieront plus tard.",
+      "Un camion de rue livre les épiceries du coin. Le paiement suit, à pied."
     ]
   },
   "quietHeadlines": [
@@ -106,6 +115,11 @@
       "{days} jours sans congé. Le camion tient le coup. Et vous?",
       "Ouvrir tous les jours, c'est courageux. Dormir, c'est utile aussi.",
       "{days} jours de suite. Votre énergie, elle, compte aussi les jours."
+    ],
+    "contractsReceivable": [
+      "{amount} à recevoir. Votre propriétaire, lui, veut être payé le 1er.",
+      "Des ventes, oui. De l'argent, pas encore. Regardez votre encaisse.",
+      "{grocers} vous paieront. Un jour. Votre fournisseur, lui, veut être payé lundi."
     ]
   },
   "quietAdvice": [

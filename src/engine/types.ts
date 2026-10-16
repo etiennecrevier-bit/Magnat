@@ -7,6 +7,7 @@ import type {
   CroissantSource,
   DifficultyId,
   EventEffect,
+  GrocerId,
   Medal,
   OvenTerms,
   ProductId,
@@ -74,6 +75,8 @@ export interface DaySummary {
    * made, each with the event that made it.
    */
   readonly modifiers: readonly StreetModifier[]
+  /** The croissants delivered to the grocers that morning, in order. */
+  readonly deliveries: readonly Delivery[]
 }
 
 /** One customer segment's visits on a business day. */
@@ -300,6 +303,54 @@ export interface GameState {
   readonly challenge: ChallengeState | null
   /** The bakery, as of the last close. */
   readonly bakery: BakeryState
+  /** The grocers' weekly croissant contracts. */
+  readonly contracts: ContractsState
+}
+
+/** The grocers' contracts of a game. */
+export interface ContractsState {
+  /** The contracts that run, in the order they were signed. */
+  readonly running: readonly Contract[]
+  /** Every delivery made, oldest first. */
+  readonly deliveries: readonly Delivery[]
+  /**
+   * The grocers who walked away, each with the last day they offer
+   * nothing.
+   */
+  readonly away: Readonly<Partial<Record<GrocerId, Day>>>
+}
+
+/** A grocer's weekly croissant contract, as it runs. */
+export interface Contract {
+  /** The grocer, by their id in the content. */
+  readonly grocer: GrocerId
+  /**
+   * The day it was signed; it delivers on each delivery weekday after it.
+   */
+  readonly startDay: Day
+  /** The deliveries left, the next one included; always above zero. */
+  readonly weeksLeft: number
+  /**
+   * What the grocer pays for each croissant, as agreed, before the premium
+   * for those the bakery made.
+   */
+  readonly unitPrice: Cents
+}
+
+/** One week's croissants delivered to a grocer, sold on credit. */
+export interface Delivery {
+  /** The morning of the delivery. */
+  readonly day: Day
+  /** The grocer, by their id in the content. */
+  readonly grocer: GrocerId
+  /** Croissants delivered. */
+  readonly units: number
+  /** Of those, the croissants the bakery made; the others were bought. */
+  readonly baked: number
+  /** What the grocer owes for them; above zero. */
+  readonly amount: Cents
+  /** The day the grocer pays, at the start of the day. */
+  readonly dueDay: Day
 }
 
 /**

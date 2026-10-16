@@ -24,6 +24,7 @@ import {
 } from './bakery.ts'
 
 const [LOW, MID, HIGH] = PRICE_SETS
+const BAKERY_PRICES = DIFFICULTIES.bakery.moyen
 const START = truckStrategy('start')
 // The 1st of June is day 31; day 1, a Tuesday, is the first day open.
 const JUNE_1 = 31
@@ -40,7 +41,7 @@ function debited(state: GameState, day: Day, memo: string): number {
 }
 
 describe('the grid', () => {
-  it("tries #157's three price sets, both ovens and three trucks", () => {
+  it("tries #157's three price sets, both ovens and four trucks, the last with two contracts", () => {
     expect(
       PRICE_SETS.map(({ name, prices }) => [
         name,
@@ -54,8 +55,16 @@ describe('the grid', () => {
     ])
     expect(OVENS).toEqual(['louer', 'acheter'])
     expect(
-      TRUCK_STRATEGIES.map(({ croissantsPerDay }) => croissantsPerDay),
-    ).toEqual([70, 110, 150])
+      TRUCK_STRATEGIES.map(({ croissantsPerDay, contracts }) => [
+        croissantsPerDay,
+        contracts,
+      ]),
+    ).toEqual([
+      [70, []],
+      [110, []],
+      [150, []],
+      [150, ['marcheBioLogique', 'chezNormand']],
+    ])
     expect(() => truckStrategy('lazy')).toThrow(
       'No truck strategy is named lazy',
     )
@@ -191,6 +200,45 @@ describe('playBakeryGame', () => {
     expect(game.croissantsSold).toBeLessThanOrEqual(game.croissantsMade)
     expect(game.energyAtOpenCloses).toBeGreaterThan(0)
     expect(game.energyAtOpenCloses).toBeLessThanOrEqual(100 * game.openDays)
+  })
+
+  it('signs the contracts on day 0, renews them as they end, and makes their croissants only in the bakery game', () => {
+    const strategy = truckStrategy('150 a day, 2 contracts')
+    const months = 4
+    const play = (bakery: boolean) =>
+      playBakeryGame(
+        1,
+        'moyen',
+        bakery ? bakeryChanges(strategy, 'louer') : truckChanges(strategy),
+        withPrices(MID?.prices ?? BAKERY_PRICES),
+        months,
+        strategy.contracts,
+      ).state
+    const baked = play(true)
+    const twin = play(false)
+    for (const state of [baked, twin]) {
+      // Twelve weeks, then renewed: Mondays from day 7 to August's end.
+      const days = [
+        ...new Set(state.contracts.deliveries.map(({ day }) => day)),
+      ]
+      expect(days).toEqual(
+        Array.from({ length: 17 }, (_, week) => 7 * (week + 1)),
+      )
+      expect(
+        state.events.history.map(({ event, choice }) => [event, choice]),
+      ).toEqual([
+        ['renouvellementBioLogique', 'accepter'],
+        ['renouvellementNormand', 'accepter'],
+      ])
+    }
+    expect(
+      twin.contracts.deliveries.every(({ baked: made }) => made === 0),
+    ).toBe(true)
+    expect(
+      baked.contracts.deliveries
+        .filter(({ grocer }) => grocer === 'marcheBioLogique')
+        .every(({ baked: made }) => made === BAKERY.capacityPerDay),
+    ).toBe(true)
   })
 })
 

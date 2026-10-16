@@ -252,6 +252,18 @@ const SAMPLES: readonly WeekFact[] = [
   },
   { id: 'lostToLine', weight: 50, numbers: { visits: 23 } },
   { id: 'daysOpenInARow', weight: 40, numbers: { days: 12 } },
+  {
+    id: 'contractsReceivable',
+    weight: 85,
+    numbers: {
+      amount: cents(357_000),
+      grocers: [
+        'Dépanneur 24/24',
+        'Épicerie Chez Normand',
+        'Marché Bio-Logique',
+      ],
+    },
+  },
 ]
 
 /** How each sample's numbers read, by placeholder. */
@@ -267,6 +279,10 @@ const WRITTEN: Record<WeekFactId, Record<string, string>> = {
   bestWeek: { sales: `8${S}125${S}$`, previousBest: `7${S}900${S}$` },
   lostToLine: { visits: '23' },
   daysOpenInARow: { days: '12' },
+  contractsReceivable: {
+    amount: `3${S}570${S}$`,
+    grocers: 'Dépanneur 24/24, Épicerie Chez Normand et Marché Bio-Logique',
+  },
 }
 
 describe('the facts in words', () => {

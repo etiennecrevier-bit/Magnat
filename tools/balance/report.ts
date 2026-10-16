@@ -2,6 +2,7 @@ import { DIFFICULTIES, ENERGY, FOOD_TRUCK } from '../../src/engine/day.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { MODIFIER_KINDS } from '../../src/engine/street.ts'
 import { formatDollars } from '../sim/cli.ts'
+import type { ContractPolicy } from '../sim/simulate.ts'
 import { DAYS_PER_YEAR, type BalanceRun, type DifficultyRun } from './play.ts'
 import {
   CROISSANTS_PER_DAY,
@@ -96,6 +97,13 @@ export function unchangedDecisions(run: DifficultyRun): Axis[] {
   })
 }
 
+/** How the report words each way the grocers' cards are answered. */
+const CONTRACT_ANSWERS: Readonly<Record<ContractPolicy, string>> = {
+  all: 'accepts every one, renewals included',
+  none: 'refuses every one',
+  first: "accepts the first grocer's, and its renewals, and refuses the others",
+}
+
 /**
  * The whole report, in Markdown. A one-year run also checks the design
  * targets of #58, and a run with the event cards counts the days the street
@@ -176,7 +184,7 @@ function header(run: BalanceRun): string[] {
   const strategies = run.difficulties[0]?.strategies.length ?? 0
   const seeds = run.games === 1 ? 'seed 1' : `one of seeds 1 to ${run.games}`
   const events = run.events ?? 'none'
-  const option = events === 'none' ? '' : ` --events ${events}`
+  const option = `${events === 'none' ? '' : ` --events ${events}`}${run.contracts === undefined ? '' : ` --contracts ${run.contracts}`}`
   return [
     '# Balance report: phase 2',
     '',
@@ -198,6 +206,14 @@ function header(run: BalanceRun): string[] {
       ? []
       : [
           `The event cards come up, and the player answers each with ${events === 'first' ? 'its first choice' : 'a choice drawn at random, seeded from the game'}.`,
+          '',
+        ]),
+    ...(run.contracts === undefined
+      ? []
+      : [
+          events === 'none' && run.contracts === 'none'
+            ? "No card comes up, not even the grocers': no contract is offered or signed."
+            : `The grocers offer their contracts${events === 'none' ? ', their cards alone coming up,' : ''} and the player ${CONTRACT_ANSWERS[run.contracts]}.`,
           '',
         ]),
     '## Columns',

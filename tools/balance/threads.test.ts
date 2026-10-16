@@ -182,7 +182,7 @@ describe('jobLabel', () => {
 })
 
 describe('jobOptions', () => {
-  it("is what runBalance plays for the job's one difficulty, its events policy included", () => {
+  it("is what runBalance plays for the job's one difficulty, its events and contracts policies included", () => {
     expect(
       jobOptions({
         kind: 'grid',
@@ -191,12 +191,14 @@ describe('jobOptions', () => {
         difficulty: 'moyen',
         strategies,
         events: 'random',
+        contracts: 'first',
       }),
     ).toEqual({
       years: 2,
       games: 3,
       strategies,
       events: 'random',
+      contracts: 'first',
       difficulties: ['moyen'],
     })
     expect(jobOptions(job('facile'))).toEqual({
@@ -204,6 +206,7 @@ describe('jobOptions', () => {
       games: 1,
       strategies: undefined,
       events: undefined,
+      contracts: undefined,
       difficulties: ['facile'],
     })
   })
@@ -226,6 +229,44 @@ describe('playInWorker', () => {
           strategies,
           difficulties: ['difficile'],
         }).difficulties[0],
+      )
+    } finally {
+      await stop()
+    }
+  }, 30_000)
+
+  it('plays the grocers’ contracts on its thread as runBalance plays them on this one', async () => {
+    const { run, stop } = playInWorker({
+      kind: 'grid',
+      years: 1,
+      games: 1,
+      difficulty: 'moyen',
+      strategies: [BASE],
+      events: 'none',
+      contracts: 'all',
+    })
+    try {
+      const played = await run
+      expect(played).toEqual(
+        runBalance({
+          years: 1,
+          games: 1,
+          strategies: [BASE],
+          difficulties: ['moyen'],
+          events: 'none',
+          contracts: 'all',
+        }).difficulties[0],
+      )
+      // The contracts came through: the books are not those of a year
+      // without them.
+      const without = runBalance({
+        years: 1,
+        games: 1,
+        strategies: [BASE],
+        difficulties: ['moyen'],
+      }).difficulties[0]
+      expect(played.strategies[0]?.games[0]?.journalHash).not.toBe(
+        without?.strategies[0]?.games[0]?.journalHash,
       )
     } finally {
       await stop()

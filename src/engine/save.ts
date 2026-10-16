@@ -4,6 +4,7 @@ import {
   croissantSourceSchema,
   difficultyIdSchema,
   eventEffectSchema,
+  grocerIdSchema,
   medalSchema,
   ovenTermsSchema,
   productIdSchema,
@@ -16,6 +17,7 @@ import {
   type DifficultyId,
   type EventContent,
   type FoodTruckContent,
+  type GrocerContent,
 } from '../content/schema.ts'
 import { isAccountCode, type AccountCode } from '../finance/accounts.ts'
 import {
@@ -35,7 +37,7 @@ import {
   holdsPremises,
   morningBakery,
 } from './bakery.ts'
-import { endOfMonth, mondayOf, sundayOf } from './calendar.ts'
+import { endOfMonth, mondayOf, sundayOf, toCalendar } from './calendar.ts'
 import {
   challengeDifficulties,
   forcedEventOn,
@@ -46,6 +48,7 @@ import {
   startingEnergy,
   verdict,
 } from './challenge.ts'
+import { GROCERS, noContracts } from './contracts.ts'
 import {
   DEFIS,
   DIFFICULTIES,
@@ -82,10 +85,12 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 12 adds the
- * bakery: a version 11 game still loads, with none planned, none running,
- * no oven and the croissants bought. Version 11 adds the
- * Défis: a version 10 game still loads, as a game that is not a Défi.
+ * change can no longer load (rule 8 in CLAUDE.md). Version 13 adds the
+ * grocers' contracts: a version 12 game still loads, with no contract and no
+ * delivery. Version 12 adds the bakery: a version 11 game still loads, with
+ * none planned, none running, no oven and the croissants bought. Version 11
+ * adds the Défis: a version 10 game still loads, as a game that is not a
+ * Défi.
  * Version 10 adds the week in numbers: a version 9 game still loads, with no week reported yet and
  * the week under way counted from its last close. Version 9 adds the
  * changes to the street: a version 8 game still loads, as a game with none.
@@ -101,9 +106,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 12
+export const SAVE_VERSION = 13
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const CONTRACTLESS_VERSION = 12
 const BAKERYLESS_VERSION = 11
 const CHALLENGELESS_VERSION = 10
 const WEEKLESS_VERSION = 9
@@ -181,6 +187,19 @@ const visitOutcome = z.enum({
 
 const minuteOfDay = z.int().min(0).max(MINUTES_PER_DAY)
 
+// `checkContracts()` checks the days, their order and the croissants made.
+const deliverySchema = z.strictObject({
+  day: gameDay,
+  grocer: grocerIdSchema,
+  units: z.int().positive(),
+  baked: count,
+  amount: z
+    .int()
+    .positive()
+    .transform((n) => cents(n)),
+  dueDay: gameDay,
+})
+
 // `checkEvents()` checks the days, their order and the event ids.
 const modifierSchema = z.strictObject({
   event: z.string(),
@@ -222,6 +241,7 @@ const daySummarySchema = z.strictObject({
   energy: energyLevel,
   botched: count,
   modifiers: z.array(modifierSchema),
+  deliveries: z.array(deliverySchema),
 })
 
 const restockRuleSchema = z.discriminatedUnion('kind', [
@@ -397,6 +417,24 @@ const bakerySchema = z.strictObject({
   ovenBoughtOnDay: gameDay.nullable(),
 })
 
+// `checkContracts()` checks the contracts and the deliveries against the
+// grocers.
+const contractsSchema = z.strictObject({
+  running: z.array(
+    z.strictObject({
+      grocer: grocerIdSchema,
+      startDay: gameDay,
+      weeksLeft: z.int().positive(),
+      unitPrice: z
+        .int()
+        .positive()
+        .transform((n) => cents(n)),
+    }),
+  ),
+  deliveries: z.array(deliverySchema),
+  away: z.partialRecord(grocerIdSchema, gameDay),
+})
+
 const saveSchema = z.strictObject({
   saveVersion: z.literal(SAVE_VERSION),
   day: gameDay,
@@ -418,6 +456,7 @@ const saveSchema = z.strictObject({
   weekHistory: z.array(weekRecordSchema),
   challenge: challengeSchema.nullable(),
   bakery: bakerySchema,
+  contracts: contractsSchema,
 })
 
 // The week under way may come from the books rather than the save.
@@ -433,8 +472,14 @@ type Parsed = Omit<Save, 'weekSoFar'> & {
   readonly weekSoFar: WeekSoFar | null
 }
 
-/** A version 11 save: no bakery, and decisions without one. */
-const bakerylessSchema = saveSchema.omit({ bakery: true }).extend({
+/** A version 12 save: no contract, and no delivery on the last day. */
+const contractlessSchema = saveSchema.omit({ contracts: true }).extend({
+  saveVersion: z.literal(CONTRACTLESS_VERSION),
+  lastDay: daySummarySchema.omit({ deliveries: true }).nullable(),
+})
+
+/** A version 11 save: no bakery either, and decisions without one. */
+const bakerylessSchema = contractlessSchema.omit({ bakery: true }).extend({
   saveVersion: z.literal(BAKERYLESS_VERSION),
   decisions: bakerylessDecisionsSchema,
   pendingDecisions: bakerylessDecisionsSchema.nullable(),
@@ -453,7 +498,9 @@ const weeklessSchema = challengelessSchema
 /** A version 8 save: no change to the street either. */
 const streetlessSchema = weeklessSchema.extend({
   saveVersion: z.literal(STREETLESS_VERSION),
-  lastDay: daySummarySchema.omit({ modifiers: true }).nullable(),
+  lastDay: daySummarySchema
+    .omit({ modifiers: true, deliveries: true })
+    .nullable(),
   events: eventsSchema.omit({ modifiers: true }),
 })
 
@@ -488,6 +535,7 @@ export function serialize(state: GameState): string {
     weekHistory: state.weekHistory,
     challenge: state.challenge,
     bakery: state.bakery,
+    contracts: state.contracts,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -499,8 +547,10 @@ export function serialize(state: GameState): string {
  * nothing was played: the books open on day 0 either way.
  *
  * Throws an Error that starts with "Invalid save:" and names the problem
- * unless: the text is JSON of the current `SAVE_VERSION`, or of version 10,
- * which loads as a game that is not a Défi, or of version 9, which also
+ * unless: the text is JSON of the current `SAVE_VERSION`, or of version 12,
+ * which loads with no contract, or of version 11, which also loads with no
+ * bakery, or of version 10, which also loads as a game that is not a Défi,
+ * or of version 9, which also
  * loads with no week reported yet and the week under way counted from its
  * books (see `weekSince`), or of version 8, which also loads with no
  * change to the street, or of version 7, which also loads with no event
@@ -531,8 +581,9 @@ export function serialize(state: GameState): string {
  * events pass `checkEvents()`; the journal opens with the books of the
  * profile's difficulty (see `checkDifficulty`), with the Défi's cash in a
  * Défi; the week under way, the last week reported and the history pass
- * `checkWeek()`; and the Défi, if any, is one of `defis` and passes
- * `checkChallenge()`.
+ * `checkWeek()`; the Défi, if any, is one of `defis` and passes
+ * `checkChallenge()`; and the contracts pass `checkContracts()` against
+ * `grocers`.
  *
  * The products, limits, restock kinds, `awarenessDays` and the truck's
  * price are those of `content` as it is now, the events, choices, outcomes
@@ -548,6 +599,7 @@ export function deserialize(
   difficulties: DifficultyContent = DIFFICULTIES,
   defis: DefiContent = DEFIS,
   bakery: BakeryContent = BAKERY,
+  grocers: GrocerContent = GROCERS,
 ): GameState {
   const loaded = parsed(text, bakery)
   const journal = rebuilt(loaded.journal)
@@ -575,6 +627,7 @@ export function deserialize(
   checkPersonal(save, events)
   checkWeek(save, journal, content, events, opening)
   if (defi !== null) checkChallenge(save, journal, defi, content, opening)
+  checkContracts(save, grocers)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -596,6 +649,7 @@ export function deserialize(
     weekHistory: save.weekHistory,
     challenge: save.challenge,
     bakery: save.bakery,
+    contracts: save.contracts,
   }
 }
 
@@ -612,12 +666,15 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
   if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  if (saveVersion === CONTRACTLESS_VERSION) {
+    return withContracts(checked(contractlessSchema, raw))
+  }
   if (saveVersion === BAKERYLESS_VERSION) {
-    return withBakery(checked(bakerylessSchema, raw), bakery)
+    return withContracts(withBakery(checked(bakerylessSchema, raw), bakery))
   }
   if (saveVersion === CHALLENGELESS_VERSION) {
     const save = checked(challengelessSchema, raw)
-    return withBakery({ ...save, challenge: null }, bakery)
+    return withContracts(withBakery({ ...save, challenge: null }, bakery))
   }
   // An older version's own schema first, strict, so a key it did not know
   // still fails the load.
@@ -647,11 +704,35 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
     weekHistory: [],
     challenge: null,
   })
-  return withBakery({ ...save, weekSoFar: null }, bakery)
+  return withContracts(withBakery({ ...save, weekSoFar: null }, bakery))
 }
 
 /**
- * A save from before the bakery as the current version: with no bakery,
+ * A save from before the contracts as the current version: with no
+ * contract, and no delivery on its last day.
+ */
+function withContracts<
+  Old extends {
+    readonly lastDay: z.output<typeof contractlessSchema>['lastDay']
+  },
+>(
+  save: Old,
+): Omit<Old, 'saveVersion' | 'lastDay'> & {
+  readonly saveVersion: typeof SAVE_VERSION
+  readonly lastDay: Save['lastDay']
+  readonly contracts: Save['contracts']
+} {
+  const { running, deliveries, away } = noContracts()
+  return {
+    ...save,
+    saveVersion: SAVE_VERSION,
+    lastDay: save.lastDay === null ? null : { ...save.lastDay, deliveries: [] },
+    contracts: { running: [...running], deliveries: [...deliveries], away },
+  }
+}
+
+/**
+ * A save from before the bakery as version 12: with no bakery,
  * none planned and the croissants as `bakery` starts them, in the decisions
  * and those pending.
  */
@@ -664,7 +745,7 @@ function withBakery<
   save: Old,
   bakery: BakeryContent,
 ): Omit<Old, 'saveVersion' | 'decisions' | 'pendingDecisions'> & {
-  readonly saveVersion: typeof SAVE_VERSION
+  readonly saveVersion: typeof CONTRACTLESS_VERSION
   readonly decisions: SavedDecisions
   readonly pendingDecisions: SavedDecisions | null
   readonly bakery: BakeryState
@@ -678,7 +759,7 @@ function withBakery<
   })
   return {
     ...save,
-    saveVersion: SAVE_VERSION,
+    saveVersion: CONTRACTLESS_VERSION,
     decisions: upgraded(save.decisions),
     pendingDecisions:
       save.pendingDecisions === null ? null : upgraded(save.pendingDecisions),
@@ -847,7 +928,8 @@ function checkEnergy(save: Save, start: number): void {
  *   `content`; one drawn rather than brought back was drawn that day;
  * - the last day drawn is no later than the save's day;
  * - the effects still to come, by day, are due after `lastDay`'s day, each
- *   from an event in `content`, and a follow-up among them brings one;
+ *   from an event in `content`, a follow-up among them brings one, and
+ *   none signs a contract or sends a grocer away, which happen at once;
  * - the follow-ups, by day, each bring an event in `content`;
  * - the history, oldest first, holds days no later than the save's, each an
  *   event in `content`, one of its choices and one of that choice's
@@ -910,6 +992,9 @@ function checkEvents(save: Save, content: EventContent): void {
     checkEvent(what, event)
     if (effect.kind === 'followUp')
       checkEvent(`${what}'s follow-up`, effect.event)
+    if (effect.kind === 'contract' || effect.kind === 'grocerAway') {
+      invalid(`${what} is a ${effect.kind}, which never waits`)
+    }
   })
   followUps.forEach(({ day: due, event }, index) => {
     const what = `follow-up ${index + 1}`
@@ -1741,6 +1826,76 @@ function checkChallenge(
     if (under && record === undefined && waiting === null) {
       invalid(`${what} never came`)
     }
+  }
+}
+
+/**
+ * What the grocers' contracts could be at the save's day, against
+ * `grocers`:
+ * - at most `maxContracts` run, one per grocer at most, each signed no
+ *   later than the save's day, with from 1 to the grocer's `weeks`
+ *   deliveries left, and as many deliveries to the grocer since the day it
+ *   was signed as the weeks it ran;
+ * - the deliveries, oldest first, are each on the `deliveryWeekday` of a day
+ *   played, with no more croissants made than delivered, and due after
+ *   their day;
+ * - `lastDay`'s deliveries are those of its day, in order.
+ */
+function checkContracts(save: Save, grocers: GrocerContent): void {
+  const { day, lastDay, contracts } = save
+  const { running, deliveries } = contracts
+  const played = lastDay?.day ?? firstDay(save) - 1
+  const { maxContracts, deliveryWeekday } = grocers
+  if (running.length > maxContracts) {
+    invalid(
+      `${running.length} contracts run, more than the ${maxContracts} at once`,
+    )
+  }
+  running.forEach(({ grocer, startDay, weeksLeft }, index) => {
+    const what = `contract ${index + 1}`
+    if (running.findIndex((other) => other.grocer === grocer) !== index) {
+      invalid(`${what} is a second contract with ${grocer}`)
+    }
+    if (startDay > day) {
+      invalid(`${what} was signed on day ${startDay}, after day ${day}`)
+    }
+    const { weeks } = grocers.grocers[grocer]
+    if (weeksLeft > weeks) {
+      invalid(
+        `${what} has ${weeksLeft} deliveries left, more than the ${weeks} of a contract with ${grocer}`,
+      )
+    }
+    const made = deliveries.filter(
+      (delivery) => delivery.grocer === grocer && delivery.day > startDay,
+    ).length
+    if (made !== weeks - weeksLeft) {
+      invalid(
+        `${what} has ${weeksLeft} of its ${weeks} deliveries left, after ${made} since day ${startDay}`,
+      )
+    }
+  })
+  deliveries.forEach(({ day: on, units, baked, dueDay }, index) => {
+    const what = `delivery ${index + 1}`
+    if (on > played) invalid(`${what} is on day ${on}, a day not played`)
+    if (toCalendar(on).weekday !== deliveryWeekday) {
+      invalid(`${what} is on day ${on}, not a delivery day`)
+    }
+    const before = deliveries[index - 1]
+    if (before !== undefined && on < before.day) {
+      invalid(
+        `${what} comes before the one before it: day ${on} < day ${before.day}`,
+      )
+    }
+    if (baked > units) {
+      invalid(`${what} has ${baked} croissants made, more than its ${units}`)
+    }
+    if (dueDay <= on) invalid(`${what} is due on day ${dueDay}, not after it`)
+  })
+  if (lastDay === null) return
+  // Both read with the same schema, so their keys come in the same order.
+  const that = deliveries.filter((delivery) => delivery.day === lastDay.day)
+  if (JSON.stringify(lastDay.deliveries) !== JSON.stringify(that)) {
+    invalid(`lastDay's deliveries are not those of day ${lastDay.day}`)
   }
 }
 

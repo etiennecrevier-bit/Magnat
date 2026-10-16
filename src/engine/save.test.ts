@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import grocersJson from '../content/grocers.json'
 import {
   loadDefiContent,
   loadDifficultyContent,
   loadEventContent,
   loadFoodTruckContent,
+  loadGrocerContent,
   type DifficultyContent,
   type DifficultyId,
   type EventContent,
@@ -18,6 +20,7 @@ import { incomeStatement } from '../finance/statements.ts'
 import { BAKERY, closedBakery } from './bakery.ts'
 import { endOfMonth } from './calendar.ts'
 import { allowedChoices } from './challenge.ts'
+import { grocerAway, noContracts, startContract } from './contracts.ts'
 import {
   createInitialState,
   startChallenge,
@@ -257,7 +260,8 @@ function pocketCard(label: string, amount: number, firstDay = 1): EventContent {
 // energy, « Cadeau d'essai » in their pocket, a headline, and the street
 // changed: fewer walk-ins to day 15, more chic ones to day 3, less chocolat
 // to day 5 and no café to day 2, with what customers will pay raised on day
-// 2 alone and the truck closed on day 3, both queued.
+// 2 alone and the truck closed on day 3, both queued, a contract signed with
+// Épicerie Chez Normand and Dépanneur 24/24 away to day 30.
 const WAITING = withEvents(createInitialState(SEED))
 const CHOSEN = resolveEvent(WAITING, 'toutEssayer', ESSAI)
 const CHOSEN_SAVE = serialize(CHOSEN)
@@ -301,10 +305,32 @@ function withoutWeek(save: Json): void {
 }
 
 /**
+ * Takes the contracts out of `save`, as version 12 wrote it: the save of a
+ * game that never signed one.
+ */
+function withoutContracts(save: Json): void {
+  expect(save.contracts).toEqual(noContracts())
+  delete save.contracts
+  const lastDay = save.lastDay as Json | null
+  if (lastDay === null) return
+  expect(lastDay.deliveries).toEqual([])
+  delete lastDay.deliveries
+}
+
+/** `state`, with no contract, saved as version 12, before the contracts. */
+function v12(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutContracts(save)
+  return JSON.stringify({ ...save, saveVersion: 12 })
+}
+
+/**
  * Takes the bakery out of `save`, as version 11 wrote it: the save of a game
- * that never planned one, with the croissants bought.
+ * that never planned one, with the croissants bought, nor signed a
+ * contract, which came later.
  */
 function withoutBakery(save: Json): void {
+  withoutContracts(save)
   expect(save.bakery).toEqual(closedBakery())
   delete save.bakery
   for (const key of ['decisions', 'pendingDecisions']) {
@@ -383,8 +409,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(12)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 12 })
+    expect(SAVE_VERSION).toBe(13)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 13 })
   })
 
   it.each<Profile>([
@@ -651,6 +677,7 @@ describe('serialize and deserialize', () => {
         ),
         modifiers: [],
       },
+      contracts: noContracts(),
     }
     expect(deserialize(v8(owed))).toEqual(sinceLoaded(owed))
     expect(deserialize(v8(createInitialState(SEED)))).toEqual(
@@ -749,12 +776,29 @@ describe('serialize and deserialize', () => {
       pending,
       SUNDAY_CLOSE,
       DAY_400,
-      CHOSEN,
+      { ...CHOSEN, contracts: noContracts() },
     ]) {
       expect(deserialize(v11(state))).toStrictEqual(state)
     }
     const defi = startChallenge('travauxSaintDenis', SEED)
     expect(deserialize(v11(played(5, defi)))).toStrictEqual(played(5, defi))
+  })
+
+  it('load a version 12 game as one with no contract and no delivery', () => {
+    const pending = applyDecision(THURSDAY, {
+      kind: 'marketingDaily',
+      budget: cents(1_000),
+    })
+    for (const state of [
+      createInitialState(SEED),
+      THURSDAY,
+      pending,
+      SUNDAY_CLOSE,
+      DAY_400,
+      { ...CHOSEN, contracts: noContracts() },
+    ]) {
+      expect(deserialize(v12(state))).toStrictEqual(state)
+    }
   })
 
   it('load a version 10 game as one that is not a Défi', () => {
@@ -903,7 +947,7 @@ describe('deserialize rejects', () => {
     expectInvalid(without('saveVersion'), ['unsupported saveVersion undefined'])
   })
 
-  it.each([0, 1, 6, 13, '12', '11', '10', '9', '8', '7', null])(
+  it.each([0, 1, 6, 14, '13', '12', '11', '10', '9', '8', '7', null])(
     'saveVersion %j',
     (version) => {
       expectInvalid(withValue('saveVersion', version), [
@@ -1785,6 +1829,30 @@ describe('deserialize rejects', () => {
         }),
         ['→ at receivables[0].client'],
       )
+    })
+  })
+
+  describe('a version 12 game', () => {
+    it.each(['contracts', 'lastDay.deliveries'])(
+      'with %s, which came in version 13',
+      (path) => {
+        const save = JSON.parse(v12(FORTNIGHT)) as Json
+        const keys = path.split('.')
+        const key = keys.pop() ?? ''
+        const at = keys.reduce((json, k) => json[k] as Json, save)
+        const now = keys.reduce(
+          (json, k) => json[k] as Json,
+          JSON.parse(serialize(FORTNIGHT)) as Json,
+        )
+        at[key] = now[key]
+        expectInvalid(JSON.stringify(save), [`Unrecognized key: "${key}"`])
+      },
+    )
+
+    it('with a field it breaks', () => {
+      const save = JSON.parse(v12(FORTNIGHT)) as Json
+      save.energy = 101
+      expectInvalid(JSON.stringify(save), ['→ at energy'])
     })
   })
 
@@ -3353,5 +3421,183 @@ describe('the bakery', () => {
     ],
   ])('rejects %s', (_, text, reason) => {
     expectInvalid(text, [reason])
+  })
+})
+
+describe("the grocers' contracts", () => {
+  /**
+   * Seed 42 with contracts signed on day 0 with Épicerie Chez Normand and
+   * Marché Bio-Logique, and Dépanneur 24/24 away, played to the morning of
+   * day 30, after four Mondays of deliveries.
+   */
+  const SIGNED: GameState = (() => {
+    const start = createInitialState(SEED)
+    const both = ['chezNormand', 'marcheBioLogique'] as const
+    const contracts = both.reduce(
+      (signed, grocer) => startContract(signed, 0, grocer),
+      start.contracts,
+    )
+    return {
+      ...start,
+      contracts: grocerAway(contracts, 0, 'depanneur2424', 60),
+    }
+  })()
+  const MORNING = played(30, SIGNED)
+  const MORNING_SAVE = serialize(MORNING)
+  // The close of Monday, day 28, with its two deliveries.
+  const MONDAY_CLOSE = playDay(played(28, SIGNED))
+  const MONDAY_SAVE = serialize(MONDAY_CLOSE)
+
+  it('give back a game in the middle of its contracts, which then plays on the same', () => {
+    expect(MORNING.contracts.deliveries.map(({ day }) => day)).toEqual([
+      7, 7, 14, 14, 21, 21, 28, 28,
+    ])
+    expect(MORNING.contracts.running.map(({ weeksLeft }) => weeksLeft)).toEqual(
+      [8, 8],
+    )
+    expect(MONDAY_CLOSE.lastDay?.deliveries).toHaveLength(2)
+    for (const state of [MORNING, MONDAY_CLOSE]) {
+      const back = reloaded(state)
+      expect(back).toStrictEqual(state)
+      expect(played(30, back)).toStrictEqual(played(30, state))
+    }
+  })
+
+  /** The load of `text` fails, naming `reason`, against `grocers`. */
+  function rejects(
+    text: string,
+    reason: string,
+    grocers = loadGrocerContent(grocersJson, EVENTS),
+  ): void {
+    expect(() =>
+      deserialize(
+        text,
+        FOOD_TRUCK,
+        EVENTS,
+        DIFFICULTIES,
+        DEFIS,
+        BAKERY,
+        grocers,
+      ),
+    ).toThrow(reason)
+  }
+
+  it('rejects more contracts running than the most at once', () => {
+    rejects(
+      MORNING_SAVE,
+      '2 contracts run, more than the 1 at once',
+      loadGrocerContent({ ...grocersJson, maxContracts: 1 }, EVENTS),
+    )
+  })
+
+  const normand = MORNING.contracts.running[0]
+  it.each([
+    [
+      'a second contract with a grocer',
+      withValue('contracts.running', [normand, normand], MORNING_SAVE),
+      'contract 2 is a second contract with chezNormand',
+    ],
+    [
+      'a contract signed after the day',
+      withValue('contracts.running.0.startDay', 31, MORNING_SAVE),
+      'contract 1 was signed on day 31, after day 30',
+    ],
+    [
+      "more deliveries left than the grocer's weeks",
+      withValue('contracts.running.0.weeksLeft', 13, MORNING_SAVE),
+      'contract 1 has 13 deliveries left, more than the 12 of a contract with chezNormand',
+    ],
+    [
+      'deliveries left that do not match those made',
+      withValue('contracts.running.0.weeksLeft', 12, MORNING_SAVE),
+      'contract 1 has 12 of its 12 deliveries left, after 4 since day 0',
+    ],
+    [
+      'no delivery left',
+      withValue('contracts.running.0.weeksLeft', 0, MORNING_SAVE),
+      '→ at contracts.running[0].weeksLeft',
+    ],
+    [
+      'a contract at no price',
+      withValue('contracts.running.0.unitPrice', 0, MORNING_SAVE),
+      '→ at contracts.running[0].unitPrice',
+    ],
+    [
+      'an unknown grocer',
+      withValue('contracts.running.0.grocer', 'costco', MORNING_SAVE),
+      '→ at contracts.running[0].grocer',
+    ],
+    [
+      'a delivery on a day not played',
+      withValue('contracts.deliveries.7.day', 35, MORNING_SAVE),
+      'delivery 8 is on day 35, a day not played',
+    ],
+    [
+      'a delivery on another day than Monday',
+      withValue('contracts.deliveries.0.day', 6, MORNING_SAVE),
+      'delivery 1 is on day 6, not a delivery day',
+    ],
+    [
+      'deliveries out of order',
+      withValue('contracts.deliveries.0.day', 14, MORNING_SAVE),
+      'delivery 2 comes before the one before it: day 7 < day 14',
+    ],
+    [
+      'more croissants made than delivered',
+      withValue('contracts.deliveries.0.baked', 751, MORNING_SAVE),
+      'delivery 1 has 751 croissants made, more than its 750',
+    ],
+    [
+      'a delivery due on its own day',
+      withValue('contracts.deliveries.0.dueDay', 7, MORNING_SAVE),
+      'delivery 1 is due on day 7, not after it',
+    ],
+    [
+      'a grocer away to no game day',
+      withValue('contracts.away.depanneur2424', -1, MORNING_SAVE),
+      '→ at contracts.away.depanneur2424',
+    ],
+    [
+      'a last day that lost its deliveries',
+      withValue('lastDay.deliveries', [], MONDAY_SAVE),
+      "lastDay's deliveries are not those of day 28",
+    ],
+    [
+      'a last day with deliveries never made',
+      withValue(
+        'lastDay.deliveries',
+        MORNING.contracts.deliveries.slice(0, 2),
+        MONDAY_SAVE,
+      ),
+      "lastDay's deliveries are not those of day 28",
+    ],
+    [
+      'a contract waiting for a later day',
+      withValue(
+        'events.delayed',
+        [
+          {
+            day: 40,
+            event: 'contratNormand',
+            effect: { kind: 'contract', grocer: 'chezNormand' },
+          },
+        ],
+        MORNING_SAVE,
+      ),
+      'delayed effect 1 is a contract, which never waits',
+    ],
+    [
+      'no contracts at all',
+      edited(
+        'contracts',
+        (parent, key) => {
+          delete parent[key]
+        },
+        MORNING_SAVE,
+      ),
+      'contracts',
+    ],
+  ])('rejects %s', (_, text, reason) => {
+    rejects(text, reason)
   })
 })

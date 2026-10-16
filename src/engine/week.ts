@@ -1,6 +1,7 @@
 import {
   loadReportContent,
   weekFactIdSchema,
+  type GrocerContent,
   type ReportContent,
   type WeekFactId,
 } from '../content/schema.ts'
@@ -8,6 +9,7 @@ import type { AccountCode } from '../finance/accounts.ts'
 import { balance, entriesSince, type Journal } from '../finance/journal.ts'
 import { incomeStatement } from '../finance/statements.ts'
 import { mondayOf, sundayOf } from './calendar.ts'
+import { GROCERS } from './contracts.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
 import { add, cents, sub, sum, type Cents } from './money.ts'
 import type {
@@ -63,6 +65,14 @@ export interface WeekFactNumbers {
   readonly lostToLine: { readonly visits: number }
   /** The days in a row the truck opened. */
   readonly daysOpenInARow: { readonly days: number }
+  /**
+   * What the grocers of the contracts owe, and the grocers who owe it, by
+   * name, the one due soonest first.
+   */
+  readonly contractsReceivable: {
+    readonly amount: Cents
+    readonly grocers: readonly string[]
+  }
 }
 
 type FactOf = {
@@ -79,11 +89,15 @@ export type WeekFact = FactOf[WeekFactId]
 
 type Rules = ReportContent['facts']
 
-/** Each fact, with its weight, when it holds for the week; null otherwise. */
+/**
+ * Each fact, with its weight, when it holds for the week, the grocers those
+ * of the contracts; null otherwise.
+ */
 const FACTS: {
   readonly [Id in WeekFactId]: (
     report: WeekReport,
     rule: Rules[Id],
+    grocers: GrocerContent,
   ) => FactOf[Id] | null
 } = {
   profitUpCashDown: (
@@ -141,6 +155,23 @@ const FACTS: {
     daysOpenInARow >= atLeast
       ? { id: 'daysOpenInARow', weight, numbers: { days: daysOpenInARow } }
       : null,
+  contractsReceivable: ({ receivables }, { weight, aboveCents }, grocers) => {
+    const names = new Set(
+      Object.values(grocers.grocers).map(({ name }) => name),
+    )
+    const owed = receivables.filter(({ client }) => names.has(client))
+    const amount = sum(owed.map(({ amount: each }) => each))
+    return amount > aboveCents
+      ? {
+          id: 'contractsReceivable',
+          weight,
+          numbers: {
+            amount,
+            grocers: [...new Set(owed.map(({ client }) => client))],
+          },
+        }
+      : null
+  },
 }
 
 /**
@@ -270,16 +301,18 @@ export function recordDay(
 
 /**
  * The facts of the week `report` worth telling, as `content` sets when each
- * holds and how much it matters: at most `maxFacts`, the bénéfice up while
- * the encaisse goes down first whenever it holds, then the others by weight,
- * the highest first, a tie in the order of `weekFactIdSchema`.
+ * holds and how much it matters, the contracts' those of `grocers`: at most
+ * `maxFacts`, the bénéfice up while the encaisse goes down first whenever it
+ * holds, then the others by weight, the highest first, a tie in the order of
+ * `weekFactIdSchema`.
  */
 export function weekFacts(
   report: WeekReport,
   content: ReportContent = REPORT,
+  grocers: GrocerContent = GROCERS,
 ): WeekFact[] {
   const facts = weekFactIdSchema.options.flatMap((id) => {
-    const fact = factOf(id, report, content.facts)
+    const fact = factOf(id, report, content.facts, grocers)
     return fact === null ? [] : [fact]
   })
   const others = facts
@@ -296,8 +329,9 @@ function factOf<Id extends WeekFactId>(
   id: Id,
   report: WeekReport,
   rules: Rules,
+  grocers: GrocerContent,
 ): FactOf[Id] | null {
-  return FACTS[id](report, rules[id])
+  return FACTS[id](report, rules[id], grocers)
 }
 
 /**
