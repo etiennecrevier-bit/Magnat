@@ -59,26 +59,40 @@ function weekIndex(report: WeekReport): number {
 }
 
 /**
+ * Whether the week of `report` is one of the first `fullReportWeeks` of a
+ * game, counted from day 0, so a save loaded later counts the same.
+ */
+export function isEarlyWeek(
+  report: WeekReport,
+  fullReportWeeks: number = pacing.fullReportWeeks,
+): boolean {
+  return weekIndex(report) < fullReportWeeks
+}
+
+/**
  * Whether the report on the week `report` opens in full and pauses the
- * game: for the first `fullReportWeeks` weeks of a game, counted from
- * day 0, or every week when `everyWeek`. Otherwise it slides in.
+ * game: for the first `fullReportWeeks` weeks of a game (see
+ * `isEarlyWeek`), or every week when `everyWeek`. Otherwise it slides in.
  */
 export function opensFullReport(
   report: WeekReport,
   everyWeek: boolean,
   fullReportWeeks: number = pacing.fullReportWeeks,
 ): boolean {
-  return everyWeek || weekIndex(report) < fullReportWeeks
+  return everyWeek || isEarlyWeek(report, fullReportWeeks)
 }
 
-/** A day of the week's chart. */
+/** A day of a report's chart. */
 export interface ChartDay {
   readonly day: Day
-  /** Its short weekday, `lun.` to `dim.`. */
+  /**
+   * Its label under the bar: its short weekday, `lun.` to `dim.`, in a
+   * week's chart; empty for none.
+   */
   readonly label: string
   /**
    * Whether the report has the day: not one before the first day of a
-   * partial week.
+   * partial week, nor, in a month's, one of a week the UI did not keep.
    */
   readonly played: boolean
   /** Whether the truck opened. */
@@ -224,11 +238,23 @@ export function fillTemplate(
   })
 }
 
-/** The variant of a text the week of `report` takes. */
-function variant(variants: readonly string[], report: WeekReport): string {
-  const text = variants[weekIndex(report) % variants.length]
+/** The `index`th variant of a text, the weeks or months taking them in turn. */
+function variant(variants: readonly string[], index: number): string {
+  const text = variants[index % variants.length]
   if (text === undefined) throw new Error('No text to pick from')
   return text
+}
+
+/** `fact`, of the week of `report`, in words: the week's variant. */
+export function factLine(
+  fact: WeekFact,
+  report: WeekReport,
+  text: ReportText = REPORT_TEXT,
+): string {
+  return fillTemplate(
+    variant(text.facts[fact.id], weekIndex(report)),
+    factValues(fact),
+  )
 }
 
 /** The facts of the week worth telling, in words, the first one first. */
@@ -236,8 +262,21 @@ export function factLines(
   report: WeekReport,
   text: ReportText = REPORT_TEXT,
 ): string[] {
-  return weekFacts(report).map((fact) =>
-    fillTemplate(variant(text.facts[fact.id], report), factValues(fact)),
+  return weekFacts(report).map((fact) => factLine(fact, report, text))
+}
+
+/**
+ * The week's variant of a line on `fact`, of the week of `report`, from
+ * `byFact` with that fact's numbers.
+ */
+function lineOnFact(
+  fact: WeekFact,
+  report: WeekReport,
+  byFact: Readonly<Record<WeekFactId, readonly string[]>>,
+): string {
+  return fillTemplate(
+    variant(byFact[fact.id], weekIndex(report)),
+    factValues(fact),
   )
 }
 
@@ -252,8 +291,8 @@ function topFactLine(
 ): string {
   const [top] = weekFacts(report)
   return top === undefined
-    ? variant(quiet, report)
-    : fillTemplate(variant(byFact[top.id], report), factValues(top))
+    ? variant(quiet, weekIndex(report))
+    : lineOnFact(top, report, byFact)
 }
 
 /**
@@ -276,4 +315,24 @@ export function reportAdvice(
   text: ReportText = REPORT_TEXT,
 ): string {
   return topFactLine(report, text.advice, text.quietAdvice)
+}
+
+/**
+ * Mme Prudhomme's line on `fact`, of the week of `report`, with its
+ * numbers, as that week's report has it.
+ */
+export function adviceOnFact(
+  fact: WeekFact,
+  report: WeekReport,
+  text: ReportText = REPORT_TEXT,
+): string {
+  return lineOnFact(fact, report, text.advice)
+}
+
+/** Her `index`th quiet line, with no number, the lines taken in turn. */
+export function quietAdvice(
+  index: number,
+  text: ReportText = REPORT_TEXT,
+): string {
+  return variant(text.quietAdvice, index)
 }
