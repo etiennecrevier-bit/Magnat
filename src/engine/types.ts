@@ -6,6 +6,7 @@ import type {
   Avatar,
   DifficultyId,
   EventEffect,
+  Medal,
   ProductId,
   RestockRule,
   SegmentId,
@@ -250,6 +251,58 @@ export interface GameState {
    * `lastWeek`.
    */
   readonly weekHistory: readonly WeekRecord[]
+  /** The Défi the game plays; null in a game that is not one. */
+  readonly challenge: ChallengeState | null
+}
+
+/**
+ * A Défi under way or over: a short game from a Défi of the content, with
+ * one goal and a medal.
+ */
+export interface ChallengeState {
+  /** The Défi's id in the content. */
+  readonly id: string
+  /** The Défi's first business day. */
+  readonly startDay: Day
+  /** Where the Défi stands, as of the last close. */
+  readonly progress: ChallengeProgress
+  /** Under way, won or lost. */
+  readonly status: ChallengeStatus
+  /** The medal won; null unless the Défi is won. */
+  readonly medal: Medal | null
+}
+
+/**
+ * A Défi « en cours » (`enCours`), « réussi » (`reussi`) with a medal, or
+ * « échoué » (`echoue`): a condition broke, or the last day ended short of
+ * bronze.
+ */
+export type ChallengeStatus = 'enCours' | 'reussi' | 'echoue'
+
+/** What the days of a Défi played so far add up to. */
+export interface ChallengeProgress {
+  /** The Défi's days played. */
+  readonly daysPlayed: number
+  /** Ventes over those days, as the état des résultats has them. */
+  readonly sales: Cents
+  /** Bénéfice net over those days; negative for a loss. */
+  readonly netIncome: Cents
+  /**
+   * The lowest Encaisse since the books opened: after any entry, not only
+   * at a close.
+   */
+  readonly lowestCash: Cents
+  /** Visits that reached the counter. */
+  readonly customersServed: number
+  /** Units sold to customers at the counter. */
+  readonly unitsSold: number
+  /** Units written off at the close because their shelf life was over. */
+  readonly unitsSpoiled: number
+  /**
+   * The owner's lowest energy since the Défi began: on its first morning,
+   * on each morning played, after the start of each day and at each close.
+   */
+  readonly lowestEnergy: number
 }
 
 /** One business day of a week, as of its close. */

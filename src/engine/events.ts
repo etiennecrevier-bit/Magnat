@@ -1,5 +1,6 @@
 import {
   loadEventContent,
+  type DefiContent,
   type EventCard,
   type EventConditions,
   type EventContent,
@@ -9,7 +10,8 @@ import {
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
 import { toCalendar } from './calendar.ts'
-import { EVENTS, FOOD_TRUCK } from './day.ts'
+import { allowedChoices } from './challenge.ts'
+import { DEFIS, EVENTS, FOOD_TRUCK } from './day.ts'
 import { applyEffect, insertByDay, untimed, whenDue } from './effects.ts'
 import { next } from './rng.ts'
 import type { Day, EventRecord, EventsState, GameState } from './types.ts'
@@ -202,13 +204,16 @@ export function conditionsHold(
  * queued for their day (see `whenDue`). The event goes into the history
  * and no longer waits. Returns a new state; never mutates `state`. Throws
  * an Error when no event waits, and a RangeError when `content` does not
- * hold the event or the event has no such choice.
+ * hold the event, the event has no such choice, or the game's Défi, one of
+ * `defis`, forces the event that morning without allowing the choice (see
+ * `allowedChoices`).
  */
 export function resolveEvent(
   state: GameState,
   choiceId: string,
   content: EventContent = EVENTS,
   foodTruck: FoodTruckContent = FOOD_TRUCK,
+  defis: DefiContent = DEFIS,
 ): GameState {
   const { pending } = state.events
   if (pending === null) {
@@ -221,6 +226,12 @@ export function resolveEvent(
   const choice = event.choices.find(({ id }) => id === choiceId)
   if (choice === undefined) {
     throw new RangeError(`The event ${event.id} has no choice ${choiceId}`)
+  }
+  const allowed = allowedChoices(state, defis)
+  if (allowed !== null && !allowed.includes(choice.id)) {
+    throw new RangeError(
+      `The Défi ${state.challenge?.id} does not allow the choice ${choice.id} of ${event.id}`,
+    )
   }
 
   let { rngState } = state

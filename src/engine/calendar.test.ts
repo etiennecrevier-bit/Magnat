@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  dayOfDate,
   mondayOf,
   monthsSinceStart,
   sundayOf,
@@ -170,5 +171,38 @@ describe('mondayOf and sundayOf', () => {
   it.each([-1, 1.5, Number.NaN])('reject day %s', (day) => {
     expect(() => mondayOf(day)).toThrow(RangeError)
     expect(() => sundayOf(day)).toThrow(RangeError)
+  })
+})
+
+describe('dayOfDate', () => {
+  it.each([
+    { month: 5, dayOfMonth: 1, day: 0 },
+    { month: 5, dayOfMonth: 15, day: 14 },
+    { month: 6, dayOfMonth: 1, day: 31 },
+    { month: 7, dayOfMonth: 10, day: 70 },
+    { month: 12, dayOfMonth: 31, day: 244 },
+  ])('puts $month-$dayOfMonth of year 1 on day $day', (date) => {
+    expect(dayOfDate(date)).toBe(date.day)
+  })
+
+  it('undoes toCalendar for every day of year 1 from May 1st', () => {
+    for (let day = 0; toCalendar(day).year === 1; day += 1) {
+      expect(dayOfDate(toCalendar(day))).toBe(day)
+    }
+  })
+
+  it.each([
+    { month: 4, dayOfMonth: 30 },
+    { month: 1, dayOfMonth: 1 },
+    { month: 6, dayOfMonth: 31 },
+    { month: 2, dayOfMonth: 29 },
+    { month: 5, dayOfMonth: 0 },
+    { month: 13, dayOfMonth: 1 },
+    { month: 0, dayOfMonth: 1 },
+    { month: 5.5, dayOfMonth: 1 },
+    { month: 5, dayOfMonth: 1.5 },
+    { month: Number.NaN, dayOfMonth: 1 },
+  ])('rejects $month-$dayOfMonth', (date) => {
+    expect(() => dayOfDate(date)).toThrow(RangeError)
   })
 })

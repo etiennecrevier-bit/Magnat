@@ -3,9 +3,12 @@ import {
   avatarSchema,
   difficultyIdSchema,
   eventEffectSchema,
+  medalSchema,
   productIdSchema,
   segmentIdSchema,
   streetChangeSchema,
+  type Defi,
+  type DefiContent,
   type DifficultyContent,
   type DifficultyId,
   type EventContent,
@@ -23,8 +26,24 @@ import {
 } from '../finance/journal.ts'
 import { incomeStatement } from '../finance/statements.ts'
 import { mondayOf, sundayOf } from './calendar.ts'
-import { DIFFICULTIES, EVENTS, FOOD_TRUCK, openingJournal } from './day.ts'
-import { validateDecisions } from './decisions.ts'
+import {
+  challengeDifficulties,
+  forcedEventOn,
+  lowestCashSince,
+  sameLocked,
+  setupDecisions,
+  startDayOf,
+  startingEnergy,
+  verdict,
+} from './challenge.ts'
+import {
+  DEFIS,
+  DIFFICULTIES,
+  EVENTS,
+  FOOD_TRUCK,
+  openingJournal,
+} from './day.ts'
+import { startingDecisions, validateDecisions } from './decisions.ts'
 import { FULL_ENERGY } from './energy.ts'
 import { noEvents } from './events.ts'
 import { PRODUCTS, inventoryValue } from './inventory.ts'
@@ -33,6 +52,7 @@ import { LABELS, isKept } from './personal.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
 import type {
+  ChallengeStatus,
   Day,
   Decisions,
   GameState,
@@ -50,8 +70,9 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 10 adds the week
- * in numbers: a version 9 game still loads, with no week reported yet and
+ * change can no longer load (rule 8 in CLAUDE.md). Version 11 adds the
+ * Défis: a version 10 game still loads, as a game that is not a Défi.
+ * Version 10 adds the week in numbers: a version 9 game still loads, with no week reported yet and
  * the week under way counted from its last close. Version 9 adds the
  * changes to the street: a version 8 game still loads, as a game with none.
  * Version 8 adds the event cards and the receivables: a version 7 game
@@ -66,9 +87,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 10
+export const SAVE_VERSION = 11
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const CHALLENGELESS_VERSION = 10
 const WEEKLESS_VERSION = 9
 const STREETLESS_VERSION = 8
 const EVENTLESS_VERSION = 7
@@ -314,6 +336,33 @@ const weekRecordSchema = z.strictObject({
   cashAtEnd: signedMoney,
 })
 
+// Keyed by every ChallengeStatus, so a new one fails the type check until a
+// save can hold it.
+const challengeStatus = z.enum({
+  enCours: 'enCours',
+  reussi: 'reussi',
+  echoue: 'echoue',
+} satisfies Record<ChallengeStatus, ChallengeStatus>)
+
+// `checkChallenge()` checks the Défi, its days, its progress against the
+// books, and its status and medal against its goal.
+const challengeSchema = z.strictObject({
+  id: z.string(),
+  startDay: gameDay,
+  progress: z.strictObject({
+    daysPlayed: count,
+    sales: signedMoney,
+    netIncome: signedMoney,
+    lowestCash: signedMoney,
+    customersServed: count,
+    unitsSold: count,
+    unitsSpoiled: count,
+    lowestEnergy: energyLevel,
+  }),
+  status: challengeStatus,
+  medal: medalSchema.nullable(),
+})
+
 const saveSchema = z.strictObject({
   saveVersion: z.literal(SAVE_VERSION),
   day: gameDay,
@@ -333,6 +382,7 @@ const saveSchema = z.strictObject({
   weekSoFar: weekSoFarSchema,
   lastWeek: weekReportSchema.nullable(),
   weekHistory: z.array(weekRecordSchema),
+  challenge: challengeSchema.nullable(),
 })
 
 // The week under way may come from the books rather than the save.
@@ -348,8 +398,13 @@ type Parsed = Omit<Save, 'weekSoFar'> & {
   readonly weekSoFar: WeekSoFar | null
 }
 
-/** A version 9 save: no week reported. */
-const weeklessSchema = saveSchema
+/** A version 10 save: no Défi. */
+const challengelessSchema = saveSchema
+  .omit({ challenge: true })
+  .extend({ saveVersion: z.literal(CHALLENGELESS_VERSION) })
+
+/** A version 9 save: no week reported either. */
+const weeklessSchema = challengelessSchema
   .omit({ weekSoFar: true, lastWeek: true, weekHistory: true })
   .extend({ saveVersion: z.literal(WEEKLESS_VERSION) })
 
@@ -389,6 +444,7 @@ export function serialize(state: GameState): string {
     weekSoFar: state.weekSoFar,
     lastWeek: state.lastWeek,
     weekHistory: state.weekHistory,
+    challenge: state.challenge,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -396,27 +452,32 @@ export function serialize(state: GameState): string {
  * Loads a game `serialize()` wrote. The journal is rebuilt from
  * `emptyJournal()` by posting every saved entry again.
  *
+ * A game's first day is day 0, or its Défi's first day, before which
+ * nothing was played: the books open on day 0 either way.
+ *
  * Throws an Error that starts with "Invalid save:" and names the problem
- * unless: the text is JSON of the current `SAVE_VERSION`, or of version 9,
- * which loads with no week reported yet and the week under way counted from
- * its books (see `weekSince`), or of version 8, which also loads with no
+ * unless: the text is JSON of the current `SAVE_VERSION`, or of version 10,
+ * which loads as a game that is not a Défi, or of version 9, which also
+ * loads with no week reported yet and the week under way counted from its
+ * books (see `weekSince`), or of version 8, which also loads with no
  * change to the street, or of version 7, which also loads with no event
  * and no receivable; every field has
  * the right type and no other key appears; every entry posts again through
  * `postEntry()` and none is dated after the save's day; the books add up
  * within the safe integer range; the lots are oldest first, none bought
  * after the save's day, and they cost what the Stocks account carries;
- * `lastDay` is the save's day or the day before, and null only on day 0,
- * with its `botched` the sum of its visits'; the owner's energy is full
- * before day 0 is played, `lastDay`'s energy on its own day, and no lower
- * than it the morning after, since a night only gives energy back, unless
- * an event's choice was made that morning, day 0 included; the marketing
- * history holds one day for each day played up to the content's
+ * `lastDay` is the save's day or the day before, no earlier than the first
+ * day, and null only on the first day, with its `botched` the sum of its
+ * visits'; the owner's energy is full, or what the Défi sets, before the
+ * first day is played, `lastDay`'s energy on its own day, and no lower than
+ * it the morning after, since a night only gives energy back, unless an
+ * event's choice was made that morning, the first day's included; the
+ * marketing history holds one day for each day played up to the content's
  * `awarenessDays`, none above the most the budget may be; the decisions,
  * and those pending if any, keep within the content's limits and each
  * product's kind of restock rule; the profile passes `validateProfile()`;
- * the personal account holds nothing before day 0 is played but what a
- * choice made that morning moved, and otherwise only movements and unpaid
+ * the personal account holds nothing before the first day is played but
+ * what a choice made that morning moved, and otherwise only movements and unpaid
  * rents up to `lastDay`'s day, in its months kept and in order, each
  * « Salaire » above zero and every other movement of `LABELS` below, and a
  * « Loyer » on each day the rent went unpaid, besides the movements of the
@@ -425,44 +486,50 @@ export function serialize(state: GameState): string {
  * by due day, each sold no later than the save's day and due after the
  * sale and after `lastDay`'s day, and they add up to Comptes clients; the
  * events pass `checkEvents()`; the journal opens with the books of the
- * profile's difficulty (see `checkDifficulty`); and the week under way, the
- * last week reported and the history pass `checkWeek()`.
+ * profile's difficulty (see `checkDifficulty`), with the Défi's cash in a
+ * Défi; the week under way, the last week reported and the history pass
+ * `checkWeek()`; and the Défi, if any, is one of `defis` and passes
+ * `checkChallenge()`.
  *
  * The products, limits, restock kinds, `awarenessDays` and the truck's
  * price are those of `content` as it is now, the events, choices, outcomes
- * and personal labels those of `events`, and the starting cash and the
- * trucks' terms those of `difficulties`, so tuning that changes the days,
- * narrows the others, drops an event or changes how a game opens can stop
- * older saves from loading.
+ * and personal labels those of `events`, the starting cash and the trucks'
+ * terms those of `difficulties`, and the Défis those of `defis`, so tuning
+ * that changes the days, narrows the others, drops an event, changes how a
+ * game opens or changes a Défi can stop older saves from loading.
  */
 export function deserialize(
   text: string,
   content: FoodTruckContent = FOOD_TRUCK,
   events: EventContent = EVENTS,
   difficulties: DifficultyContent = DIFFICULTIES,
+  defis: DefiContent = DEFIS,
 ): GameState {
   const loaded = parsed(text)
   const journal = rebuilt(loaded.journal)
   checkBooks(loaded, journal)
+  const defi = defiOf(loaded, defis)
+  const opening =
+    defi === null ? difficulties : challengeDifficulties(defi, difficulties)
   const save: Save = {
     ...loaded,
-    weekSoFar:
-      loaded.weekSoFar ?? weekSince(loaded, journal, content, difficulties),
+    weekSoFar: loaded.weekSoFar ?? weekSince(loaded, journal, content, opening),
   }
   checkInventory(save, journal)
   checkReceivables(save, journal)
   checkLastDay(save)
   checkEvents(save, events)
-  checkEnergy(save)
+  checkEnergy(save, defi === null ? FULL_ENERGY : startingEnergy(defi))
   checkMarketingHistory(save, content)
   checkDecisions('decisions', save.decisions, content)
   if (save.pendingDecisions !== null) {
     checkDecisions('pendingDecisions', save.pendingDecisions, content)
   }
   attempt('profile', () => validateProfile(save.profile))
-  checkDifficulty(save, journal, content, difficulties)
+  checkDifficulty(save, journal, content, opening)
   checkPersonal(save, events)
-  checkWeek(save, journal, content, events, difficulties)
+  checkWeek(save, journal, content, events, opening)
+  if (defi !== null) checkChallenge(save, journal, defi, content, opening)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -482,6 +549,7 @@ export function deserialize(
     weekSoFar: save.weekSoFar,
     lastWeek: save.lastWeek,
     weekHistory: save.weekHistory,
+    challenge: save.challenge,
   }
 }
 
@@ -498,6 +566,10 @@ function parsed(text: string): Parsed {
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
   if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  if (saveVersion === CHALLENGELESS_VERSION) {
+    const save = checked(challengelessSchema, raw)
+    return { ...save, saveVersion: SAVE_VERSION, challenge: null }
+  }
   // An older version's own schema first, strict, so a key it did not know
   // still fails the load.
   if (saveVersion === EVENTLESS_VERSION) {
@@ -524,6 +596,7 @@ function parsed(text: string): Parsed {
     receivables: old.receivables ?? [],
     lastWeek: null,
     weekHistory: [],
+    challenge: null,
   })
   return { ...save, weekSoFar: null }
 }
@@ -591,7 +664,7 @@ function checkInventory(save: Save, journal: Journal): void {
  */
 function checkReceivables(save: Save, journal: Journal): void {
   const { day, lastDay, receivables } = save
-  const played = lastDay?.day ?? -1
+  const played = lastDay?.day ?? firstDay(save) - 1
   receivables.forEach(({ soldOnDay, dueDay }, index) => {
     const what = `receivable ${index + 1}`
     if (soldOnDay > day) {
@@ -622,13 +695,20 @@ function checkReceivables(save: Save, journal: Journal): void {
   }
 }
 
-function checkLastDay({ day, lastDay }: Save): void {
+function checkLastDay(save: Save): void {
+  const { day, lastDay } = save
+  const first = firstDay(save)
   if (lastDay === null) {
-    if (day !== 0) invalid(`lastDay is null on day ${day}`)
+    if (day !== first) invalid(`lastDay is null on day ${day}`)
     return
   }
   if (lastDay.day !== day && lastDay.day !== day - 1) {
     invalid(`lastDay is day ${lastDay.day} on day ${day}`)
+  }
+  if (lastDay.day < first) {
+    invalid(
+      `lastDay is day ${lastDay.day}, before the game's first day, day ${first}`,
+    )
   }
   const botched = lastDay.visits.reduce(
     (total, visit) => total + visit.botched,
@@ -651,16 +731,16 @@ function chosenThatMorning({ day, events }: Save): boolean {
 }
 
 /**
- * The owner's energy as the game could leave it: full until day 0 is
- * played, `lastDay`'s at its close, and the morning after no lower, since
- * a night only gives energy back, unless a choice made that morning took
- * some, day 0 included.
+ * The owner's energy as the game could leave it: `start` until the first
+ * day is played, `lastDay`'s at its close, and the morning after no lower,
+ * since a night only gives energy back, unless a choice made that morning
+ * took some, the first day's included.
  */
-function checkEnergy(save: Save): void {
+function checkEnergy(save: Save, start: number): void {
   const { day, lastDay, energy } = save
   if (lastDay === null) {
-    if (energy !== FULL_ENERGY && !chosenThatMorning(save)) {
-      invalid(`energy is ${energy} before day 0 is played, not ${FULL_ENERGY}`)
+    if (energy !== start && !chosenThatMorning(save)) {
+      invalid(`energy is ${energy} before day ${day} is played, not ${start}`)
     }
   } else if (lastDay.day === day) {
     if (energy !== lastDay.energy) {
@@ -695,10 +775,8 @@ function checkEnergy(save: Save): void {
  * - `lastDay`'s changes to the street, by first day, were each in effect on
  *   its day and each from an event in `content`.
  */
-function checkEvents(
-  { day, lastDay, events }: Save,
-  content: EventContent,
-): void {
+function checkEvents(save: Save, content: EventContent): void {
+  const { day, lastDay, events } = save
   const known = new Map(content.events.map((event) => [event.id, event]))
   const checkEvent = (what: string, id: string) => {
     if (!known.has(id)) invalid(`${what} is an unknown event: ${id}`)
@@ -710,7 +788,7 @@ function checkEvents(
       )
     }
   }
-  const played = lastDay?.day ?? -1
+  const played = lastDay?.day ?? firstDay(save) - 1
   const {
     pending,
     delayed,
@@ -813,10 +891,11 @@ function checkEvents(
  * a save cannot bring a crowd the game could never have.
  */
 function checkMarketingHistory(
-  { lastDay, marketingHistory }: Save,
+  save: Save,
   { marketing, decisionLimits }: FoodTruckContent,
 ): void {
-  const played = lastDay === null ? 0 : lastDay.day + 1
+  const { lastDay, marketingHistory } = save
+  const played = lastDay === null ? 0 : lastDay.day + 1 - firstDay(save)
   const days = Math.min(played, marketing.awarenessDays)
   if (marketingHistory.length !== days) {
     invalid(
@@ -905,7 +984,8 @@ function sameEntry(a: JournalEntry, b: JournalEntry | undefined): boolean {
  * `isKept()` keeps, in order, each amount of `LABELS` with the sign of its
  * label, each unpaid rent a day the rent was charged, and the movements of
  * `content`'s `personal` effects, of any amount but 0, which a choice made
- * that morning may have dated the save's day. Before day 0 is played, it
+ * that morning may have dated the save's day. Before the first day is
+ * played, it
  * holds only the movements of a choice made that morning.
  *
  * A movement does not say what made it, so one whose label an effect gives
@@ -931,7 +1011,7 @@ function checkPersonal(save: Save, content: EventContent): void {
       chosenThatMorning(save) &&
       movements.every(({ label }) => eventLabels.has(label))
     if (unpaidRents.length > 0 || (movements.length > 0 && !byChoice)) {
-      invalid('personal holds movements before day 0 is played')
+      invalid(`personal holds movements before day ${day} is played`)
     }
   }
   const today = lastDay?.day ?? day
@@ -1016,7 +1096,8 @@ function weekSince(
 /**
  * What the week in numbers could be at the save's day, with the books
  * `journal`:
- * - before day 0 is played, the first week is partial, with no day, and no
+ * - before the first day is played, the first week is partial, with no day,
+ *   and no
  *   week was reported;
  * - the week under way holds the days played since its Monday, one after
  *   the other up to `lastDay`'s, and none once that day is a Sunday, whose
@@ -1043,7 +1124,7 @@ function checkWeek(
   difficulties: DifficultyContent,
 ): void {
   const { lastDay, weekSoFar, lastWeek, weekHistory } = save
-  const played = lastDay?.day ?? -1
+  const played = lastDay?.day ?? firstDay(save) - 1
   const known = new Set(events.events.map(({ id }) => id))
   const cashOn = (day: Day) => balance(journal, CASH, { toDay: day })
 
@@ -1106,7 +1187,7 @@ function checkWeek(
   }
 
   if (lastDay === null && !weekSoFar.partial) {
-    invalid('weekSoFar is not partial before day 0 is played')
+    invalid(`weekSoFar is not partial before day ${save.day} is played`)
   }
   const next = played + 1
   checkDays('weekSoFar', weekSoFar, mondayOf(next), played)
@@ -1189,6 +1270,223 @@ function checkWeek(
         recorded.cashAtEnd !== lastWeek.cashAtEnd
   ) {
     invalid("the last week of weekHistory is not lastWeek's")
+  }
+}
+
+/** The game's first day: day 0, or its Défi's first day. */
+function firstDay({ challenge }: Pick<Parsed, 'challenge'>): Day {
+  return challenge?.startDay ?? 0
+}
+
+/**
+ * The Défi of `defis` the save plays; null in a game that is not one.
+ * Checked before the rest, which reads the game's first day from it: the
+ * Défi exists, starts on the save's `startDay` and is played at the
+ * profile's difficulty.
+ */
+function defiOf(save: Parsed, defis: DefiContent): Defi | null {
+  const { challenge, profile } = save
+  if (challenge === null) return null
+  const defi = defis.defis.find(({ id }) => id === challenge.id)
+  if (defi === undefined)
+    invalid(`challenge is an unknown Défi: ${challenge.id}`)
+  const start = attempt('challenge', () => startDayOf(defi))
+  if (challenge.startDay !== start) {
+    invalid(
+      `challenge starts on day ${challenge.startDay}, not on day ${start}, the first day of the Défi ${defi.id}`,
+    )
+  }
+  if (defi.difficulty !== profile.difficulty) {
+    invalid(
+      `the Défi ${defi.id} is played at ${defi.difficulty}, not at the profile's difficulty ${profile.difficulty}`,
+    )
+  }
+  return defi
+}
+
+/**
+ * What the Défi `defi` could be at the save's day, with the books `journal`
+ * opened as `difficulties` open them:
+ * - nothing happened between the books' opening and its first day: no
+ *   entry and no event is dated before it;
+ * - it played the days from its first to `lastDay`'s, no more than its
+ *   length;
+ * - its ventes and bénéfice net are those of the état des résultats over
+ *   those days, and its lowest Encaisse the lowest after any entry since
+ *   the books opened, up to their close (see `lowestCashSince`), so not
+ *   the entries of a choice made that morning;
+ * - before its first day is played, nothing is counted and the owner's
+ *   lowest energy is the Défi's starting energy; once it is, the lowest is
+ *   no higher than that, nor than `lastDay`'s;
+ * - it is under way before its first day is played, and otherwise as
+ *   `verdict()` has it, with the medal it gives;
+ * - once it is over, no event came after it or waits, and the Défi's
+ *   minimum cash held up to the day before its last day played, or it
+ *   would have ended then;
+ * - the decisions it locks, and those pending if any, are its own;
+ * - each event it forces came on its day once that day is played, or waits
+ *   or was chosen that morning while it is under way, with a choice it
+ *   allows, and no other event waits or was chosen on that day;
+ * - without random events, every other event that came, or waits, is a
+ *   follow-up.
+ */
+function checkChallenge(
+  save: Save,
+  journal: Journal,
+  defi: Defi,
+  content: FoodTruckContent,
+  difficulties: DifficultyContent,
+): void {
+  const { challenge, day, lastDay, events } = save
+  if (challenge === null) return
+  const { startDay, progress, status, medal } = challenge
+  const opening = entriesOf(
+    openingJournal(defi.difficulty, content, difficulties),
+  ).length
+  // checkDifficulty() found the journal opens with these entries.
+  const entries = entriesOf(journal)
+  const early = entries.findIndex(
+    (entry, index) => index >= opening && entry.day < startDay,
+  )
+  if (early !== -1) {
+    invalid(
+      `journal entry ${early + 1} is on day ${entries[early]?.day}, before the Défi's first day, day ${startDay}`,
+    )
+  }
+  if (events.history.some((record) => record.day < startDay)) {
+    invalid(`an event came before the Défi's first day, day ${startDay}`)
+  }
+
+  const played = lastDay === null ? 0 : lastDay.day - startDay + 1
+  if (played > defi.lengthDays) {
+    invalid(
+      `challenge has played ${played} days of a Défi of ${defi.lengthDays}`,
+    )
+  }
+  if (progress.daysPlayed !== played) {
+    invalid(
+      `challenge.progress.daysPlayed is ${progress.daysPlayed}, not the ${played} days played since day ${startDay}`,
+    )
+  }
+  const last = startDay + played - 1
+  const income = played === 0 ? null : incomeStatement(journal, startDay, last)
+  const sales = income?.sales.amount ?? 0
+  const netIncome = income?.netIncome.amount ?? 0
+  if (progress.sales !== sales || progress.netIncome !== netIncome) {
+    invalid(
+      `challenge has ${progress.sales} of ventes and ${progress.netIncome} of bénéfice net, not the ${sales} and ${netIncome} of the état des résultats`,
+    )
+  }
+  const lowestCash = lowestCashSince(journal, opening, last)
+  if (progress.lowestCash !== lowestCash) {
+    invalid(
+      `challenge.progress.lowestCash is ${progress.lowestCash}, not the ${lowestCash} the books went down to`,
+    )
+  }
+  const energy = startingEnergy(defi)
+  if (lastDay === null) {
+    const { customersServed, unitsSold, unitsSpoiled, lowestEnergy } = progress
+    if (customersServed + unitsSold + unitsSpoiled > 0) {
+      invalid(
+        'challenge counts customers or units before its first day is played',
+      )
+    }
+    if (lowestEnergy !== energy) {
+      invalid(
+        `challenge.progress.lowestEnergy is ${lowestEnergy} before its first day is played, not ${energy}`,
+      )
+    }
+  } else if (
+    progress.lowestEnergy > energy ||
+    progress.lowestEnergy > lastDay.energy
+  ) {
+    invalid(
+      `challenge.progress.lowestEnergy is ${progress.lowestEnergy}, above ${Math.min(energy, lastDay.energy)}`,
+    )
+  }
+
+  const expected =
+    played === 0 ? { status: 'enCours', medal: null } : verdict(progress, defi)
+  if (status !== expected.status || medal !== expected.medal) {
+    invalid(
+      `challenge is ${status} with the medal ${medal}, not ${expected.status} with ${expected.medal}`,
+    )
+  }
+  if (
+    status !== 'enCours' &&
+    (events.pending !== null ||
+      events.history.some((record) => record.day > last))
+  ) {
+    invalid(`an event came after the Défi ${defi.id} was over`)
+  }
+  for (const condition of defi.conditions) {
+    if (
+      condition.kind === 'minCash' &&
+      played > 1 &&
+      lowestCashSince(journal, opening, last - 1) < condition.amountCents
+    ) {
+      invalid(
+        `the Défi ${defi.id} was lost before day ${last}, the last day played`,
+      )
+    }
+  }
+
+  const setup = setupDecisions(
+    defi,
+    attempt('the starting decisions', () => startingDecisions(content)),
+  )
+  for (const kind of defi.locked) {
+    for (const [field, decisions] of [
+      ['decisions', save.decisions],
+      ['pendingDecisions', save.pendingDecisions],
+    ] as const) {
+      if (decisions !== null && !sameLocked(decisions, setup, kind)) {
+        invalid(`${field} change ${kind}, which the Défi ${defi.id} locks`)
+      }
+    }
+  }
+
+  const { pending, history } = events
+  const morning = lastDay?.day !== day
+  for (let at = startDay; at <= last + 1 && at <= day; at += 1) {
+    const forced = forcedEventOn(defi, startDay, at)
+    const records = history.filter((record) => record.day === at)
+    const waiting = at === day && morning ? pending : null
+    if (forced === undefined) {
+      if (defi.randomEvents) continue
+      if (
+        records.some(({ followUp }) => !followUp) ||
+        waiting?.followUp === false
+      ) {
+        invalid(
+          `an event was drawn on day ${at} of the Défi ${defi.id}, which has no random event`,
+        )
+      }
+      continue
+    }
+    const what = `the event the Défi ${defi.id} forces on day ${at}`
+    const record = records[0]
+    if (
+      records.length > 1 ||
+      (record !== undefined &&
+        (record.event !== forced.event ||
+          record.followUp ||
+          !forced.choices.includes(record.choice)))
+    ) {
+      invalid(
+        `${what} is not the one chosen that morning, with a choice it allows`,
+      )
+    }
+    if (
+      waiting !== null &&
+      (waiting.event !== forced.event || waiting.followUp)
+    ) {
+      invalid(`${what} is not the one waiting`)
+    }
+    const under = at <= last || status === 'enCours'
+    if (under && record === undefined && waiting === null) {
+      invalid(`${what} never came`)
+    }
   }
 }
 

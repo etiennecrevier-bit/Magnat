@@ -1,7 +1,7 @@
 import { ESLint } from 'eslint'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { tick } from '../src/engine/clock.ts'
+import { startChallenge, tick } from '../src/engine/clock.ts'
 import { playDay } from '../src/engine/day.ts'
 import { applyDecision } from '../src/engine/decisions.ts'
 import { applyEffect, startOfDay } from '../src/engine/effects.ts'
@@ -104,6 +104,7 @@ const GAME_CHANGERS = {
   resolveEvent,
   applyEffect,
   startOfDay,
+  startChallenge,
 }
 
 const WORLD_FORBIDDEN: { code: string; rule: string }[] = [
@@ -145,6 +146,10 @@ const WORLD_FORBIDDEN: { code: string; rule: string }[] = [
   },
   {
     code: "import { tick as nextDay } from '../engine/clock.ts'",
+    rule: 'no-restricted-imports',
+  },
+  {
+    code: "import { startChallenge } from '../engine/clock.ts'",
     rule: 'no-restricted-imports',
   },
   {

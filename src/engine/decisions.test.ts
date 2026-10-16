@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
+  decisionKindSchema,
   loadCustomerContent,
   loadFoodTruckContent,
   type CustomerContent,
+  type DecisionKind,
   type FoodTruckContent,
   type ProductId,
   type RestockRule,
@@ -456,6 +458,19 @@ describe('applyDecision', () => {
     const state = applyDecision(tuesday(), price('cafe', 300))
     expect(() => applyDecision(state, price('cafe', 1))).toThrow(RangeError)
     expect(state.pendingDecisions?.prices.cafe).toBe(300)
+  })
+})
+
+describe('the kinds of change', () => {
+  it('are those a Défi may lock, no more and no less', () => {
+    expectTypeOf<DecisionKind>().toEqualTypeOf<DecisionChange['kind']>()
+    expect(decisionKindSchema.options).toEqual([
+      'price',
+      'restock',
+      'daysOpen',
+      'ownerWeeklyPay',
+      'marketingDaily',
+    ])
   })
 })
 

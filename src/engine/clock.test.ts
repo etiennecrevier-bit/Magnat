@@ -38,7 +38,7 @@ const DEFAULT_ACCOUNT = openingAccount(
 )
 
 describe('createInitialState', () => {
-  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile, the owner at full energy, no event, nobody owing anything and a first week to come, partial, from the opening cash", () => {
+  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile, the owner at full energy, no event, nobody owing anything, a first week to come, partial, from the opening cash, and no Défi", () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
@@ -68,6 +68,7 @@ describe('createInitialState', () => {
       },
       lastWeek: null,
       weekHistory: [],
+      challenge: null,
     })
     expect(FULL_ENERGY).toBe(100)
   })
