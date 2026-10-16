@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createInitialState, toCalendar } from '../engine/clock.ts'
-import { ENERGY } from '../engine/day.ts'
+import { ENERGY, EVENTS } from '../engine/day.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import { cents } from '../engine/money.ts'
 import type { Day, GameState } from '../engine/types.ts'
@@ -185,6 +185,43 @@ describe('startMessages', () => {
     expect(sent).toEqual([
       { id: 0, kind: 'exhausted', from, text: lines[0], day: 2 },
       { id: 1, kind: 'exhausted', from, text: lines[1], day: 8 },
+    ])
+    stop()
+  })
+
+  it("sends the owner's line the morning after an event's choice leaves them exhausted", () => {
+    // Day 15, a Tuesday, open, on the formulaire card: the owner is tired,
+    // and « Contester » costs 10 energy before the day is played.
+    const store = createGameStore(
+      {
+        ...START,
+        day: 15,
+        energy: ENERGY.exhausted.below + 3,
+        events: {
+          ...START.events,
+          pending: { event: 'formulaire14B', followUp: false },
+        },
+      },
+      EVENTS,
+    )
+    const sent: Message[] = []
+    const stop = startMessages(
+      store,
+      (message) => sent.push(message),
+      () => 0,
+    )
+
+    store.getState().chooseEvent('contester')
+    expect(store.getState().game.energy).toBeLessThan(ENERGY.exhausted.below)
+    store.getState().closePanel()
+    store.getState().advance(1)
+
+    // Day 16: the owner wakes up exhausted, the first time this week.
+    expect(store.getState().game.day).toBe(16)
+    expect(store.getState().game.energy).toBeLessThan(ENERGY.exhausted.below)
+    const { from, lines } = MESSAGES.exhausted
+    expect(sent).toEqual([
+      { id: 0, kind: 'exhausted', from, text: lines[0], day: 16 },
     ])
     stop()
   })
