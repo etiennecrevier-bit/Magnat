@@ -54,17 +54,16 @@ const CASH: AccountCode = '1000'
 export { toCalendar, type CalendarDate } from './calendar.ts'
 
 /**
- * Starts a game on day 0 with its generator seeded from `seed`, no stock,
- * no marketing spent yet, the opening books of the profile's difficulty
- * (see `openingJournal`), the content's starting decisions, the player's
- * `profile`, the owner's personal account holding the difficulty's
- * starting savings, the owner at full energy, no event yet, nobody owing
- * the business anything, a first week to come, partial, from the cash the
- * books open with (see `openingWeek`), no Défi and no bakery, with the
- * croissants bought. Throws a RangeError
- * unless `seed` is an integer in [0, 2^32), if the starting decisions break
- * the content's limits, if `profile` breaks `validateProfile()`, or if the
- * difficulty leaves a negative Mise de fonds.
+ * Starts a game on day 0 with its generator seeded from `seed`, no stock, no
+ * marketing spent yet, the opening books of the profile's difficulty (see
+ * `openingJournal`), the content's starting decisions, the player's `profile`,
+ * the owner's personal account holding the difficulty's starting savings, the
+ * owner at full energy, no event yet, nobody owing the business anything, a
+ * first week to come, partial, from the cash the books open with (see
+ * `openingWeek`), no Défi and no bakery, with the croissants bought. Throws a
+ * RangeError unless `seed` is an integer in [0, 2^32), if the starting
+ * decisions break the content's limits, if `profile` breaks
+ * `validateProfile()`, or if the difficulty leaves a negative Mise de fonds.
  */
 export function createInitialState(
   seed: number,
@@ -179,18 +178,17 @@ export function startChallenge(
 
 /**
  * Plays business day `state.day` with `state.decisions` (see `playDay`, with
- * `bakery` as the bakery's content), then
- * moves on to the next morning, where the pending decisions, if any, take
- * effect, after a night that gives the owner some energy back (see
- * `nightRest`), and where an event of `events` may come up (see
- * `drawEvent`, which reads the player's standing against `percentiles`). By
- * default no event ever does: a game turns them on by passing the content,
- * such as `EVENTS`. In a Défi of `defis`, the morning
+ * `bakery` as the bakery's content), then moves on to the next morning, where
+ * the pending decisions, if any, take effect, after a night that gives the
+ * owner some energy back (see `nightRest`), and where an event of `events` may
+ * come up (see `drawEvent`, which reads the player's standing against
+ * `percentiles`). By default no event ever does: a game turns them on by
+ * passing the content, such as `EVENTS`. In a Défi of `defis`, the morning
  * brings the event the Défi forces that day, if any, in place of the draw;
- * otherwise the draw, with no chance of a new event unless the Défi lets
- * random events come, though a follow-up still comes; and nothing once the
- * Défi is over. Returns a new state; never mutates `state`. Throws an Error
- * while an event waits for the player's choice, and once the Défi is over.
+ * otherwise the draw, with no chance of a new event unless the Défi lets random
+ * events come, though a follow-up still comes; and nothing once the Défi is
+ * over. Returns a new state; never mutates `state`. Throws an Error while an
+ * event waits for the player's choice, and once the Défi is over.
  */
 export function tick(
   state: GameState,

@@ -192,41 +192,38 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
 /**
  * Plays business day `morning.day` with `morning.decisions`. Throws an Error
  * while an event waits for the player's choice, and once the game's Défi, if
- * any, is over. First the start of the day:
- * the delayed effects of the events' choices due that day, then the
- * receivables due (see `startOfDay`). Then the street that day, with the
- * changes in effect folded together (see `streetOn`). On the 1st of the
- * month, open or closed: the month's charges (see `monthlyCharges`), the
- * truck's counted in months from the game's first day, day 0 or a Défi's
- * first day, as if the truck came to the business then. Then, open or
- * closed, the bakery's morning with `bakeryContent` and the prices of the
- * game's difficulty (see `bakeryMorning`). On a
- * day the truck opens, one of the days open the street does not close: the
- * morning restock of every product the street leaves on sale, but the
- * croissants when they come from the bakery and it runs, which then makes
- * them (see `bake`), then the walk-in customers, with those the marketing of the days before brings on
- * top (see `marketingCrowd`) and as the street changes them, lining up at
- * the counter, where `servers()` serve them from the stock on hand, none of
- * a product that cannot be sold, slower and botching units the more tired
- * the owner is that morning (see `effectsOf`), what the sales cost in
- * packaging and card fees, the fuel and the day's marketing budget. On a
- * day it is closed, nobody comes, nothing is bought and nothing is spent on
- * marketing, so the generator does not move. On payday, open or closed, the
- * owner's weekly pay. Every day: the spoilage at the close. Every entry is
- * dated `morning.day`. Then the owner's own day, outside the books, with
- * `personal` as their living costs (see `livePersonalDay`), and what the
- * day did to their energy, with `energy` as what tires them, and a day of
- * baking taking `bakingEnergyCost` more (see `energyAtClose`). Returns a new
- * state on the same day with the books, the bakery, the
- * stock, the generator, the marketing history, `lastDay`, with the changes
- * to the street in effect that day, the owner's personal account, their
+ * any, is over. First the start of the day: the delayed effects of the events'
+ * choices due that day, then the receivables due (see `startOfDay`). Then the
+ * street that day, with the changes in effect folded together (see `streetOn`).
+ * On the 1st of the month, open or closed: the month's charges (see
+ * `monthlyCharges`), the truck's counted in months from the game's first day,
+ * day 0 or a Défi's first day, as if the truck came to the business then. Then,
+ * open or closed, the bakery's morning with `bakeryContent` and the prices of
+ * the game's difficulty (see `bakeryMorning`). On a day the truck opens, one of
+ * the days open the street does not close: the morning restock of every product
+ * the street leaves on sale, but the croissants when they come from the bakery
+ * and it runs, which then makes them (see `bake`), then the walk-in customers,
+ * with those the marketing of the days before brings on top (see
+ * `marketingCrowd`) and as the street changes them, lining up at the counter,
+ * where `servers()` serve them from the stock on hand, none of a product that
+ * cannot be sold, slower and botching units the more tired the owner is that
+ * morning (see `effectsOf`), what the sales cost in packaging and card fees,
+ * the fuel and the day's marketing budget. On a day it is closed, nobody comes,
+ * nothing is bought and nothing is spent on marketing, so the generator does
+ * not move. On payday, open or closed, the owner's weekly pay. Every day: the
+ * spoilage at the close. Every entry is dated `morning.day`. Then the owner's
+ * own day, outside the books, with `personal` as their living costs (see
+ * `livePersonalDay`), and what the day did to their energy, with `energy` as
+ * what tires them, and a day of baking taking `bakingEnergyCost` more (see
+ * `energyAtClose`). Returns a new state on the same day with the books, the
+ * bakery, the stock, the generator, the marketing history, `lastDay`, with the
+ * changes to the street in effect that day, the owner's personal account, their
  * energy, the events, without the changes whose last day it was, the
- * receivables brought up to the close, the day added to the week under
- * way, summed up on a Sunday (see `recordDay`), and, in a Défi of `defis`,
- * the day added to its progress, which may end it (see
- * `recordChallengeDay`), with the owner's lowest energy since the last
- * close, the start of the day's effects included, and at this one; never
- * mutates `morning`. Cash may go negative.
+ * receivables brought up to the close, the day added to the week under way,
+ * summed up on a Sunday (see `recordDay`), and, in a Défi of `defis`, the day
+ * added to its progress, which may end it (see `recordChallengeDay`), with the
+ * owner's lowest energy since the last close, the start of the day's effects
+ * included, and at this one; never mutates `morning`. Cash may go negative.
  */
 export function playDay(
   morning: GameState,

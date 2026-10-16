@@ -136,6 +136,25 @@ Plays each Défi of `src/content/defis.json` by the simulated owners and by the 
 
 The code is in `balance/`: `defis.ts` plays the Défis and sums them up, and `defisReport.ts` writes the table and the section, both without I/O.
 
+## The bakery
+
+```sh
+npm run balance -- --bakery
+```
+
+Plays the bakery, le fournil (#157), against twins that buy their croissants, and writes `docs/balance/phase-4.md`, keeping its hand-written part. Each difficulty plays seeds 1 to `--games` with three trucks: the starting decisions (70 croissants a day), a busy truck (110 a day, the croissant 20 % cheaper, $80 of marketing a day) and the same truck making 150 a day, the volume #157 asks the bakery to win at. Each game opens the bakery on day 0 at each of #157's three price sets (ingredients $0.45, $0.55 or $0.65 a croissant, rent $2,000, $2,400 or $2,800 a month, at every difficulty whatever `src/content/difficulty.json` holds), with its oven leased or bought, makes there the croissants its twin buys, and plays `--months` months. A game pays back in the first month at whose end its Encaisse is at least its twin's and stays so to the last month. The report checks #157's targets, shows the break-even of each set and oven in the books, from the content, and each difficulty's payback.
+
+| Option     | Default                   | Meaning                                                                                                             |
+| ---------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `--bakery` |                           | Plays the bakery. `--percentiles`, `--defis`, `--years`, `--search`, `--events` and `--json` do not go with it.     |
+| `--games`  | 30                        | Seeds each difficulty, truck, price set and oven plays, 1 to this, a whole number from 1.                           |
+| `--months` | 24                        | Months each game plays from May 1st, year 1, a whole number from 1; only here.                                      |
+| `--out`    | `docs/balance/phase-4.md` | File the report goes to, relative to the current folder (the repo root under `npm run`).                            |
+
+**Running it.** One worker thread a difficulty and truck, three at once at most; the default run takes about 45 s. The same options always write the same file. After any change to the engine or the content that moves the numbers, run it again with the default options and commit the report.
+
+The code is in `balance/`: `bakery.ts` plays the games and their twins, and works out the break-even, and `bakeryReport.ts` writes the report, both without I/O. `simulate()`, `startGame()` and `playMorning()` in `sim/simulate.ts` take the difficulties every day of a game plays with, so a run can try other prices than the shipped ones.
+
 ## The 10-year invariant test
 
 `tests/invariants.test.ts`, part of `npm test`, plays ten years for seed 1 at Facile, seed 42 at Moyen and seed 2026 at Difficile, with the event cards on, the `essai` card in play, answered at random as `--events random` does. After every day it checks that the trial balance is zero, that Actifs = Passifs + Capitaux propres, that Stocks equals the cost of the lots on hand that Comptes clients equals what customers owe, and that a day the street closes the truck has no visit and a product it takes off sale sold none; each morning, that an event drawn respects the first day and the gap; after every calendar month, that `trialBalance()` agrees with the running tally the daily checks use and that the cash flow statement's net change equals the change in Encaisse. At the end, it checks that each kind of change to the street was in effect on at least 20 days. It then plays each game again through `simulate()` and compares the journal hashes. The file must finish in under 60 seconds in CI: if it gets slower, make the slow part faster rather than checking fewer days or seeds.

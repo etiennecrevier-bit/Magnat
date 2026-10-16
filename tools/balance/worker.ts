@@ -1,11 +1,13 @@
 import { parentPort, workerData } from 'node:worker_threads'
+import { runBakery } from './bakery.ts'
 import { runDefi } from './defis.ts'
 import { runOwners } from './owners.ts'
 import { runBalance } from './play.ts'
 import { jobOptions, type WorkerJob } from './threads.ts'
 
 // One worker thread of `npm run balance`: plays one difficulty of the run,
-// the grid's or the owners', or one Défi, and posts what it played back.
+// the grid's or the owners', one Défi, or one difficulty and truck strategy
+// of the bakery's run, and posts what it played back.
 // What it throws ends the thread with an error the main thread reads.
 
 const job = workerData as WorkerJob
@@ -19,5 +21,7 @@ function play(job: WorkerJob): unknown {
       return runOwners(job)
     case 'grid':
       return runBalance(jobOptions(job)).difficulties[0]
+    case 'bakery':
+      return runBakery(job)
   }
 }

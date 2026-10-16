@@ -12,7 +12,7 @@ How the game is put together at the end of phase 1: the folders and who may impo
 | `src/ui/` | React screens, the Zustand store and the real-time loop | engine, finance and content |
 | `src/world/` | The living 2D world, drawn with PixiJS behind the panels; `src/App.tsx` mounts it | engine, finance, content and the UI store, to read only |
 | `tools/sim/` | The headless simulation behind `npm run sim` | engine and finance |
-| `tools/balance/` | The balance bot behind `npm run balance`, which plays scripted strategies and writes `docs/balance/phase-2.md` | engine, finance, content and `tools/sim/` |
+| `tools/balance/` | The balance bot behind `npm run balance`, which plays scripted strategies and writes `docs/balance/phase-2.md`, and with `--bakery` the bakery against its twins, `docs/balance/phase-4.md` | engine, finance, content and `tools/sim/` |
 | `tests/` | The 10-year invariant test | engine, finance and `tools/sim/` |
 
 Engine and finance code never imports React, React DOM, Zustand or anything from `src/ui/`, never touches the DOM and never reads the wall clock or `Math.random()`. Two checks hold the line:

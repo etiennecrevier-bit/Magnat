@@ -1,14 +1,16 @@
 import { Worker } from 'node:worker_threads'
 import type { DifficultyId } from '../../src/content/schema.ts'
 import type { EventPolicy } from '../sim/simulate.ts'
+import type { BakeryJob, BakeryRun } from './bakery.ts'
 import type { DefiRun } from './defis.ts'
 import type { OwnersRun } from './owners.ts'
 import type { BalanceOptions, DifficultyRun } from './play.ts'
 import type { Strategy } from './strategies.ts'
 
-// Plays each difficulty of a run, or each Défi, on its own worker thread
-// (worker.ts), a few side by side. Each job plays the same games in the
-// same order as runBalance(), runOwners() or runDefi() would, so the run is
+// Plays each difficulty of a run, each Défi, or each difficulty and truck
+// strategy of the bakery's run, on its own worker thread (worker.ts), a few
+// side by side. Each job plays the same games in the same order as
+// runBalance(), runOwners(), runDefi() or runBakery() would, so the run is
 // the same.
 
 /** Worker threads at once at most: the machine is shared. */
@@ -42,18 +44,30 @@ export interface DefisJob {
   readonly search: number
 }
 
-export type WorkerJob = GridJob | OwnersJob | DefisJob
+export type WorkerJob = GridJob | OwnersJob | DefisJob | BakeryJob
 
 /** What a worker posts back for `Job`. */
 export type JobRun<Job extends WorkerJob> = Job extends DefisJob
   ? DefiRun
   : Job extends OwnersJob
     ? OwnersRun
-    : DifficultyRun
+    : Job extends BakeryJob
+      ? BakeryRun
+      : DifficultyRun
 
-/** What `job` plays, for its error messages: a difficulty or a Défi. */
+/**
+ * What `job` plays, for its error messages: a difficulty, a Défi, or a
+ * difficulty and a truck strategy.
+ */
 export function jobLabel(job: WorkerJob): string {
-  return job.kind === 'defis' ? job.defi : job.difficulty
+  switch (job.kind) {
+    case 'defis':
+      return job.defi
+    case 'bakery':
+      return `${job.difficulty} ${job.strategy}`
+    default:
+      return job.difficulty
+  }
 }
 
 /** What `runBalance()` plays for `job`: its one difficulty. */

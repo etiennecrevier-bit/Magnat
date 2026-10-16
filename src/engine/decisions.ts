@@ -20,8 +20,9 @@ import type { Cents } from './money.ts'
 import type { BakeryPlan, Decisions, GameState } from './types.ts'
 
 // The player's decisions: how the truck runs, from its prices to the days it
-// opens, and the bakery that makes its croissants. A change waits in `pendingDecisions` until the next morning, so a
-// day is always played with the decisions it began with.
+// opens, and the bakery that makes its croissants. A change waits in
+// `pendingDecisions` until the next morning, so a day is always played with
+// the decisions it began with.
 
 // ISO 8601 weekdays run from 1 = Monday to 7 = Sunday; a calendar fact.
 const MONDAY = 1

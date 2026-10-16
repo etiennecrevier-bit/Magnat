@@ -205,8 +205,9 @@ function picking(
  * the month) and the weekday are among those listed; the owner's energy is
  * below `energyBelow`; the product of `productOnMenu` has a rule that
  * supplies some, the bake rule for croissants the bakery makes that day and
- * the restock rule otherwise (see `supplyRule`); the truck opens the next day, or stays closed, as
- * `openTomorrow` says (see `opensOn`); the event never came up, for
+ * the restock rule otherwise (see `supplyRule`); the truck opens the next
+ * day, or stays closed, as `openTomorrow` says (see `opensOn`); the event
+ * never came up, for
  * `oncePerGame`, came up fewer than `maxPerGame` times, or came up at least
  * `cooldownDays` days ago, follow-ups included; the history holds one of the
  * choices `chosen` lists, and none of those `notChosen` lists; and Encaisse
