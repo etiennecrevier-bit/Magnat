@@ -133,6 +133,28 @@ describe('playAll with a limit', () => {
     expect(controls[3]?.stop).not.toHaveBeenCalled()
   })
 
+  it('on a job that cannot start, stops the jobs running and starts none of those waiting', async () => {
+    const controls = jobs.map(() => controlled())
+    const { started, play: start } = play(controls)
+    const all = playAll(
+      jobs,
+      () => undefined,
+      (played) => {
+        const playing = start(played)
+        if (played === jobs[1]) throw new Error('No thread for moyen')
+        return playing
+      },
+      2,
+    )
+    await expect(all).rejects.toThrow('No thread for moyen')
+    controls[0]?.resolve(difficultyRun('facile'))
+    await new Promise<void>((done) => setTimeout(done, 0))
+    expect(started).toEqual([0, 1])
+    expect(controls[0]?.stop).toHaveBeenCalledOnce()
+    expect(controls[2]?.stop).not.toHaveBeenCalled()
+    expect(controls[3]?.stop).not.toHaveBeenCalled()
+  })
+
   it('shares the machine: 3 at once by default, and at least 1', async () => {
     expect(MAX_WORKERS).toBe(3)
     await expect(playAll(jobs, () => undefined, undefined, 0)).rejects.toThrow(

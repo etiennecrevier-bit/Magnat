@@ -126,9 +126,10 @@ export async function playAll<Job extends WorkerJob>(
       next += 1
       const job = jobs[index]
       if (job === undefined) return
-      const playing = play(job)
-      started.push(playing)
       try {
+        // Inside the try: a worker that cannot start fails the whole run too.
+        const playing = play(job)
+        started.push(playing)
         const played = await playing.run
         runs[index] = played
         onDone(played)
