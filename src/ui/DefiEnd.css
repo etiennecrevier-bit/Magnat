@@ -37,6 +37,12 @@
   font-weight: 600;
 }
 
+/* How the Défi compares with the simulated games. */
+.defi-end__percentile {
+  margin: 0 0 1rem;
+  font-weight: 600;
+}
+
 .defi-end__figures {
   margin: 0 0 1.25rem;
   padding: 0;
