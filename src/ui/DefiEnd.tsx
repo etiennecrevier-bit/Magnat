@@ -2,6 +2,7 @@ import { useEffect, useRef, type Ref } from 'react'
 import type { Defi } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
 import { DEFIS } from '../engine/day.ts'
+import { defiPercentileOf } from '../engine/percentiles.ts'
 import type { ChallengeState } from '../engine/types.ts'
 import { endFigures, failureLine, MEDAL_TITLES } from './defis.ts'
 import { gameStore, newChallenge, useGame } from './store.ts'
@@ -10,11 +11,18 @@ import './DefiEnd.css'
 import './medals.css'
 
 const TITLE_ID = 'defi-end-title'
+// French puts a no-break space (U+00A0) before a percent sign.
+const PERCENT = ' %'
 
 interface DefiEndViewProps {
   defi: Defi
   /** The Défi over, réussi or échoué. */
   challenge: ChallengeState
+  /**
+   * Where the Défi stands among the simulated games (see
+   * `defiPercentileOf`); null shows nothing.
+   */
+  percentile?: number | null
   onReplay: () => void
   onMenu: () => void
   /** The title, which takes the focus when the screen opens. */
@@ -22,12 +30,14 @@ interface DefiEndViewProps {
 }
 
 /**
- * The end of a Défi: réussi with its medal, or échoué with why, then the
- * key numbers, « Rejouer » and « Retour au menu ».
+ * The end of a Défi: réussi with its medal, or échoué with why, how it
+ * compares with the simulated games, rounded down, then the key numbers,
+ * « Rejouer » and « Retour au menu ».
  */
 export function DefiEndView({
   defi,
   challenge,
+  percentile = null,
   onReplay,
   onMenu,
   titleRef,
@@ -44,6 +54,11 @@ export function DefiEndView({
       ) : (
         <p className={`defi-end__medal defi-medal--${medal}`}>
           {MEDAL_TITLES[medal]}
+        </p>
+      )}
+      {percentile !== null && (
+        <p className="defi-end__percentile">
+          {`Mieux que ${Math.floor(percentile)}${PERCENT} des parties simulées`}
         </p>
       )}
       <ul className="defi-end__figures">
@@ -68,10 +83,11 @@ export function DefiEndView({
 }
 
 /**
- * The end of the Défi the app store plays, in a modal dialog with no way
- * out but its buttons: Escape does nothing, and if the browser closes the
- * dialog anyway, it opens again. « Rejouer » plays the same Défi again, for
- * the same business, on a new seed; `onMenu` goes back to the start screen.
+ * The end of the Défi the app store plays, with how it compares with the
+ * simulated games, in a modal dialog with no way out but its buttons:
+ * Escape does nothing, and if the browser closes the dialog anyway, it
+ * opens again. « Rejouer » plays the same Défi again, for the same
+ * business, on a new seed; `onMenu` goes back to the start screen.
  */
 export default function DefiEnd({ onMenu }: { onMenu: () => void }) {
   const challenge = useGame((state) => state.game.challenge)
@@ -89,6 +105,7 @@ export default function DefiEnd({ onMenu }: { onMenu: () => void }) {
   }, [])
 
   if (challenge === null) return null
+  const defi = defiById(DEFIS, challenge.id)
   return (
     <dialog
       ref={dialogRef}
@@ -102,8 +119,9 @@ export default function DefiEnd({ onMenu }: { onMenu: () => void }) {
       }}
     >
       <DefiEndView
-        defi={defiById(DEFIS, challenge.id)}
+        defi={defi}
         challenge={challenge}
+        percentile={defiPercentileOf(defi, challenge.progress)}
         onReplay={() =>
           startGame(newChallenge(window.location.search, challenge.id, profile))
         }
