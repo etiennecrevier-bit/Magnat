@@ -336,6 +336,16 @@ describe('drawCustomer', () => {
     },
   )
 
+  it('shows a regular by the newspaper under their arm, not a mug', () => {
+    expect(SEGMENT_ACCESSORY.habitue).toBe('newspaper')
+    const drawn = drawCustomer(LOOK, STYLE, LOOKS)
+    expect(labels(drawn)).not.toContain('mug')
+    // Behind the arms, so both hands show.
+    expect(drawn.getChildIndex(find(drawn, 'newspaper'))).toBeLessThan(
+      drawn.getChildIndex(find(drawn, 'arms')),
+    )
+  })
+
   it('keeps the same body for every segment', () => {
     const body = (segment: SegmentId) => {
       const drawn = drawCustomer({ ...LOOK, segment }, STYLE, LOOKS)
