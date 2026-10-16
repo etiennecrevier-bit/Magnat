@@ -34,6 +34,10 @@ export interface StrategySummary {
   readonly medianLostToStockouts: number
   readonly medianLostToPrices: number
   readonly medianLostToLine: number
+  /** Emergency loans taken, over every game (#159). */
+  readonly emergencyLoans: number
+  /** Rounds of shares sold, over every game (#159). */
+  readonly shareSales: number
 }
 
 /**
@@ -89,6 +93,11 @@ export function summarize(
     medianLostToStockouts: medianOf(({ lostToStockouts }) => lostToStockouts),
     medianLostToPrices: medianOf(({ lostToPrices }) => lostToPrices),
     medianLostToLine: medianOf(({ lostToLine }) => lostToLine),
+    emergencyLoans: games.reduce(
+      (total, { emergencyLoans }) => total + emergencyLoans,
+      0,
+    ),
+    shareSales: games.reduce((total, { shareSales }) => total + shareSales, 0),
   }
 }
 

@@ -2,7 +2,7 @@ import { DIFFICULTIES, ENERGY, FOOD_TRUCK } from '../../src/engine/day.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { MODIFIER_KINDS } from '../../src/engine/street.ts'
 import { formatDollars } from '../sim/cli.ts'
-import type { ContractPolicy } from '../sim/simulate.ts'
+import type { ContractPolicy, FinancingPolicy } from '../sim/simulate.ts'
 import { DAYS_PER_YEAR, type BalanceRun, type DifficultyRun } from './play.ts'
 import {
   CROISSANTS_PER_DAY,
@@ -53,6 +53,8 @@ const COLUMNS: readonly (readonly [string, 'left' | 'right'])[] = [
   ['Lost to stockouts', 'right'],
   ['Lost to prices', 'right'],
   ['Lost to the line', 'right'],
+  ['Emergency loans', 'right'],
+  ['Share sales', 'right'],
 ]
 
 /**
@@ -102,6 +104,12 @@ const CONTRACT_ANSWERS: Readonly<Record<ContractPolicy, string>> = {
   all: 'accepts every one, renewals included',
   none: 'refuses every one',
   first: "accepts the first grocer's, and its renewals, and refuses the others",
+}
+
+/** How the report words each way the financing's cards are answered. */
+const FINANCING_ANSWERS: Readonly<Record<FinancingPolicy, string>> = {
+  accept: "accepts them: the loan, and the investor's shares",
+  refuse: 'refuses them',
 }
 
 /**
@@ -184,7 +192,7 @@ function header(run: BalanceRun): string[] {
   const strategies = run.difficulties[0]?.strategies.length ?? 0
   const seeds = run.games === 1 ? 'seed 1' : `one of seeds 1 to ${run.games}`
   const events = run.events ?? 'none'
-  const option = `${events === 'none' ? '' : ` --events ${events}`}${run.contracts === undefined ? '' : ` --contracts ${run.contracts}`}`
+  const option = `${events === 'none' ? '' : ` --events ${events}`}${run.contracts === undefined ? '' : ` --contracts ${run.contracts}`}${run.financing === undefined ? '' : ` --financing ${run.financing}`}`
   return [
     '# Balance report: phase 2',
     '',
@@ -216,6 +224,12 @@ function header(run: BalanceRun): string[] {
             : `The grocers offer their contracts${events === 'none' ? ', their cards alone coming up,' : ''} and the player ${CONTRACT_ANSWERS[run.contracts]}.`,
           '',
         ]),
+    ...(run.financing === undefined
+      ? []
+      : [
+          `When the encaisse closes below zero, the engine brings Mme Prudhomme's emergency loan or Max Duvent's offer for shares (#159), whatever the other cards, and the player ${FINANCING_ANSWERS[run.financing]}.${run.financing === 'accept' ? ' The cash they bring in counts in the wealth at the end, less the fee, the interest and the dividends they cost: the last two columns show the strategies that needed them.' : ''}`,
+          '',
+        ]),
     '## Columns',
     '',
     '- **#**: the rank by median wealth at the end, highest first; ties go to the fewer median unpaid rents, then to the higher median net income, then to the strategy listed first in the grid.',
@@ -230,6 +244,7 @@ function header(run: BalanceRun): string[] {
     '- **Botched**: units botched at the counter and made again, median over the seeds.',
     '- **Spoilage**: units written off ÷ (units sold + units written off), every product together, median over the seeds.',
     '- **Lost to stockouts**, **Lost to prices**, **Lost to the line**: visits over the whole game that bought nothing because what the customer wanted had sold out, because a price was above what they pay, or because the line was too long for them; median over the seeds.',
+    "- **Emergency loans**, **Share sales**: the emergency loans taken from Mme Prudhomme and the rounds of shares sold to Max Duvent, summed over the strategy's games; 0 when their cards never came up or were refused.",
     '- For an even number of seeds, a median is the mean of the middle two, rounded half away from zero to the cent for money.',
     '',
   ]
@@ -322,6 +337,8 @@ function cells(summary: RankedStrategy): string[] {
     formatCount(summary.medianLostToStockouts),
     formatCount(summary.medianLostToPrices),
     formatCount(summary.medianLostToLine),
+    formatCount(summary.emergencyLoans),
+    formatCount(summary.shareSales),
   ]
 }
 

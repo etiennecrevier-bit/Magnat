@@ -16,6 +16,7 @@ import {
 import { GROCERS } from '../src/engine/contracts.ts'
 import type { DecisionChange } from '../src/engine/decisions.ts'
 import { resolveEvent } from '../src/engine/events.ts'
+import { FINANCING, isLoanOpen } from '../src/engine/financing.ts'
 import { inventoryValue } from '../src/engine/inventory.ts'
 import { add, cents, sub, type Cents } from '../src/engine/money.ts'
 import { STAFF_MEMO } from '../src/engine/staff.ts'
@@ -32,6 +33,8 @@ import { balanceSheet, cashFlowStatement } from '../src/finance/statements.ts'
 import {
   contractChooser,
   eventChooser,
+  financingChooser,
+  isFinancingCard,
   journalHash,
   simulate,
   startGame,
@@ -41,12 +44,14 @@ import {
 // The safety net of issue #18: ten years of play for each seed, each at one
 // of the three difficulties, with the books checked against the game at the
 // close of every day, and the same game played twice to prove the engine
-// deterministic. The event cards come up as in a real game, answered as
-// `npm run sim -- --events random --contracts all` answers them: the
-// grocers' offers and renewals all accepted (#156), so the contracts deliver
-// and the grocers pay through the ten years, and every other card at random.
-// One game also hires an employee at the truck and a deliverer on day 0
-// (#158), so their training and their wages post through the ten years.
+// deterministic. The event cards come up as in a real game: the grocers'
+// offers and renewals all accepted (#156), so the contracts deliver and the
+// grocers pay through the ten years, the emergency loan and the shares the
+// engine offers when the encaisse closes below zero accepted too (#159), and
+// every other card at random. One game also hires an employee at the truck
+// and a deliverer on day 0 (#158), so their training and their wages post
+// through the ten years, and it runs short of cash and borrows. The essai
+// card sells shares too, so the investor's dividends post in every game.
 // The whole file must stay under BUDGET_MS in CI; if it gets slower, make
 // the slow part faster rather than checking fewer days or seeds.
 
@@ -118,6 +123,11 @@ const MIN_MODIFIER_DAYS = 20
  * leave them untested: a year of two employees.
  */
 const MIN_WAGES = 100
+/**
+ * Fewer dividends than this over ten years of the games would leave them
+ * untested: a year of quarters.
+ */
+const MIN_DIVIDENDS = 4
 
 const started = performance.now()
 
@@ -134,6 +144,7 @@ interface Checked {
     receivables: string[]
     pacing: string[]
     street: string[]
+    financing: string[]
   }
   /** Events that came up, follow-ups included, and those drawn. */
   events: number
@@ -145,6 +156,12 @@ interface Checked {
   grocerPayments: number
   /** The employees' weekly wages paid. */
   wages: number
+  /** The financing's cards that came up (#159). */
+  financingCards: number
+  /** Emergency loans taken, rounds of shares sold and dividends paid. */
+  loans: number
+  shareSales: number
+  dividends: number
   /** Milliseconds each day took to play, then to check, in day order. */
   playMs: number[]
   checkMs: number[]
@@ -231,6 +248,7 @@ function check(
       receivables: [],
       pacing: [],
       street: [],
+      financing: [],
     },
     events: 0,
     drawn: 0,
@@ -240,6 +258,10 @@ function check(
     deliveries: 0,
     grocerPayments: 0,
     wages: 0,
+    financingCards: 0,
+    loans: 0,
+    shareSales: 0,
+    dividends: 0,
     playMs: [],
     checkMs: [],
     checkedHash: '',
@@ -254,7 +276,10 @@ function check(
   let state: GameState = startGame(seed, difficulty, changes)
   const tally = new Tally()
   tally.count(state.journal)
-  const choose = contractChooser('all', eventChooser('random', seed))
+  const choose = financingChooser(
+    'accept',
+    contractChooser('all', eventChooser('random', seed)),
+  )
   const grocerPayments = new Set(
     Object.values(GROCERS.grocers).map(({ name }) => `Encaissement · ${name}`),
   )
@@ -269,7 +294,16 @@ function check(
       checked.events += 1
       const card = EVENTS_IN_PLAY.events.find(({ id }) => id === pending.event)
       if (card === undefined) throw new Error(`Unknown event ${pending.event}`)
-      if (!pending.followUp) {
+      if (isFinancingCard(card)) {
+        // The engine brings it the morning after a close below zero,
+        // whatever the first day and the gap, as a draw that morning: the
+        // next card drawn keeps its gap from it.
+        checked.financingCards += 1
+        if (state.financing.belowZeroSince === null) {
+          fail('financing', `day ${day}: ${card.id} after a close above zero`)
+        }
+        lastDrawn = day
+      } else if (!pending.followUp) {
         checked.drawn += 1
         if (day < firstDay) {
           fail('pacing', `day ${day}: an event before day ${firstDay}`)
@@ -352,6 +386,26 @@ function check(
     checked.wages += today.filter(({ memo }) =>
       memo.startsWith(`${STAFF_MEMO.wage} · `),
     ).length
+    checked.dividends += today.filter(({ memo }) =>
+      memo.startsWith('Dividende · '),
+    ).length
+
+    // The financing within its limits: two rounds of shares at most, no
+    // loan taken while another is open, and one loan a game at Difficile.
+    const { loans, shareSales } = state.financing
+    if (shareSales.length > FINANCING.maxShareRounds) {
+      fail('financing', `day ${day}: ${shareSales.length} rounds of shares`)
+    }
+    const overlapping = loans.findIndex(
+      (loan, index) =>
+        index > 0 && isLoanOpen(loans[index - 1] ?? loan, loan.day),
+    )
+    if (overlapping !== -1) {
+      fail('financing', `day ${day}: loan ${overlapping + 1} while one is open`)
+    }
+    if (FINANCING.noSecondLoanAt.includes(difficulty) && loans.length > 1) {
+      fail('financing', `day ${day}: ${loans.length} loans at ${difficulty}`)
+    }
 
     // The street as the changes in effect left it: a closed truck sells
     // nothing, and a product that cannot be sold is not.
@@ -410,6 +464,8 @@ function check(
     checked.checkMs.push(performance.now() - dayPlayed)
   }
 
+  checked.loans = state.financing.loans.length
+  checked.shareSales = state.financing.shareSales.length
   checked.checkedHash = journalHash(state.journal)
   const replay = simulate(
     seed,
@@ -420,11 +476,15 @@ function check(
     EVENTS_IN_PLAY,
     DIFFICULTIES,
     'all',
+    'accept',
   )
   checked.replayHash = replay.journalHash
   checked.replayYears = replay.years
   return checked
 }
+
+/** Every game checked, for the tests over all of them at the end. */
+const CHECKED: Checked[] = []
 
 describe.each(GAMES)(
   `seed $seed at $difficulty over ${DAYS} days`,
@@ -434,6 +494,7 @@ describe.each(GAMES)(
     // workload; the test at the end of the file holds every game to the budget.
     beforeAll(() => {
       checked = check(seed, difficulty, changes)
+      CHECKED.push(checked)
     }, BUDGET_MS)
 
     it('checks the close of every day and every calendar month', () => {
@@ -479,7 +540,11 @@ describe.each(GAMES)(
       )
     })
 
-    it(`draws events from day ${EVENTS_IN_PLAY.pacing.firstDay} on, at least ${EVENTS_IN_PLAY.pacing.minDaysBetween} days apart, follow-ups and dated events aside`, () => {
+    it('keeps the financing within its limits, its cards only after a close below zero', () => {
+      expect(checked.failures.financing).toEqual([])
+    })
+
+    it(`draws events from day ${EVENTS_IN_PLAY.pacing.firstDay} on, at least ${EVENTS_IN_PLAY.pacing.minDaysBetween} days apart, follow-ups, dated events and the financing's aside`, () => {
       expect(checked.events).toBeGreaterThanOrEqual(MIN_EVENTS)
       expect(checked.events).toBeGreaterThan(checked.drawn)
       expect(checked.failures.pacing).toEqual([])
@@ -524,6 +589,17 @@ describe.each(GAMES)(
     })
   },
 )
+
+it('brings the financing, takes an emergency loan, sells shares and pays dividends over the games', () => {
+  expect(CHECKED).toHaveLength(GAMES.length)
+  const total = (
+    field: 'financingCards' | 'loans' | 'shareSales' | 'dividends',
+  ) => CHECKED.reduce((sum, checked) => sum + checked[field], 0)
+  expect(total('financingCards')).toBeGreaterThan(0)
+  expect(total('loans')).toBeGreaterThan(0)
+  expect(total('shareSales')).toBeGreaterThan(0)
+  expect(total('dividends')).toBeGreaterThanOrEqual(MIN_DIVIDENDS)
+})
 
 it(`checks every game within ${BUDGET_MS / 1000} s`, () => {
   const elapsed = Math.round(performance.now() - started)

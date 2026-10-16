@@ -14,6 +14,7 @@ import {
   simulate,
   type ContractPolicy,
   type EventPolicy,
+  type FinancingPolicy,
 } from '../sim/simulate.ts'
 import { STRATEGIES, strategyChanges, type Strategy } from './strategies.ts'
 
@@ -67,6 +68,10 @@ export interface GameResult {
   readonly lostToStockouts: number
   /** Visits that bought nothing because a price was above what they pay. */
   readonly lostToPrices: number
+  /** Emergency loans taken (#159). */
+  readonly emergencyLoans: number
+  /** Rounds of shares sold (#159). */
+  readonly shareSales: number
   /** The sha256 of the books, as `simulate` gives it. */
   readonly journalHash: string
   /** The days each kind of change to the street was in effect. */
@@ -95,6 +100,11 @@ export interface BalanceRun {
    * How the grocers' cards were answered; by default as the other cards.
    */
   readonly contracts?: ContractPolicy
+  /**
+   * How the financing's cards were answered; by default as the other
+   * cards.
+   */
+  readonly financing?: FinancingPolicy
   readonly difficulties: readonly DifficultyRun[]
 }
 
@@ -112,14 +122,20 @@ export interface BalanceOptions {
    * other cards.
    */
   readonly contracts?: ContractPolicy
+  /**
+   * How the financing's cards are answered (see `simulate`); by default as
+   * the other cards.
+   */
+  readonly financing?: FinancingPolicy
   /** Called after each difficulty is played. */
   readonly onProgress?: (run: DifficultyRun) => void
 }
 
 /**
  * Plays `strategy` from `seed` at `difficulty` for `days` days, from day 0,
- * answering the event cards by `events` and the grocers' by `contracts`, if
- * any (see `simulate`), and sums up the game. Throws what `simulate` throws.
+ * answering the event cards by `events`, the grocers' by `contracts` and the
+ * financing's by `financing`, if any (see `simulate`), and sums up the game.
+ * Throws what `simulate` throws.
  */
 export function playStrategy(
   strategy: Strategy,
@@ -128,6 +144,7 @@ export function playStrategy(
   days: number,
   events: EventPolicy = 'none',
   contracts: ContractPolicy | null = null,
+  financing: FinancingPolicy | null = null,
 ): GameResult {
   const result = simulate(
     seed,
@@ -138,6 +155,7 @@ export function playStrategy(
     EVENTS,
     DIFFICULTIES,
     contracts,
+    financing,
   )
   const { daySummaries, years } = result
   const lastYear = years.at(-1)
@@ -168,6 +186,8 @@ export function playStrategy(
     unitsSpoiled: totalUnits(daySummaries.map(({ spoiled }) => spoiled)),
     lostToStockouts: totalVisits(daySummaries, 'soldOut'),
     lostToPrices: totalVisits(daySummaries, 'tooExpensive'),
+    emergencyLoans: result.loans.length,
+    shareSales: result.shareSales.length,
     journalHash: result.journalHash,
     modifierDays: result.modifierDays,
   }
@@ -175,9 +195,9 @@ export function playStrategy(
 
 /**
  * Plays every strategy at every difficulty on seeds 1 to `games`, for
- * `years` years each, answering the event cards by `events` and the
- * grocers' by `contracts`, if any. Throws a RangeError unless both are
- * whole numbers from 1.
+ * `years` years each, answering the event cards by `events`, the grocers'
+ * by `contracts` and the financing's by `financing`, if any. Throws a
+ * RangeError unless both are whole numbers from 1.
  */
 export function runBalance({
   years,
@@ -186,6 +206,7 @@ export function runBalance({
   difficulties = difficultyIdSchema.options,
   events = 'none',
   contracts,
+  financing,
   onProgress,
 }: BalanceOptions): BalanceRun {
   for (const [name, value] of [
@@ -204,6 +225,7 @@ export function runBalance({
     games,
     events,
     ...(contracts === undefined ? {} : { contracts }),
+    ...(financing === undefined ? {} : { financing }),
     difficulties: difficulties.map((difficulty) => {
       const run: DifficultyRun = {
         difficulty,
@@ -217,6 +239,7 @@ export function runBalance({
               days,
               events,
               contracts ?? null,
+              financing ?? null,
             ),
           ),
         })),

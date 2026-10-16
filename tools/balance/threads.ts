@@ -1,6 +1,10 @@
 import { Worker } from 'node:worker_threads'
 import type { DifficultyId } from '../../src/content/schema.ts'
-import type { ContractPolicy, EventPolicy } from '../sim/simulate.ts'
+import type {
+  ContractPolicy,
+  EventPolicy,
+  FinancingPolicy,
+} from '../sim/simulate.ts'
 import type { BakeryJob, BakeryRun } from './bakery.ts'
 import type { DefiRun } from './defis.ts'
 import type { OwnersRun } from './owners.ts'
@@ -28,6 +32,8 @@ export interface GridJob {
   readonly events?: EventPolicy
   /** How the grocers' cards are answered; by default as the others. */
   readonly contracts?: ContractPolicy
+  /** How the financing's cards are answered; by default as the others. */
+  readonly financing?: FinancingPolicy
 }
 
 /** What one worker plays for `--percentiles`: one difficulty's owners. */
@@ -80,6 +86,7 @@ export function jobOptions({
   strategies,
   events,
   contracts,
+  financing,
 }: GridJob): BalanceOptions {
   return {
     years,
@@ -87,6 +94,7 @@ export function jobOptions({
     strategies,
     events,
     contracts,
+    financing,
     difficulties: [difficulty],
   }
 }

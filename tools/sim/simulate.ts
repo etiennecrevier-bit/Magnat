@@ -9,6 +9,7 @@ import {
   type GrocerId,
   type PercentileContent,
   type StreetModifierKind,
+  type TimedEventEffect,
 } from '../../src/content/schema.ts'
 import { createInitialState, tick, toCalendar } from '../../src/engine/clock.ts'
 import { GROCERS } from '../../src/engine/contracts.ts'
@@ -27,6 +28,7 @@ import {
   type DecisionChange,
 } from '../../src/engine/decisions.ts'
 import { NO_EVENTS, resolveEvent } from '../../src/engine/events.ts'
+import { FINANCING } from '../../src/engine/financing.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import type { Cents } from '../../src/engine/money.ts'
 import { defaultProfile } from '../../src/engine/profile.ts'
@@ -36,9 +38,11 @@ import { MODIFIER_KINDS } from '../../src/engine/street.ts'
 import type {
   Day,
   DaySummary,
+  EmergencyLoan,
   EventRecord,
   GameState,
   PerProduct,
+  ShareSale,
 } from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import {
@@ -140,10 +144,24 @@ export function contractChoices(card: EventCard): {
   accept: string
   refuse: string
 } {
-  const signs = (outcome: EventCard['choices'][number]['outcomes'][number]) =>
-    outcome.effects.some(({ kind }) => kind === 'contract')
-  const accept = card.choices.filter(({ outcomes }) => outcomes.every(signs))
-  const refuse = card.choices.filter(({ outcomes }) => !outcomes.some(signs))
+  return choicesOf(card, ['contract'], 'signs the contract')
+}
+
+/**
+ * The choices of `card` whose every outcome has an effect of one of
+ * `kinds`, and whose no outcome has one, as `accept` and `refuse`. Throws a
+ * RangeError, saying the accepting choice `does`, unless `card` has exactly
+ * one of each.
+ */
+function choicesOf(
+  card: EventCard,
+  kinds: readonly TimedEventEffect['kind'][],
+  does: string,
+): { accept: string; refuse: string } {
+  const takes = (outcome: EventCard['choices'][number]['outcomes'][number]) =>
+    outcome.effects.some(({ kind }) => kinds.includes(kind))
+  const accept = card.choices.filter(({ outcomes }) => outcomes.every(takes))
+  const refuse = card.choices.filter(({ outcomes }) => !outcomes.some(takes))
   const [accepted] = accept
   const [refused] = refuse
   if (
@@ -153,7 +171,7 @@ export function contractChoices(card: EventCard): {
     refused === undefined
   ) {
     throw new RangeError(
-      `${card.id} needs one choice that signs the contract and one that does not`,
+      `${card.id} needs one choice that ${does} and one that does not`,
     )
   }
   return { accept: accepted.id, refuse: refused.id }
@@ -196,6 +214,79 @@ export function grocerCards(content: EventContent): EventContent {
     ...content,
     events: content.events.filter((card) => grocerOf(card) !== null),
   }
+}
+
+/**
+ * How the headless player answers the cards the engine brings when the
+ * encaisse closes below zero (#159), whatever the event policy: accepts
+ * Mme Prudhomme's emergency loan and Max Duvent's shares (`accept`), or
+ * refuses them (`refuse`).
+ */
+export type FinancingPolicy = 'accept' | 'refuse'
+
+export const FINANCING_POLICIES: readonly FinancingPolicy[] = [
+  'accept',
+  'refuse',
+]
+
+/** Whether `card` is one of the financing's (see `FINANCING`). */
+export function isFinancingCard({ id }: EventCard): boolean {
+  return id === FINANCING.loanEvent || id === FINANCING.investorEvent
+}
+
+/**
+ * The choices of a financing card that accept, every outcome taking the
+ * loan or selling the shares, and that refuse, no outcome doing either.
+ * Throws a RangeError unless `card` has exactly one of each.
+ */
+export function financingChoices(card: EventCard): {
+  accept: string
+  refuse: string
+} {
+  return choicesOf(
+    card,
+    ['emergencyLoan', 'shareSale'],
+    'takes the loan or sells the shares',
+  )
+}
+
+/**
+ * Answers each financing card by `policy` (see `FinancingPolicy`) and every
+ * other card with `fallback`. Throws a RangeError on a card that is not a
+ * financing card when `fallback` is null.
+ */
+export function financingChooser(
+  policy: FinancingPolicy,
+  fallback: ((event: EventCard) => string) | null,
+): (event: EventCard) => string {
+  return (card) => {
+    if (!isFinancingCard(card)) {
+      if (fallback === null) {
+        throw new RangeError(`Only the financing's cards come up: ${card.id}`)
+      }
+      return fallback(card)
+    }
+    const { accept, refuse } = financingChoices(card)
+    return policy === 'accept' ? accept : refuse
+  }
+}
+
+/**
+ * `content` with the financing's cards of `from`, by default the shipped
+ * ones, after its own, unless it holds them already. No draw brings them,
+ * so the content's draws stay as they were.
+ */
+export function withFinancingCards(
+  content: EventContent,
+  from: EventContent = EVENTS,
+): EventContent {
+  const held = new Set(content.events.map(({ id }) => id))
+  const missing = from.events.filter(
+    (card) => isFinancingCard(card) && !held.has(card.id),
+  )
+  return missing.length === 0
+    ? content
+    : { ...content, events: [...content.events, ...missing] }
 }
 
 /**
@@ -258,8 +349,17 @@ export interface SimulationResult {
    * answered them like any other.
    */
   readonly contracts: ContractPolicy | null
+  /**
+   * How the financing's cards were answered; null when the event policy
+   * answered them like any other, or none came up.
+   */
+  readonly financing: FinancingPolicy | null
   /** Every event that came up and the choice made, oldest first. */
   readonly eventHistory: readonly EventRecord[]
+  /** Every emergency loan taken, oldest first. */
+  readonly loans: readonly EmergencyLoan[]
+  /** Every round of shares sold, oldest first. */
+  readonly shareSales: readonly ShareSale[]
   /** See `modifierDays`. */
   readonly modifierDays: Readonly<Record<StreetModifierKind, number>>
 }
@@ -274,7 +374,10 @@ export interface SimulationResult {
  * answers it for the game's seed. With a `contracts` policy, it answers the
  * grocers' cards instead (see `contractChooser`), and with `events` at
  * `none`, the grocers' cards of `eventContent` still come up, alone at its
- * pacing, unless `contracts` is `none` too. The game opens, and plays every
+ * pacing, unless `contracts` is `none` too. With a `financing` policy, the
+ * financing's cards of `eventContent` come up whatever the other policies,
+ * when the engine brings them, and it answers them (see
+ * `financingChooser`). The game opens, and plays every
  * day, with `difficulties`, by default the shipped ones. Throws a RangeError
  * unless `days` is a safe integer of at least 1, `seed` and `difficulty` are
  * ones `createInitialState` accepts and every change is one `applyDecision`
@@ -289,6 +392,7 @@ export function simulate(
   eventContent: EventContent = EVENTS,
   difficulties: DifficultyContent = DIFFICULTIES,
   contracts: ContractPolicy | null = null,
+  financing: FinancingPolicy | null = null,
 ): SimulationResult {
   if (!Number.isSafeInteger(days) || days < 1) {
     throw new RangeError(`Days to play must be a whole number from 1: ${days}`)
@@ -297,16 +401,20 @@ export function simulate(
   let state = startGame(seed, difficulty, changes, difficulties)
   const grocersOnly =
     events === 'none' && contracts !== null && contracts !== 'none'
-  const content = grocersOnly
+  const played = grocersOnly
     ? grocerCards(eventContent)
     : events === 'none'
       ? NO_EVENTS
       : eventContent
+  const content =
+    financing === null ? played : withFinancingCards(played, eventContent)
   const answer = events === 'none' ? null : eventChooser(events, seed)
-  const choose =
-    contracts === null || content === NO_EVENTS
+  const answered =
+    contracts === null || played === NO_EVENTS
       ? answer
       : contractChooser(contracts, answer)
+  const choose =
+    financing === null ? answered : financingChooser(financing, answered)
   const daySummaries: DaySummary[] = []
   const morningEnergy: number[] = []
   const unpaidRents: Day[] = []
@@ -330,7 +438,10 @@ export function simulate(
     owner: { morningEnergy, personalCash: state.personal.cash, unpaidRents },
     events,
     contracts,
+    financing,
     eventHistory: state.events.history,
+    loans: state.financing.loans,
+    shareSales: state.financing.shareSales,
     modifierDays: modifierDays(daySummaries),
   }
 }
@@ -366,8 +477,9 @@ export function startGame(
 }
 
 /**
- * `state` with the event waiting that morning, if `content` holds it,
- * answered by `choose`; `state` itself when none waits or `choose` is null.
+ * `state` with the event waiting that morning answered by `choose`; `state`
+ * itself when none waits or `choose` is null. Throws an Error when the
+ * event waiting is not one of `content`'s, which could not answer it.
  */
 export function answerEvent(
   state: GameState,
@@ -375,8 +487,13 @@ export function answerEvent(
   choose: ((event: EventCard) => string) | null,
 ): GameState {
   const { pending } = state.events
-  const card = content.events.find(({ id }) => id === pending?.event)
-  if (choose === null || card === undefined) return state
+  if (choose === null || pending === null) return state
+  const card = content.events.find(({ id }) => id === pending.event)
+  if (card === undefined) {
+    throw new Error(
+      `Day ${state.day}: the event ${pending.event} waits, but the content played does not hold it`,
+    )
+  }
   return resolveEvent(state, choose(card), content)
 }
 

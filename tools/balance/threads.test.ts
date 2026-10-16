@@ -182,7 +182,7 @@ describe('jobLabel', () => {
 })
 
 describe('jobOptions', () => {
-  it("is what runBalance plays for the job's one difficulty, its events and contracts policies included", () => {
+  it("is what runBalance plays for the job's one difficulty, its events, contracts and financing policies included", () => {
     expect(
       jobOptions({
         kind: 'grid',
@@ -192,6 +192,7 @@ describe('jobOptions', () => {
         strategies,
         events: 'random',
         contracts: 'first',
+        financing: 'refuse',
       }),
     ).toEqual({
       years: 2,
@@ -199,6 +200,7 @@ describe('jobOptions', () => {
       strategies,
       events: 'random',
       contracts: 'first',
+      financing: 'refuse',
       difficulties: ['moyen'],
     })
     expect(jobOptions(job('facile'))).toEqual({
@@ -207,6 +209,7 @@ describe('jobOptions', () => {
       strategies: undefined,
       events: undefined,
       contracts: undefined,
+      financing: undefined,
       difficulties: ['facile'],
     })
   })
@@ -268,6 +271,48 @@ describe('playInWorker', () => {
       expect(played.strategies[0]?.games[0]?.journalHash).not.toBe(
         without?.strategies[0]?.games[0]?.journalHash,
       )
+    } finally {
+      await stop()
+    }
+  }, 30_000)
+
+  it('plays the financing on its thread as runBalance plays it on this one', async () => {
+    // Difficile, cheap and open five days, paying the owner the most: the
+    // encaisse goes below zero within the year.
+    const broke: Strategy = {
+      ...BASE,
+      priceChange: -20,
+      daysOpen: 5,
+      ownerWeeklyPay: cents(100_000),
+    }
+    const options = {
+      years: 1,
+      games: 1,
+      strategies: [broke],
+      difficulties: ['difficile'] as const,
+    }
+    const { run, stop } = playInWorker({
+      kind: 'grid',
+      years: 1,
+      games: 1,
+      difficulty: 'difficile',
+      strategies: [broke],
+      financing: 'accept',
+    })
+    try {
+      const played = await run
+      expect(played).toEqual(
+        runBalance({ ...options, financing: 'accept' }).difficulties[0],
+      )
+      // The financing came through: the game borrowed, which a game that
+      // refuses does not.
+      expect(played.strategies[0]?.games[0]?.emergencyLoans).toBeGreaterThan(0)
+      const refused = runBalance({ ...options, financing: 'refuse' })
+        .difficulties[0]
+      expect(refused?.strategies[0]?.games[0]).toMatchObject({
+        emergencyLoans: 0,
+        shareSales: 0,
+      })
     } finally {
       await stop()
     }
