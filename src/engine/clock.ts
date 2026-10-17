@@ -11,6 +11,7 @@ import type {
   GrocerContent,
   PercentileContent,
   PersonalContent,
+  PlacesContent,
   StaffContent,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
@@ -50,6 +51,7 @@ import { FINANCING, financingOffer, noFinancing } from './financing.ts'
 import { PRODUCTS } from './inventory.ts'
 import { PERCENTILES } from './percentiles.ts'
 import { openingAccount } from './personal.ts'
+import { PLACES, loanAppointment, noTrips } from './places.ts'
 import { defaultProfile, validateProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
 import { STAFF } from './staff.ts'
@@ -70,8 +72,8 @@ export { toCalendar, type CalendarDate } from './calendar.ts'
  * owner at full energy, no event yet, nobody owing the business anything, a
  * first week to come, partial, from the cash the books open with (see
  * `openingWeek`), no Défi, no bakery, with the croissants bought, no
- * contract, nobody on staff, the owner at work, no financing, not ended and
- * nothing of « Le rêve » bought.
+ * contract, nobody on staff, the owner at work, no financing, not ended,
+ * nothing of « Le rêve » bought and no trip in town (see `noTrips`).
  * Throws a RangeError unless `seed` is an integer in [0, 2^32), if the
  * starting decisions break the content's limits, if `profile` breaks
  * `validateProfile()`, or if the difficulty leaves a negative Mise de fonds.
@@ -116,6 +118,7 @@ export function createInitialState(
     financing: noFinancing(),
     ended: null,
     dream: noDream(),
+    town: noTrips(),
   }
 }
 
@@ -197,12 +200,15 @@ export function startChallenge(
  * Plays business day `state.day` with `state.decisions` (see `playDay`, with
  * `bakery` as the bakery's content, `grocers` as the contracts', `staff` as
  * the employees', `financing`'s rules, which may end the game at the
- * close, and `dream` as « Le rêve »), then moves on to the next morning, where
- * the pending decisions, if any, take effect, after a night that gives the
- * owner some energy back (see `nightRest`), with the owner at work unless
- * something sends them away again, and where an event of `events` may
+ * close, `dream` as « Le rêve » and `places` as the town's), then moves on
+ * to the next morning, where the pending decisions, if any, take effect,
+ * after a night that gives the owner some energy back (see `nightRest`),
+ * with the owner at work and no trip unless something sends them away
+ * again, and where an event of `events` may
  * come up: the card of the emergency loan or the share sale when the day
- * closed below zero (see `financingOffer`, with `financing`'s rules), or
+ * closed below zero, or else the lender's appointment after a trip to her
+ * Caisse (see `financingOffer`, with `financing`'s rules, and
+ * `loanAppointment`), or
  * else Mme Prudhomme's letter before a bankruptcy, if one is due (see
  * `bankruptcyNotice`), or else the draw (see `drawEvent`, which reads the
  * player's standing against `percentiles`). By default no event ever does:
@@ -232,6 +238,7 @@ export function tick(
   staff: StaffContent = STAFF,
   financing: FinancingContent = FINANCING,
   dream: DreamContent = DREAM,
+  places: PlacesContent = PLACES,
 ): GameState {
   const played = playDay(
     state,
@@ -246,6 +253,7 @@ export function tick(
     staff,
     financing,
     dream,
+    places,
   )
   const morning: GameState = {
     ...played,
@@ -254,13 +262,20 @@ export function tick(
     pendingDecisions: null,
     energy: nightRest(played.energy, energy),
     ownerAway: false,
+    town: { ...played.town, trip: null },
   }
   if (morning.ended !== null) return morning
   const { challenge } = morning
   if (challenge === null) {
     return drawEvent(
       bankruptcyNotice(
-        financingOffer(morning, events, financing),
+        financingOffer(
+          morning,
+          events,
+          financing,
+          loanAppointment(played, places),
+          content,
+        ),
         events,
         financing,
       ),

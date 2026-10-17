@@ -1,0 +1,75 @@
+/* The card itself is the shared .panel (panel.css). Text colours keep at
+   least 4.5:1 against its cream #fff7e8. */
+.trip {
+  --panel-width: 52rem;
+}
+
+/* The places side by side, as long as they fit. */
+.trip__places {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trip__place {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem 0.75rem;
+  border: 1px solid #c9b48f;
+  border-radius: 8px;
+}
+
+.trip__place h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.trip__place p {
+  margin: 0;
+}
+
+/* Today's trip stands out with a thicker border, and a word says so. */
+.trip__place--chosen {
+  border: 2px solid #2b2622;
+}
+
+.trip__status {
+  color: #5c5048;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.trip__gives {
+  font-weight: 600;
+}
+
+.trip__time {
+  font-variant-numeric: tabular-nums;
+}
+
+.trip__closed {
+  color: #a61b1b;
+  font-weight: 600;
+}
+
+.trip__refusal {
+  color: #5c5048;
+  font-size: 0.9375rem;
+}
+
+.trip__place .button {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+}
+
+.trip .button:disabled {
+  border-color: #c9b48f;
+  background: transparent;
+  color: #7b6f63;
+  cursor: not-allowed;
+}

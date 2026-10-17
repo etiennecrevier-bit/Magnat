@@ -52,6 +52,7 @@ import { cents } from './money.ts'
 import { netWorth, netWorthChange } from './netWorth.ts'
 import { PERCENTILES } from './percentiles.ts'
 import { LABELS } from './personal.ts'
+import { goTo, noTrips, wentTo } from './places.ts'
 import { PROFILE_CONTENT } from './profile.ts'
 import { SAVE_VERSION, deserialize, serialize } from './save.ts'
 import { STAFF } from './staff.ts'
@@ -286,8 +287,9 @@ function pocketCard(label: string, amount: number, firstDay = 1): EventContent {
 // energy, « Cadeau d'essai » in their pocket, a headline, and the street
 // changed: fewer walk-ins to day 15, more chic ones to day 3, less chocolat
 // to day 5 and no café to day 2, with what customers will pay raised on day
-// 2 alone and the truck closed on day 3, both queued, a contract signed with
-// Épicerie Chez Normand and Dépanneur 24/24 away to day 30.
+// 2 alone and the truck closed on day 3, both queued, as is a trip to the
+// fournil on day 3, a contract signed with Épicerie Chez Normand and
+// Dépanneur 24/24 away to day 30.
 const WAITING = withEvents(createInitialState(SEED))
 const CHOSEN = resolveEvent(WAITING, 'toutEssayer', ESSAI)
 const CHOSEN_SAVE = serialize(CHOSEN)
@@ -331,10 +333,28 @@ function withoutWeek(save: Json): void {
 }
 
 /**
+ * Takes the trips in town out of `save`, as version 18 wrote it: the save
+ * of a game with no trip that day and no discount waiting.
+ */
+function withoutTown(save: Json): void {
+  expect(save.town).toEqual(noTrips())
+  delete save.town
+}
+
+/** `state`, with no trip, saved as version 18, before the trips in town. */
+function v18(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutTown(save)
+  return JSON.stringify({ ...save, saveVersion: 18 })
+}
+
+/**
  * Takes « Le rêve » out of `save`, as version 17 wrote it: the save of a
- * game that never bought a rung nor became « Magnat ».
+ * game that never bought a rung nor became « Magnat », nor made a trip,
+ * which came later.
  */
 function withoutDream(save: Json): void {
+  withoutTown(save)
   expect(save.dream).toEqual(noDream())
   delete save.dream
 }
@@ -559,8 +579,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(18)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 18 })
+    expect(SAVE_VERSION).toBe(19)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 19 })
   })
 
   it.each<Profile>([
@@ -708,6 +728,7 @@ describe('serialize and deserialize', () => {
       [2, 'willingness'],
       [3, 'collectReceivable'],
       [3, 'closed'],
+      [3, 'trip'],
       [4, 'charge'],
     ])
     expect(
@@ -1103,7 +1124,8 @@ describe('deserialize rejects', () => {
     0,
     1,
     6,
-    19,
+    20,
+    '19',
     '18',
     '17',
     '16',
@@ -1142,6 +1164,7 @@ describe('deserialize rejects', () => {
       ['the last week', 'lastWeek.bonus', 'lastWeek'],
       ['a day of the last week', 'lastWeek.days.0.tip', 'lastWeek.days[0]'],
       ['a week of the history', 'weekHistory.0.bonus', 'weekHistory[0]'],
+      ['the town', 'town.bonus', 'town'],
       [
         'a personal movement',
         'personal.movements.0.note',
@@ -1197,6 +1220,9 @@ describe('deserialize rejects', () => {
     'lastWeek.days.0.cashReceived',
     'weekHistory',
     'weekHistory.0.netIncome',
+    'town',
+    'town.trip',
+    'town.discount',
   ])('a save missing %s', (path) => {
     const at = path.replace(/\.(\d+)/g, '[$1]')
     expectInvalid(without(path), [`→ at ${at}`])
@@ -4381,6 +4407,12 @@ describe('the end of a game', () => {
   const ENDED_SAVE = serialize(ENDED)
   const END = { reason: 'bankruptcy', day: 213 } as const
 
+  it('rejects a trip on the morning after the close that ended the game', () => {
+    expectInvalid(withValue('town.trip', 'fournil', ENDED_SAVE), [
+      'the game ended on day 213, yet trip is fournil',
+    ])
+  })
+
   /** The load of `text` fails, naming `reason`. */
   function rejects(text: string, reason: string, rules = FINANCING): void {
     expect(() =>
@@ -4557,6 +4589,17 @@ describe('the net worth of each week', () => {
     }
     // Nothing came up on the Monday morning, so nothing moved since.
     expect(FORTNIGHT.weekHistory[LAST]?.netWorth).toBe(netWorth(FORTNIGHT))
+  })
+
+  it('load a version 18 game with no trip in town', () => {
+    for (const state of [
+      createInitialState(SEED),
+      THURSDAY,
+      SUNDAY_CLOSE,
+      DAY_400,
+    ]) {
+      expect(deserialize(v18(state))).toStrictEqual(state)
+    }
   })
 
   it('load a version 17 game with nothing of « Le rêve »', () => {
@@ -4898,5 +4941,73 @@ describe('« Le rêve »', () => {
       save.dream = { bought: [], magnatOn: defi.day }
     }, serialize(defi))
     expectInvalid(text, [`the Défi ${defi.challenge?.id} has a dream`])
+  })
+})
+
+describe('the trips in town', () => {
+  // FORTNIGHT is the morning of Monday, day 14, before it is played.
+  const MILL = goTo(FORTNIGHT, 'meunerie')
+  const DISCOUNT = tick(MILL)
+  const OFFICE = wentTo(FORTNIGHT, 'bureauPermis')
+
+  it('give back the trip of the day, at its morning and its close, and a discount waiting', () => {
+    expect(reloaded(MILL)).toStrictEqual(MILL)
+    expect(reloaded(playDay(MILL))).toStrictEqual(playDay(MILL))
+    expect(DISCOUNT.town).toEqual({ trip: null, discount: 0.05 })
+    expect(reloaded(DISCOUNT)).toStrictEqual(DISCOUNT)
+    expect(OFFICE.ownerAway).toBe(true)
+    expect(reloaded(OFFICE)).toStrictEqual(OFFICE)
+    expect(reloaded(playDay(OFFICE))).toStrictEqual(playDay(OFFICE))
+  })
+
+  it('load a version 18 game, then take a trip, play on and save again', () => {
+    const loaded = deserialize(v18(FORTNIGHT))
+    expect(loaded.town).toEqual(noTrips())
+    const after = played(3, goTo(loaded, 'meunerie'))
+    expect(reloaded(after)).toStrictEqual(after)
+    expect(serialize(after)).toBe(serialize(played(3, MILL)))
+  })
+
+  it.each([
+    ['town.trip', 'banque'],
+    ['town.trip', 7],
+    ['town.discount', -0.05],
+    ['town.discount', 1],
+    ['town.discount', '0.05'],
+    ['town', null],
+  ])('rejects %s of %j', (path, value) => {
+    expectInvalid(withValue(path, value), [`→ at ${path}`])
+  })
+
+  it('rejects a discount no place gives', () => {
+    expectInvalid(withValue('town.discount', 0.07, serialize(DISCOUNT)), [
+      "town.discount is 0.07, no place's discount",
+    ])
+  })
+
+  it('rejects a trip that takes the whole day with the owner in', () => {
+    expectInvalid(withValue('ownerAway', false, serialize(OFFICE)), [
+      'the trip to bureauPermis takes the whole day, yet the owner is in',
+    ])
+  })
+
+  it('give back the trip a card booked in a Défi, and reject a discount there', () => {
+    const defi = startChallenge('payeDans60Jours', SEED, FOOD_TRUCK, DEFIS)
+    const moved = resolveEvent(
+      {
+        ...defi,
+        events: {
+          ...defi.events,
+          pending: { event: 'conesOrange', followUp: false },
+        },
+      },
+      'changerDeCoin',
+    )
+    const filing = playDay(tick(moved))
+    expect(filing.town.trip).toBe('bureauPermis')
+    expect(reloaded(filing)).toStrictEqual(filing)
+    expectInvalid(withValue('town.discount', 0.05, serialize(defi)), [
+      `the Défi ${defi.challenge?.id} has a discount waiting`,
+    ])
   })
 })

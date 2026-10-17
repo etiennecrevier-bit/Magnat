@@ -15,6 +15,15 @@ import type { GameState } from './types.ts'
 /** A calendar fact, not a tunable. */
 export const SECONDS_PER_MINUTE = 60
 
+/**
+ * When a server is away from the counter, in seconds of the day: from
+ * `from`, included, to `to`, excluded.
+ */
+export interface Away {
+  readonly from: number
+  readonly to: number
+}
+
 /** Someone serving at the counter. */
 export interface Server {
   /**
@@ -27,6 +36,8 @@ export interface Server {
    * never tires.
    */
   readonly owner: boolean
+  /** When they leave the counter for a while (#164); never when absent. */
+  readonly away?: Away
 }
 
 // Speed 1 is the unit the content's service times are written in, not a
@@ -36,15 +47,18 @@ const AVATAR: Server = { speed: 1, owner: true }
 /**
  * Who serves at the counter on business day `state.day`, with `state.staff`
  * on staff that day: first the owner, unless away all day (see `crewOf`), at
- * speed 1 when rested. Tired, they take `serviceTimeIncrease` longer (see
- * `effectsOf` in energy.ts), so their speed is 1 ÷ (1 + `serviceTimeIncrease`),
- * by their energy that morning, which holds for the whole day. Then each
- * employee at the truck, at `staff.truckSpeed`. Empty when nobody serves.
+ * speed 1 when rested, and `away` from the counter for that window of the
+ * day, if any, such as a trip's. Tired, they take `serviceTimeIncrease`
+ * longer (see `effectsOf` in energy.ts), so their speed is 1 ÷ (1 +
+ * `serviceTimeIncrease`), by their energy that morning, which holds for the
+ * whole day. Then each employee at the truck, at `staff.truckSpeed`. Empty
+ * when nobody serves.
  */
 export function servers(
   state: GameState,
   energy: EnergyContent,
   staff: StaffContent = STAFF,
+  away: Away | null = null,
 ): readonly Server[] {
   const crew = crewOf(state.staff, state.ownerAway)
   const employees = Array.from({ length: crew.atTruck }, (): Server => ({
@@ -53,8 +67,9 @@ export function servers(
   }))
   if (!crew.ownerServes) return employees
   const { serviceTimeIncrease } = effectsOf(state.energy, energy)
+  const speed = AVATAR.speed / (1 + serviceTimeIncrease)
   return [
-    { speed: AVATAR.speed / (1 + serviceTimeIncrease), owner: true },
+    away === null ? { speed, owner: true } : { speed, owner: true, away },
     ...employees,
   ]
 }
@@ -86,10 +101,13 @@ export interface Line {
   ahead: (second: number) => Ahead
   /**
    * Puts a customer arriving at `second` and ordering `items` units in line.
-   * Returns the second they reach a server and that server: the one free
-   * first, the first of them on a tie.
+   * Returns the second they reach a server and that server: the one who
+   * can start serving them first, at their counter by then; on a tie, the
+   * one free since earliest, then the first of them.
    */
   join: (second: number, items: number) => Joined
+  /** Whether someone is at the counter at `second`: not every server away. */
+  isOpen: (second: number) => boolean
 }
 
 /** When a customer who joined the line reaches a server, and which. */
@@ -101,17 +119,31 @@ export interface Joined {
 /**
  * Opens an empty line served by `servers`, at the times of `service`. Each
  * customer takes `(baseSeconds + perItemSeconds × items) ÷ speed` seconds of
- * the server they reach. Customers must come in the order they arrive: the
- * seconds passed to `ahead()` and `join()` never go down, so those who join
- * reach a server in the order they joined. Throws a RangeError if there is
- * no server, if a speed is not a finite number above 0, or if a second goes
- * down.
+ * the server they reach. A server starts no one while `away`: a customer
+ * who would reach them then waits until they are back, unless another
+ * server can start them sooner. One they started before leaving they serve
+ * in full, then leave; they come back at the same second. Customers must
+ * come in the order they arrive: the seconds passed to `ahead()`, `join()`
+ * and `isOpen()` never go down, so those who join reach a server in the
+ * order they joined. Throws a RangeError if there is no server, if a speed
+ * is not a finite number above 0, if an absence ends before it starts, or
+ * if a second goes down.
  */
 export function openLine(servers: readonly Server[], service: Service): Line {
   if (servers.length === 0) throw new RangeError('No one serves the line')
-  for (const { speed } of servers) {
+  for (const { speed, away } of servers) {
     if (!Number.isFinite(speed) || speed <= 0) {
       throw new RangeError(`Invalid server speed: ${speed}`)
+    }
+    if (
+      away !== undefined &&
+      !(
+        Number.isFinite(away.from) &&
+        Number.isFinite(away.to) &&
+        away.from <= away.to
+      )
+    ) {
+      throw new RangeError(`Invalid absence: ${away.from} to ${away.to}`)
     }
   }
   /** The second each server is next free. */
@@ -129,10 +161,34 @@ export function openLine(servers: readonly Server[], service: Service): Line {
     last = second
     while (head < starts.length && (starts[head] ?? 0) <= second) head += 1
   }
-  const firstFree = () => {
+  /**
+   * The second server `index` can start a customer who arrives at
+   * `second`: once free, or once back if away by then.
+   */
+  const startOf = (index: number, second: number) => {
+    const free = Math.max(second, freeAt[index] ?? 0)
+    const away = servers[index]?.away
+    return away !== undefined && away.from <= free && free < away.to
+      ? away.to
+      : free
+  }
+  /**
+   * The server who can start a customer arriving at `second` first: on a
+   * tie, the one free since earliest, then the first of them. With nobody
+   * away, that is the one free first, the first of them on a tie.
+   */
+  const firstFree = (second: number) => {
     let first = 0
+    let earliest = startOf(0, second)
     for (let index = 1; index < freeAt.length; index += 1) {
-      if ((freeAt[index] ?? 0) < (freeAt[first] ?? 0)) first = index
+      const start = startOf(index, second)
+      if (
+        start < earliest ||
+        (start === earliest && (freeAt[index] ?? 0) < (freeAt[first] ?? 0))
+      ) {
+        first = index
+        earliest = start
+      }
     }
     return first
   }
@@ -141,20 +197,27 @@ export function openLine(servers: readonly Server[], service: Service): Line {
     ahead: (second) => {
       at(second)
       return {
-        wait: Math.max(0, (freeAt[firstFree()] ?? 0) - second),
+        wait: startOf(firstFree(second), second) - second,
         waiting: starts.length - head,
       }
     },
     join: (second, items) => {
       at(second)
-      const server = firstFree()
-      const start = Math.max(second, freeAt[server] ?? 0)
+      const server = firstFree(second)
+      const start = startOf(server, second)
       const reached = servers[server] ?? AVATAR
       freeAt[server] =
         start +
         (service.baseSeconds + service.perItemSeconds * items) / reached.speed
       starts.push(start)
       return { start, server: reached }
+    },
+    isOpen: (second) => {
+      at(second)
+      return servers.some(
+        ({ away }) =>
+          away === undefined || second < away.from || second >= away.to,
+      )
     },
   }
 }

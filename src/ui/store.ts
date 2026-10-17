@@ -31,7 +31,8 @@ export const NORMAL_SPEED = 1
 
 /**
  * The panels: « Gérer le camion », « Qui fait quoi », « Vos finances », «
- * Le rêve », the Défi's and « Réglages », which the top bar opens, the
+ * Le rêve », « Aller à… », the Défi's and « Réglages », which the top bar
+ * opens, the
  * event card, which opens on its own when an event comes up, the « Bilan »
  * of the week or the month, which opens on its own on the morning it comes
  * or from the card that slides in, « Magnat », which opens on its own the
@@ -45,6 +46,7 @@ export type Panel =
   | 'staff'
   | 'finances'
   | 'dream'
+  | 'trip'
   | 'defi'
   | 'settings'
   | 'event'
@@ -193,7 +195,8 @@ export interface GameStoreState {
   /**
    * Hands the player's change to the engine's `applyDecision()`, which
    * leaves it waiting for the next morning, or buys a rung of « Le rêve »
-   * that very morning. Throws its RangeError if the engine refuses it.
+   * or sends the owner to a place in town that very morning. Throws its
+   * RangeError if the engine refuses it.
    */
   decide: (change: DecisionChange) => void
   /**

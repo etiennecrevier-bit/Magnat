@@ -19,6 +19,7 @@ import {
   type FoodTruckContent,
   type GrocerContent,
   type PersonalContent,
+  type PlacesContent,
   type ProductId,
   type StaffContent,
 } from '../content/schema.ts'
@@ -80,6 +81,7 @@ import { marketingCrowd, rememberSpend } from './marketing.ts'
 import { add, cents, mulInt, mulRatio, sub, type Cents } from './money.ts'
 import { netWorth } from './netWorth.ts'
 import { inDebt, livePersonalDay } from './personal.ts'
+import { PLACES, awayFromCounter, discountAtClose } from './places.ts'
 import { credit, debit, depreciate, pay, post } from './posting.ts'
 import { servers } from './service.ts'
 import { STAFF, crewOf, payWages, staffMorning } from './staff.ts'
@@ -286,8 +288,12 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * line the rungs owned leave (see `dreamService`),
  * where `servers()` serve them from the stock on hand, none of a product that
  * cannot be sold, the owner slower and botching units the more tired they are
- * that morning (see `effectsOf`), what the sales cost in packaging and card
- * fees, the fuel and the day's marketing budget. On a day it is closed, nobody
+ * that morning (see `effectsOf`), and away from the counter while the day's
+ * trip in `places` lasts (see `awayFromCounter`), when those who come with
+ * nobody at the truck find it closed, what the sales cost in packaging and
+ * card fees, the fuel and the day's marketing budget. The restock takes the
+ * discount a trip to the mill left off each unit's cost, which its first
+ * restock that buys anything uses up (see `discountAtClose`). On a day it is closed, nobody
  * comes, nothing is bought and nothing is spent on marketing, so the generator
  * does not move. On payday, open or closed, the owner's weekly pay, then each
  * employee's (see `payWages`). Every day: the
@@ -298,7 +304,8 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * as what tires them and a closed day giving the rungs' energy back on top
  * (see `dreamEnergy`): only the customers they served count, and a day of baking
  * takes `bakingEnergyCost` more and each delivery `deliveryEnergyCost` when
- * they do it, while a day away holds it (see `energyAtClose`). Returns a new
+ * they do it, and the day's trip `places.energyCost`, while a day away
+ * takes only the trip's (see `energyAtClose`). Returns a new
  * state on the same day with the books, the bakery, the staff, the contracts,
  * the stock, the generator, the marketing history, `lastDay`, with the changes
  * to the street in effect that day, the deliveries and those missed, the
@@ -307,7 +314,8 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * `closingFinancing`), the game ended if that close ends it, by
  * `financing`'s rules (see `endAtClose`), the receivables brought up to the
  * close, `dream.magnatOn` set at the first close whose net worth reaches the
- * last title, outside a Défi (see `crowned`), the day added to the week under
+ * last title, outside a Défi (see `crowned`), the discount waiting for the
+ * next restock (see `discountAtClose`), the day added to the week under
  * way, summed up on a Sunday (see
  * `recordDay`), and, in a Défi of `defis`, the day added to its progress,
  * which may end it (see `recordChallengeDay`), with the
@@ -327,6 +335,7 @@ export function playDay(
   staff: StaffContent = STAFF,
   financing: FinancingContent = FINANCING,
   dream: DreamContent = DREAM,
+  places: PlacesContent = PLACES,
 ): GameState {
   const { pending } = morning.events
   if (pending !== null) {
@@ -346,7 +355,7 @@ export function playDay(
       `Day ${morning.day} cannot be played: the Défi ${challenge.id} is over`,
     )
   }
-  const started = startOfDay(morning, content, grocers)
+  const started = startOfDay(morning, content, grocers, places)
   const { day, decisions } = started
   const { dayOfMonth, weekday } = toCalendar(day)
   const { modifiers } = started.events
@@ -408,6 +417,8 @@ export function playDay(
   let revenue = ZERO
   let marketingSpent = ZERO
   let baked = delivered.baked
+  const { trip, discount } = state.town
+  let discounted = false
 
   if (open) {
     const restocked = restock(
@@ -416,7 +427,9 @@ export function playDay(
       decisions.restock,
       content,
       making ? { ...street.unavailable, [BAKED]: true } : street.unavailable,
+      discount,
     )
+    discounted = restocked.units > 0
     journal = post(journal, day, MEMO.purchases, [
       debit(INVENTORY, restocked.cost),
       credit(CASH, restocked.cost),
@@ -448,7 +461,12 @@ export function playDay(
       ),
       {
         service: dreamService(content.service, bonuses),
-        servers: servers(state, energy, staff),
+        servers: servers(
+          state,
+          energy,
+          staff,
+          awayFromCounter(state, places, dream),
+        ),
         botchedShare: effectsOf(state.energy, energy).botchedShare,
       },
       marketingCrowd(state.marketingHistory, content.marketing),
@@ -527,6 +545,7 @@ export function playDay(
         crew.delivers === 'owner'
           ? delivered.deliveries.length * grocers.deliveryEnergyCost
           : 0,
+      tripCost: trip === null ? 0 : places.energyCost,
     },
     dreamEnergy(energy, bonuses),
   )
@@ -574,6 +593,10 @@ export function playDay(
       day,
       balance(journal, CASH, { toDay: day }),
     ),
+    town: {
+      trip,
+      discount: discountAtClose(trip, discount, discounted, places),
+    },
   }
   const magnat =
     challenge === null && closing.dream.magnatOn === null
@@ -693,8 +716,10 @@ function closed(rngState: number): Served {
 }
 
 /**
- * Buys each product its restock rule calls for, at today's unit cost, as a
- * new lot after the others, but none of a product that is `unavailable`.
+ * Buys each product its restock rule calls for, at today's unit cost less
+ * `discount` of it, the discount rounded to the cent, as a new lot after the
+ * others, but
+ * none of a product that is `unavailable`. Also returns the units bought.
  */
 function restock(
   lots: readonly Lot[],
@@ -702,18 +727,22 @@ function restock(
   rules: Decisions['restock'],
   content: FoodTruckContent,
   unavailable: Readonly<Record<ProductId, boolean>>,
-): { lots: readonly Lot[]; cost: Cents } {
+  discount: number,
+): { lots: readonly Lot[]; cost: Cents; units: number } {
   const bought: Lot[] = []
   let cost = ZERO
+  let units = 0
   for (const product of PRODUCTS) {
     if (unavailable[product]) continue
     const quantity = orderSize(rules[product], onHand(lots, product))
     if (quantity === 0) continue
-    const unitCost = content.products[product].unitCostCents
+    const listed = content.products[product].unitCostCents
+    const unitCost = sub(listed, mulRatio(listed, discount))
     bought.push({ product, quantity, unitCost, boughtOnDay: day })
     cost = add(cost, mulInt(unitCost, quantity))
+    units += quantity
   }
-  return { lots: [...lots, ...bought], cost }
+  return { lots: [...lots, ...bought], cost, units }
 }
 
 interface Sales {

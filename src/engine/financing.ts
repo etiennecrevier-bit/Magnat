@@ -22,7 +22,7 @@ import {
   toCalendar,
 } from './calendar.ts'
 import { BAKERY } from './bakery.ts'
-import { DIFFICULTIES } from './day.ts'
+import { DIFFICULTIES, FOOD_TRUCK } from './day.ts'
 import { truckReplacedOn } from './dream.ts'
 import { monthlyFixedCosts } from './fixedCosts.ts'
 import { add, cents, mulRatio, sub, type Cents } from './money.ts'
@@ -94,33 +94,126 @@ export function noFinancing(): FinancingState {
   }
 }
 
-type LoanEffect = Extract<EventEffect, { kind: 'emergencyLoan' }>
+/** The terms of an emergency loan, as a card's effect gives them. */
+export type LoanEffect = Extract<EventEffect, { kind: 'emergencyLoan' }>
 type ShareEffect = Extract<EventEffect, { kind: 'shareSale' }>
 
 /**
  * The morning of `state.day` with the card the financing brings waiting,
- * as if drawn that morning; `state` itself when it brings none. Only after
- * a close below zero (see `belowZeroSince`), while no event waits nor was
- * chosen that morning, and only cards `events` holds:
- * - The lender of `rules.loanEvent` comes on the first such morning of a
- *   game year (see `gameYearOf`), which becomes `lastLoanRequestDay`. She
- *   offers her loan if she may (see `mayLend`); otherwise the investor of
- *   `investorEvent` comes in her place, while rounds are left (see
- *   `maxShareRounds`).
- * - Otherwise the investor comes `investorDaysAfterLoan` days after the
- *   last emergency loan, while rounds are left.
+ * as if drawn that morning; `state` itself when it brings none. While no
+ * event waits nor was chosen that morning, and only cards `events` holds:
+ * - After a close below zero (see `belowZeroSince`), the lender of
+ *   `rules.loanEvent` comes on the first such morning of a game year (see
+ *   `gameYearOf`), which becomes `lastLoanRequestDay`. She offers her loan
+ *   if she may (see `mayLend`); otherwise the investor of `investorEvent`
+ *   comes in her place, while rounds are left (see `maxShareRounds`).
+ * - Otherwise, after a close below zero, the investor comes
+ *   `investorDaysAfterLoan` days after the last emergency loan, while
+ *   rounds are left.
+ * - Otherwise, the morning after a trip to her Caisse, when `appointment`
+ *   says so (#164), she brings `appointmentEvent` if she would lend that
+ *   morning, on its card's terms (see `wouldLend`, with `content`); that
+ *   morning becomes `lastLoanRequestDay` too.
  * Returns a new state; never mutates `state`.
  */
 export function financingOffer(
   state: GameState,
   events: EventContent,
   rules: FinancingContent = FINANCING,
+  appointment = false,
+  content: FoodTruckContent = FOOD_TRUCK,
+): GameState {
+  const offered = belowZeroOffer(state, events, rules)
+  if (offered !== state || !appointment) return offered
+  if (state.events.pending !== null || chosenToday(state)) return state
+  const terms = appointmentLoan(events, rules)
+  if (terms === null || !wouldLend(state, terms, content, rules)) return state
+  return withOffer(
+    {
+      ...state,
+      financing: { ...state.financing, lastLoanRequestDay: state.day },
+    },
+    rules.appointmentEvent,
+  )
+}
+
+/**
+ * The loan the appointment's card of `events` offers: the first
+ * `emergencyLoan` effect of its choices; null when `events` holds no such
+ * card.
+ */
+export function appointmentLoan(
+  events: EventContent,
+  rules: FinancingContent = FINANCING,
+): LoanEffect | null {
+  const card = events.events.find(({ id }) => id === rules.appointmentEvent)
+  for (const { outcomes } of card?.choices ?? []) {
+    for (const { effects } of outcomes) {
+      for (const effect of effects) {
+        if (effect.kind === 'emergencyLoan') return effect
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Why the lender of the emergency loan would not lend on the morning of
+ * `state.day`, on `terms`, or null when she would: `came` when she came
+ * already that game year (see `lastLoanRequestDay`), `mayNotLend` when she
+ * may not (see `mayLend`), and `noNeed` when her loan would be zero or less
+ * (see `loanPrincipal`, with `content`).
+ */
+export type LendingRefusal = 'came' | 'mayNotLend' | 'noNeed'
+
+/** See `LendingRefusal`. */
+export function lendingRefusal(
+  state: GameState,
+  terms: LoanEffect,
+  content: FoodTruckContent = FOOD_TRUCK,
+  rules: FinancingContent = FINANCING,
+): LendingRefusal | null {
+  const { lastLoanRequestDay } = state.financing
+  if (
+    lastLoanRequestDay !== null &&
+    gameYearOf(lastLoanRequestDay) >= gameYearOf(state.day)
+  ) {
+    return 'came'
+  }
+  if (!mayLend(state, rules)) return 'mayNotLend'
+  if (loanPrincipal(state, terms, content) <= 0) return 'noNeed'
+  return null
+}
+
+/**
+ * Whether the lender of the emergency loan would lend on the morning of
+ * `state.day`, on `terms` (see `lendingRefusal`).
+ */
+export function wouldLend(
+  state: GameState,
+  terms: LoanEffect,
+  content: FoodTruckContent = FOOD_TRUCK,
+  rules: FinancingContent = FINANCING,
+): boolean {
+  return lendingRefusal(state, terms, content, rules) === null
+}
+
+/** Whether an event was chosen on the morning of `state.day`. */
+function chosenToday(state: GameState): boolean {
+  return state.events.history.at(-1)?.day === state.day
+}
+
+/** The card the financing brings after a close below zero, if any. */
+function belowZeroOffer(
+  state: GameState,
+  events: EventContent,
+  rules: FinancingContent,
 ): GameState {
   const { day, financing } = state
   if (
     financing.belowZeroSince === null ||
     state.events.pending !== null ||
-    state.events.history.at(-1)?.day === day
+    chosenToday(state)
   ) {
     return state
   }
@@ -184,25 +277,19 @@ export function isLoanOpen(
 }
 
 /**
- * Takes the emergency loan `effect` offers on the morning of `state.day`,
- * if its lender may lend (see `mayLend`, with `rules`): enough to bring
- * Encaisse to `monthsOfFixedCosts` months of the fixed costs the next 1st
- * takes (see `monthlyFixedCosts`, with `content`, the game's bakery and
- * its truck, which a rung of « Le rêve » may have replaced),
- * `maxCents` at most, with `feeShare` of it as its fee. Its entries post
- * (see `loanEntries`) and it joins `financing.loans` with its terms.
- * Nothing when Encaisse already holds that much. Returns a new state;
- * never mutates `state`.
+ * What the emergency loan `effect` offers would lend on the morning of
+ * `state.day`: enough to bring Encaisse to `monthsOfFixedCosts` months of
+ * the fixed costs the next 1st takes (see `monthlyFixedCosts`, with
+ * `content`, the game's bakery and its truck, which a rung of « Le rêve »
+ * may have replaced), `maxCents` at most. Zero or below when Encaisse
+ * already holds that much.
  */
-export function takeEmergencyLoan(
+export function loanPrincipal(
   state: GameState,
   effect: LoanEffect,
   content: FoodTruckContent,
-  rules: FinancingContent = FINANCING,
-): GameState {
-  if (!mayLend(state, rules)) return state
-  const { day, journal, financing } = state
-  const { lender, maxCents, annualRateBasisPoints, termMonths } = effect
+): Cents {
+  const { day } = state
   const fixedCosts = monthlyFixedCosts(
     day,
     state.profile.difficulty,
@@ -215,9 +302,29 @@ export function takeEmergencyLoan(
   )
   const wanted = sub(
     mulRatio(fixedCosts, effect.monthsOfFixedCosts),
-    balance(journal, CASH, { toDay: day }),
+    balance(state.journal, CASH, { toDay: day }),
   )
-  const principal = wanted < maxCents ? wanted : maxCents
+  return wanted < effect.maxCents ? wanted : effect.maxCents
+}
+
+/**
+ * Takes the emergency loan `effect` offers on the morning of `state.day`,
+ * if its lender may lend (see `mayLend`, with `rules`): what it would lend
+ * that morning (see `loanPrincipal`, with `content`), with `feeShare` of it
+ * as its fee. Its entries post (see `loanEntries`) and it joins
+ * `financing.loans` with its terms. Nothing when Encaisse already holds
+ * that much. Returns a new state; never mutates `state`.
+ */
+export function takeEmergencyLoan(
+  state: GameState,
+  effect: LoanEffect,
+  content: FoodTruckContent,
+  rules: FinancingContent = FINANCING,
+): GameState {
+  if (!mayLend(state, rules)) return state
+  const { day, journal, financing } = state
+  const { lender, annualRateBasisPoints, termMonths } = effect
+  const principal = loanPrincipal(state, effect, content)
   if (principal <= 0) return state
   const loan: EmergencyLoan = {
     day,

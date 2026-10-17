@@ -287,6 +287,7 @@ function laterLine(
     case 'grocerAway':
     case 'emergencyLoan':
     case 'shareSale':
+    case 'trip':
       return []
   }
 }

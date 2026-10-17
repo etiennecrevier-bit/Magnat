@@ -98,6 +98,18 @@ describe('servers', () => {
     ])
   })
 
+  it('gives the owner alone the window they are away from the counter', () => {
+    const away = { from: 36_000, to: 40_800 }
+    const state = { ...createInitialState(42), staff: [camion] }
+    expect(servers(state, ENERGY, STAFF, away)).toEqual([
+      { speed: 1, owner: true, away },
+      { speed: STAFF.truckSpeed, owner: false },
+    ])
+    expect(servers({ ...state, ownerAway: true }, ENERGY, STAFF, away)).toEqual(
+      [{ speed: STAFF.truckSpeed, owner: false }],
+    )
+  })
+
   it('serves with nobody else when the staff neither serves', () => {
     const state = {
       ...createInitialState(42),
@@ -199,6 +211,67 @@ describe('openLine', () => {
     ])
   })
 
+  it('starts nobody while the server is away, from its first second to the one before it is back', () => {
+    const away = { from: 100, to: 200 }
+    const line = openLine([{ speed: 1, owner: true, away }], SERVICE)
+    expect(line.isOpen(99)).toBe(true)
+    expect(line.isOpen(100)).toBe(false)
+    expect(line.isOpen(199)).toBe(false)
+    expect(line.isOpen(200)).toBe(true)
+  })
+
+  it('makes a customer wait until the server is back, and serves in full one started before', () => {
+    const owner: Server = {
+      speed: 1,
+      owner: true,
+      away: { from: 100, to: 200 },
+    }
+    const line = openLine([owner], SERVICE)
+    // Started at 99, before the owner leaves, served in full until 154.
+    expect(line.ahead(99)).toEqual({ wait: 0, waiting: 0 })
+    expect(line.join(99, 1)).toEqual({ start: 99, server: owner })
+    // Free at 154, but away: the next customer waits until 200.
+    expect(line.ahead(120)).toEqual({ wait: 80, waiting: 0 })
+    expect(line.join(120, 1).start).toBe(200)
+    // Then the line goes on from there, without the owner leaving again.
+    expect(line.join(200, 1).start).toBe(255)
+  })
+
+  it('serves at once a customer who comes as the server is back', () => {
+    const line = openLine(
+      [{ speed: 1, owner: true, away: { from: 100, to: 200 } }],
+      SERVICE,
+    )
+    expect(line.ahead(200)).toEqual({ wait: 0, waiting: 0 })
+    expect(line.join(200, 1).start).toBe(200)
+  })
+
+  it('sends a customer to the employee rather than to an owner who is free but away', () => {
+    const owner: Server = { speed: 1, owner: true, away: { from: 0, to: 1000 } }
+    const employee: Server = { speed: 1, owner: false }
+    const line = openLine([owner, employee], SERVICE)
+    expect(line.isOpen(10)).toBe(true)
+    expect(line.ahead(10)).toEqual({ wait: 0, waiting: 0 })
+    expect(line.join(10, 1)).toEqual({ start: 10, server: employee })
+    // The employee is free at 65, long before the owner is back.
+    expect(line.ahead(20)).toEqual({ wait: 45, waiting: 0 })
+    expect(line.join(20, 1)).toEqual({ start: 65, server: employee })
+    expect(line.join(30, 1)).toEqual({ start: 120, server: employee })
+    // Back at 1000, the owner serves again, before the employee does.
+    expect(line.join(1000, 1)).toEqual({ start: 1000, server: owner })
+  })
+
+  it('sends a customer to the server free since earliest when both are, as before the absences', () => {
+    const owner: Server = { speed: 1, owner: true }
+    const employee: Server = { speed: 1, owner: false }
+    const line = openLine([owner, employee], SERVICE)
+    // The owner is free at 100, the employee at 55.
+    expect(line.join(0, 4).server).toBe(owner)
+    expect(line.join(0, 1).server).toBe(employee)
+    expect(line.join(200, 1)).toEqual({ start: 200, server: employee })
+    expect(line.join(200, 1)).toEqual({ start: 200, server: owner })
+  })
+
   it('serves twice as fast at speed 2', () => {
     const line = openLine([{ speed: 2, owner: true }], SERVICE)
     expect(waits(line, together(3)).map(({ start }) => start)).toEqual([
@@ -218,6 +291,20 @@ describe('openLine', () => {
     ],
     ['a speed that is not a number', [{ speed: Number.NaN, owner: true }]],
     ['an infinite speed', [{ speed: Number.POSITIVE_INFINITY, owner: true }]],
+    [
+      'an absence that ends before it starts',
+      [{ speed: 1, owner: true, away: { from: 200, to: 100 } }],
+    ],
+    [
+      'an absence that never ends',
+      [
+        {
+          speed: 1,
+          owner: true,
+          away: { from: 100, to: Number.POSITIVE_INFINITY },
+        },
+      ],
+    ],
   ] as const)('rejects %s', (_, crew) => {
     expect(() => openLine(crew, SERVICE)).toThrow(RangeError)
   })

@@ -929,6 +929,7 @@ describe('the shipped rules', () => {
       _note: expect.any(String),
       loanEvent: 'pretUrgence',
       investorEvent: 'offreDuvent',
+      appointmentEvent: 'rendezVousCaisse',
       investorDaysAfterLoan: 14,
       maxShareRounds: 2,
       noSecondLoanAt: ['difficile'],

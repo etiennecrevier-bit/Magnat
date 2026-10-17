@@ -79,6 +79,12 @@ const FINANCING_CARDS = ['pretUrgence', 'offreDuvent']
  */
 const NOTICE_CARDS = ['premierAvis', 'deuxiemeAvis', 'dernierAvis']
 
+/**
+ * Mme Prudhomme's appointment of issue #164, which the engine brings the
+ * morning after a trip to her Caisse.
+ */
+const APPOINTMENT_CARDS = ['rendezVousCaisse']
+
 /** The portraits of issue #95, one per character but the silhouette. */
 const PORTRAITS = [
   'gillesLacasse',
@@ -317,7 +323,7 @@ describe('events.json', () => {
     expect(essai?.weight).toBe(0)
   })
 
-  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, the six of #156, the two of #159, then the three of #160, in order', () => {
+  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, the six of #156, the two of #159, the three of #160, then the one of #164, in order', () => {
     expect(content.events.map(({ id }) => id)).toEqual([
       'essai',
       ...CARDS,
@@ -326,6 +332,7 @@ describe('events.json', () => {
       ...GROCER_CARDS,
       ...FINANCING_CARDS,
       ...NOTICE_CARDS,
+      ...APPOINTMENT_CARDS,
     ])
   })
 
@@ -343,9 +350,11 @@ describe('events.json', () => {
     expect(dated).toEqual([['premierJuillet', { month: 6, dayOfMonth: 30 }]])
   })
 
-  it('may draw every card but essai and those of #159 and #160, which the engine brings, unless it only comes as a follow-up', () => {
+  it('may draw every card but essai and those of #159, #160 and #164, which the engine brings, unless it only comes as a follow-up', () => {
     for (const { id, weight, conditions } of content.events.slice(1)) {
-      if ([...FINANCING_CARDS, ...NOTICE_CARDS].includes(id)) {
+      if (
+        [...FINANCING_CARDS, ...NOTICE_CARDS, ...APPOINTMENT_CARDS].includes(id)
+      ) {
         expect(weight, id).toBe(0)
       } else if (conditions?.followUpOnly !== true)
         expect(weight, id).toBeGreaterThan(0)
@@ -460,11 +469,13 @@ describe('events.json', () => {
     }
   })
 
-  it('writes no amount into a tag by hand, the terms of #159 aside: the effect it names gives it', () => {
+  it('writes no amount into a tag by hand, the terms of #159 and #164 aside: the effect it names gives it', () => {
     // A loan's rate, term and fee, and the share sold, are no amount a tag
     // can show: financing.test.ts holds the text to the effect.
     const typed = content.events
-      .filter(({ id }) => !FINANCING_CARDS.includes(id))
+      .filter(
+        ({ id }) => ![...FINANCING_CARDS, ...APPOINTMENT_CARDS].includes(id),
+      )
       .flatMap(({ id, choices }) =>
         choices.flatMap(({ id: choice, tags }) =>
           tags
@@ -803,6 +814,24 @@ describe('loadEventContent rejects', () => {
         }),
         'a purchase at its own unit cost happens now',
       )
+    }
+  })
+
+  it('a trip for the morning the card is chosen, or to no place (#164)', () => {
+    rejects(
+      withEffects({ kind: 'trip', place: 'bureauPermis' }),
+      'a trip happens on a later day',
+    )
+    rejects(
+      withEffects({ kind: 'trip', place: 'banque', inDays: 1 }),
+      '→ at events[0].choices[0].outcomes[0].effects[0].place',
+    )
+    for (const timing of [{ inDays: 1 }, { onNextWeekday: 3 }]) {
+      const effect = { kind: 'trip', place: 'bureauPermis', ...timing }
+      expect(
+        loadEventContent(withEffects(effect)).events[0]?.choices[0]?.outcomes[0]
+          ?.effects,
+      ).toEqual([effect])
     }
   })
 

@@ -391,11 +391,11 @@ describe('TopBar', () => {
     expect(closed).toContain('aria-label="Vitesse ×3" aria-pressed="true"')
   })
 
-  it('has « Le rêve » after « Vos finances », and opens it, paused', () => {
+  it('has « Aller à… » then « Le rêve » after « Vos finances », and opens « Le rêve », paused', () => {
     gameStore.getState().setSpeed(3)
     const bar = renderToStaticMarkup(<TopBar />)
     expect(bar).toContain(
-      '<button type="button" class="top-bar__panel" aria-haspopup="dialog">Vos finances</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Le rêve</button></div>',
+      '<button type="button" class="top-bar__panel" aria-haspopup="dialog">Vos finances</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Aller à…</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Le rêve</button></div>',
     )
     gameStore.getState().openPanel('dream')
     const html = renderToStaticMarkup(<TopBar />)
@@ -410,11 +410,37 @@ describe('TopBar', () => {
     expect(renderToStaticMarkup(<TopBar />)).not.toContain('<dialog')
   })
 
-  it('hides « Le rêve » and the title in a Défi', () => {
+  it('hides « Le rêve », « Aller à… » and the title in a Défi', () => {
     gameStore.getState().startGame(newChallenge('?seed=7', 'travauxSaintDenis'))
     const html = renderToStaticMarkup(<TopBar />)
     expect(html).not.toContain('Le rêve')
+    expect(html).not.toContain('Aller à')
     expect(html).not.toContain('net-worth-gauge__title')
+  })
+
+  it('opens « Aller à… », paused', () => {
+    gameStore.getState().setSpeed(3)
+    gameStore.getState().openPanel('trip')
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toMatch(
+      /^<header class="top-bar">.*<\/header><dialog class="panel trip" aria-labelledby="trip-title">.*<\/dialog>$/,
+    )
+    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+      label: 'Pause',
+      pressed: 'true',
+    })
+    gameStore.getState().closePanel()
+    expect(renderToStaticMarkup(<TopBar />)).not.toContain('<dialog')
+  })
+
+  it('shows « En route vers… » under the date on a day with a trip, and nothing without', () => {
+    expect(renderToStaticMarkup(<TopBar />)).not.toContain('top-bar__en-route')
+    gameStore.getState().decide({ kind: 'goTo', place: 'meunerie' })
+    expect(renderToStaticMarkup(<TopBar />)).toMatch(
+      /<p class="top-bar__date">[^<]*<\/p><p class="top-bar__en-route">En route vers la meunerie<\/p><\/div>/,
+    )
+    gameStore.getState().decide({ kind: 'goTo', place: null })
+    expect(renderToStaticMarkup(<TopBar />)).not.toContain('top-bar__en-route')
   })
 
   it('shows « Magnat » when the store opens it', () => {

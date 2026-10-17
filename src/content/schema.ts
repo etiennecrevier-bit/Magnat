@@ -12,6 +12,7 @@ import foodTruckJson from './foodtruck.json'
 import grocersJson from './grocers.json'
 import percentilesJson from './percentiles.json'
 import personalJson from './personal.json'
+import placesJson from './places.json'
 import profileJson from './profile.json'
 import reportJson from './report.json'
 import segmentsJson from './segments.json'
@@ -90,6 +91,16 @@ export const grocerIdSchema = z.enum([
 ])
 
 export type GrocerId = z.infer<typeof grocerIdSchema>
+
+/** The places in town the owner goes to (#164), by id. */
+export const placeIdSchema = z.enum([
+  'caisse',
+  'meunerie',
+  'bureauPermis',
+  'fournil',
+])
+
+export type PlaceId = z.infer<typeof placeIdSchema>
 
 export type Avatar = z.infer<typeof avatarSchema>
 
@@ -777,6 +788,11 @@ function effectSchemas<Extra extends z.core.$ZodShape>(extra: Extra) {
       share: z.number().gt(0).lt(1),
       ...extra,
     }),
+    /**
+     * Sends the owner to `place` for the day (#164), as « Aller à… » does,
+     * a trip the player cannot drop.
+     */
+    z.strictObject({ kind: z.literal('trip'), place: placeIdSchema, ...extra }),
   ] as const
 }
 
@@ -833,6 +849,15 @@ const timedEffectSchema = z
       (effect.kind !== 'emergencyLoan' && effect.kind !== 'shareSale') ||
       (effect.inDays === undefined && effect.onNextWeekday === undefined),
     { message: 'an emergency loan, or a share sale, happens now' },
+  )
+  // The morning a card is chosen, the player may already have sent the
+  // owner elsewhere: a card's trip is for a later day.
+  .refine(
+    (effect) =>
+      effect.kind !== 'trip' ||
+      effect.inDays !== undefined ||
+      effect.onNextWeekday !== undefined,
+    { message: 'a trip happens on a later day' },
   )
 
 export type TimedEventEffect = z.output<typeof timedEffectSchema>
@@ -1535,6 +1560,11 @@ export const financingContentSchema = z
     /** Max Duvent's card, which offers to buy shares. */
     investorEvent: idSchema,
     /**
+     * Mme Prudhomme's card the morning after a trip to the Caisse (#164),
+     * which offers the emergency loan too.
+     */
+    appointmentEvent: idSchema,
+    /**
      * Days after the last emergency loan that Max Duvent comes, if Encaisse
      * is still below zero.
      */
@@ -1563,35 +1593,45 @@ export const financingContentSchema = z
     message: 'the loan and the investor come on cards of their own',
     path: ['investorEvent'],
   })
-  .superRefine(({ loanEvent, investorEvent, bankruptcy }, ctx) => {
-    const seen = new Set([loanEvent, investorEvent])
-    bankruptcy.notices.forEach(({ afterMonths, event }, n) => {
-      const path = ['bankruptcy', 'notices', n]
-      const before = bankruptcy.notices[n - 1]
-      if (before !== undefined && afterMonths <= before.afterMonths) {
-        ctx.addIssue({
-          code: 'custom',
-          message: 'the notices come in order, each after more months',
-          path: [...path, 'afterMonths'],
-        })
-      }
-      if (afterMonths >= bankruptcy.months) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `a notice comes before the ${bankruptcy.months} months that end the game`,
-          path: [...path, 'afterMonths'],
-        })
-      }
-      if (seen.has(event)) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `the event ${event} is already one of the financing's cards`,
-          path: [...path, 'event'],
-        })
-      }
-      seen.add(event)
-    })
-  })
+  .refine(
+    ({ loanEvent, investorEvent, appointmentEvent }) =>
+      appointmentEvent !== loanEvent && appointmentEvent !== investorEvent,
+    {
+      message: 'the appointment comes on a card of its own',
+      path: ['appointmentEvent'],
+    },
+  )
+  .superRefine(
+    ({ loanEvent, investorEvent, appointmentEvent, bankruptcy }, ctx) => {
+      const seen = new Set([loanEvent, investorEvent, appointmentEvent])
+      bankruptcy.notices.forEach(({ afterMonths, event }, n) => {
+        const path = ['bankruptcy', 'notices', n]
+        const before = bankruptcy.notices[n - 1]
+        if (before !== undefined && afterMonths <= before.afterMonths) {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'the notices come in order, each after more months',
+            path: [...path, 'afterMonths'],
+          })
+        }
+        if (afterMonths >= bankruptcy.months) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `a notice comes before the ${bankruptcy.months} months that end the game`,
+            path: [...path, 'afterMonths'],
+          })
+        }
+        if (seen.has(event)) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `the event ${event} is already one of the financing's cards`,
+            path: [...path, 'event'],
+          })
+        }
+        seen.add(event)
+      })
+    },
+  )
 
 export type FinancingContent = z.output<typeof financingContentSchema>
 
@@ -1620,7 +1660,7 @@ export type Ladder = z.infer<typeof ladderSchema>
 
 /**
  * What a rung gives once it is bought: a shorter trip in town (the best
- * vehicle's `travelTime` counts, P4-09), a faster counter, a longer line,
+ * vehicle's `travelTime` counts, #164), a faster counter, a longer line,
  * more units a restock rule may name, more walk-ins of one segment, or more
  * energy back on a closed day.
  */
@@ -1762,6 +1802,81 @@ export const dreamContentSchema = z
   })
 
 export type DreamContent = z.output<typeof dreamContentSchema>
+
+/**
+ * What going to a place does: brings the lender's appointment card the
+ * next morning, takes `share` off the unit cost of the next restock that
+ * buys anything, files what a card's choice asks, so only a card's `trip`
+ * sends the owner there, or nothing yet.
+ */
+const placeEffectSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('loanAppointment') }),
+  z.strictObject({
+    kind: z.literal('discount'),
+    share: z.number().gt(0).lt(1),
+  }),
+  z.strictObject({ kind: z.literal('filing') }),
+  z.strictObject({ kind: z.literal('none') }),
+])
+
+export type PlaceEffect = z.output<typeof placeEffectSchema>
+
+/** What every place has. */
+const placeShape = {
+  id: placeIdSchema,
+  /** The place, as the « Aller à… » panel heads it. */
+  name: frenchText(),
+  /** The place after « En route vers », with its article: « la Caisse ». */
+  towards: frenchText(),
+  /** What the owner does there, in a few words. */
+  does: frenchText(),
+  effect: placeEffectSchema,
+}
+
+/** A place the owner walks to and back, staying `visitMinutes`. */
+const timedPlaceSchema = z.strictObject({
+  ...placeShape,
+  walkMinutes: z.int().positive(),
+  visitMinutes: z.int().positive(),
+})
+
+/** A place that takes the owner the whole day. */
+const wholeDayPlaceSchema = z.strictObject({
+  ...placeShape,
+  wholeDay: z.literal(true),
+})
+
+export type Place =
+  z.output<typeof timedPlaceSchema> | z.output<typeof wholeDayPlaceSchema>
+
+/**
+ * « Aller à… » (#164): when the owner leaves the truck, what a trip takes
+ * of their energy, and the places, in the order the panel lists them.
+ */
+export const placesContentSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    /** The minute of the day the owner leaves the truck. */
+    leavesAtMinute: minuteOfDay,
+    /** The energy each trip takes, on top of the day. */
+    energyCost: energyAmount,
+    places: z.array(z.union([timedPlaceSchema, wholeDayPlaceSchema])).min(1),
+  })
+  .superRefine(({ places }, ctx) => {
+    const ids = places.map(({ id }) => id)
+    for (const id of placeIdSchema.options) {
+      const times = ids.filter((place) => place === id).length
+      if (times !== 1) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `the place ${id} must be listed once, not ${times} times`,
+          path: ['places'],
+        })
+      }
+    }
+  })
+
+export type PlacesContent = z.output<typeof placesContentSchema>
 
 /**
  * The facts of a week the « Bilan de la semaine » may tell, in the order
@@ -2248,9 +2363,9 @@ function defiContentFor(events: EventContent) {
 }
 
 /**
- * The financing's rules, checked against `events`: the loan's and the
- * investor's cards, with a weight of 0 and an effect of their kind, and the
- * bankruptcy's notices.
+ * The financing's rules, checked against `events`: the loan's, the
+ * investor's and the appointment's cards, with a weight of 0 and an effect
+ * of their kind, and the bankruptcy's notices.
  */
 function financingContentFor(events: EventContent) {
   const cards = new Map(events.events.map((card) => [card.id, card]))
@@ -2258,6 +2373,7 @@ function financingContentFor(events: EventContent) {
     for (const [key, kind] of [
       ['loanEvent', 'emergencyLoan'],
       ['investorEvent', 'shareSale'],
+      ['appointmentEvent', 'emergencyLoan'],
     ] as const) {
       const id = financing[key]
       const card = cards.get(id)
@@ -2291,6 +2407,35 @@ function financingContentFor(events: EventContent) {
           code: 'custom',
           message: reason,
           path: ['bankruptcy', 'notices', n, 'event'],
+        })
+      }
+    })
+  })
+}
+
+/**
+ * The places, checked against the truck's opening hours in `foodTruck`: the
+ * owner leaves while the truck is open, and is back from each place, on
+ * foot, by the time it closes.
+ */
+function placesContentFor(foodTruck: FoodTruckContent) {
+  const { opensAtMinute, closesAtMinute } = foodTruck.walkIns
+  return placesContentSchema.superRefine(({ leavesAtMinute, places }, ctx) => {
+    if (leavesAtMinute < opensAtMinute || leavesAtMinute >= closesAtMinute) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `the owner leaves while the truck is open, from minute ${opensAtMinute} to ${closesAtMinute}`,
+        path: ['leavesAtMinute'],
+      })
+    }
+    places.forEach((place, index) => {
+      if ('wholeDay' in place) return
+      const back = leavesAtMinute + 2 * place.walkMinutes + place.visitMinutes
+      if (back > closesAtMinute) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `the owner is back from ${place.id} at minute ${back}, after the truck closes at ${closesAtMinute}`,
+          path: ['places', index],
         })
       }
     })
@@ -2458,12 +2603,13 @@ export function loadStaffContent(raw: unknown = staffJson): StaffContent {
 }
 
 /**
- * Validates the emergency loan's, the share sale's and the bankruptcy's
- * rules against the event cards `events` and returns them typed. Throws an
- * Error naming every invalid field: besides each field, the two cards
- * differ, and each is a card of `events` with a weight of 0, so no draw
- * brings it, and a choice with an effect of its kind, the loan's or the
- * sale's; the bankruptcy's notices come after more months each, all before
+ * Validates the emergency loan's, the share sale's, the appointment's and
+ * the bankruptcy's rules against the event cards `events` and returns them
+ * typed. Throws an Error naming every invalid field: besides each field,
+ * the three cards differ, and each is a card of `events` with a weight of
+ * 0, so no draw brings it, and a choice with an effect of its kind, the
+ * loan's, the sale's or, for the appointment, the loan's; the bankruptcy's
+ * notices come after more months each, all before
  * the months that end the game, each a notice of `events` (see
  * `isNoticeCard`) of its own. Pass `raw` only to check other data; by
  * default it reads `financing.json`, against `events.json`.
@@ -2486,6 +2632,21 @@ export function loadFinancingContent(
  */
 export function loadDreamContent(raw: unknown = dreamJson): DreamContent {
   return parsed(dreamContentSchema, raw, 'dream.json')
+}
+
+/**
+ * Validates the places in town against the truck's opening hours in
+ * `foodTruck` and returns them typed. Throws an Error naming every invalid
+ * field: besides each field, every place of `placeIdSchema` is listed once,
+ * the owner leaves while the truck is open and is back from each place, on
+ * foot, by the time it closes. Pass `raw` only to check other data; by
+ * default it reads `places.json`, against `foodtruck.json`.
+ */
+export function loadPlacesContent(
+  raw: unknown = placesJson,
+  foodTruck: FoodTruckContent = loadFoodTruckContent(),
+): PlacesContent {
+  return parsed(placesContentFor(foodTruck), raw, 'places.json')
 }
 
 /**

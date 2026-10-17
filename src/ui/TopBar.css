@@ -33,6 +33,14 @@
   white-space: nowrap;
 }
 
+/* The day's trip under the date, « En route vers la Caisse ». */
+.top-bar__en-route {
+  max-width: 16rem;
+  margin: 0;
+  color: #cbd2d9;
+  font-size: 0.875rem;
+}
+
 /* The Défi's chip under the date: a pill in the gold of the speed pressed. */
 .top-bar__defi {
   min-height: 2rem;
