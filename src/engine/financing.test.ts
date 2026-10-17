@@ -358,6 +358,16 @@ function saleOn(day: Day, share = 0.2): ShareSale {
   return { day, investor: INVESTOR, amount: cents(2_000_000), share }
 }
 
+/** The round of shares Max Duvent's shipped card sells on `day`. */
+function shippedSaleOn(day: Day): ShareSale {
+  return {
+    day,
+    investor: INVESTOR,
+    amount: SHARES.amountCents,
+    share: SHARES.share,
+  }
+}
+
 const pendingOf = (state: GameState) => state.events.pending?.event ?? null
 
 describe('financingOffer', () => {
@@ -661,9 +671,15 @@ describe('sellShares', () => {
   it('posts the shares sold to Capital-actions and keeps the sale', () => {
     const sold = sellShares(state, SHARES)
     expect(entriesSince(sold.journal, 100)).toEqual([
-      entry(100, `Émission d'actions · ${INVESTOR}`, '1000', '3000', 2_000_000),
+      entry(
+        100,
+        `Émission d'actions · ${INVESTOR}`,
+        '1000',
+        '3000',
+        SHARES.amountCents,
+      ),
     ])
-    expect(sold.financing.shareSales).toEqual([saleOn(100)])
+    expect(sold.financing.shareSales).toEqual([shippedSaleOn(100)])
   })
 
   it('sells two rounds at most, however often the effect runs', () => {
@@ -679,9 +695,9 @@ describe('sellShares', () => {
   })
 
   it.each([
-    ['facile', 2_000_000],
-    ['moyen', 2_200_000],
-    ['difficile', 1_700_000],
+    ['facile', 3_000_000],
+    ['moyen', 3_300_000],
+    ['difficile', 2_550_000],
   ] as const)(
     'takes the price of the card scaled at %s: %i',
     (difficulty, price) => {
@@ -695,7 +711,7 @@ describe('sellShares', () => {
       }
       const sold = resolveEvent(offered, 'accepter', CARDS)
       expect(sold.financing.shareSales).toEqual([
-        { ...saleOn(100), amount: price },
+        { ...shippedSaleOn(100), amount: price },
       ])
     },
   )
@@ -860,14 +876,14 @@ describe('the dividends', () => {
     }
     const sold = resolveEvent(offered, 'accepter', CARDS)
     expect(sold.financing.shareSales).toEqual([
-      { ...saleOn(60), amount: 2_200_000 },
+      { ...shippedSaleOn(60), amount: 3_300_000 },
     ])
     const game = playOn(sold, 200)
     const dividends = entriesOfMemo(game.journal, `Dividende · ${INVESTOR}`)
     const expected = [61, OCTOBER_1, JANUARY_1].flatMap((day) => {
       const amount = mulRatio(
-        dividendBase(game.journal, [saleOn(60)], day),
-        0.2,
+        dividendBase(game.journal, [shippedSaleOn(60)], day),
+        SHARES.share,
       )
       return amount > 0 ? [dividend(day, amount)] : []
     })
@@ -951,11 +967,12 @@ describe('the shipped rules', () => {
       termMonths: 12,
       feeShare: 0.02,
     })
+    // Max Duvent's terms are P4-11's balance run's (#166).
     expect(SHARES).toEqual({
       kind: 'shareSale',
       investor: INVESTOR,
-      amountCents: 2_000_000,
-      share: 0.2,
+      amountCents: 3_000_000,
+      share: 0.3,
     })
   })
 })

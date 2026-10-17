@@ -206,7 +206,7 @@ describe('financingSummary', () => {
     expect(financingSummary(store.getState().game)).toEqual({
       hadLoans: false,
       loans: [],
-      shares: [{ investor: INVESTOR, tenths: 200 }],
+      shares: [{ investor: INVESTOR, tenths: 300 }],
       dividend: { day: july, amount: 0, final: false },
     })
 
@@ -221,7 +221,7 @@ describe('financingSummary', () => {
     expect(soFar).toBeGreaterThan(0)
     expect(financingSummary(mid)?.dividend).toEqual({
       day: july,
-      amount: mulRatio(soFar, 0.2),
+      amount: mulRatio(soFar, 0.3),
       final: false,
     })
 

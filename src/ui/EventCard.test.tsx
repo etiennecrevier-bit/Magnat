@@ -432,10 +432,10 @@ describe('EventCard', () => {
     // The tag says what accepting pays in, at the game's difficulty.
     expect(tags).toEqual([
       `Encaisse +${formatBriefMoney(sale!.amount)}`,
-      '20 % des actions · pour toujours',
-      '20 % des profits chaque trimestre',
+      '30 % des actions · pour toujours',
+      '30 % des profits chaque trimestre',
     ])
-    expect(sale?.share).toBe(0.2)
+    expect(sale?.share).toBe(0.3)
   })
 
   it('shows nothing for an event the content does not hold', () => {

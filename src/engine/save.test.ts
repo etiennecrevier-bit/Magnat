@@ -4114,7 +4114,7 @@ describe('the emergency loans and the share sales', () => {
     expect(OFFERED.events.pending?.event).toBe('pretUrgence')
     expect(FINANCED.financing).toMatchObject({
       loans: [{ day: 60, lender: LENDER }],
-      shareSales: [{ day: 61, investor: 'Duvent Capital', share: 0.2 }],
+      shareSales: [{ day: 61, investor: 'Duvent Capital', share: 0.3 }],
       lastLoanRequestDay: 60,
     })
     const memos = new Set(entriesOf(FINANCED.journal).map(({ memo }) => memo))
@@ -4275,7 +4275,11 @@ describe('the emergency loans and the share sales', () => {
     ],
     [
       'another share than its dividends',
-      withValue('financing.shareSales.0.share', 0.3, FINANCED_SAVE),
+      withValue(
+        'financing.shareSales.0.share',
+        (SALE?.share ?? 0) / 2,
+        FINANCED_SAVE,
+      ),
       'the journal holds « Dividende · Duvent Capital » on day 153, which the financing does not owe',
     ],
     [

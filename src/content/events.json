@@ -3244,15 +3244,15 @@
       },
       "title": "L'offre de Max Duvent",
       "situation": "Votre encaisse est sous zéro, et ça se sait. Une voiture sport se gare en travers de deux places. Max Duvent, de Duvent Capital, en descend et s'accoude à votre comptoir sans rien commander.",
-      "quote": "Je mets {montant:prix} dans votre entreprise, aujourd'hui même. En échange : 20 % des actions, et 20 % des profits chaque trimestre. Pour toujours, évidemment.",
+      "quote": "Je mets {montant:prix} dans votre entreprise, aujourd'hui même. En échange : 30 % des actions, et 30 % des profits chaque trimestre. Pour toujours, évidemment.",
       "choices": [
         {
           "id": "accepter",
           "label": "Accepter",
           "tags": [
             { "text": "Encaisse +{montant}", "effect": "prix" },
-            "20 % des actions · pour toujours",
-            "20 % des profits chaque trimestre"
+            "30 % des actions · pour toujours",
+            "30 % des profits chaque trimestre"
           ],
           "outcomes": [
             {
@@ -3262,8 +3262,8 @@
                 {
                   "kind": "shareSale",
                   "investor": "Duvent Capital",
-                  "amountCents": 2000000,
-                  "share": 0.2,
+                  "amountCents": 3000000,
+                  "share": 0.3,
                   "name": "prix"
                 }
               ]
