@@ -1,0 +1,82 @@
+{
+  "_note": "« Le rêve » (#162): the two ladders the player climbs, each rung bought once and in order, and the titles the owner's net worth earns. Personal rungs are paid from the owner's own cash and count in their net worth at their price; a rung with `housing` replaces the rent with its monthly payment from the 1st it is bought, and `sells` sells an earlier rung back at its price. Company rungs are paid from Encaisse and depreciated over `usefulLifeMonths`; the one that `replacesTruck` takes the old truck back at its book value, and ends its depreciation or its lease. A `comingSoon` rung shows but cannot be bought yet: the second truck is a stub. Bonuses: `travelTime` (P4-09's trips, the best vehicle's factor), `serviceTime` (the counter's seconds), `line` (the most customers a newcomer finds waiting), `stock` (the most units a restock rule may name), `walkIns` (one segment's walk-ins) and `closedDayRecovery` (energy a closed day gives back on top). The last title is the one whose first close shows « Magnat ». Numbers to tune in P4-11.",
+  "personal": [
+    {
+      "id": "velo",
+      "name": "Vélo électrique",
+      "priceCents": 150000,
+      "bonuses": [{ "kind": "travelTime", "factor": 0.7 }]
+    },
+    {
+      "id": "voitureOccasion",
+      "name": "Voiture d'occasion",
+      "priceCents": 800000,
+      "bonuses": [{ "kind": "travelTime", "factor": 0.5 }]
+    },
+    {
+      "id": "condo",
+      "name": "Condo sur le Plateau",
+      "priceCents": 4000000,
+      "housing": { "label": "Hypothèque du condo", "monthlyCents": 110000 },
+      "bonuses": []
+    },
+    {
+      "id": "voitureLuxe",
+      "name": "Voiture de luxe",
+      "priceCents": 4500000,
+      "bonuses": [
+        { "kind": "travelTime", "factor": 0.4 },
+        { "kind": "walkIns", "segment": "chic", "factor": 1.05 }
+      ]
+    },
+    {
+      "id": "maison",
+      "name": "Maison à Outremont",
+      "priceCents": 15000000,
+      "housing": { "label": "Hypothèque de la maison", "monthlyCents": 220000 },
+      "sells": "condo",
+      "bonuses": []
+    },
+    {
+      "id": "chalet",
+      "name": "Chalet dans les Laurentides",
+      "priceCents": 9000000,
+      "bonuses": [{ "kind": "closedDayRecovery", "extra": 15 }]
+    }
+  ],
+  "company": [
+    {
+      "id": "espresso",
+      "name": "Machine à espresso pro",
+      "priceCents": 600000,
+      "usefulLifeMonths": 60,
+      "bonuses": [{ "kind": "serviceTime", "factor": 0.8 }]
+    },
+    {
+      "id": "grandCamion",
+      "name": "Camion plus grand",
+      "priceCents": 4000000,
+      "usefulLifeMonths": 120,
+      "replacesTruck": true,
+      "bonuses": [
+        { "kind": "stock", "factor": 1.5 },
+        { "kind": "line", "factor": 1.5 },
+        { "kind": "walkIns", "segment": "chic", "factor": 1.1 }
+      ]
+    },
+    {
+      "id": "deuxiemeCamion",
+      "name": "Deuxième camion",
+      "priceCents": 8500000,
+      "usefulLifeMonths": 120,
+      "comingSoon": true,
+      "bonuses": []
+    }
+  ],
+  "titles": [
+    { "name": "Débrouillard", "netWorthCents": 2500000 },
+    { "name": "Commerçant", "netWorthCents": 10000000 },
+    { "name": "Entrepreneur", "netWorthCents": 25000000 },
+    { "name": "Magnat", "netWorthCents": 100000000 }
+  ]
+}
