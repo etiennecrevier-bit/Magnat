@@ -204,9 +204,10 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
 /**
  * Plays business day `morning.day` with `morning.decisions`. Throws an Error
  * while an event waits for the player's choice, once the game has ended, and
- * once the game's Défi, if any, is over. First the start of the day: the delayed effects of the events'
- * choices due that day, then the receivables due (see `startOfDay`). Then the
- * street that day, with the changes in effect folded together (see `streetOn`).
+ * once the game's Défi, if any, is over. First the start of the day: the
+ * delayed effects of the events' choices due that day, then the receivables
+ * due (see `startOfDay`). Then the street that day, with the changes in
+ * effect folded together (see `streetOn`).
  * On the 1st of the month, open or closed: the month's charges (see
  * `monthlyCharges`), the truck's counted in months from the game's first day,
  * day 0 or a Défi's first day, as if the truck came to the business then,

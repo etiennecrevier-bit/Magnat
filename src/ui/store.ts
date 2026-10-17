@@ -260,7 +260,7 @@ export function newChallenge(
  * The panel that ends `game`, once it is over: the end of its Défi, or the
  * « Faillite » of a game that went bankrupt; null while it goes on.
  */
-export function endPanel(game: GameState): EndPanel | null {
+function endPanel(game: GameState): EndPanel | null {
   if (isChallengeOver(game)) return 'defiEnd'
   return game.ended !== null ? 'bankruptcy' : null
 }

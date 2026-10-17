@@ -69,9 +69,8 @@ export { toCalendar, type CalendarDate } from './calendar.ts'
  * first week to come, partial, from the cash the books open with (see
  * `openingWeek`), no Défi, no bakery, with the croissants bought, no
  * contract, nobody on staff, the owner at work, no financing and not ended.
- * Throws a
- * RangeError unless `seed` is an integer in [0, 2^32), if the starting
- * decisions break the content's limits, if `profile` breaks
+ * Throws a RangeError unless `seed` is an integer in [0, 2^32), if the
+ * starting decisions break the content's limits, if `profile` breaks
  * `validateProfile()`, or if the difficulty leaves a negative Mise de fonds.
  */
 export function createInitialState(

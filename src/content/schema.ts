@@ -1152,8 +1152,9 @@ const eventSchema = z
   })
   .superRefine((card, ctx) => {
     const { situation, quote, choices } = card
-    if (isNoticeCard(card)) checkNotice(card, ctx)
-    else {
+    if (isNoticeCard(card)) {
+      checkNotice(card, ctx)
+    } else {
       choices.forEach(({ tags }, c) => {
         if (tags.length > 0) return
         ctx.addIssue({
