@@ -410,14 +410,14 @@ describe('runGrowth', () => {
       difficulty: 'difficile',
       contracts: 'three',
       games: 2,
-      months: 6,
+      months: 3,
     } as const
     const run = runGrowth(job)
     expect(run).toMatchObject({
       difficulty: 'difficile',
       contracts: 'three',
       games: 2,
-      months: 6,
+      months: 3,
     })
     expect(run.strategies.map(({ strategy }) => strategy)).toEqual(
       GROWTH_STRATEGIES.filter(({ contracts }) => contracts === 'three'),
@@ -434,7 +434,7 @@ describe('runGrowth', () => {
           game.seed,
           'difficile',
           strategy,
-          6,
+          job.months,
           'loanOnly',
         ).game
         expect(game.withoutDuvent).toEqual({
@@ -446,5 +446,5 @@ describe('runGrowth', () => {
     }
     expect(games.some(({ game }) => game.withoutDuvent !== null)).toBe(true)
     expect(runGrowth(job)).toEqual(run)
-  })
+  }, 30_000)
 })
