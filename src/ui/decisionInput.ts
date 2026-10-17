@@ -1,11 +1,18 @@
-import type { ProductId, RestockRule } from '../content/schema.ts'
+import type {
+  CandidateId,
+  ProductId,
+  RestockRule,
+  StaffRoleId,
+} from '../content/schema.ts'
+import { BAKERY } from '../engine/bakery.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
 import type { DecisionChange } from '../engine/decisions.ts'
 import { cents, type Cents } from '../engine/money.ts'
+import { STAFF } from '../engine/staff.ts'
 import { formatMoney } from './formatMoney.ts'
 
-// What the player types in the « Gérer le camion » panel, read into the
-// engine's decision changes. The limits are the engine's own, from the
+// What the player types in the « Gérer le camion » and « Qui fait quoi »
+// panels, read into the engine's decision changes. The limits are the engine's own, from the
 // content, so a value is turned down here, in French, before it could make
 // applyDecision() throw.
 
@@ -152,10 +159,49 @@ export function restockChange(
   text: string,
   rule: RestockRule,
 ): FieldResult {
+  const read = readRule(field, text, rule, LIMITS.units, RESTOCK_LABELS)
+  if (read.kind !== 'rule') return read
+  return change({ kind: 'restock', product, rule: read.rule })
+}
+
+/** The labels of the bake rule's fields, which its messages name. */
+export const BAKE_LABELS: Readonly<Record<RestockField, string>> = {
+  quantity: 'Fournée quotidienne',
+  whenBelow: 'Cuire sous',
+  upTo: "Cuire jusqu'à",
+}
+
+/**
+ * The bake rule with `field` set from the field's text, the rule's other
+ * field kept: from 0 to the bakery's capacity a day, a top-up's threshold no
+ * higher than what it bakes up to.
+ */
+export function bakeChange(
+  field: RestockField,
+  text: string,
+  rule: RestockRule,
+): FieldResult {
+  const limits = { min: 0, max: BAKERY.capacityPerDay }
+  const read = readRule(field, text, rule, limits, BAKE_LABELS)
+  if (read.kind !== 'rule') return read
+  return change({ kind: 'bake', rule: read.rule })
+}
+
+/**
+ * `rule` with `field` set from the field's text, within `limits`, the
+ * rule's other field kept; the messages name the fields by `labels`.
+ */
+function readRule(
+  field: RestockField,
+  text: string,
+  rule: RestockRule,
+  limits: { min: number; max: number },
+  labels: Readonly<Record<RestockField, string>>,
+): { readonly kind: 'rule'; readonly rule: RestockRule } | FieldResult {
   const units = parseUnits(text)
   if (units === null) return invalid(UNITS_MESSAGE)
-  const { min, max } = LIMITS.units
-  if (!within(units, LIMITS.units)) {
+  const { min, max } = limits
+  if (!within(units, limits)) {
     return invalid(`La quantité doit être entre ${min} et ${unitsText(max)}.`)
   }
   let next: RestockRule
@@ -173,8 +219,8 @@ export function restockChange(
         ? { ...rule, whenBelow: units }
         : { ...rule, upTo: units }
     if (next.whenBelow > next.upTo) {
-      const whenBelow = quoted(RESTOCK_LABELS.whenBelow)
-      const upTo = quoted(RESTOCK_LABELS.upTo)
+      const whenBelow = quoted(labels.whenBelow)
+      const upTo = quoted(labels.upTo)
       return invalid(
         field === 'whenBelow'
           ? `${whenBelow} ne peut pas dépasser ${upTo} (${unitsText(rule.upTo)}).`
@@ -183,7 +229,7 @@ export function restockChange(
     }
   }
   if (sameRule(next, rule)) return UNCHANGED
-  return change({ kind: 'restock', product, rule: next })
+  return { kind: 'rule', rule: next }
 }
 
 function sameRule(a: RestockRule, b: RestockRule): boolean {
@@ -239,4 +285,24 @@ export function marketingChange(text: string, current: Cents): FieldResult {
   }
   if (budget === current) return UNCHANGED
   return change({ kind: 'marketingDaily', budget })
+}
+
+/**
+ * The hourly wage of `candidate`, in `role`, from the field's text, given
+ * their current one: within the role's range.
+ */
+export function wageChange(
+  candidate: CandidateId,
+  role: StaffRoleId,
+  text: string,
+  current: Cents,
+): FieldResult {
+  const hourlyWage = parseMoney(text)
+  if (hourlyWage === null) return invalid(MONEY_MESSAGE)
+  const limits = STAFF.roles[role].hourlyWageCents
+  if (!within(hourlyWage, limits)) {
+    return invalid(`Le salaire doit être ${moneyRange(limits)} de l'heure.`)
+  }
+  if (hourlyWage === current) return UNCHANGED
+  return change({ kind: 'setWage', candidate, hourlyWage })
 }

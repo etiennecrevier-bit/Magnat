@@ -28,7 +28,8 @@
       'prices facts'
       'orders facts'
       'days days'
-      'pay marketing';
+      'pay marketing'
+      'bakery bakery';
   }
 
   .manage__prices {
@@ -53,6 +54,10 @@
 
   .manage__marketing {
     grid-area: marketing;
+  }
+
+  .manage__bakery {
+    grid-area: bakery;
   }
 }
 
@@ -176,4 +181,54 @@
   margin: 0 0 0.5rem;
   color: #5c5048;
   font-weight: 600;
+}
+
+/* The bakery, under a rule of its own: its buttons in a row that wraps,
+   its costs as a plain list. */
+.manage__bakery {
+  padding-top: 1rem;
+  border-top: 2px solid #2b2622;
+}
+
+.manage__bakery p {
+  margin: 0 0 0.5rem;
+}
+
+.manage__bakery-status {
+  font-weight: 600;
+}
+
+.manage__bakery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.manage .button:disabled {
+  border-color: #c9b48f;
+  background: transparent;
+  color: #7b6f63;
+  cursor: not-allowed;
+}
+
+.manage__bakery-costs {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+/* The two unit costs side by side, no wider than they need. */
+.manage__unit-costs {
+  width: auto;
+  margin: 0 0 0.5rem;
+}
+
+.manage__unit-costs caption {
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.manage__bakery .toggle-group {
+  margin: 0 0 0.5rem;
 }
