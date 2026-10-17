@@ -40,6 +40,7 @@ import type {
   DaySummary,
   EmergencyLoan,
   EventRecord,
+  GameEnd,
   GameState,
   PerProduct,
   ShareSale,
@@ -332,8 +333,16 @@ export interface SimulationResult {
   readonly seed: number
   /** How the game started: the opening books and the truck's charges. */
   readonly difficulty: DifficultyId
-  /** Days played, from day 0. */
+  /**
+   * Days played, from day 0: those asked for, or fewer when the game ended
+   * before (see `ended`).
+   */
   readonly days: number
+  /**
+   * How and when the game ended, its last day played; null when it played
+   * every day asked for.
+   */
+  readonly ended: GameEnd | null
   /** See `journalHash`. */
   readonly journalHash: string
   readonly years: readonly YearSummary[]
@@ -378,7 +387,8 @@ export interface SimulationResult {
  * financing's cards of `eventContent` come up whatever the other policies,
  * when the engine brings them, and it answers them (see
  * `financingChooser`). The game opens, and plays every
- * day, with `difficulties`, by default the shipped ones. Throws a RangeError
+ * day, with `difficulties`, by default the shipped ones, and stops early
+ * if it ends, such as in bankruptcy (#160). Throws a RangeError
  * unless `days` is a safe integer of at least 1, `seed` and `difficulty` are
  * ones `createInitialState` accepts and every change is one `applyDecision`
  * accepts.
@@ -418,7 +428,7 @@ export function simulate(
   const daySummaries: DaySummary[] = []
   const morningEnergy: number[] = []
   const unpaidRents: Day[] = []
-  for (let day = 0; day < days; day += 1) {
+  for (let day = 0; day < days && state.ended === null; day += 1) {
     state = answerEvent(state, content, choose)
     morningEnergy.push(state.energy)
     state = playMorning(state, content, null, PERCENTILES, difficulties)
@@ -430,7 +440,8 @@ export function simulate(
   return {
     seed,
     difficulty,
-    days,
+    days: daySummaries.length,
+    ended: state.ended,
     journalHash: journalHash(state.journal),
     years: summarizeYears(state.journal, daySummaries),
     daySummaries,
@@ -502,7 +513,9 @@ export function answerEvent(
  * `answerEvent`), then plays the day with the shipped content but
  * `difficulties`, by default the shipped ones too, and the event cards of
  * `content`, the player's standing read against `percentiles`, by default
- * the shipped table, and returns the next morning.
+ * the shipped table, and returns the next morning. Returns a game that has
+ * ended as it is, since no day plays after: a caller that counts days or
+ * steps through a calendar of its own checks `ended` itself.
  */
 export function playMorning(
   state: GameState,
@@ -511,6 +524,7 @@ export function playMorning(
   percentiles: PercentileContent = PERCENTILES,
   difficulties: DifficultyContent = DIFFICULTIES,
 ): GameState {
+  if (state.ended !== null) return state
   return tick(
     answerEvent(state, content, choose),
     FOOD_TRUCK,

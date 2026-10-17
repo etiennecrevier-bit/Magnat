@@ -174,6 +174,7 @@ describe('formatReport', () => {
       events: 'first',
       contracts: null,
       financing: null,
+      ended: null,
       loans: [],
       shareSales: [],
       eventHistory: [],
@@ -196,6 +197,16 @@ describe('formatReport', () => {
     expect(formatReport({ ...result, contracts: 'first' })[0]).toBe(
       'Seed 7, 400 days, difficulty facile, events first, contracts first',
     )
+    expect(
+      formatReport({
+        ...result,
+        days: 214,
+        ended: { reason: 'bankruptcy', day: 213 },
+      }).slice(0, 2),
+    ).toEqual([
+      'Seed 7, 214 days, difficulty facile, events first',
+      'Ended in bankruptcy at the close of day 213',
+    ])
   })
 })
 

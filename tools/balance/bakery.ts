@@ -299,8 +299,11 @@ export function monthEnds(months: number): number[] {
  * Plays seed `seed` at `difficulty` with `changes` in effect from day 0 and
  * `difficulties` every day, to the close of the last day of its `months`th
  * month, and sums it up. The contracts of `contracts` are signed on day 0,
- * in order, and each renewal accepted; no other event card comes up. Returns
- * the last state too, for the tests.
+ * in order, and each renewal accepted; no other event card comes up. A game
+ * that ends before, in bankruptcy (#160), plays no more: only the days it
+ * played count, and the month ends after its last day read the Encaisse
+ * of that day's close, which nothing moves since. Returns the last state
+ * too, for the tests.
  */
 export function playBakeryGame(
   seed: number,
@@ -328,13 +331,15 @@ export function playBakeryGame(
   let croissantsSold = 0
   let energyAtOpenCloses = 0
   for (let day = 0; day <= lastDay; day += 1) {
-    const opens = state.decisions.daysOpen.includes(toCalendar(day).weekday)
-    state = playMorning(state, events, choose, PERCENTILES, difficulties)
-    if (opens) {
-      openDays += 1
-      energyAtOpenCloses += state.lastDay?.energy ?? 0
+    if (state.ended === null) {
+      const opens = state.decisions.daysOpen.includes(toCalendar(day).weekday)
+      state = playMorning(state, events, choose, PERCENTILES, difficulties)
+      if (opens) {
+        openDays += 1
+        energyAtOpenCloses += state.lastDay?.energy ?? 0
+      }
+      croissantsSold += state.lastDay?.sold.croissant ?? 0
     }
-    croissantsSold += state.lastDay?.sold.croissant ?? 0
     if (day === ends[cashAtMonthEnds.length]) {
       cashAtMonthEnds.push(balance(state.journal, CASH, { toDay: day }))
     }

@@ -81,8 +81,9 @@ export function parseSimArgs(argv: readonly string[]): SimArgs {
 }
 
 /**
- * A header, one row per year, the days each kind of change to the street
- * was in effect and the journal hash.
+ * A header, the end of the game if it ended early, one row per year, the
+ * days each kind of change to the street was in effect and the journal
+ * hash.
  */
 export function formatReport(result: SimulationResult): string[] {
   const header = [
@@ -111,6 +112,11 @@ export function formatReport(result: SimulationResult): string[] {
   )
   return [
     `Seed ${result.seed}, ${result.days} days, difficulty ${result.difficulty}, events ${result.events}${result.contracts === null ? '' : `, contracts ${result.contracts}`}`,
+    ...(result.ended === null
+      ? []
+      : [
+          `Ended in ${result.ended.reason} at the close of day ${result.ended.day}`,
+        ]),
     ...rows.map((row) =>
       row.map((cell, column) => cell.padStart(widths[column] ?? 0)).join('  '),
     ),

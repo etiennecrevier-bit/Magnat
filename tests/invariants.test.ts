@@ -1,8 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import type {
-  DifficultyId,
-  EventContent,
-  StreetModifierKind,
+import {
+  isNoticeCard,
+  type DifficultyId,
+  type EventContent,
+  type StreetModifierKind,
 } from '../src/content/schema.ts'
 import { tick, toCalendar } from '../src/engine/clock.ts'
 import {
@@ -50,8 +51,10 @@ import {
 // engine offers when the encaisse closes below zero accepted too (#159), and
 // every other card at random. One game also hires an employee at the truck
 // and a deliverer on day 0 (#158), so their training and their wages post
-// through the ten years, and it runs short of cash and borrows. The essai
-// card sells shares too, so the investor's dividends post in every game.
+// through the ten years, and it runs short of cash and borrows, long enough
+// for Mme Prudhomme's letters before a bankruptcy (#160), though none of
+// the games ends. The essai card sells shares too, so the investor's
+// dividends post in every game.
 // The whole file must stay under BUDGET_MS in CI; if it gets slower, make
 // the slow part faster rather than checking fewer days or seeds.
 
@@ -145,6 +148,7 @@ interface Checked {
     pacing: string[]
     street: string[]
     financing: string[]
+    ended: string[]
   }
   /** Events that came up, follow-ups included, and those drawn. */
   events: number
@@ -158,6 +162,8 @@ interface Checked {
   wages: number
   /** The financing's cards that came up (#159). */
   financingCards: number
+  /** Mme Prudhomme's letters before a bankruptcy that came up (#160). */
+  notices: number
   /** Emergency loans taken, rounds of shares sold and dividends paid. */
   loans: number
   shareSales: number
@@ -249,6 +255,7 @@ function check(
       pacing: [],
       street: [],
       financing: [],
+      ended: [],
     },
     events: 0,
     drawn: 0,
@@ -259,6 +266,7 @@ function check(
     grocerPayments: 0,
     wages: 0,
     financingCards: 0,
+    notices: 0,
     loans: 0,
     shareSales: 0,
     dividends: 0,
@@ -294,11 +302,12 @@ function check(
       checked.events += 1
       const card = EVENTS_IN_PLAY.events.find(({ id }) => id === pending.event)
       if (card === undefined) throw new Error(`Unknown event ${pending.event}`)
-      if (isFinancingCard(card)) {
+      if (isFinancingCard(card) || isNoticeCard(card)) {
         // The engine brings it the morning after a close below zero,
         // whatever the first day and the gap, as a draw that morning: the
         // next card drawn keeps its gap from it.
-        checked.financingCards += 1
+        if (isNoticeCard(card)) checked.notices += 1
+        else checked.financingCards += 1
         if (state.financing.belowZeroSince === null) {
           fail('financing', `day ${day}: ${card.id} after a close above zero`)
         }
@@ -333,6 +342,10 @@ function check(
     )
     const dayPlayed = performance.now()
     checked.playMs.push(dayPlayed - dayStarted)
+    if (state.ended !== null) {
+      fail('ended', `day ${day}: the game ended in ${state.ended.reason}`)
+      break
+    }
     const { journal } = state
     tally.count(journal)
     checked.days += 1
@@ -540,11 +553,15 @@ describe.each(GAMES)(
       )
     })
 
-    it('keeps the financing within its limits, its cards only after a close below zero', () => {
+    it('keeps the financing within its limits, its cards and the letters only after a close below zero', () => {
       expect(checked.failures.financing).toEqual([])
     })
 
-    it(`draws events from day ${EVENTS_IN_PLAY.pacing.firstDay} on, at least ${EVENTS_IN_PLAY.pacing.minDaysBetween} days apart, follow-ups, dated events and the financing's aside`, () => {
+    it('plays the ten years without going bankrupt', () => {
+      expect(checked.failures.ended).toEqual([])
+    })
+
+    it(`draws events from day ${EVENTS_IN_PLAY.pacing.firstDay} on, at least ${EVENTS_IN_PLAY.pacing.minDaysBetween} days apart, follow-ups, dated events, the financing's and the letters aside`, () => {
       expect(checked.events).toBeGreaterThanOrEqual(MIN_EVENTS)
       expect(checked.events).toBeGreaterThan(checked.drawn)
       expect(checked.failures.pacing).toEqual([])
@@ -599,6 +616,12 @@ it('brings the financing, takes an emergency loan, sells shares and pays dividen
   expect(total('loans')).toBeGreaterThan(0)
   expect(total('shareSales')).toBeGreaterThan(0)
   expect(total('dividends')).toBeGreaterThanOrEqual(MIN_DIVIDENDS)
+})
+
+it("brings Mme Prudhomme's letters over the games, which a run of months below zero earns", () => {
+  expect(CHECKED).toHaveLength(GAMES.length)
+  const notices = CHECKED.reduce((sum, checked) => sum + checked.notices, 0)
+  expect(notices).toBeGreaterThan(0)
 })
 
 it(`checks every game within ${BUDGET_MS / 1000} s`, () => {
