@@ -4,6 +4,7 @@ import type { Avatar } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
 import { DEFIS } from '../engine/day.ts'
 import type { Cents } from '../engine/money.ts'
+import { netWorth as netWorthOf, netWorthChange } from '../engine/netWorth.ts'
 import type { Day } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
@@ -16,6 +17,7 @@ import EventCard from './EventCard.tsx'
 import FinancesPanel from './FinancesPanel.tsx'
 import { formatGameDate } from './formatGameDate.ts'
 import ManagePanel from './ManagePanel.tsx'
+import { NetWorthGaugeView } from './NetWorthGauge.tsx'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
 import ReportPanel from './ReportPanel.tsx'
 import SettingsPanel from './SettingsPanel.tsx'
@@ -46,6 +48,13 @@ interface TopBarViewProps {
   cash: Cents
   /** What the next 1st of the month takes from the encaisse. */
   fixedCosts: Cents
+  /** The owner's « Valeur nette » this morning. */
+  netWorth: Cents
+  /**
+   * How it moved since the last Sunday's close; null before a week has one
+   * to move from.
+   */
+  netWorthChange: Cents | null
   /** The owner's energy this morning. */
   energy: number
   /** The owner's avatar, which the energy's word agrees with. */
@@ -74,6 +83,8 @@ export function TopBarView({
   day,
   cash,
   fixedCosts,
+  netWorth,
+  netWorthChange: change,
   energy,
   avatar,
   speed,
@@ -113,6 +124,7 @@ export function TopBarView({
       </div>
       <div className="top-bar__gauges">
         <CashGaugeView cash={cash} fixedCosts={fixedCosts} />
+        <NetWorthGaugeView netWorth={netWorth} change={change} />
         <EnergyGaugeView energy={energy} avatar={avatar} />
       </div>
       <div className="top-bar__panels">
@@ -173,6 +185,9 @@ export default function TopBar() {
   const difficulty = useGame((state) => state.game.profile.difficulty)
   const day = useGame((state) => state.game.day)
   const journal = useGame((state) => state.game.journal)
+  const financing = useGame((state) => state.game.financing)
+  const personal = useGame((state) => state.game.personal)
+  const weekHistory = useGame((state) => state.game.weekHistory)
   const energy = useGame((state) => state.game.energy)
   const challenge = useGame((state) => state.game.challenge)
   const speed = useGame((state) => state.speed)
@@ -197,6 +212,10 @@ export default function TopBar() {
     () => balance(journal, CASH, { toDay: day }),
     [journal, day],
   )
+  const worth = useMemo(() => {
+    const game = { day, journal, financing, personal, weekHistory }
+    return { total: netWorthOf(game), change: netWorthChange(game) }
+  }, [day, journal, financing, personal, weekHistory])
   // A Défi's truck came on its first day, from which its loan counts.
   const firstDay = challenge?.startDay ?? 0
   const fixedCosts = useMemo(
@@ -215,6 +234,8 @@ export default function TopBar() {
         day={day}
         cash={cash}
         fixedCosts={fixedCosts}
+        netWorth={worth.total}
+        netWorthChange={worth.change}
         energy={energy}
         avatar={avatar}
         speed={speed}

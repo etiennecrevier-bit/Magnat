@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { cents } from '../engine/money.ts'
+import { netWorthParts } from '../engine/netWorth.ts'
 import ScreensStrip, { ScreensStripView } from './ScreensStrip.tsx'
 import { TodayPanelView } from './TodayPanel.tsx'
 import { todayNumbers, type TodayNumbers } from './todayNumbers.ts'
@@ -69,12 +70,15 @@ describe('ScreensStripView', () => {
 
   it("shows the Aujourd'hui panel's numbers for a played day", () => {
     // Day 0 is a Monday, closed by default, so day 1 is the first that sells.
-    const { lastDay } = tick(tick(createInitialState(42)))
+    const game = tick(tick(createInitialState(42)))
+    const { lastDay } = game
     if (lastDay === null) throw new Error('A played day has a summary')
     const [revenue, served, lost] = stripNumbers(
       render("Aujourd'hui", todayNumbers(lastDay)),
     ).map(([, number]) => number)
-    const panel = renderToStaticMarkup(<TodayPanelView lastDay={lastDay} />)
+    const panel = renderToStaticMarkup(
+      <TodayPanelView lastDay={lastDay} netWorth={netWorthParts(game)} />,
+    )
 
     expect(panel).toContain(
       `Chiffre d&#x27;affaires${S}: <strong>${revenue}</strong>`,
