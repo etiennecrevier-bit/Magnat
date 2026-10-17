@@ -9,9 +9,21 @@ export const MAX_MESSAGE_LENGTH = 140
 
 /**
  * Who writes: `landlord` when the owner's rent goes unpaid, `exhausted` when
- * the owner wakes up exhausted.
+ * the owner wakes up exhausted; then those the game names: a grocer when a
+ * delivery is missed (`missedDelivery`), when their contract runs out
+ * (`contractEnded`) or when the last missed delivery they allow ends it
+ * (`contractBroken`), and an employee when they start (`hired`) or are let
+ * go (`fired`).
  */
-export const messageKindSchema = z.enum(['landlord', 'exhausted'])
+export const messageKindSchema = z.enum([
+  'landlord',
+  'exhausted',
+  'missedDelivery',
+  'contractEnded',
+  'contractBroken',
+  'hired',
+  'fired',
+])
 
 export type MessageKind = z.infer<typeof messageKindSchema>
 
@@ -23,17 +35,28 @@ const lineSchema = z
     message: 'a line starts and ends with text, not spaces',
   })
 
+const linesSchema = z.array(lineSchema).min(MIN_LINES_PER_KIND)
+
+/** A kind with one sender, whom the content names. */
 const senderSchema = z.strictObject({
   /** Who the message is from, as the card shows it. */
   from: z.string().min(1),
-  lines: z.array(lineSchema).min(MIN_LINES_PER_KIND),
+  lines: linesSchema,
 })
+
+/** A kind whose sender the game names: a grocer or an employee. */
+const namedByGameSchema = z.strictObject({ lines: linesSchema })
 
 export const messagesSchema = z
   .strictObject({
     _note: z.string().optional(),
     landlord: senderSchema,
     exhausted: senderSchema,
+    missedDelivery: namedByGameSchema,
+    contractEnded: namedByGameSchema,
+    contractBroken: namedByGameSchema,
+    hired: namedByGameSchema,
+    fired: namedByGameSchema,
   })
   .superRefine((messages, ctx) => {
     const seen = new Set<string>()
