@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type Ref } from 'react'
 import { useStore } from 'zustand'
 import BankruptcyEnd from './BankruptcyEnd.tsx'
+import ContractsScreen from './ContractsScreen.tsx'
 import DefiEnd from './DefiEnd.tsx'
 import { keepBestMedals } from './defis.ts'
 import EventLog from './EventLog.tsx'
@@ -16,13 +17,14 @@ import WeekReports from './WeekReports.tsx'
 import WeekSlideIn from './WeekSlideIn.tsx'
 import './GameScreens.css'
 
-export type Screen = 'today' | 'statements' | 'events' | 'reports'
+export type Screen = 'today' | 'statements' | 'events' | 'reports' | 'contracts'
 
 const SCREENS: Record<Screen, string> = {
   today: "Aujourd'hui",
   statements: 'États financiers',
   events: 'Journal des événements',
   reports: 'Bilans',
+  contracts: 'Contrats',
 }
 
 interface GameScreensViewProps {
@@ -104,6 +106,7 @@ export function GameScreensView({
         {screen === 'statements' && <FinancialStatements />}
         {screen === 'events' && <EventLog />}
         {screen === 'reports' && <WeekReports />}
+        {screen === 'contracts' && <ContractsScreen />}
       </div>
     </main>
   )

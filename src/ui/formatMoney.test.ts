@@ -3,6 +3,7 @@ import { cents } from '../engine/money.ts'
 import {
   formatAmount,
   formatBriefMoney,
+  formatCount,
   formatMoney,
   formatSignedMoney,
   formatStatementAmount,
@@ -94,5 +95,16 @@ describe('formatBriefMoney', () => {
     { amount: 123_456_700, text: `1${S}234${S}567${S}$` },
   ])('writes $amount cents as $text', ({ amount, text }) => {
     expect(formatBriefMoney(cents(amount))).toBe(text)
+  })
+})
+
+describe('formatCount', () => {
+  it.each([
+    { count: 0, text: '0' },
+    { count: 750, text: '750' },
+    { count: 1250, text: `1${S}250` },
+    { count: 1_234_567, text: `1${S}234${S}567` },
+  ])('writes $count as $text', ({ count, text }) => {
+    expect(formatCount(count)).toBe(text)
   })
 })

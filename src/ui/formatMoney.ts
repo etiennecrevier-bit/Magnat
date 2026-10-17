@@ -25,6 +25,11 @@ export function formatAmount(amount: Cents): string {
   return `${grouped},${centsText}`
 }
 
+/** A count with its thousands apart: `1 150`. */
+export function formatCount(count: number): string {
+  return String(count).replace(DIGITS_PER_GROUP, NO_BREAK_SPACE)
+}
+
 /** `1 234,56 $` for the size of `amount`, without its sign. */
 function formatMagnitude(amount: Cents): string {
   return `${formatAmount(amount)}${NO_BREAK_SPACE}$`

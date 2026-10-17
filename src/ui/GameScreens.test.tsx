@@ -100,6 +100,7 @@ describe('GameScreensView', () => {
       { label: 'États financiers', pressed: 'false' },
       { label: 'Journal des événements', pressed: 'false' },
       { label: 'Bilans', pressed: 'false' },
+      { label: 'Contrats', pressed: 'false' },
     ])
     expect(html).toContain('<h1>Aujourd&#x27;hui</h1>')
     expect(html).not.toContain('<h1>États financiers</h1>')
@@ -113,6 +114,7 @@ describe('GameScreensView', () => {
       { label: 'États financiers', pressed: 'true' },
       { label: 'Journal des événements', pressed: 'false' },
       { label: 'Bilans', pressed: 'false' },
+      { label: 'Contrats', pressed: 'false' },
     ])
     expect(html).toContain('<h1>États financiers</h1>')
     expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
@@ -125,6 +127,7 @@ describe('GameScreensView', () => {
       { label: 'États financiers', pressed: 'false' },
       { label: 'Journal des événements', pressed: 'true' },
       { label: 'Bilans', pressed: 'false' },
+      { label: 'Contrats', pressed: 'false' },
     ])
     expect(html).toContain(
       '<section class="event-log"><h1>Journal des événements</h1><p>Aucun événement depuis un an.</p></section>',
@@ -139,6 +142,7 @@ describe('GameScreensView', () => {
       { label: 'États financiers', pressed: 'false' },
       { label: 'Journal des événements', pressed: 'false' },
       { label: 'Bilans', pressed: 'true' },
+      { label: 'Contrats', pressed: 'false' },
     ])
     expect(html).toContain(
       '<section class="week-reports"><h1>Bilans</h1><p>Aucun bilan pour l&#x27;instant.</p></section>',
@@ -146,9 +150,24 @@ describe('GameScreensView', () => {
     expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
   })
 
+  it('shows the Contrats screen, empty before the first contract', () => {
+    const html = render('contracts')
+    expect(screenButtons(html)).toEqual([
+      { label: 'Aujourd&#x27;hui', pressed: 'false' },
+      { label: 'États financiers', pressed: 'false' },
+      { label: 'Journal des événements', pressed: 'false' },
+      { label: 'Bilans', pressed: 'false' },
+      { label: 'Contrats', pressed: 'true' },
+    ])
+    expect(html).toContain(
+      '<section class="contracts"><h1>Contrats</h1><p>Aucun contrat pour l&#x27;instant.</p></section>',
+    )
+    expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
+  })
+
   it('has only the screen buttons in its menu, the export being in « Réglages »', () => {
     expect(render('today')).toMatch(
-      /<nav class="screen-nav" aria-label="Écrans"><div class="toggle-group">(<button [^>]*>[^<]*<\/button>){4}<\/div><\/nav>/,
+      /<nav class="screen-nav" aria-label="Écrans"><div class="toggle-group">(<button [^>]*>[^<]*<\/button>){5}<\/div><\/nav>/,
     )
     expect(render('today')).not.toContain('Exporter')
   })
@@ -158,6 +177,7 @@ describe('GameScreensView', () => {
     ['statements', 'statements'],
     ['events', 'event-log'],
     ['reports', 'week-reports'],
+    ['contracts', 'contracts'],
   ])(
     'puts « Replier » before the %s screen, its tooltip naming the key, in a part that is not hidden',
     (screen, section) => {
@@ -172,6 +192,7 @@ describe('GameScreensView', () => {
     ['statements', 'États financiers'],
     ['events', 'Journal des événements'],
     ['reports', 'Bilans'],
+    ['contracts', 'Contrats'],
   ])(
     'folded on %s, shows the strip with its badge in place of the menu, and hides the screen',
     (screen, badge) => {
