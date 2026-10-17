@@ -64,9 +64,10 @@ export interface FinancingSummary {
  * when it never took an emergency loan nor sold shares. Each loan still
  * open (see `isLoanOpen`) owes its principal less its « Remboursement »
  * entries since it was taken, and pays next on the coming 1st, today if
- * this is one, what `chargesOn` has it pay then. The dividends are those
- * `chargesOn` has the next 1st of a quarter pay, today if this is one,
- * read from the books as they stand.
+ * this is one, what `chargesOn` has it pay then; a loan taken on a 1st
+ * pays first on the next, as `chargesOn` starts its payments the month
+ * after. The dividends are those `chargesOn` has the next 1st of a quarter
+ * pay, today if this is one, read from the books as they stand.
  */
 export function financingSummary(
   game: Pick<GameState, 'day' | 'journal' | 'financing'>,
@@ -76,13 +77,19 @@ export function financingSummary(
     return null
   }
   const nextFirst = toCalendar(day).dayOfMonth === 1 ? day : endOfMonth(day) + 1
-  const payments = chargesOn(journal, financing, nextFirst)
   const loans = financing.loans
     .filter((loan) => isLoanOpen(loan, day))
-    .map(({ day: taken, lender, principal }): LoanLine => {
+    .map((loan): LoanLine => {
+      const { day: taken, lender, principal } = loan
       const repaid = paidOut(
         entriesSince(journal, taken),
         financingMemo(FINANCING_MEMO.principal, lender),
+      )
+      const on = Math.max(nextFirst, endOfMonth(taken) + 1)
+      const payments = chargesOn(
+        journal,
+        { ...financing, loans: [loan], shareSales: [] },
+        on,
       )
       const amount = add(
         paidOut(payments, financingMemo(FINANCING_MEMO.interest, lender)),
@@ -91,7 +98,7 @@ export function financingSummary(
       return {
         lender,
         owed: sub(principal, repaid),
-        next: amount > 0 ? { amount, day: nextFirst } : null,
+        next: amount > 0 ? { amount, day: on } : null,
       }
     })
   const tenths = new Map<string, number>()

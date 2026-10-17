@@ -129,6 +129,47 @@ describe('financingSummary', () => {
     })
   })
 
+  it('shows the first payment of a loan accepted on a 1st on the next 1st, as the engine pays it', () => {
+    // The morning of June 1st, Encaisse 5 000 $ below zero, as a fixture.
+    const june = endOfMonth(0) + 1
+    let start = createInitialState(42)
+    while (start.day < june) start = tick(start)
+    start = adjusted(
+      start,
+      -balance(start.journal, '1000', { toDay: start.day }) - 500_000,
+    )
+    const store = storeOn(start, 'pretUrgence')
+    store.getState().chooseEvent('accepter')
+    store.getState().closePanel()
+    const [loan] = store.getState().game.financing.loans
+    if (loan === undefined) throw new Error('No loan taken')
+    expect(loan).toMatchObject({ day: june, lender: LENDER })
+    const [first] = loanSchedule(
+      loan.principal,
+      loan.annualRateBasisPoints,
+      loan.termMonths,
+    ).payments
+    const july = endOfMonth(june) + 1
+    const next = { amount: first?.payment, day: july }
+
+    expect(financingSummary(store.getState().game)?.loans).toEqual([
+      { lender: LENDER, owed: loan.principal, next },
+    ])
+
+    // June 1st pays nothing of it; July 1st pays what the summary said.
+    const played = advanceTo(store, june + 1)
+    expect(paidOn(played, june, `Intérêts · ${LENDER}`)).toBe(0)
+    expect(paidOn(played, june, `Remboursement · ${LENDER}`)).toBe(0)
+    expect(financingSummary(played)?.loans[0]?.next).toEqual(next)
+    const morning = advanceTo(store, july)
+    expect(financingSummary(morning)?.loans[0]?.next).toEqual(next)
+    const after = tick(morning)
+    expect(
+      paidOn(after, july, `Intérêts · ${LENDER}`) +
+        paidOn(after, july, `Remboursement · ${LENDER}`),
+    ).toBe(first?.payment)
+  })
+
   it('says no loan is open once the last one is paid back', () => {
     const game = createInitialState(42)
     const paidBack = {
