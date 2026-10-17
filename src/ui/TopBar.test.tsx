@@ -7,6 +7,7 @@ import { DEFIS, FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { applyEffect } from '../engine/effects.ts'
 import { cents, type Cents } from '../engine/money.ts'
+import { titleOf } from '../engine/dream.ts'
 import { netWorth } from '../engine/netWorth.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
@@ -212,11 +213,13 @@ describe('TopBarView', () => {
 })
 
 describe('TopBar', () => {
-  it("shows the owner's net worth from the app store, with no arrow before a Sunday is played", () => {
+  it("shows the owner's net worth from the app store, with no arrow before a Sunday is played, and the title it earns", () => {
     const worth = netWorth(gameStore.getState().game)
+    const title = titleOf(worth)?.name
+    expect(title).toBeDefined()
     const html = renderToStaticMarkup(<TopBar />)
     expect(html).toContain(
-      `<p class="net-worth-gauge"><span class="net-worth-gauge__label">Valeur nette</span> <span class="net-worth-gauge__amount">${formatMoney(worth)}</span></p>`,
+      `<p class="net-worth-gauge"><span class="net-worth-gauge__label">Valeur nette</span> <span class="net-worth-gauge__amount">${formatMoney(worth)}</span><span class="net-worth-gauge__title">${title}</span></p>`,
     )
   })
 
@@ -386,6 +389,39 @@ describe('TopBar', () => {
     const closed = renderToStaticMarkup(<TopBar />)
     expect(closed).not.toContain('<dialog')
     expect(closed).toContain('aria-label="Vitesse ×3" aria-pressed="true"')
+  })
+
+  it('has « Le rêve » after « Vos finances », and opens it, paused', () => {
+    gameStore.getState().setSpeed(3)
+    const bar = renderToStaticMarkup(<TopBar />)
+    expect(bar).toContain(
+      '<button type="button" class="top-bar__panel" aria-haspopup="dialog">Vos finances</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Le rêve</button></div>',
+    )
+    gameStore.getState().openPanel('dream')
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toMatch(
+      /^<header class="top-bar">.*<\/header><dialog class="panel dream" aria-labelledby="dream-title">.*<\/dialog>$/,
+    )
+    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+      label: 'Pause',
+      pressed: 'true',
+    })
+    gameStore.getState().closePanel()
+    expect(renderToStaticMarkup(<TopBar />)).not.toContain('<dialog')
+  })
+
+  it('hides « Le rêve » and the title in a Défi', () => {
+    gameStore.getState().startGame(newChallenge('?seed=7', 'travauxSaintDenis'))
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).not.toContain('Le rêve')
+    expect(html).not.toContain('net-worth-gauge__title')
+  })
+
+  it('shows « Magnat » when the store opens it', () => {
+    gameStore.setState({ panel: 'magnat', resumeSpeed: 1, speed: 0 })
+    expect(renderToStaticMarkup(<TopBar />)).toMatch(
+      /<dialog class="panel magnat" aria-labelledby="magnat-title">.*<h2 id="magnat-title" tabindex="-1">Magnat<\/h2>.*<\/dialog>$/,
+    )
   })
 
   it('shows the Vos finances panel only while it is open, paused', () => {

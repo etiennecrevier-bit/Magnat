@@ -9,6 +9,7 @@ import {
   medalSchema,
   ovenTermsSchema,
   productIdSchema,
+  rungIdSchema,
   segmentIdSchema,
   staffRoleIdSchema,
   streetChangeSchema,
@@ -17,6 +18,7 @@ import {
   type DefiContent,
   type DifficultyContent,
   type DifficultyId,
+  type DreamContent,
   type EventContent,
   type FinancingContent,
   type FoodTruckContent,
@@ -59,13 +61,33 @@ import {
   DIFFICULTIES,
   EVENTS,
   FOOD_TRUCK,
+  TRUCK_MEMO,
   openingJournal,
+  truckOnBooks,
 } from './day.ts'
 import {
   startingDecisions,
   validateDecisions,
   validateStaff,
 } from './decisions.ts'
+import {
+  DREAM,
+  DREAM_MEMO,
+  dreamBonuses,
+  dreamDepreciation,
+  dreamLabel,
+  dreamLimits,
+  housingLabels,
+  isCompany,
+  isPersonal,
+  noDream,
+  prerequisitesMet,
+  purchaseCost,
+  purchaseEntries,
+  purchaseMovements,
+  rungOf,
+  truckReplacedOn,
+} from './dream.ts'
 import { FULL_ENERGY } from './energy.ts'
 import { noEvents } from './events.ts'
 import {
@@ -91,9 +113,11 @@ import type {
   ChallengeStatus,
   Day,
   Decisions,
+  DreamState,
   FinancingState,
   GameState,
   Hire,
+  PersonalMovement,
   VisitOutcome,
   WeekDay,
   WeekRecord,
@@ -109,7 +133,9 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 17 adds the
+ * change can no longer load (rule 8 in CLAUDE.md). Version 18 adds « Le
+ * rêve »: a version 17 game still loads, with nothing bought and no «
+ * Magnat » yet. Version 17 adds the
  * owner's net worth at the close of each week's Sunday: a version 16 game
  * still loads, with none for the weeks it reported. Version 16 adds the end
  * of a game, by bankruptcy: a version 15 game still loads, as a game that
@@ -140,9 +166,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 17
+export const SAVE_VERSION = 18
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const DREAMLESS_VERSION = 17
 const NETWORTHLESS_VERSION = 16
 const ENDLESS_VERSION = 15
 const FINANCINGLESS_VERSION = 14
@@ -548,6 +575,21 @@ const endedSchema = z.strictObject({
   day: gameDay,
 })
 
+// `checkDream()` checks the rungs, their days, their costs and the books.
+const dreamSchema = z.strictObject({
+  bought: z.array(
+    z.strictObject({
+      rung: rungIdSchema,
+      day: gameDay,
+      cost: z
+        .int()
+        .positive()
+        .transform((n) => cents(n)),
+    }),
+  ),
+  magnatOn: gameDay.nullable(),
+})
+
 const saveSchema = z.strictObject({
   saveVersion: z.literal(SAVE_VERSION),
   day: gameDay,
@@ -574,13 +616,18 @@ const saveSchema = z.strictObject({
   ownerAway: z.boolean(),
   financing: financingSchema,
   ended: endedSchema.nullable(),
+  dream: dreamSchema,
 })
 
 // The week under way, and an older save's financing, may come from the
 // books rather than the save.
-type Save = Omit<z.output<typeof saveSchema>, 'weekSoFar' | 'financing'> & {
+type Save = Omit<
+  z.output<typeof saveSchema>,
+  'weekSoFar' | 'financing' | 'dream'
+> & {
   readonly weekSoFar: WeekSoFar
   readonly financing: FinancingState
+  readonly dream: DreamState
 }
 
 /**
@@ -592,8 +639,18 @@ type Parsed = Omit<Save, 'weekSoFar' | 'financing'> & {
   readonly financing: FinancingState | null
 }
 
-/** A version 16 save: no net worth for the weeks it reported. */
-const networthlessSchema = saveSchema.extend({
+/** A save as parsed, as version 17 has it: nothing of « Le rêve ». */
+type Dreamless = Omit<Parsed, 'saveVersion' | 'dream'> & {
+  readonly saveVersion: typeof DREAMLESS_VERSION
+}
+
+/** A version 17 save: nothing of « Le rêve ». */
+const dreamlessSchema = saveSchema
+  .omit({ dream: true })
+  .extend({ saveVersion: z.literal(DREAMLESS_VERSION) })
+
+/** A version 16 save: no net worth for the weeks it reported either. */
+const networthlessSchema = dreamlessSchema.extend({
   saveVersion: z.literal(NETWORTHLESS_VERSION),
   weekHistory: z.array(weekRecordSchema.omit({ netWorth: true })),
 })
@@ -692,6 +749,7 @@ export function serialize(state: GameState): string {
     ownerAway: state.ownerAway,
     financing: state.financing,
     ended: state.ended,
+    dream: state.dream,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -769,6 +827,7 @@ export function deserialize(
   grocers: GrocerContent = GROCERS,
   staff: StaffContent = STAFF,
   financing: FinancingContent = FINANCING,
+  dream: DreamContent = DREAM,
 ): GameState {
   const loaded = parsed(text, bakery)
   const journal = rebuilt(loaded.journal)
@@ -794,26 +853,37 @@ export function deserialize(
   checkEvents(save, events)
   checkEnergy(save, defi === null ? FULL_ENERGY : startingEnergy(defi))
   checkMarketingHistory(save, content)
-  checkDecisions('decisions', save.decisions, content, bakery, staff)
+  checkDream(save, journal, content, dream, opening)
+  checkDecisions(
+    'decisions',
+    save.decisions,
+    save,
+    content,
+    bakery,
+    staff,
+    dream,
+  )
   if (save.pendingDecisions !== null) {
     checkDecisions(
       'pendingDecisions',
       save.pendingDecisions,
+      save,
       content,
       bakery,
       staff,
+      dream,
     )
   }
   checkBakery(save, journal, bakery)
   attempt('profile', () => validateProfile(save.profile))
   checkDifficulty(save, journal, content, opening)
-  checkPersonal(save, events)
+  checkPersonal(save, events, dream)
   checkWeek(save, journal, content, events, opening)
   if (defi !== null) checkChallenge(save, journal, defi, content, opening)
   checkContracts(save, grocers)
   checkStaff(save, staff)
   checkFinancing(save, journal, financing)
-  checkNetWorth(save, journal)
+  checkNetWorth(save, journal, dream)
   checkEnded(save, financing)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
@@ -841,6 +911,7 @@ export function deserialize(
     ownerAway: save.ownerAway,
     financing: save.financing,
     ended: save.ended,
+    dream: save.dream,
   }
 }
 
@@ -857,6 +928,16 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
   if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  return withDream(dreamless(raw, saveVersion, bakery))
+}
+
+/** An older save, up to version 17, as version 17. */
+function dreamless(
+  raw: object,
+  saveVersion: unknown,
+  bakery: BakeryContent,
+): Dreamless {
+  if (saveVersion === DREAMLESS_VERSION) return checked(dreamlessSchema, raw)
   if (saveVersion === NETWORTHLESS_VERSION) {
     return withNetWorths(checked(networthlessSchema, raw))
   }
@@ -945,8 +1026,23 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
 }
 
 /**
- * A save from before the net worth of each week as the current version:
- * none for the weeks it reported.
+ * A save from before « Le rêve » as the current version: nothing bought,
+ * no « Magnat » yet.
+ */
+function withDream<
+  Old extends { readonly saveVersion: typeof DREAMLESS_VERSION },
+>(
+  save: Old,
+): Omit<Old, 'saveVersion'> & {
+  readonly saveVersion: typeof SAVE_VERSION
+  readonly dream: DreamState
+} {
+  return { ...save, saveVersion: SAVE_VERSION, dream: noDream() }
+}
+
+/**
+ * A save from before the net worth of each week as version 17: none for
+ * the weeks it reported.
  */
 function withNetWorths<
   Old extends {
@@ -956,12 +1052,12 @@ function withNetWorths<
 >(
   save: Old,
 ): Omit<Old, 'saveVersion' | 'weekHistory'> & {
-  readonly saveVersion: typeof SAVE_VERSION
+  readonly saveVersion: typeof DREAMLESS_VERSION
   readonly weekHistory: WeekRecord[]
 } {
   return {
     ...save,
-    saveVersion: SAVE_VERSION,
+    saveVersion: DREAMLESS_VERSION,
     weekHistory: save.weekHistory.map((week) => ({ ...week, netWorth: null })),
   }
 }
@@ -1421,22 +1517,162 @@ function checkMarketingHistory(
   })
 }
 
+/**
+ * The decisions keep within the content's limits, with the more units the
+ * rungs of « Le rêve » bought allow a restock rule (see `dreamLimits`), and
+ * each product's kind of restock rule.
+ */
 function checkDecisions(
   field: string,
   decisions: Decisions,
+  save: Save,
   content: FoodTruckContent,
   bakery: BakeryContent,
   staff: StaffContent,
+  dream: DreamContent,
 ): void {
-  attempt(field, () =>
-    validateDecisions(decisions, content.decisionLimits, bakery, staff),
+  const limits = dreamLimits(
+    content.decisionLimits,
+    dreamBonuses(save.dream, dream),
   )
+  attempt(field, () => validateDecisions(decisions, limits, bakery, staff))
   for (const product of PRODUCTS) {
     const { kind } = content.startingDecisions.restock[product]
     const saved = decisions.restock[product].kind
     if (saved !== kind) {
       invalid(`${field}.restock.${product} must be a ${kind} rule: ${saved}`)
     }
+  }
+}
+
+/**
+ * What « Le rêve » could be at the save's day, with the books `journal`:
+ * - nothing in a Défi;
+ * - each rung bought is one of `dream`'s, bought once, for sale, on a
+ *   morning from the game's first day to the save's day, the days going
+ *   up, once every rung before it in its ladder was;
+ * - each cost is the rung's price, with the old truck's book value that
+ *   morning on top for the truck that replaces it (see `purchaseCost` and
+ *   `truckOnBooks`);
+ * - the journal holds the entries of each company rung's purchase (see
+ *   `purchaseEntries`) and of its depreciation on each 1st played after it
+ *   (see `dreamDepreciation`), and no other entry of their memos nor of the
+ *   old truck's sale, in any order within a day; and no depreciation nor
+ *   lease of the old truck from the morning it was replaced;
+ * - the owner became « Magnat », if they did, at the close of a day played.
+ *
+ * The personal rungs' movements are `checkPersonal()`'s.
+ */
+function checkDream(
+  save: Save,
+  journal: Journal,
+  content: FoodTruckContent,
+  dream: DreamContent,
+  difficulties: DifficultyContent,
+): void {
+  const { bought, magnatOn } = save.dream
+  const first = firstDay(save)
+  const played = save.lastDay?.day ?? first - 1
+  if (save.challenge !== null && (bought.length > 0 || magnatOn !== null)) {
+    invalid(`the Défi ${save.challenge.id} has a dream`)
+  }
+  bought.forEach(({ rung: id, day, cost }, index) => {
+    const what = `dream rung ${index + 1}, ${id},`
+    const { rung } = rungOf(id, dream)
+    const before = bought.slice(0, index)
+    if (before.some((purchase) => purchase.rung === id)) {
+      invalid(`${what} is bought twice`)
+    }
+    if (rung.comingSoon === true) invalid(`${what} is not for sale`)
+    if (day < first || day > save.day) {
+      invalid(
+        `${what} is bought on day ${day}, not a morning from day ${first} to day ${save.day}`,
+      )
+    }
+    const last = before.at(-1)
+    if (last !== undefined && day < last.day) {
+      invalid(
+        `${what} is bought before the rung before it: day ${day} < day ${last.day}`,
+      )
+    }
+    if (!prerequisitesMet({ bought: before, magnatOn: null }, id, dream)) {
+      invalid(`${what} is bought before a rung before it in its ladder`)
+    }
+    const expected = isCompany(rung)
+      ? purchaseCost(rung, truckAt(day))
+      : rung.priceCents
+    if (cost !== expected) invalid(`${what} cost ${cost}, not ${expected}`)
+  })
+
+  function truckAt(day: Day) {
+    return truckOnBooks(
+      journal,
+      day,
+      save.profile.difficulty,
+      content,
+      difficulties,
+    )
+  }
+
+  const memos = new Set<string>([DREAM_MEMO.truckSold])
+  for (const { name } of dream.company) {
+    memos.add(dreamLabel(DREAM_MEMO.bought, name))
+    memos.add(dreamLabel(DREAM_MEMO.depreciation, name))
+  }
+  const expected = attempt('the dream', () => {
+    const entries = bought.flatMap(({ rung: id, day }) => {
+      const { rung } = rungOf(id, dream)
+      return isCompany(rung) ? purchaseEntries(rung, day, truckAt(day)) : []
+    })
+    const since = Math.min(...bought.map(({ day }) => day))
+    for (let on = since + 1; on <= played; on += 1) {
+      entries.push(
+        ...entriesOf(dreamDepreciation(emptyJournal(), on, save.dream, dream)),
+      )
+    }
+    return entries
+  })
+  const key = ({ day: on, memo, lines }: JournalEntry) =>
+    JSON.stringify([
+      on,
+      memo,
+      lines.map(({ account, debit, credit }) => [account, debit, credit]),
+    ])
+  const owed = new Map<string, number>()
+  for (const entry of expected) {
+    owed.set(key(entry), (owed.get(key(entry)) ?? 0) + 1)
+  }
+  const replacedOn = truckReplacedOn(save.dream, dream)
+  const oldTruck: readonly string[] = Object.values(TRUCK_MEMO)
+  for (const entry of entriesOf(journal)) {
+    if (
+      replacedOn !== null &&
+      entry.day >= replacedOn &&
+      oldTruck.includes(entry.memo)
+    ) {
+      invalid(
+        `the journal holds « ${entry.memo} » on day ${entry.day}, after the truck was replaced on day ${replacedOn}`,
+      )
+    }
+    if (!memos.has(entry.memo)) continue
+    const left = owed.get(key(entry)) ?? 0
+    if (left === 0) {
+      invalid(
+        `the journal holds « ${entry.memo} » on day ${entry.day}, which no rung bought owes`,
+      )
+    }
+    owed.set(key(entry), left - 1)
+  }
+  const missing = expected.find((entry) => (owed.get(key(entry)) ?? 0) > 0)
+  if (missing !== undefined) {
+    invalid(
+      `the journal does not hold « ${missing.memo} » on day ${missing.day} as the rungs bought owe it`,
+    )
+  }
+  if (magnatOn !== null && (magnatOn < first || magnatOn > played)) {
+    invalid(
+      `dream.magnatOn is day ${magnatOn}, not a day played from day ${first} to day ${played}`,
+    )
   }
 }
 
@@ -1653,8 +1889,18 @@ function sameEntry(a: JournalEntry, b: JournalEntry | undefined): boolean {
  * A movement does not say what made it, so one whose label an effect gives
  * is held to the effects' rule, even when `LABELS` holds it too: a choice
  * may refund the « Loyer » or dock the « Salaire ».
+ *
+ * The rungs of « Le rêve » of `dream` move it too: each personal rung bought
+ * in the months kept, up to the save's day, with exactly the movements its
+ * purchase makes on its morning (see `purchaseMovements`), and none other
+ * of those labels; and a home's payment, below zero on a 1st, once its rung
+ * was bought, which an unpaid rent may be.
  */
-function checkPersonal(save: Save, content: EventContent): void {
+function checkPersonal(
+  save: Save,
+  content: EventContent,
+  dream: DreamContent,
+): void {
   const { day, lastDay, personal } = save
   const { movements, unpaidRents } = personal
   const eventLabels = new Set(
@@ -1668,15 +1914,35 @@ function checkPersonal(save: Save, content: EventContent): void {
       ),
     ),
   )
+  const today = lastDay?.day ?? day
+  const key = ({ day: at, label, amount }: PersonalMovement) =>
+    JSON.stringify([at, label, amount])
+  const purchases = new Map<string, number>()
+  const purchaseLabels = new Set<string>()
+  for (const { rung: id, day: at } of save.dream.bought) {
+    const { rung } = rungOf(id, dream)
+    if (!isPersonal(rung)) continue
+    if (!isKept(at, today)) continue
+    for (const movement of purchaseMovements(rung, at, dream)) {
+      purchases.set(key(movement), (purchases.get(key(movement)) ?? 0) + 1)
+    }
+  }
+  for (const rung of dream.personal) {
+    for (const movement of purchaseMovements(rung, 0, dream)) {
+      purchaseLabels.add(movement.label)
+    }
+  }
+  const homes = housingLabels(dream)
   if (lastDay === null) {
-    const byChoice =
-      chosenThatMorning(save) &&
-      movements.every(({ label }) => eventLabels.has(label))
-    if (unpaidRents.length > 0 || (movements.length > 0 && !byChoice)) {
+    const byChoice = movements.every(
+      ({ label }) =>
+        purchaseLabels.has(label) ||
+        (chosenThatMorning(save) && eventLabels.has(label)),
+    )
+    if (unpaidRents.length > 0 || !byChoice) {
       invalid(`personal holds movements before day ${day} is played`)
     }
   }
-  const today = lastDay?.day ?? day
   const checkDay = (
     what: string,
     at: number,
@@ -1697,12 +1963,37 @@ function checkPersonal(save: Save, content: EventContent): void {
   }
 
   const ownLabels: readonly string[] = Object.values(LABELS)
-  movements.forEach(({ day: at, label, amount }, index) => {
+  movements.forEach((movement, index) => {
+    const { day: at, label, amount } = movement
     const what = `personal movement ${index + 1}`
     const before = movements[index - 1]?.day
     if (eventLabels.has(label)) {
       checkDay(what, at, before, day)
       if (amount === 0) invalid(`${what}, « ${label} », must not be 0`)
+    } else if (purchaseLabels.has(label)) {
+      checkDay(what, at, before, day)
+      const left = purchases.get(key(movement)) ?? 0
+      if (left === 0) {
+        invalid(
+          `${what}, « ${label} » of ${amount} on day ${at}, is no purchase of a rung bought`,
+        )
+      }
+      purchases.set(key(movement), left - 1)
+    } else if (homes.has(label)) {
+      checkDay(what, at, before, today)
+      if (amount >= 0) invalid(`${what}, « ${label} », must be below 0`)
+      if (toCalendar(at).dayOfMonth !== 1) {
+        invalid(`${what}, « ${label} », is on day ${at}, not a 1st`)
+      }
+      const home = save.dream.bought.find(({ rung: id }) => {
+        const { rung } = rungOf(id, dream)
+        return isPersonal(rung) && rung.housing?.label === label
+      })
+      if (home === undefined || home.day > at) {
+        invalid(
+          `${what}, « ${label} », is on day ${at}, before its home was bought`,
+        )
+      }
     } else if (ownLabels.includes(label)) {
       checkDay(what, at, before, today)
       const comesIn = label === LABELS.salary
@@ -1715,13 +2006,21 @@ function checkPersonal(save: Save, content: EventContent): void {
       invalid(`${what} has an unknown label: « ${label} »`)
     }
   })
+  const missing = [...purchases].find(([, left]) => left > 0)
+  if (missing !== undefined) {
+    invalid(
+      `personal does not hold the movement ${missing[0]} a rung bought made`,
+    )
+  }
   unpaidRents.forEach((at, index) => {
     const what = `unpaid rent ${index + 1}`
     const before = unpaidRents[index - 1]
     checkDay(what, at, before, today)
     if (at === before) invalid(`${what} repeats day ${at}`)
     const charged = movements.some(
-      (movement) => movement.day === at && movement.label === LABELS.rent,
+      (movement) =>
+        movement.day === at &&
+        (movement.label === LABELS.rent || homes.has(movement.label)),
     )
     if (!charged) {
       invalid(`${what} is on day ${at}, with no « Loyer » that day`)
@@ -1951,28 +2250,38 @@ function checkWeek(
  * Checks, once the week, the personal account and the financing are, that
  * the last week of the history, if it has a net worth, has the owner's at
  * the close of its Sunday (see `netWorth`): with the books up to that
- * Sunday, the rounds of shares sold by then, and the personal cash less
- * what moved it since.
+ * Sunday, the rounds of shares sold by then, the personal cash less what
+ * moved it since, and the rungs of `dream` owned then.
  */
-function checkNetWorth(save: Save, journal: Journal): void {
+function checkNetWorth(
+  save: Save,
+  journal: Journal,
+  dream: DreamContent,
+): void {
   const recorded = save.weekHistory.at(-1)
   if (recorded === undefined || recorded.netWorth === null) return
   const sunday = sundayOf(recorded.firstDay)
   // Every change to the personal cash is a movement, and those since the
   // Sunday are all in the months the account keeps.
   const since = save.personal.movements.filter(({ day }) => day > sunday)
-  const atClose = netWorth({
-    day: sunday,
-    journal,
-    financing: {
-      ...save.financing,
-      shareSales: save.financing.shareSales.filter(({ day }) => day <= sunday),
+  const atClose = netWorth(
+    {
+      day: sunday,
+      journal,
+      financing: {
+        ...save.financing,
+        shareSales: save.financing.shareSales.filter(
+          ({ day }) => day <= sunday,
+        ),
+      },
+      personal: {
+        ...save.personal,
+        cash: sub(save.personal.cash, sum(since.map(({ amount }) => amount))),
+      },
+      dream: save.dream,
     },
-    personal: {
-      ...save.personal,
-      cash: sub(save.personal.cash, sum(since.map(({ amount }) => amount))),
-    },
-  })
+    dream,
+  )
   if (recorded.netWorth !== atClose) {
     invalid(
       `the last week of weekHistory has a net worth of ${recorded.netWorth}, not the ${atClose} the owner had at the close of day ${sunday}`,

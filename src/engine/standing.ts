@@ -8,7 +8,9 @@ import type {
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
 import { incomeStatement } from '../finance/statements.ts'
+import { BAKERY } from './bakery.ts'
 import { DIFFICULTIES, FOOD_TRUCK } from './day.ts'
+import { truckReplacedOn } from './dream.ts'
 import { monthlyFixedCosts } from './fixedCosts.ts'
 import { PERCENTILES, percentileOf } from './percentiles.ts'
 import type { GameState } from './types.ts'
@@ -27,7 +29,7 @@ const DAYS_PER_WEEK = 7
  * The player's standing on the morning of `state.day`, by `rules`:
  * « en difficulté » (`behind`) when the encaisse is below
  * `behindBelowMonthsOfFixedCosts` months of `monthlyFixedCosts`, the bakery's
- * included, or when the bénéfice net, from the truck's first day to the close
+ * included and the lease of a truck « Le rêve » replaced not, or when the bénéfice net, from the truck's first day to the close
  * of the last week played, reads below the percentile `behindBelowPercentile`
  * of `percentiles` at the game's difficulty and that week (see
  * `percentileOnMorning`); « en avance » (`ahead`) when it reads above
@@ -49,6 +51,8 @@ export function standingOf(
     foodTruck,
     difficulties,
     state.bakery,
+    BAKERY,
+    truckReplacedOn(state.dream),
   )
   const cash = balance(journal, CASH, { toDay: day })
   if (cash < fixedCosts * rules.behindBelowMonthsOfFixedCosts) return 'behind'

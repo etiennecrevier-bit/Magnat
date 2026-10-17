@@ -233,6 +233,26 @@ describe('restockChange', () => {
     })
   })
 
+  it('takes up to the units the bigger truck allows when given them', () => {
+    const units = { min: 0, max: 750 }
+    expect(
+      restockChange('croissant', 'quantity', '600', buyDaily, units),
+    ).toEqual({
+      kind: 'change',
+      change: {
+        kind: 'restock',
+        product: 'croissant',
+        rule: { kind: 'buyDaily', quantity: 600 },
+      },
+    })
+    expect(
+      restockChange('croissant', 'quantity', '751', buyDaily, units),
+    ).toEqual({
+      kind: 'invalid',
+      message: `La quantité doit être entre 0 et 750${S}unités.`,
+    })
+  })
+
   it('keeps the threshold of a top-up at or below what it fills up to', () => {
     expect(restockChange('cafe', 'whenBelow', '301', topUp)).toEqual({
       kind: 'invalid',

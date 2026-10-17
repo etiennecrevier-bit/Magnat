@@ -11,8 +11,10 @@ import {
   PERSONAL,
 } from '../engine/day.ts'
 import { applyDecision } from '../engine/decisions.ts'
+import { magnatTitle } from '../engine/dream.ts'
 import { NO_EVENTS, resolveEvent } from '../engine/events.ts'
 import { cents, sum } from '../engine/money.ts'
+import { netWorth } from '../engine/netWorth.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import { deserialize, serialize } from '../engine/save.ts'
 import type { GameState, Profile } from '../engine/types.ts'
@@ -52,6 +54,7 @@ describe('createGameStore', () => {
     expect(createGameStore().getState().panel).toBeNull()
     expect(createGameStore().getState().eventBefore).toBeNull()
     expect(createGameStore().getState().reportWaiting).toBe(false)
+    expect(createGameStore().getState().magnatWaiting).toBe(false)
     expect(createGameStore().getState().slideIn).toBeNull()
   })
 
@@ -1495,5 +1498,111 @@ describe('gameStore', () => {
       reportShown: 'month',
       monthReport: { firstDay: 0, lastDay: 30 },
     })
+  })
+})
+
+describe('« Magnat » (#162)', () => {
+  /**
+   * Seed 1 on the morning of `day`, played with no event, the owner's own
+   * cash a cent short of the last title: the close of a day that makes any
+   * profit crowns them.
+   */
+  function nearMagnat(day: number): GameState {
+    const morning = playedTo(day)
+    const short = magnatTitle().netWorthCents - netWorth(morning) - 1
+    return {
+      ...morning,
+      personal: {
+        ...morning.personal,
+        cash: cents(morning.personal.cash + short),
+      },
+    }
+  }
+
+  it('opens the morning after the close that crowns the owner, paused, and once a game', () => {
+    const game = nearMagnat(3)
+    expect(tick(game).dream.magnatOn).toBe(3)
+    const store = createGameStore(game, NO_EVENTS)
+    store.getState().setSpeed(3)
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      game: { day: 4, dream: { magnatOn: 3 } },
+      panel: 'magnat',
+      speed: PAUSED,
+      resumeSpeed: 3,
+    })
+    store.getState().advance(1)
+    expect(store.getState().game.day).toBe(4)
+
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ panel: null, speed: 3 })
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({ game: { day: 14 }, panel: null })
+  })
+
+  it('opens before the report that comes the same morning, then the report', () => {
+    // Sunday, day 6, crowns the owner; Monday brings the first week's report.
+    const game = nearMagnat(6)
+    expect(tick(game).dream.magnatOn).toBe(6)
+    const store = createGameStore(game, NO_EVENTS, REPORT_AT_FIRST)
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      game: { day: 7, lastWeek: { firstDay: 0 } },
+      panel: 'magnat',
+      reportWaiting: true,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: 'report',
+      reportWaiting: false,
+      speed: PAUSED,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ panel: null })
+  })
+
+  it('waits for a panel open when it comes, then opens', () => {
+    // Every panel pauses the game, so only a test gets here.
+    const store = createGameStore(nearMagnat(3), NO_EVENTS)
+    store.getState().openPanel('dream')
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      game: { day: 4 },
+      panel: 'dream',
+      magnatWaiting: true,
+    })
+    store.getState().advance(1)
+    expect(store.getState().game.day).toBe(4)
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: 'magnat',
+      magnatWaiting: false,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({ panel: null })
+  })
+
+  it('does not open again for a game loaded after it', () => {
+    const store = createGameStore(nearMagnat(3), NO_EVENTS)
+    store.getState().advance(1)
+    const reloaded = deserialize(serialize(store.getState().game))
+    const again = createGameStore(reloaded, NO_EVENTS)
+    expect(again.getState().panel).toBeNull()
+    again.getState().advance(5)
+    expect(again.getState()).toMatchObject({ game: { day: 9 }, panel: null })
+  })
+})
+
+describe('a purchase of « Le rêve »', () => {
+  it('goes through decide() that very morning', () => {
+    const store = createGameStore(createInitialState(1), NO_EVENTS)
+    store.getState().decide({ kind: 'buy', rung: 'velo' })
+    expect(store.getState().game.dream.bought).toEqual([
+      { rung: 'velo', day: 0, cost: 150_000 },
+    ])
+    expect(store.getState().game.pendingDecisions).toBeNull()
+    expect(() =>
+      store.getState().decide({ kind: 'buy', rung: 'velo' }),
+    ).toThrow(RangeError)
   })
 })

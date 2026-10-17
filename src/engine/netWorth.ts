@@ -1,16 +1,18 @@
+import type { DreamContent } from '../content/schema.ts'
 import { balanceSheet } from '../finance/statements.ts'
+import { DREAM, personalAssetsOn } from './dream.ts'
 import { add, cents, mulRatio, sub, sum, type Cents } from './money.ts'
 import type { GameState } from './types.ts'
 
-// « Valeur nette »: what the owner has, their share of the company and their
-// own money, less what they owe. The top bar shows it, with its change since
-// the last Sunday's close, and « Aujourd'hui » its four parts (#161). P4-07
-// adds the owner's own assets and debts.
+// « Valeur nette »: what the owner has, their share of the company, their
+// own money and what they own of « Le rêve », less what they owe. The top
+// bar shows it, with its change since the last Sunday's close, and «
+// Aujourd'hui » its four parts (#161).
 
 /** What `netWorth()` reads of a game. */
 export type NetWorthGame = Pick<
   GameState,
-  'day' | 'journal' | 'financing' | 'personal'
+  'day' | 'journal' | 'financing' | 'personal' | 'dream'
 >
 
 /** The owner's net worth and the four parts it adds up from. */
@@ -37,22 +39,22 @@ const ZERO = cents(0)
  * what `playDay()` returns, in its parts: the company's equity, the
  * Capitaux propres of the bilan with every entry posted so far, less each
  * round of shares sold's `share` of it, rounded to the cent (see
- * `mulRatio`); the owner's personal cash; and their own assets and debts,
- * none until P4-07 brings them. Negative equity counts as it is, shares and
- * all.
+ * `mulRatio`); the owner's personal cash; their own rungs of « Le rêve »
+ * owned at the close of `day`, at purchase price (see `personalAssetsOn`,
+ * with `content`); and their debts, none so far, since a home's payment
+ * replaces the rent and leaves nothing owed. Negative equity counts as it
+ * is, shares and all.
  */
-export function netWorthParts({
-  day,
-  journal,
-  financing,
-  personal,
-}: NetWorthGame): NetWorthParts {
+export function netWorthParts(
+  { day, journal, financing, personal, dream }: NetWorthGame,
+  content: DreamContent = DREAM,
+): NetWorthParts {
   const equity = balanceSheet(journal, day).equity.total.amount
   const sold = sum(
     financing.shareSales.map(({ share }) => mulRatio(equity, share)),
   )
   const companyShare = sub(equity, sold)
-  const personalAssets = ZERO
+  const personalAssets = personalAssetsOn(dream, day, content)
   const personalDebts = ZERO
   return {
     companyShare,
@@ -67,8 +69,11 @@ export function netWorthParts({
 }
 
 /** The owner's net worth: the total of `netWorthParts()`. */
-export function netWorth(state: NetWorthGame): Cents {
-  return netWorthParts(state).total
+export function netWorth(
+  state: NetWorthGame,
+  content: DreamContent = DREAM,
+): Cents {
+  return netWorthParts(state, content).total
 }
 
 /**

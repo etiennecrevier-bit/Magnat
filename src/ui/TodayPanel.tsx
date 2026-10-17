@@ -166,10 +166,11 @@ export default function TodayPanel() {
   const journal = useGame((state) => state.game.journal)
   const financing = useGame((state) => state.game.financing)
   const personal = useGame((state) => state.game.personal)
+  const dream = useGame((state) => state.game.dream)
   // The books only change when a day is played, not on every frame.
   const netWorth = useMemo(
-    () => netWorthParts({ day, journal, financing, personal }),
-    [day, journal, financing, personal],
+    () => netWorthParts({ day, journal, financing, personal, dream }),
+    [day, journal, financing, personal, dream],
   )
   const summary = useMemo(
     () => financingSummary({ day, journal, financing }),

@@ -12,6 +12,7 @@ import {
   type DifficultyContent,
   type DifficultyId,
   type EventContent,
+  type RungId,
 } from '../content/schema.ts'
 import {
   balance,
@@ -41,6 +42,7 @@ import {
   playDay,
 } from './day.ts'
 import { applyDecision, type DecisionChange } from './decisions.ts'
+import { noDream } from './dream.ts'
 import { applyEffect } from './effects.ts'
 import { FULL_ENERGY } from './energy.ts'
 import { NO_EVENTS, drawEvent, noEvents, resolveEvent } from './events.ts'
@@ -329,10 +331,27 @@ function withoutWeek(save: Json): void {
 }
 
 /**
+ * Takes « Le rêve » out of `save`, as version 17 wrote it: the save of a
+ * game that never bought a rung nor became « Magnat ».
+ */
+function withoutDream(save: Json): void {
+  expect(save.dream).toEqual(noDream())
+  delete save.dream
+}
+
+/** `state`, with no rung bought, saved as version 17, before « Le rêve ». */
+function v17(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutDream(save)
+  return JSON.stringify({ ...save, saveVersion: 17 })
+}
+
+/**
  * Takes the net worth out of each week of `save`'s history, if it has one,
- * as version 16 wrote it.
+ * as version 16 wrote it, and « Le rêve », which came later.
  */
 function withoutNetWorths(save: Json): void {
+  withoutDream(save)
   for (const week of (save.weekHistory as Json[] | undefined) ?? []) {
     delete week.netWorth
   }
@@ -540,8 +559,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(17)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 17 })
+    expect(SAVE_VERSION).toBe(18)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 18 })
   })
 
   it.each<Profile>([
@@ -1084,7 +1103,8 @@ describe('deserialize rejects', () => {
     0,
     1,
     6,
-    18,
+    19,
+    '18',
     '17',
     '16',
     '15',
@@ -4539,6 +4559,17 @@ describe('the net worth of each week', () => {
     expect(FORTNIGHT.weekHistory[LAST]?.netWorth).toBe(netWorth(FORTNIGHT))
   })
 
+  it('load a version 17 game with nothing of « Le rêve »', () => {
+    for (const state of [
+      createInitialState(SEED),
+      THURSDAY,
+      SUNDAY_CLOSE,
+      DAY_400,
+    ]) {
+      expect(deserialize(v17(state))).toStrictEqual(state)
+    }
+  })
+
   it('load a version 16 game with no net worth for its weeks', () => {
     for (const state of [
       createInitialState(SEED),
@@ -4603,5 +4634,269 @@ describe('the net worth of each week', () => {
       deserialize(withValue('weekHistory.0.netWorth', worth)).weekHistory[0]
         ?.netWorth,
     ).toBe(worth)
+  })
+})
+
+describe('« Le rêve »', () => {
+  const JUNE_1 = 31
+  // Facile, with the cash in the bank and the owner's savings to buy every
+  // rung but the second truck from the first days.
+  const { facile } = DIFFICULTIES.difficulties
+  const RICH = loadDifficultyContent({
+    ...DIFFICULTIES,
+    difficulties: {
+      ...DIFFICULTIES.difficulties,
+      facile: {
+        ...facile,
+        startingCashCents: 100_000_000,
+        startingPersonalCashCents: 100_000_000,
+      },
+    },
+  })
+  const START = startedAs('facile', RICH)
+
+  /** `state` saved and loaded back, with `RICH` as the difficulties. */
+  const back = (state: GameState) =>
+    deserialize(serialize(state), FOOD_TRUCK, EVENTS, RICH)
+
+  /** Expects the save `text` of a `RICH` game to fail for `reason`. */
+  const refused = (text: string, reason: string) =>
+    expectInvalid(text, [reason], FOOD_TRUCK, EVENTS, RICH)
+
+  /** `state` with the rungs `ids` bought that morning. */
+  const buying = (state: GameState, ...ids: RungId[]) =>
+    ids.reduce(
+      (game, rung) => applyDecision(game, { kind: 'buy', rung }),
+      state,
+    )
+
+  const ALL: readonly RungId[] = [
+    'velo',
+    'voitureOccasion',
+    'condo',
+    'voitureLuxe',
+    'espresso',
+    'grandCamion',
+  ]
+  // The morning of June 1st, every rung but the house and the chalet bought,
+  // the day's charges to come; then its close, and the morning after.
+  const FIRST = buying(played(JUNE_1, START), ...ALL)
+  const FIRST_CLOSE = playDay(FIRST)
+  const SECOND = tick(FIRST)
+
+  it.each<[string, GameState]>([
+    ['a personal rung bought on day 0', buying(START, 'velo')],
+    ['a company rung bought on day 0', buying(START, 'espresso')],
+    ['the big truck bought on day 0', buying(START, 'espresso', 'grandCamion')],
+    ['rungs bought on the morning of a 1st', FIRST],
+    ['the close of that 1st', FIRST_CLOSE],
+    ['the morning after', SECOND],
+  ])('gives back %s', (_, state) => {
+    expect(state.dream.bought.length).toBeGreaterThan(0)
+    expect(back(state)).toStrictEqual(state)
+  })
+
+  it('gives back the house bought after the last Sunday, its week worth what it was', () => {
+    // The morning of Monday, day 49, after the Sunday of day 48.
+    const monday = played(49 - JUNE_1, FIRST)
+    expect(toCalendar(48).weekday).toBe(7)
+    const sunday = monday.weekHistory.at(-1)
+    expect(sunday?.firstDay).toBe(42)
+    const house = buying(monday, 'maison')
+    expect(house.weekHistory.at(-1)).toBe(sunday)
+    expect(netWorth(house)).toBe(netWorth(monday))
+    expect(back(house)).toStrictEqual(house)
+    const after = tick(house)
+    expect(back(after)).toStrictEqual(after)
+  })
+
+  it('loads a restock the bigger truck allows, and refuses it without', () => {
+    const rule = { kind: 'topUp', whenBelow: 100, upTo: 700 } as const
+    const truck = applyDecision(FIRST, {
+      kind: 'restock',
+      product: 'chocolat',
+      rule,
+    })
+    expect(back(truck)).toStrictEqual(truck)
+    const espresso = buying(played(JUNE_1, START), 'espresso')
+    refused(
+      withValue(
+        'pendingDecisions',
+        JSON.parse(serialize(truck)).pendingDecisions,
+        serialize(espresso),
+      ),
+      'pendingDecisions: Invalid decision: restock.chocolat.upTo must be a whole number from 0 to 500: 700',
+    )
+  })
+
+  /** `FIRST`'s save, with `change` made to it. */
+  const changed = (change: (save: Json) => void, text = serialize(FIRST)) => {
+    const save = JSON.parse(text) as Json
+    change(save)
+    return JSON.stringify(save)
+  }
+  const dreamOf = (save: Json) =>
+    save.dream as { bought: Json[]; magnatOn: unknown }
+
+  it.each<[string, (save: Json) => void, string]>([
+    [
+      'a rung the game does not know',
+      (save) => {
+        dreamOf(save).bought[0]!.rung = 'yacht'
+      },
+      '→ at dream.bought[0].rung',
+    ],
+    [
+      'a rung bought twice',
+      (save) => {
+        dreamOf(save).bought.push({ ...dreamOf(save).bought[0] })
+      },
+      'dream rung 7, velo, is bought twice',
+    ],
+    [
+      'a rung bought after the save’s day',
+      (save) => {
+        for (const rung of dreamOf(save).bought) rung.day = JUNE_1 + 1
+      },
+      `is bought on day ${JUNE_1 + 1}, not a morning from day 0 to day ${JUNE_1}`,
+    ],
+    [
+      'a rung bought before the one before it',
+      (save) => {
+        dreamOf(save).bought[1]!.day = JUNE_1 - 1
+      },
+      'is bought before the rung before it',
+    ],
+    [
+      'a rung bought before a rung before it in its ladder',
+      (save) => {
+        const { bought } = dreamOf(save)
+        ;[bought[0], bought[1]] = [bought[1]!, bought[0]!]
+      },
+      'is bought before a rung before it in its ladder',
+    ],
+    [
+      'a rung that comes soon',
+      (save) => {
+        dreamOf(save).bought.push({
+          rung: 'deuxiemeCamion',
+          day: JUNE_1,
+          cost: 1,
+        })
+      },
+      'dream rung 7, deuxiemeCamion, is not for sale',
+    ],
+    [
+      'a cost other than what the rung cost',
+      (save) => {
+        dreamOf(save).bought[5]!.cost = 1
+      },
+      'dream rung 6, grandCamion, cost 1, not',
+    ],
+    [
+      'a company rung whose purchase the journal does not hold',
+      (save) => {
+        const journal = save.journal as Json[]
+        save.journal = journal.filter(
+          ({ memo }) => memo !== 'Achat · Machine à espresso pro',
+        )
+        // So the books still add up to the lots.
+      },
+      'the journal does not hold « Achat · Machine à espresso pro »',
+    ],
+    [
+      'a purchase in the journal with no rung bought',
+      (save) => {
+        dreamOf(save).bought.splice(4)
+      },
+      'which no rung bought owes',
+    ],
+    [
+      'a personal purchase the account does not hold',
+      (save) => {
+        const personal = save.personal as { movements: Json[] }
+        personal.movements = personal.movements.filter(
+          ({ label }) => label !== 'Achat · Vélo électrique',
+        )
+      },
+      'personal does not hold the movement',
+    ],
+    [
+      'a personal purchase with no rung bought',
+      (save) => {
+        // The company's rungs stay; the owner's go, the first one on.
+        const { bought } = dreamOf(save)
+        dreamOf(save).bought = bought.slice(4)
+        for (const rung of dreamOf(save).bought) rung.day = JUNE_1
+      },
+      '« Achat · Vélo électrique » of',
+    ],
+    [
+      'a « Magnat » on a day not played',
+      (save) => {
+        dreamOf(save).magnatOn = JUNE_1
+      },
+      `dream.magnatOn is day ${JUNE_1}, not a day played from day 0 to day ${JUNE_1 - 1}`,
+    ],
+  ])('rejects %s', (_, change, reason) => {
+    refused(changed(change), reason)
+  })
+
+  it('rejects the old truck depreciated after it was replaced', () => {
+    const text = serialize(SECOND)
+    const save = JSON.parse(text) as Json
+    const journal = save.journal as Json[]
+    const at = journal.findIndex(
+      ({ day, memo }) => day === JUNE_1 && memo === 'Assurances',
+    )
+    journal.splice(at + 1, 0, {
+      day: JUNE_1,
+      memo: 'Amortissement du camion',
+      lines: [
+        { account: '6400', debit: 1, credit: 0 },
+        { account: '1510', debit: 0, credit: 1 },
+      ],
+    })
+    refused(
+      JSON.stringify(save),
+      `the journal holds « Amortissement du camion » on day ${JUNE_1}, after the truck was replaced on day ${JUNE_1}`,
+    )
+  })
+
+  it('rejects a home’s payment before its home was bought, or on a day not a 1st', () => {
+    const condo = played(40, FIRST)
+    const text = serialize(condo)
+    const movements = (save: Json) =>
+      (save.personal as { movements: Json[] }).movements
+    const payment = (save: Json) =>
+      movements(save).find(({ label }) => label === 'Hypothèque du condo')!
+    expect(payment(JSON.parse(text) as Json)).toBeDefined()
+    refused(
+      changed((save) => {
+        payment(save).day = JUNE_1 + 1
+      }, text),
+      `« Hypothèque du condo », is on day ${JUNE_1 + 1}, not a 1st`,
+    )
+    refused(
+      changed((save) => {
+        const first = movements(save).find(({ day }) => day === 0)!
+        movements(save).splice(movements(save).indexOf(first), 0, {
+          day: 0,
+          label: 'Hypothèque du condo',
+          amount: -110_000,
+        })
+      }, text),
+      'before its home was bought',
+    )
+  })
+
+  it('rejects a dream in a Défi', () => {
+    const defi = startChallenge(DEFIS.defis[0]?.id ?? '', SEED)
+    const text = changed((save) => {
+      dreamOf(save).magnatOn = null
+      dreamOf(save).bought = []
+      save.dream = { bought: [], magnatOn: defi.day }
+    }, serialize(defi))
+    expectInvalid(text, [`the Défi ${defi.challenge?.id} has a dream`])
   })
 })

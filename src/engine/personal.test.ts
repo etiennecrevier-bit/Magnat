@@ -238,6 +238,37 @@ describe('livePersonalDay', () => {
   })
 })
 
+describe('livePersonalDay with a home', () => {
+  const HOME = { label: 'Hypothèque du condo', amount: cents(110_000) }
+
+  it('takes the home’s payment on the 1st in place of the rent', () => {
+    const account = livePersonalDay(
+      openingAccount(cents(500_000)),
+      JUNE_1,
+      PAY,
+      FRIDAY,
+      COSTS,
+      HOME,
+    )
+    expect(account.movements).toEqual([
+      movement(JUNE_1, 'Hypothèque du condo', -110_000),
+    ])
+    expect(account.cash).toBe(500_000 - 110_000)
+  })
+
+  it('records it unpaid, as the rent, when it leaves the cash below zero', () => {
+    const account = livePersonalDay(
+      openingAccount(cents(100_000)),
+      JUNE_1,
+      PAY,
+      FRIDAY,
+      COSTS,
+      HOME,
+    )
+    expect(account.unpaidRents).toEqual([JUNE_1])
+  })
+})
+
 describe('isKept', () => {
   it.each([
     [0, 0, true],

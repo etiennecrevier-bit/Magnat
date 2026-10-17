@@ -30,22 +30,26 @@ export const PAUSED = 0
 export const NORMAL_SPEED = 1
 
 /**
- * The panels: « Gérer le camion », « Qui fait quoi », « Vos finances », the
- * Défi's and « Réglages », which the top bar opens, the event card, which opens on its
- * own when an event comes up, the « Bilan » of the week or the month, which
- * opens on its own on the morning it comes or from the card that slides
- * in, and the end of a game, which opens on its own once the game is over
- * and never closes: the end of a Défi, or the « Faillite » of a game that
- * went bankrupt.
+ * The panels: « Gérer le camion », « Qui fait quoi », « Vos finances », «
+ * Le rêve », the Défi's and « Réglages », which the top bar opens, the
+ * event card, which opens on its own when an event comes up, the « Bilan »
+ * of the week or the month, which opens on its own on the morning it comes
+ * or from the card that slides in, « Magnat », which opens on its own the
+ * morning after the owner's net worth first reaches the last title, and
+ * the end of a game, which opens on its own once the game is over and
+ * never closes: the end of a Défi, or the « Faillite » of a game that went
+ * bankrupt.
  */
 export type Panel =
   | 'manage'
   | 'staff'
   | 'finances'
+  | 'dream'
   | 'defi'
   | 'settings'
   | 'event'
   | 'report'
+  | 'magnat'
   | 'defiEnd'
   | 'bankruptcy'
 
@@ -101,6 +105,11 @@ export interface GameStoreState {
    */
   reportWaiting: boolean
   /**
+   * Whether « Magnat » waits for the panel open when its morning came to
+   * close, before the full « Bilan » and any event card.
+   */
+  magnatWaiting: boolean
+  /**
    * The full reports of the last weeks, oldest first, kept as each week
    * comes for the « Bilan du mois »: as many as a month holds. A game
    * started or loaded keeps only its `lastWeek`, as the save holds no more.
@@ -143,6 +152,12 @@ export interface GameStoreState {
    * Does nothing while the full report is open or waits for a panel to
    * close, since the next report would replace the one it shows.
    *
+   * It stops on the morning after the close at which the owner first
+   * became « Magnat » (`dream.magnatOn`), opens « Magnat » and pauses; with
+   * a panel already open, it opens when that panel closes. The full report
+   * of that morning, if one comes, then waits for it to close, and a card
+   * sliding in hides under it.
+   *
    * It stops on the morning after the day that ends the game, the engine
    * playing no day past that, and opens its end in place of that morning's
    * report, the week's or the month's, pausing the game for good: the end
@@ -154,16 +169,16 @@ export interface GameStoreState {
   /**
    * Opens `panel`: remembers the speed, even `PAUSED`, and pauses. Does
    * nothing if a panel is already open, so that panel and the speed it
-   * remembered stay. The event card and the end of a game only open on
-   * their own. The report takes the card sliding in away.
+   * remembered stay. The event card, « Magnat » and the end of a game only
+   * open on their own. The report takes the card sliding in away.
    */
-  openPanel: (panel: Exclude<Panel, 'event' | EndPanel>) => void
+  openPanel: (panel: Exclude<Panel, 'event' | 'magnat' | EndPanel>) => void
   /**
    * Closes the panel and resumes at the speed it remembered. Once the game
    * is over, its end opens, or stays, in place, and the game stays paused.
-   * Otherwise the full report waiting opens first, then, while an event
-   * waits for the player's choice, the event card, which stays open; the
-   * game stays paused.
+   * Otherwise « Magnat » waiting opens first, then the full report
+   * waiting, then, while an event waits for the player's choice, the event
+   * card, which stays open; the game stays paused.
    */
   closePanel: () => void
   /** Takes the card sliding in away. */
@@ -177,8 +192,8 @@ export interface GameStoreState {
   chooseEvent: (choiceId: string) => void
   /**
    * Hands the player's change to the engine's `applyDecision()`, which
-   * leaves it waiting for the next morning. Throws its RangeError if the
-   * change breaks the content's limits.
+   * leaves it waiting for the next morning, or buys a rung of « Le rêve »
+   * that very morning. Throws its RangeError if the engine refuses it.
    */
   decide: (change: DecisionChange) => void
   /**
@@ -293,6 +308,7 @@ function playing(game: GameState) {
     panel,
     eventBefore: null,
     reportWaiting: false,
+    magnatWaiting: false,
     weekReports: game.lastWeek === null ? [] : [game.lastWeek],
     monthReport: null,
     reportShown: 'week' as const,
@@ -324,25 +340,36 @@ export function createGameStore(
       set({ speed: speed > PAUSED ? PAUSED : lastSpeed })
     },
     advance: (days) => {
-      const { game: start, speed, resumeSpeed, panel, reportWaiting } = get()
+      const {
+        game: start,
+        speed,
+        resumeSpeed,
+        panel,
+        reportWaiting,
+        magnatWaiting,
+      } = get()
       if (
         days <= 0 ||
         endPanel(start) !== null ||
         start.events.pending !== null ||
         panel === 'event' ||
         panel === 'report' ||
-        reportWaiting
+        panel === 'magnat' ||
+        reportWaiting ||
+        magnatWaiting
       ) {
         return
       }
       let next = start
       let { weekReports } = get()
       let comes: ReportCadence | null = null
+      let crowned = false
       for (
         let i = 0;
         i < days &&
         next.events.pending === null &&
         comes === null &&
+        !crowned &&
         endPanel(next) === null;
         i += 1
       ) {
@@ -356,6 +383,7 @@ export function createGameStore(
           ENERGY,
           events,
         )
+        crowned = before.dream.magnatOn === null && next.dream.magnatOn !== null
         const closed = newWeekOf(before, next)
         if (closed !== null) weekReports = keepWeekReport(weekReports, closed)
         if (weeklyReport !== null) {
@@ -401,7 +429,32 @@ export function createGameStore(
         report !== null &&
         (eventComes ||
           (week !== null ? opensFullReport(week, everyTime) : everyTime))
-      if (opens) {
+      if (crowned) {
+        // « Magnat » goes first; the full report, then the event card,
+        // follow it as closePanel() opens them.
+        const after = opens
+          ? { reportWaiting: true, slideIn: null }
+          : { slideIn: report?.firstDay ?? get().slideIn }
+        set(
+          resumeSpeed === null
+            ? {
+                game: next,
+                weekReports,
+                ...shown,
+                ...after,
+                panel: 'magnat',
+                resumeSpeed: speed,
+                speed: PAUSED,
+              }
+            : {
+                game: next,
+                weekReports,
+                ...shown,
+                ...after,
+                magnatWaiting: true,
+              },
+        )
+      } else if (opens) {
         set(
           resumeSpeed === null
             ? {
@@ -446,13 +499,28 @@ export function createGameStore(
       })
     },
     closePanel: () => {
-      const { resumeSpeed, panel, game: current, reportWaiting } = get()
+      const {
+        resumeSpeed,
+        panel,
+        game: current,
+        reportWaiting,
+        magnatWaiting,
+      } = get()
       if (resumeSpeed === null) return
       const ending = endPanel(current)
       if (ending !== null) {
         if (panel !== ending) {
-          set({ panel: ending, reportWaiting: false, eventBefore: null })
+          set({
+            panel: ending,
+            reportWaiting: false,
+            magnatWaiting: false,
+            eventBefore: null,
+          })
         }
+        return
+      }
+      if (magnatWaiting) {
+        set({ panel: 'magnat', magnatWaiting: false })
         return
       }
       if (reportWaiting) {

@@ -1,0 +1,134 @@
+/* The card itself is the shared .panel (panel.css). Text colours keep at
+   least 4.5:1 against its cream #fff7e8. */
+.dream {
+  --panel-width: 64rem;
+}
+
+.dream__titles,
+.dream__ladder {
+  margin: 0 0 1.25rem;
+}
+
+.dream__title {
+  margin: 0 0 0.25rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.dream__payer {
+  margin: 0 0 0.5rem;
+  color: #5c5048;
+  font-weight: 600;
+}
+
+.dream__progress {
+  max-width: 32rem;
+  margin: 0 0 0.75rem;
+}
+
+.dream__progress p {
+  margin: 0 0 0.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The bar toward the next rung or title; its text says how far, so the
+   fill is never the only signal. */
+.dream__bar {
+  display: block;
+  height: 0.75rem;
+  overflow: hidden;
+  border: 1px solid #2b2622;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.dream__fill {
+  display: block;
+  height: 100%;
+  background: #2f8132;
+}
+
+/* The rungs of a ladder in a row, in order, as long as they fit. */
+.dream__rungs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dream__rung {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem 0.75rem;
+  border: 1px solid #c9b48f;
+  border-radius: 8px;
+}
+
+.dream__rung h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.dream__rung p {
+  margin: 0;
+}
+
+.dream__price {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.dream__status {
+  color: #5c5048;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* The next rung stands out with a thicker border, and a word says so. */
+.dream__rung--next {
+  border: 2px solid #2b2622;
+}
+
+.dream__rung--owned {
+  background: #e8f3e3;
+}
+
+.dream__rung--owned .dream__status {
+  color: #1f5f22;
+}
+
+.dream__rung--sold,
+.dream__rung--comingSoon {
+  border-style: dashed;
+}
+
+.dream__lines {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.9375rem;
+}
+
+.dream__rung .button {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+}
+
+.dream__confirm p {
+  font-weight: 600;
+}
+
+.dream__confirm .dream__lines {
+  margin: 0.25rem 0 0.5rem;
+  font-weight: 400;
+}
+
+.dream .button:disabled {
+  border-color: #c9b48f;
+  background: transparent;
+  color: #7b6f63;
+  cursor: not-allowed;
+}

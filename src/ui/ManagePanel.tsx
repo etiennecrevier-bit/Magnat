@@ -3,6 +3,7 @@ import { decisionKindSchema, type DecisionKind } from '../content/schema.ts'
 import { isLocked } from '../engine/challenge.ts'
 import { CUSTOMERS, DEFIS, FOOD_TRUCK } from '../engine/day.ts'
 import { latestDecisions, type DecisionChange } from '../engine/decisions.ts'
+import { dreamBonuses, dreamLimits } from '../engine/dream.ts'
 import { PRODUCTS } from '../engine/inventory.ts'
 import type { DaySummary, Decisions, GameState } from '../engine/types.ts'
 import { bakeryBoard, type BakeryBoard } from './bakeryBoard.ts'
@@ -75,6 +76,11 @@ interface ManagePanelViewProps {
   locked: readonly DecisionKind[]
   /** The « Fournil » section. */
   bakery: BakeryBoard
+  /**
+   * The units a restock rule may name: the content's, unless the rungs of
+   * « Le rêve » owned allow more.
+   */
+  units?: { readonly min: number; readonly max: number }
   onChange: OnChange
   onClose: () => void
 }
@@ -90,6 +96,7 @@ export function ManagePanelView({
   lastDay,
   locked,
   bakery,
+  units = FOOD_TRUCK.decisionLimits.units,
   onChange,
   onClose,
 }: ManagePanelViewProps) {
@@ -114,6 +121,7 @@ export function ManagePanelView({
         <OrdersSection
           restock={decisions.restock}
           locked={locked.includes('restock')}
+          units={units}
           onChange={onChange}
         />
         <FactsSection lastDay={lastDay} />
@@ -220,10 +228,12 @@ function PricesSection({
 function OrdersSection({
   restock,
   locked,
+  units: limits,
   onChange,
 }: {
   restock: Decisions['restock']
   locked: boolean
+  units: { readonly min: number; readonly max: number }
   onChange: OnChange
 }) {
   return (
@@ -243,7 +253,9 @@ function OrdersSection({
                 unit="unités"
                 inputMode="numeric"
                 value={String(units)}
-                read={(text) => restockChange(product, field, text, rule)}
+                read={(text) =>
+                  restockChange(product, field, text, rule, limits)
+                }
                 onChange={onChange}
                 {...lockProps('restock', locked)}
               />
@@ -416,6 +428,11 @@ export default function ManagePanel() {
   const game = useGame((state) => state.game)
   const lastDay = useGame((state) => state.game.lastDay)
   const bakery = useMemo(() => bakeryBoard(game), [game])
+  const dream = useGame((state) => state.game.dream)
+  const units = useMemo(
+    () => dreamLimits(FOOD_TRUCK.decisionLimits, dreamBonuses(dream)).units,
+    [dream],
+  )
   const decide = useGame((state) => state.decide)
   const closePanel = useGame((state) => state.closePanel)
   const { dialogRef, onChange, close, onCancel } = useFieldDialog(decide)
@@ -433,6 +450,7 @@ export default function ManagePanel() {
         lastDay={lastDay}
         locked={lockedKinds(game)}
         bakery={bakery}
+        units={units}
         onChange={onChange}
         onClose={close}
       />
