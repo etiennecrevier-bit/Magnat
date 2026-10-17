@@ -36,7 +36,7 @@ import {
   belowZeroSinceOf,
   chargesOn,
   closingFinancing,
-  dividendOf,
+  dividendBase,
   financingMemo,
   financingOffer,
   isFinancingMemo,
@@ -764,19 +764,81 @@ describe('the dividends', () => {
     expect(paid(journal, [saleOn(100), saleOn(JANUARY_1)], JANUARY_1)).toEqual([
       dividend(JANUARY_1, 80_000),
     ])
-    expect(dividendOf(journal, saleOn(JANUARY_1), JANUARY_1)).toBe(0)
+    expect(dividendBase(journal, [saleOn(JANUARY_1)], JANUARY_1)).toBe(0)
+    expect(
+      dividendBase(journal, [saleOn(100), saleOn(JANUARY_1)], JANUARY_1),
+    ).toBe(400_000)
   })
 
-  it('counts a sale made during the quarter from its day only', () => {
-    // 3 000 $ before the sale on day 200, 1 000 $ after.
+  it('counts a first sale made during the quarter from its day only', () => {
+    // A profit, then a loss, of 3 000 $ before the sale on day 200, and
+    // 1 000 $ after it.
+    for (const before of [300_000, -300_000]) {
+      const journal = booksWith([160, before], [210, 100_000])
+      expect(dividendBase(journal, [saleOn(200)], JANUARY_1)).toBe(100_000)
+      expect(paid(journal, [saleOn(200)], JANUARY_1)).toEqual([
+        dividend(JANUARY_1, 20_000),
+      ])
+    }
+  })
+
+  it('pays a second round sold during the quarter its 20 % of the whole quarter', () => {
+    // 3 000 $ before the second sale on day 200, 1 000 $ after.
     const journal = booksWith([160, 300_000], [210, 100_000])
-    expect(paid(journal, [saleOn(200)], JANUARY_1)).toEqual([
+    expect(paid(journal, [saleOn(100), saleOn(200)], JANUARY_1)).toEqual([
+      dividend(JANUARY_1, 160_000),
+    ])
+  })
+
+  it('pays nothing on a quarter that lost money, even with a profit after a second round sold during it', () => {
+    // 2 000 $ lost before the sale on day 200, 1 000 $ earned after.
+    const lost = booksWith([170, -200_000], [210, 100_000])
+    expect(
+      incomeStatement(lost, OCTOBER_1, JANUARY_1 - 1).netIncome.amount,
+    ).toBe(-100_000)
+    expect(paid(lost, [saleOn(100), saleOn(200)], JANUARY_1)).toEqual([])
+    // 500 $ lost before it, so 500 $ over the quarter: 40 % of it, not
+    // 20 % of each round's own part.
+    const earned = booksWith([170, -50_000], [210, 100_000])
+    expect(paid(earned, [saleOn(100), saleOn(200)], JANUARY_1)).toEqual([
       dividend(JANUARY_1, 20_000),
     ])
-    // A first round before the quarter and a second during it.
-    expect(paid(journal, [saleOn(100), saleOn(200)], JANUARY_1)).toEqual([
-      dividend(JANUARY_1, 80_000 + 20_000),
-    ])
+  })
+
+  it("never pays more than the rounds sold of the quarter's profit", () => {
+    const earnings: [on: Day, netIncome: number][][] = [
+      [[160, 600_000]],
+      [
+        [160, -400_000],
+        [230, 500_000],
+      ],
+      [
+        [160, 500_000],
+        [230, -600_000],
+      ],
+      [
+        [154, 10_001],
+        [199, -3],
+        [244, 7],
+      ],
+    ]
+    for (const earned of earnings) {
+      const journal = booksWith(...earned)
+      const { netIncome } = incomeStatement(journal, OCTOBER_1, JANUARY_1 - 1)
+      for (const sales of [
+        [saleOn(100)],
+        [saleOn(100), saleOn(200)],
+        [saleOn(100), saleOn(244)],
+      ]) {
+        const total = paid(journal, sales, JANUARY_1).reduce(
+          (sum, { lines }) => sum + (lines[0]?.debit ?? 0),
+          0,
+        )
+        expect(total).toBe(
+          sales.length * mulRatio(cents(Math.max(netIncome.amount, 0)), 0.2),
+        )
+      }
+    }
   })
 
   it('pays each investor apart, in the order of their first sale', () => {
@@ -803,7 +865,10 @@ describe('the dividends', () => {
     const game = playOn(sold, 200)
     const dividends = entriesOfMemo(game.journal, `Dividende · ${INVESTOR}`)
     const expected = [61, OCTOBER_1, JANUARY_1].flatMap((day) => {
-      const amount = dividendOf(game.journal, saleOn(60), day)
+      const amount = mulRatio(
+        dividendBase(game.journal, [saleOn(60)], day),
+        0.2,
+      )
       return amount > 0 ? [dividend(day, amount)] : []
     })
     expect(expected.length).toBeGreaterThan(0)
@@ -815,6 +880,34 @@ describe('the dividends', () => {
     ).toBe(
       -expected.reduce((total, { lines }) => total + (lines[0]?.debit ?? 0), 0),
     )
+    expect(deserialize(serialize(game))).toStrictEqual(game)
+  })
+
+  it('pay nothing on a played quarter that lost money, the second round sold during it after the loss, and the game saves and loads', () => {
+    const offered = (state: GameState): GameState => ({
+      ...state,
+      events: {
+        ...state.events,
+        pending: { event: 'offreDuvent', followUp: false },
+      },
+    })
+    const first = resolveEvent(offered(MORNING_60), 'accepter', CARDS)
+    // A bill of all the encaisse on day 199, then the second round on 200.
+    const billed = playOn(bill(playOn(first, 139), 0), 1)
+    const second = resolveEvent(offered(billed), 'accepter', CARDS)
+    expect(second.financing.shareSales.map(({ day }) => day)).toEqual([60, 200])
+    const game = playOn(second, 46)
+    // The quarter lost money, though the days after the second round made
+    // some: no dividend on January 1st.
+    const quarter = (from: Day) =>
+      incomeStatement(game.journal, from, JANUARY_1 - 1).netIncome.amount
+    expect(quarter(OCTOBER_1)).toBeLessThan(0)
+    expect(quarter(200)).toBeGreaterThan(0)
+    expect(
+      entriesOfMemo(game.journal, `Dividende · ${INVESTOR}`).filter(
+        ({ day }) => day === JANUARY_1,
+      ),
+    ).toEqual([])
     expect(deserialize(serialize(game))).toStrictEqual(game)
   })
 })

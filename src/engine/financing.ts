@@ -308,10 +308,12 @@ export function financingCharges(
  * Intérêts / Cr 1000 Encaisse, then its principal, « Remboursement ·
  * {lender} », Dr 2500 Emprunts bancaires / Cr 1000, nothing before the
  * first or after the last. Then, on the 1st of a quarter, each investor's
- * dividends on the quarter before (see `dividendOf`), added up, «
+ * dividend on the quarter before: the `share` of each round they bought
+ * before `day`, of the Bénéfice net `dividendBase` reads, added up, «
  * Dividende · {investor} », Dr 3100 Bénéfices non répartis / Cr 1000, in
- * the order of their first sale. Every entry is dated `day`, and none
- * moves 0.
+ * the order of their first sale. So two rounds take 40 % of the quarter,
+ * however late in it the second came, and a quarter that lost money pays
+ * nothing. Every entry is dated `day`, and none moves 0.
  */
 export function chargesOn(
   journal: Journal,
@@ -322,10 +324,12 @@ export function chargesOn(
   if (dayOfMonth !== 1) return []
   const due = financing.loans.flatMap((loan) => paymentOn(loan, day))
   if (!QUARTER_MONTHS.includes(month)) return due
+  const base = dividendBase(journal, financing.shareSales, day)
   const owed = new Map<string, Cents>()
-  for (const sale of financing.shareSales) {
-    const amount = dividendOf(journal, sale, day)
-    owed.set(sale.investor, add(owed.get(sale.investor) ?? ZERO, amount))
+  for (const { day: sold, investor, share } of financing.shareSales) {
+    if (sold >= day) continue
+    const amount = mulRatio(base, share)
+    owed.set(investor, add(owed.get(investor) ?? ZERO, amount))
   }
   for (const [investor, amount] of owed) {
     due.push(
@@ -343,22 +347,23 @@ export function chargesOn(
 }
 
 /**
- * What `sale` earns its investor on `day`, the 1st of a quarter: its
- * `share` of the Bénéfice net of the quarter before, from its first day
- * or the day of the sale, if later, to the day before `day`. Nothing for a
- * loss, nor for a sale made that very morning, which the quarter before
- * did not see.
+ * The Bénéfice net that the dividends of `day`, the 1st of a quarter,
+ * share out: that of the quarter before, from its first day or the day of
+ * the first of `shareSales` made before `day`, if later, to the day before
+ * `day`. Zero for a loss, or when no sale came before `day`: a sale made
+ * that very morning waits for the next quarter.
  */
-export function dividendOf(
+export function dividendBase(
   journal: Journal,
-  { day: sold, share }: Pick<ShareSale, 'day' | 'share'>,
+  shareSales: readonly Pick<ShareSale, 'day'>[],
   day: Day,
 ): Cents {
   const last = day - 1
-  if (sold > last) return ZERO
-  const from = Math.max(startOfQuarter(last), sold)
+  const sold = shareSales.map(({ day: on }) => on).filter((on) => on <= last)
+  if (sold.length === 0) return ZERO
+  const from = Math.max(startOfQuarter(last), Math.min(...sold))
   const { netIncome } = incomeStatement(journal, from, last)
-  return netIncome.amount > 0 ? mulRatio(netIncome.amount, share) : ZERO
+  return netIncome.amount > 0 ? netIncome.amount : ZERO
 }
 
 /** Whether `memo` is one of the financing's (see `financingMemo`). */
