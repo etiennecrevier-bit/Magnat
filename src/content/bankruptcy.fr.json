@@ -1,0 +1,10 @@
+{
+  "_note": "The « Faillite » screen (src/ui/BankruptcyEnd.tsx), once six whole months below zero end the game (#160). prudhomme: what Mme Prudhomme says on it, at least 3 lines; a game shows one, picked by its seed, so a reload shows the same. Dry, as her advice in report.fr.json is: no number, no quotation marks, which the screen adds, and Quebec typography. Never explain a term.",
+  "prudhomme": [
+    "Six mois sous zéro. J'ai fermé le dossier. La prochaine fois, regardez votre encaisse avant votre menu.",
+    "Le camion était beau. L'encaisse, beaucoup moins.",
+    "Je ferme le dossier sans plaisir. Enfin, presque sans plaisir.",
+    "Vous vendiez bien. Vous dépensiez mieux encore. C'est là que ça coince.",
+    "On ne fait pas faillite en un jour. Vous y avez mis six mois, et je vous ai écrit trois fois."
+  ]
+}

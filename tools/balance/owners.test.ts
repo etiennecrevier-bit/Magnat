@@ -195,6 +195,37 @@ describe('runOwners', () => {
   })
 })
 
+describe('an owner who goes bankrupt (#160)', () => {
+  // Owner 3 at Difficile: the close of day 244, the Sunday of week 35, ends
+  // the game. Two weeks more are played around it.
+  const WEEKS = 37
+
+  it('stops at the end, its bénéfice net that of its last close every week after', () => {
+    let state = startGame(3, 'difficile', strategyChanges(ownerStrategy(3)))
+    const choose = eventChooser('random', 3)
+    while (state.ended === null) state = playMorning(state, EVENTS, choose)
+    expect(state.ended).toEqual({ reason: 'bankruptcy', day: 244 })
+    const { weeklyNetIncome } = playOwner(3, 'difficile', WEEKS, {
+      branch: false,
+    })
+    expect(weeklyNetIncome).toHaveLength(WEEKS)
+    const last = incomeStatement(state.journal, 0, 244).netIncome.amount
+    expect(weeklyNetIncome.slice(34)).toEqual([last, last, last])
+  })
+
+  it('leaves the table the owners make the one they played, a bankrupt owner among them', () => {
+    const staged = stagedPercentiles(3, 'difficile', WEEKS)
+    const played = [1, 2, 3].map((seed) =>
+      playOwner(seed, 'difficile', WEEKS, {
+        branch: false,
+        percentiles: staged,
+      }),
+    )
+    expect(staged.difficulties.difficile).toHaveLength(WEEKS)
+    expect(percentileRows(played)).toEqual(staged.difficulties.difficile)
+  })
+})
+
 describe('quantileCents', () => {
   it('is linear between the closest ranks', () => {
     const sorted = [10, 20, 30, 40, 50]

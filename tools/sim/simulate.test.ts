@@ -37,7 +37,9 @@ import {
   isFinancingCard,
   journalHash,
   modifierDays,
+  playMorning,
   simulate,
+  startGame,
   withFinancingCards,
   type SimulationResult,
 } from './simulate.ts'
@@ -341,6 +343,53 @@ describe("simulate's owner", () => {
 
   it('keeps an owner who pays the rent free of unpaid rents', () => {
     expect(simulate(7, 365, 'facile').owner.unpaidRents).toEqual([])
+  })
+})
+
+describe('simulate to a bankruptcy (#160)', () => {
+  // An owner who pays themself 3 000 $ a week at Difficile: from June 1st,
+  // every close is below zero, and the close of November 30th, day 213,
+  // ends the game.
+  const greedy: DecisionChange = {
+    kind: 'ownerWeeklyPay',
+    pay: cents(300_000),
+  }
+  const ended = simulate(7, 400, 'difficile', [greedy])
+
+  it('stops at the close that ends the game, the days played summed up', () => {
+    expect(ended.ended).toEqual({ reason: 'bankruptcy', day: 213 })
+    expect(ended.days).toBe(214)
+    expect(ended.daySummaries.map(({ day }) => day)).toEqual(
+      Array.from({ length: 214 }, (_, day) => day),
+    )
+    expect(ended.owner.morningEnergy).toHaveLength(214)
+    expect(spans(ended)).toEqual([[0, 213]])
+    expect(ended.journal.at(-1)?.day).toBeLessThanOrEqual(213)
+  })
+
+  it('plays every day asked for when the game goes on', () => {
+    expect(run.ended).toBeNull()
+    expect(simulate(7, 213, 'difficile', [greedy]).ended).toBeNull()
+  })
+
+  it('answers Mme Prudhomme’s letters with the event policy', () => {
+    const answered = simulate(7, 400, 'difficile', [greedy], 'first')
+    const letters = answered.eventHistory.filter(({ event }) =>
+      ['premierAvis', 'deuxiemeAvis', 'dernierAvis'].includes(event),
+    )
+    expect(letters.map(({ event, choice }) => [event, choice])).toEqual([
+      ['premierAvis', 'compris'],
+      ['deuxiemeAvis', 'compris'],
+      ['dernierAvis', 'compris'],
+    ])
+    expect(answered.ended?.reason).toBe('bankruptcy')
+  })
+
+  it('leaves a game that has ended as it is, morning after morning', () => {
+    let state = startGame(7, 'difficile', [greedy])
+    while (state.ended === null) state = playMorning(state, NO_EVENTS, null)
+    expect(playMorning(state, NO_EVENTS, null)).toBe(state)
+    expect(state.ended).toEqual(ended.ended)
   })
 })
 

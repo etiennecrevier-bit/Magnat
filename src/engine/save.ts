@@ -41,6 +41,7 @@ import {
   holdsPremises,
   morningBakery,
 } from './bakery.ts'
+import { endAtClose, monthsBelowZero } from './bankruptcy.ts'
 import { endOfMonth, mondayOf, sundayOf, toCalendar } from './calendar.ts'
 import {
   challengeDifficulties,
@@ -106,7 +107,9 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 15 adds the
+ * change can no longer load (rule 8 in CLAUDE.md). Version 16 adds the end
+ * of a game, by bankruptcy: a version 15 game still loads, as a game that
+ * goes on. Version 15 adds the
  * emergency loans and the share sales: a version 14 game still loads, with
  * none, nobody come to lend yet and the closes below zero read from its
  * books. Version 14 adds the
@@ -133,9 +136,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 15
+export const SAVE_VERSION = 16
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const ENDLESS_VERSION = 15
 const FINANCINGLESS_VERSION = 14
 const STAFFLESS_VERSION = 13
 const CONTRACTLESS_VERSION = 12
@@ -532,6 +536,12 @@ const financingSchema = z.strictObject({
   lastLoanRequestDay: gameDay.nullable(),
 })
 
+// `checkEnded()` checks the day and the months below zero.
+const endedSchema = z.strictObject({
+  reason: z.enum({ bankruptcy: 'bankruptcy' }),
+  day: gameDay,
+})
+
 const saveSchema = z.strictObject({
   saveVersion: z.literal(SAVE_VERSION),
   day: gameDay,
@@ -557,6 +567,7 @@ const saveSchema = z.strictObject({
   staff: z.array(employeeSchema),
   ownerAway: z.boolean(),
   financing: financingSchema,
+  ended: endedSchema.nullable(),
 })
 
 // The week under way, and an older save's financing, may come from the
@@ -575,8 +586,13 @@ type Parsed = Omit<Save, 'weekSoFar' | 'financing'> & {
   readonly financing: FinancingState | null
 }
 
-/** A version 14 save: no emergency loan and no share sale. */
-const financinglessSchema = saveSchema
+/** A version 15 save: a game that goes on. */
+const endlessSchema = saveSchema
+  .omit({ ended: true })
+  .extend({ saveVersion: z.literal(ENDLESS_VERSION) })
+
+/** A version 14 save: no emergency loan and no share sale either. */
+const financinglessSchema = endlessSchema
   .omit({ financing: true })
   .extend({ saveVersion: z.literal(FINANCINGLESS_VERSION) })
 
@@ -663,6 +679,7 @@ export function serialize(state: GameState): string {
     staff: state.staff,
     ownerAway: state.ownerAway,
     financing: state.financing,
+    ended: state.ended,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -674,9 +691,10 @@ export function serialize(state: GameState): string {
  * nothing was played: the books open on day 0 either way.
  *
  * Throws an Error that starts with "Invalid save:" and names the problem
- * unless: the text is JSON of the current `SAVE_VERSION`, or of version 14,
- * which loads with no financing, its closes below zero read from its books,
- * or of version 13,
+ * unless: the text is JSON of the current `SAVE_VERSION`, or of version 15,
+ * which loads as a game that goes on, or of version 14,
+ * which also loads with no financing, its closes below zero read from its
+ * books, or of version 13,
  * which also loads with nobody on staff, the owner at work and nothing missed,
  * or of version 12, which also loads with no contract, or of version 11,
  * which also loads with no
@@ -714,17 +732,18 @@ export function serialize(state: GameState): string {
  * Défi; the week under way, the last week reported and the history pass
  * `checkWeek()`; the Défi, if any, is one of `defis` and passes
  * `checkChallenge()`; the contracts pass `checkContracts()` against
- * `grocers`; the staff passes `checkStaff()` against `staff`; and the
- * financing passes `checkFinancing()` against `financing`.
+ * `grocers`; the staff passes `checkStaff()` against `staff`; the
+ * financing passes `checkFinancing()` against `financing`; and the end of
+ * the game, if it ended, passes `checkEnded()` against `financing`.
  *
  * The products, limits, restock kinds, `awarenessDays` and the truck's
  * price are those of `content` as it is now, the events, choices, outcomes
  * and personal labels those of `events`, the starting cash and the trucks'
  * terms those of `difficulties`, the Défis those of `defis` and the share
- * rounds and second loans those of `financing`, so tuning that changes the
- * days, narrows the others, drops an event, changes how a game opens,
- * changes a Défi or allows fewer rounds or loans can stop older saves from
- * loading.
+ * rounds, second loans and months to a bankruptcy those of `financing`, so
+ * tuning that changes the days, narrows the others, drops an event, changes
+ * how a game opens, changes a Défi, allows fewer rounds or loans or takes
+ * more months to a bankruptcy can stop older saves from loading.
  */
 export function deserialize(
   text: string,
@@ -780,6 +799,7 @@ export function deserialize(
   checkContracts(save, grocers)
   checkStaff(save, staff)
   checkFinancing(save, journal, financing)
+  checkEnded(save, financing)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -805,6 +825,7 @@ export function deserialize(
     staff: save.staff,
     ownerAway: save.ownerAway,
     financing: save.financing,
+    ended: save.ended,
   }
 }
 
@@ -821,29 +842,36 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
   if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  if (saveVersion === ENDLESS_VERSION) {
+    return withEnded(checked(endlessSchema, raw))
+  }
   if (saveVersion === FINANCINGLESS_VERSION) {
-    return withFinancing(checked(financinglessSchema, raw))
+    return withEnded(withFinancing(checked(financinglessSchema, raw)))
   }
   if (saveVersion === STAFFLESS_VERSION) {
-    return withFinancing(withStaff(checked(stafflessSchema, raw)))
+    return withEnded(withFinancing(withStaff(checked(stafflessSchema, raw))))
   }
   if (saveVersion === CONTRACTLESS_VERSION) {
-    return withFinancing(
-      withStaff(withContracts(checked(contractlessSchema, raw))),
+    return withEnded(
+      withFinancing(withStaff(withContracts(checked(contractlessSchema, raw)))),
     )
   }
   if (saveVersion === BAKERYLESS_VERSION) {
-    return withFinancing(
-      withStaff(
-        withContracts(withBakery(checked(bakerylessSchema, raw), bakery)),
+    return withEnded(
+      withFinancing(
+        withStaff(
+          withContracts(withBakery(checked(bakerylessSchema, raw), bakery)),
+        ),
       ),
     )
   }
   if (saveVersion === CHALLENGELESS_VERSION) {
     const save = checked(challengelessSchema, raw)
-    return withFinancing(
-      withStaff(
-        withContracts(withBakery({ ...save, challenge: null }, bakery)),
+    return withEnded(
+      withFinancing(
+        withStaff(
+          withContracts(withBakery({ ...save, challenge: null }, bakery)),
+        ),
       ),
     )
   }
@@ -875,25 +903,40 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
     weekHistory: [],
     challenge: null,
   })
-  return withFinancing(
-    withStaff(withContracts(withBakery({ ...save, weekSoFar: null }, bakery))),
+  return withEnded(
+    withFinancing(
+      withStaff(
+        withContracts(withBakery({ ...save, weekSoFar: null }, bakery)),
+      ),
+    ),
   )
 }
 
+/** A save from before the end of a game as the current version: not ended. */
+function withEnded<
+  Old extends { readonly saveVersion: typeof ENDLESS_VERSION },
+>(
+  save: Old,
+): Omit<Old, 'saveVersion'> & {
+  readonly saveVersion: typeof SAVE_VERSION
+  readonly ended: null
+} {
+  return { ...save, saveVersion: SAVE_VERSION, ended: null }
+}
+
 /**
- * A save from before the emergency loans and the share sales as the
- * current version, its financing to be read from its books once they are
- * rebuilt.
+ * A save from before the emergency loans and the share sales as version
+ * 15, its financing to be read from its books once they are rebuilt.
  */
 function withFinancing<
   Old extends { readonly saveVersion: typeof FINANCINGLESS_VERSION },
 >(
   save: Old,
 ): Omit<Old, 'saveVersion'> & {
-  readonly saveVersion: typeof SAVE_VERSION
+  readonly saveVersion: typeof ENDLESS_VERSION
   readonly financing: null
 } {
-  return { ...save, saveVersion: SAVE_VERSION, financing: null }
+  return { ...save, saveVersion: ENDLESS_VERSION, financing: null }
 }
 
 /**
@@ -2359,6 +2402,43 @@ function checkFinancing(
   if (missing !== undefined) {
     invalid(
       `the journal does not hold « ${missing.memo} » on day ${missing.day} as the financing owes it`,
+    )
+  }
+}
+
+/**
+ * How the game could have ended, if it did: not in a Défi, at the close of
+ * `lastDay`'s day, the last of its month, after the whole months below
+ * zero `rules` end a game in (see `endAtClose`), as `belowZeroSince`, which
+ * `checkFinancing()` read from the books, counts them; and nothing came up
+ * after, no event waiting nor chosen since.
+ */
+function checkEnded(save: Save, rules: FinancingContent): void {
+  const { ended, challenge, lastDay, events, financing } = save
+  if (ended === null) return
+  if (challenge !== null) {
+    invalid(`the Défi ${challenge.id} ended in ${ended.reason}`)
+  }
+  if (lastDay?.day !== ended.day) {
+    invalid(
+      `the game ended on day ${ended.day}, but the last day played is ${lastDay?.day ?? 'none'}`,
+    )
+  }
+  if (events.pending !== null) {
+    invalid(`an event waits after the game ended on day ${ended.day}`)
+  }
+  const after = events.history.at(-1)
+  if (after !== undefined && after.day > ended.day) {
+    invalid(
+      `the event ${after.event} came up on day ${after.day}, after the game ended on day ${ended.day}`,
+    )
+  }
+  if (endAtClose({ day: ended.day, challenge, financing }, rules) === null) {
+    const months = monthsBelowZero(financing.belowZeroSince, ended.day)
+    invalid(
+      endOfMonth(ended.day) === ended.day
+        ? `the game ended in ${ended.reason} on day ${ended.day} after ${months} whole months below zero, not ${rules.bankruptcy.months}`
+        : `the game ended on day ${ended.day}, not the last day of a month`,
     )
   }
 }

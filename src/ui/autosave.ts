@@ -19,8 +19,11 @@ function monthOf(day: Day): string {
  * such as one imported mid-game, is handed over at once, whatever its month,
  * with `replaces` set: the player chose it over the saved game (see
  * `SaveWriter`). A Défi is never handed over: the browser keeps one game,
- * and trying a Défi must not replace the long one. Returns a function that
- * stops it.
+ * and trying a Défi must not replace the long one. A game that has ended,
+ * in bankruptcy, is handed over once, the moment it ends, whatever its
+ * month, or when it is started in place of another, and never again, so
+ * « Continuer » shows its end; one continued already ended is not handed
+ * over at all. Returns a function that stops it.
  */
 export function startAutosave(
   store: GameStore,
@@ -30,19 +33,25 @@ export function startAutosave(
   const write = (game: GameState, replaces = false) => {
     if (game.challenge === null) writeGame(game, replaces)
   }
-  let savedMonth = monthOf(store.getState().game.day)
-  write(store.getState().game)
+  const first = store.getState().game
+  let savedMonth = monthOf(first.day)
+  if (first.ended === null) write(first)
 
   const unsubscribe = store.subscribe((state, previous) => {
     if (state.game === previous.game) return
-    const month = monthOf(state.game.day)
     const started = state.gamesStarted !== previous.gamesStarted
+    if (state.game.ended !== null) {
+      if (started || previous.game.ended === null) write(state.game, started)
+      return
+    }
+    const month = monthOf(state.game.day)
     if (month === savedMonth && !started) return
     savedMonth = month
     write(state.game, started)
   })
   const stopWatching = host.onVisibilityChange(() => {
-    if (host.isHidden()) write(store.getState().game)
+    const { game } = store.getState()
+    if (host.isHidden() && game.ended === null) write(game)
   })
 
   return () => {

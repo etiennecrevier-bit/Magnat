@@ -104,9 +104,11 @@ export function adapts(
  * holding `ownerStrategy(seed)` and answering the cards of `content` with
  * `eventChooser('random', seed)`, as `npm run sim -- --events random` does,
  * the standing read against `percentiles`, by default the shipped table.
- * With `branch`, each card that came up then has one of its occurrences
- * drawn with `sampleStream(seed)` and branched. Throws a RangeError unless
- * `weeks` is a whole number from 1.
+ * A game that ends, in bankruptcy (#160), plays no more: its bénéfice net
+ * stays at its last close's for the weeks after. With `branch`, each card
+ * that came up then has one of its occurrences drawn with
+ * `sampleStream(seed)` and branched. Throws a RangeError unless `weeks` is
+ * a whole number from 1.
  */
 export function playOwner(
   seed: number,
@@ -228,8 +230,10 @@ export function runOwners({
  * closed its Sunday, the week's row is made from their bénéfice net, before
  * any of them draws the card of the Monday, the first morning that reads
  * that row. So the table is the one the owners played against, whatever the
- * table shipped. The other difficulties copy this one's rows: none reads
- * them. No branching: `runOwners` plays the games again for that.
+ * table shipped. An owner whose game ended, in bankruptcy (#160), plays no
+ * more, its bénéfice net in each row after that of its last close, as
+ * `playOwner` counts it. The other difficulties copy this one's rows: none
+ * reads them. No branching: `runOwners` plays the games again for that.
  */
 export function stagedPercentiles(
   games: number,
@@ -253,7 +257,8 @@ export function stagedPercentiles(
   for (let week = 1; week <= weeks; week += 1) {
     const sunday = week * DAYS_PER_WEEK - 1
     for (const owner of owners) {
-      while (owner.state.day < sunday) {
+      // A game that ended stays on the morning after its last day.
+      while (owner.state.day < sunday && owner.state.ended === null) {
         owner.state = playMorning(owner.state, content, owner.choose, table())
       }
       // Answered once, so the chooser draws once for the Sunday.

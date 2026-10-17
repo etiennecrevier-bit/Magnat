@@ -7,6 +7,7 @@ import {
   type DayType,
   type DifficultyContent,
   type DifficultyId,
+  type FinancingContent,
   type FoodTruckContent,
   type ProductId,
 } from '../content/schema.ts'
@@ -20,13 +21,27 @@ import {
   type BalanceSheet,
 } from '../finance/statements.ts'
 import { monthsSinceStart, toCalendar } from './calendar.ts'
+import { BAKERY } from './bakery.ts'
 import { createInitialState, tick } from './clock.ts'
+import { GROCERS } from './contracts.ts'
 import { perSegment } from './customers.ts'
-import { CUSTOMERS, DIFFICULTIES, FOOD_TRUCK, openingJournal } from './day.ts'
+import {
+  CUSTOMERS,
+  DEFIS,
+  DIFFICULTIES,
+  ENERGY,
+  FOOD_TRUCK,
+  PERSONAL,
+  openingJournal,
+} from './day.ts'
 import { applyDecision } from './decisions.ts'
+import { NO_EVENTS } from './events.ts'
+import { FINANCING } from './financing.ts'
 import { PRODUCTS } from './inventory.ts'
 import { cents, mulRatio } from './money.ts'
+import { PERCENTILES } from './percentiles.ts'
 import { defaultProfile } from './profile.ts'
+import { STAFF } from './staff.ts'
 import type { Day, GameState } from './types.ts'
 
 // The real costs of #44, charge by charge and difficulty by difficulty: the
@@ -188,12 +203,35 @@ function start(setup: Setup, level: DifficultyId, seed = 42): GameState {
   )
 }
 
+/**
+ * The shipped financing with no bankruptcy (#160): a quiet game runs far
+ * below zero for years, and its charges still post.
+ */
+const NO_BANKRUPTCY: FinancingContent = {
+  ...FINANCING,
+  bankruptcy: { ...FINANCING.bankruptcy, months: Number.MAX_SAFE_INTEGER },
+}
+
 /** The state after each of `days` ticks, in order. */
 function play(setup: Setup, days: number, from: GameState): GameState[] {
   const states: GameState[] = []
   let state = from
   for (let i = 0; i < days; i += 1) {
-    state = tick(state, setup.truck, setup.customers, setup.difficulties)
+    state = tick(
+      state,
+      setup.truck,
+      setup.customers,
+      setup.difficulties,
+      PERSONAL,
+      ENERGY,
+      NO_EVENTS,
+      DEFIS,
+      PERCENTILES,
+      BAKERY,
+      GROCERS,
+      STAFF,
+      NO_BANKRUPTCY,
+    )
     states.push(state)
   }
   return states

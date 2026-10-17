@@ -1,3 +1,4 @@
+import { isNoticeCard, type EventCard } from '../content/schema.ts'
 import type { KeyEventLike } from './pauseShortcut.ts'
 
 // The keys that pick an event card's choices: 1 for the first, up to 3,
@@ -65,4 +66,20 @@ export function handleCardEscape(
   if (event.key !== 'Escape') return
   event.preventDefault()
   if (showsResult && !event.repeat) onContinue()
+}
+
+/**
+ * What picking the choice `choiceId` of `card` does, by click or by key: it
+ * plays it with `choose`, then, on a notice (see `isNoticeCard`), which has
+ * no result to read, closes the card at once with `close`. Any other card
+ * stays open to show what the choice did.
+ */
+export function pickChoice(
+  card: Pick<EventCard, 'choices'>,
+  choiceId: string,
+  choose: (choiceId: string) => void,
+  close: () => void,
+): void {
+  choose(choiceId)
+  if (isNoticeCard(card)) close()
 }

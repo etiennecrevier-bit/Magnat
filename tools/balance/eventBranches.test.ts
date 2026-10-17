@@ -6,6 +6,7 @@ import {
 import { EVENTS } from '../../src/engine/day.ts'
 import { NO_EVENTS } from '../../src/engine/events.ts'
 import { effectsAt } from '../../src/engine/scaling.ts'
+import type { DecisionChange } from '../../src/engine/decisions.ts'
 import { cents } from '../../src/engine/money.ts'
 import { isRngState } from '../../src/engine/rng.ts'
 import type { GameState } from '../../src/engine/types.ts'
@@ -126,6 +127,23 @@ describe('playWindow', () => {
     const other = playWindow({ ...free, rngState: 2 }, SEED)
     expect(one.day).toBe(morning.day + WINDOW_DAYS)
     expect(journalHash(one.journal)).toBe(journalHash(other.journal))
+  })
+
+  it('stops on the morning after a game ends, and leaves an ended game as it is (#160)', () => {
+    // An owner who pays themself 3 000 $ a week at Difficile, from the
+    // morning of November 1st, day 184: a bankruptcy within the window.
+    const greedy: DecisionChange = {
+      kind: 'ownerWeeklyPay',
+      pay: cents(300_000),
+    }
+    let morning = startGame(7, 'difficile', [greedy])
+    while (morning.day < 184) morning = playMorning(morning, NO_EVENTS, null)
+    expect(morning.ended).toBeNull()
+    const ended = playWindow(morning, SEED, NO_EVENTS)
+    expect(ended.ended?.reason).toBe('bankruptcy')
+    expect(ended.day).toBe((ended.ended?.day ?? 0) + 1)
+    expect(ended.day).toBeLessThan(184 + WINDOW_DAYS)
+    expect(playWindow(ended, SEED, NO_EVENTS)).toBe(ended)
   })
 
   it('brings the follow-ups queued, answered, and no new card', () => {

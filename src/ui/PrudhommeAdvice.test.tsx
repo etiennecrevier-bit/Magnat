@@ -33,6 +33,19 @@ describe('PrudhommeAdvice', () => {
     )
   })
 
+  it('takes another title when given, as the « Faillite » screen does', () => {
+    const html = renderToStaticMarkup(
+      <PrudhommeAdvice
+        advice="Rien à redire."
+        portrait={null}
+        title="Le mot de Mme Prudhomme"
+      />,
+    )
+    expect(html).toContain(
+      '<section class="prudhomme-advice" aria-label="Le mot de Mme Prudhomme"><div><p class="prudhomme-advice__title">Le mot de Mme Prudhomme</p>',
+    )
+  })
+
   it('says what her line is on when given, under her name', () => {
     const html = renderToStaticMarkup(
       <PrudhommeAdvice

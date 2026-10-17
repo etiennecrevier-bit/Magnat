@@ -6,11 +6,10 @@ import { DEFIS } from '../engine/day.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
 import { DefiBriefingView, DefiListView } from './DefisScreen.tsx'
-import { formatGameDate } from './formatGameDate.ts'
 import { DIFFICULTIES, difficultyLine, readBusinessName } from './newGame.ts'
 import { browserStorage, readStoredSave, type StoredSave } from './saves.ts'
 import { settingsStore, type SettingsStore } from './settings.ts'
-import { continueStoredGame } from './startMenu.ts'
+import { continueStoredGame, savedLine } from './startMenu.ts'
 import { newChallenge, newGame } from './store.ts'
 import './StartScreen.css'
 
@@ -60,8 +59,7 @@ export function StartMenuView({
               Continuer
             </button>
             <p id={savedId} className="start-screen__saved">
-              {stored.game.profile.businessName},{' '}
-              {formatGameDate(stored.game.day).toLowerCase()}
+              {savedLine(stored.game)}
             </p>
           </>
         )}

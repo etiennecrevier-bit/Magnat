@@ -23,7 +23,7 @@ import { incomeStatement } from '../finance/statements.ts'
 import { BAKERY, closedBakery } from './bakery.ts'
 import { endOfMonth } from './calendar.ts'
 import { allowedChoices } from './challenge.ts'
-import { grocerAway, noContracts, startContract } from './contracts.ts'
+import { GROCERS, grocerAway, noContracts, startContract } from './contracts.ts'
 import {
   createInitialState,
   startChallenge,
@@ -43,10 +43,11 @@ import {
 import { applyDecision, type DecisionChange } from './decisions.ts'
 import { applyEffect } from './effects.ts'
 import { FULL_ENERGY } from './energy.ts'
-import { drawEvent, noEvents, resolveEvent } from './events.ts'
+import { NO_EVENTS, drawEvent, noEvents, resolveEvent } from './events.ts'
 import { FINANCING } from './financing.ts'
 import { inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
+import { PERCENTILES } from './percentiles.ts'
 import { LABELS } from './personal.ts'
 import { PROFILE_CONTENT } from './profile.ts'
 import { SAVE_VERSION, deserialize, serialize } from './save.ts'
@@ -327,12 +328,29 @@ function withoutWeek(save: Json): void {
 }
 
 /**
+ * Takes the end of the game out of `save`, as version 15 wrote it: the save
+ * of a game that goes on.
+ */
+function withoutEnd(save: Json): void {
+  expect(save.ended).toBeNull()
+  delete save.ended
+}
+
+/** `state`, not ended, saved as version 15, before the end of a game. */
+function v15(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutEnd(save)
+  return JSON.stringify({ ...save, saveVersion: 15 })
+}
+
+/**
  * Takes the financing out of `save`, as version 14 wrote it: the save of a
  * game that never took an emergency loan nor sold shares, and that nobody
  * came to lend to. Whether its encaisse closed below zero comes from its
- * books.
+ * books. Nor did it end, which came later.
  */
 function withoutFinancing(save: Json): void {
+  withoutEnd(save)
   expect(save.financing).toMatchObject({
     loans: [],
     shareSales: [],
@@ -491,8 +509,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(15)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 15 })
+    expect(SAVE_VERSION).toBe(16)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 16 })
   })
 
   it.each<Profile>([
@@ -1033,7 +1051,8 @@ describe('deserialize rejects', () => {
     0,
     1,
     6,
-    16,
+    17,
+    '16',
     '15',
     '14',
     '13',
@@ -4252,6 +4271,191 @@ describe('the emergency loans and the share sales', () => {
       FINANCED_SAVE,
       '1 rounds of shares were sold, more than the 0 a game may sell',
       loadFinancingContent({ ...financingJson, maxShareRounds: 0 }),
+    )
+  })
+})
+
+describe('the end of a game', () => {
+  // Seed 42 at Moyen: a bill on the morning of June 1st, day 31, leaves
+  // Encaisse far below zero, so six whole months later the close of
+  // November 30th, day 213, ends the game in bankruptcy (#160).
+  const BILLED = applyEffect(
+    played(31),
+    {
+      kind: 'charge',
+      amountCents: cents(
+        balance(played(31).journal, '1000', { toDay: 31 }) + 10_000_000,
+      ),
+      description: 'Facture imprévue',
+    },
+    FOOD_TRUCK,
+    'test',
+  )
+  const LAST_MORNING = played(182, BILLED)
+  const CLOSE = playDay(LAST_MORNING)
+  const ENDED = tick(LAST_MORNING)
+  const ENDED_SAVE = serialize(ENDED)
+  const END = { reason: 'bankruptcy', day: 213 } as const
+
+  /** The load of `text` fails, naming `reason`. */
+  function rejects(text: string, reason: string, rules = FINANCING): void {
+    expect(() =>
+      deserialize(
+        text,
+        FOOD_TRUCK,
+        EVENTS,
+        DIFFICULTIES,
+        DEFIS,
+        BAKERY,
+        loadGrocerContent(grocersJson, EVENTS),
+        STAFF,
+        rules,
+      ),
+    ).toThrow(reason)
+  }
+
+  it('give back a game ended in bankruptcy, at its close or the morning after, which plays no more', () => {
+    expect(LAST_MORNING.ended).toBeNull()
+    expect(CLOSE.ended).toEqual(END)
+    expect(ENDED.ended).toEqual(END)
+    for (const state of [CLOSE, ENDED]) {
+      const back = reloaded(state)
+      expect(back).toStrictEqual(state)
+      expect(serialize(back)).toBe(serialize(state))
+    }
+    expect(() => tick(reloaded(ENDED))).toThrow(
+      'the game ended in bankruptcy on day 213',
+    )
+  })
+
+  it('load a version 15 game as one that goes on', () => {
+    for (const state of [
+      createInitialState(SEED),
+      BILLED,
+      played(150, BILLED),
+      DAY_400,
+    ]) {
+      expect(deserialize(v15(state))).toStrictEqual(state)
+    }
+  })
+
+  it('load a version 15 game whose run is past the months, which ends at the close of its month', () => {
+    // Played on to the close of December 10th, day 223, as version 15
+    // played it, with no bankruptcy.
+    const free = {
+      ...FINANCING,
+      bankruptcy: { ...FINANCING.bankruptcy, months: Number.MAX_SAFE_INTEGER },
+    }
+    let long = LAST_MORNING
+    while (long.day <= 223) {
+      long = tick(
+        long,
+        FOOD_TRUCK,
+        CUSTOMERS,
+        DIFFICULTIES,
+        PERSONAL,
+        ENERGY,
+        NO_EVENTS,
+        DEFIS,
+        PERCENTILES,
+        BAKERY,
+        GROCERS,
+        STAFF,
+        free,
+      )
+    }
+    expect(long.ended).toBeNull()
+    expect(long.financing.belowZeroSince).toBe(31)
+    const loaded = deserialize(v15(long))
+    expect(loaded.ended).toBeNull()
+    // December 31st, day 244.
+    const ended = played(244 - long.day + 1, loaded)
+    expect(ended.ended).toEqual({ reason: 'bankruptcy', day: 244 })
+  })
+
+  it.each([
+    [
+      'a Défi ended',
+      withValue(
+        'ended',
+        END,
+        serialize(startChallenge('travauxSaintDenis', SEED)),
+      ),
+      'the Défi travauxSaintDenis ended in bankruptcy',
+    ],
+    [
+      'an end on another day than the last played',
+      withValue('ended.day', 212, ENDED_SAVE),
+      'the game ended on day 212, but the last day played is 213',
+    ],
+    [
+      'an end before a day is played',
+      withValue('ended', END, serialize(createInitialState(SEED))),
+      'the game ended on day 213, but the last day played is none',
+    ],
+    [
+      'an end on a day not the last of its month',
+      withValue('ended', { ...END, day: 180 }, serialize(played(150, BILLED))),
+      'the game ended on day 180, not the last day of a month',
+    ],
+    [
+      'an end after fewer months below zero',
+      withValue('ended', { ...END, day: 183 }, serialize(played(153, BILLED))),
+      'the game ended in bankruptcy on day 183 after 5 whole months below zero, not 6',
+    ],
+    [
+      'an event waiting after the end',
+      edited(
+        'events',
+        (parent, key) => {
+          parent[key] = {
+            ...(parent[key] as Json),
+            pending: { event: 'premierAvis', followUp: false },
+            lastDrawnDay: 214,
+          }
+        },
+        ENDED_SAVE,
+      ),
+      'an event waits after the game ended on day 213',
+    ],
+    [
+      'an event chosen after the end',
+      edited(
+        'events.history',
+        (parent, key) => {
+          parent[key] = [
+            ...(parent[key] as Json[]),
+            {
+              day: 214,
+              event: 'premierAvis',
+              followUp: false,
+              choice: 'compris',
+              outcome: 0,
+            },
+          ]
+        },
+        ENDED_SAVE,
+      ),
+      'the event premierAvis came up on day 214, after the game ended on day 213',
+    ],
+    [
+      'an end of another kind',
+      withValue('ended.reason', 'retraite', ENDED_SAVE),
+      '→ at ended.reason',
+    ],
+  ])('reject %s', (_, text, reason) => {
+    rejects(text, reason)
+  })
+
+  it('reject an ended game once the bankruptcy takes more months', () => {
+    const rules = loadFinancingContent({
+      ...financingJson,
+      bankruptcy: { ...financingJson.bankruptcy, months: 7 },
+    })
+    rejects(
+      ENDED_SAVE,
+      'the game ended in bankruptcy on day 213 after 6 whole months below zero, not 7',
+      rules,
     )
   })
 })

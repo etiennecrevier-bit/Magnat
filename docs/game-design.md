@@ -22,7 +22,7 @@ Customer segments: bargain hunters, loyal regulars, premium buyers. AI competito
 
 ## Rules of the world
 - Real time with pause. Speeds: pause, x1, x3, x10. One game day lasts 4 seconds at x1 (tunable).
-- No game over. Running out of cash means an emergency loan from the banker (cautious, punishing rate, conditions, never takes shares) or selling shares to the investor (fast, charming, each round costs a bigger slice).
+- Running out of cash means an emergency loan from the banker (cautious, punishing rate, conditions, never takes shares) or selling shares to the investor (fast, charming, each round costs a bigger slice). Six months in a row with the cash below zero end the game in bankruptcy, after three letters from the banker (decided by Étienne on October 16, 2026).
 - Score: the player's net worth = their share of the company's value + personal cash.
 - Real financial statements with real Quebec French names, never explained. A simplified cash gauge in the top bar.
 

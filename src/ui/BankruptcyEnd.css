@@ -1,0 +1,55 @@
+/* The card itself is the shared .panel (panel.css), laid out as the end of
+   a Défi is (DefiEnd.css). Text colours keep at least 4.5:1 against its
+   cream #fff7e8. */
+.bankruptcy-end {
+  --panel-width: 32rem;
+}
+
+.bankruptcy-end__content {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.bankruptcy-end__business {
+  margin: 0;
+  color: #5c5048;
+  font-weight: 600;
+}
+
+.bankruptcy-end__content h2 {
+  margin: 0 0 0.25rem;
+  color: #a61b1b;
+  font-size: 1.75rem;
+}
+
+.bankruptcy-end__content h2:focus {
+  outline: none;
+}
+
+.bankruptcy-end__date {
+  margin: 0 0 1rem;
+  color: #5c5048;
+}
+
+/* How the owner compares with the simulated owners. */
+.bankruptcy-end__percentile {
+  margin: 0 0 1rem;
+  font-weight: 600;
+}
+
+.bankruptcy-end__figures {
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.bankruptcy-end__figures li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid #e3d3b4;
+}
+
+.bankruptcy-end__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

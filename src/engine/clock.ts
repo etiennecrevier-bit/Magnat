@@ -15,6 +15,7 @@ import type {
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
 import { BAKERY, closedBakery } from './bakery.ts'
+import { bankruptcyNotice } from './bankruptcy.ts'
 import {
   challengeDifficulties,
   defiById,
@@ -67,9 +68,9 @@ export { toCalendar, type CalendarDate } from './calendar.ts'
  * owner at full energy, no event yet, nobody owing the business anything, a
  * first week to come, partial, from the cash the books open with (see
  * `openingWeek`), no Défi, no bakery, with the croissants bought, no
- * contract, nobody on staff, the owner at work and no financing. Throws a
- * RangeError unless `seed` is an integer in [0, 2^32), if the starting
- * decisions break the content's limits, if `profile` breaks
+ * contract, nobody on staff, the owner at work, no financing and not ended.
+ * Throws a RangeError unless `seed` is an integer in [0, 2^32), if the
+ * starting decisions break the content's limits, if `profile` breaks
  * `validateProfile()`, or if the difficulty leaves a negative Mise de fonds.
  */
 export function createInitialState(
@@ -110,6 +111,7 @@ export function createInitialState(
     staff: [],
     ownerAway: false,
     financing: noFinancing(),
+    ended: null,
   }
 }
 
@@ -189,23 +191,27 @@ export function startChallenge(
 
 /**
  * Plays business day `state.day` with `state.decisions` (see `playDay`, with
- * `bakery` as the bakery's content, `grocers` as the contracts' and `staff`
- * as the employees'), then moves on to the next morning, where
+ * `bakery` as the bakery's content, `grocers` as the contracts', `staff` as
+ * the employees' and `financing`'s rules, which may end the game at the
+ * close), then moves on to the next morning, where
  * the pending decisions, if any, take effect, after a night that gives the
  * owner some energy back (see `nightRest`), with the owner at work unless
  * something sends them away again, and where an event of `events` may
  * come up: the card of the emergency loan or the share sale when the day
  * closed below zero (see `financingOffer`, with `financing`'s rules), or
- * else the draw (see `drawEvent`, which reads the player's standing against
- * `percentiles`). By default no event ever does: a game turns them on by
- * passing the content, such as `EVENTS`. In a Défi of `defis`, the morning
+ * else Mme Prudhomme's letter before a bankruptcy, if one is due (see
+ * `bankruptcyNotice`), or else the draw (see `drawEvent`, which reads the
+ * player's standing against `percentiles`). By default no event ever does:
+ * a game turns them on by passing the content, such as `EVENTS`. A game
+ * the close ended moves on to that morning with no event, and plays no
+ * more. In a Défi of `defis`, the morning
  * brings the event the Défi forces that day, if any, in place of the draw;
  * otherwise the draw, with no chance of a new event unless the Défi lets
  * random events come, though a follow-up still comes, and never the
- * financing's cards, since a Défi's medals read the books as they are; and
- * nothing once the Défi is over. Returns a new state; never mutates
- * `state`. Throws an Error while an event waits for the player's choice,
- * and once the Défi is over.
+ * financing's cards nor the letters, since a Défi's medals read the books
+ * as they are; and nothing once the Défi is over. Returns a new state;
+ * never mutates `state`. Throws an Error while an event waits for the
+ * player's choice, once the game has ended, and once the Défi is over.
  */
 export function tick(
   state: GameState,
@@ -233,6 +239,7 @@ export function tick(
     bakery,
     grocers,
     staff,
+    financing,
   )
   const morning: GameState = {
     ...played,
@@ -242,10 +249,15 @@ export function tick(
     energy: nightRest(played.energy, energy),
     ownerAway: false,
   }
+  if (morning.ended !== null) return morning
   const { challenge } = morning
   if (challenge === null) {
     return drawEvent(
-      financingOffer(morning, events, financing),
+      bankruptcyNotice(
+        financingOffer(morning, events, financing),
+        events,
+        financing,
+      ),
       events,
       percentiles,
       grocers,

@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
+import { EVENTS } from '../engine/day.ts'
 import {
   allowedChoiceForKey,
   choiceForKey,
   choiceKey,
   handleCardEscape,
+  pickChoice,
 } from './choiceKeys.ts'
 
 const key = (name: string, extra: Record<string, boolean> = {}) => ({
@@ -106,5 +108,32 @@ describe('handleCardEscape', () => {
     const { prevented, onContinue } = press(name, true)
     expect(prevented).toBe(0)
     expect(onContinue).not.toHaveBeenCalled()
+  })
+})
+
+describe('pickChoice', () => {
+  const card = (id: string) => {
+    const found = EVENTS.events.find((event) => event.id === id)
+    if (found === undefined) throw new Error(`No ${id}`)
+    return found
+  }
+
+  it('plays the choice, then closes a notice at once (#160)', () => {
+    const calls: string[] = []
+    pickChoice(
+      card('premierAvis'),
+      'compris',
+      (choice) => calls.push(`choose ${choice}`),
+      () => calls.push('close'),
+    )
+    expect(calls).toEqual(['choose compris', 'close'])
+  })
+
+  it('plays the choice and leaves any other card open, to show what it did', () => {
+    const choose = vi.fn()
+    const close = vi.fn()
+    pickChoice(card('pretUrgence'), 'refuser', choose, close)
+    expect(choose).toHaveBeenCalledWith('refuser')
+    expect(close).not.toHaveBeenCalled()
   })
 })

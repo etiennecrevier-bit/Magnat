@@ -10,9 +10,11 @@ import {
   FOOD_TRUCK,
   PERSONAL,
 } from '../engine/day.ts'
+import { applyDecision } from '../engine/decisions.ts'
 import { NO_EVENTS, resolveEvent } from '../engine/events.ts'
 import { cents, sum } from '../engine/money.ts'
 import { defaultProfile } from '../engine/profile.ts'
+import { deserialize, serialize } from '../engine/save.ts'
 import type { GameState, Profile } from '../engine/types.ts'
 import { createSettingsStore, settingsStore } from './settings.ts'
 import {
@@ -1354,6 +1356,103 @@ describe('a Défi', () => {
       .startGame(newChallenge('?seed=8', 'semaineDesMilleDollars'))
     expect(store.getState()).toMatchObject({
       game: { day: 7, challenge: { status: 'enCours' } },
+      panel: null,
+      speed: NORMAL_SPEED,
+      resumeSpeed: null,
+    })
+  })
+})
+
+describe('a bankruptcy (#160)', () => {
+  /**
+   * Seed 7 at Difficile, its owner paying themself 3 000 $ a week from day
+   * 1: below zero at every close from June 1st, the close of November
+   * 30th, day 213, ends it. The morning of `day`, played with no event.
+   */
+  function greedy(day: number): GameState {
+    let game = applyDecision(
+      createInitialState(7, FOOD_TRUCK, {
+        ...defaultProfile(),
+        difficulty: 'difficile',
+      }),
+      { kind: 'ownerWeeklyPay', pay: cents(300_000) },
+    )
+    while (game.day < day) game = tick(game)
+    return game
+  }
+  const NEAR_THE_END = greedy(205)
+  const END = { reason: 'bankruptcy', day: 213 } as const
+
+  it('stops on the morning after the end, on its « Faillite » in place of the month’s report, paused for good', () => {
+    const store = createGameStore(NEAR_THE_END, NO_EVENTS, MONTHLY)
+    store.getState().setSpeed(3)
+    store.getState().advance(20)
+    // December 1st, whose « Bilan du mois » the « Faillite » replaces.
+    expect(store.getState()).toMatchObject({
+      game: { day: 214, ended: END },
+      panel: 'bankruptcy',
+      speed: PAUSED,
+      resumeSpeed: 3,
+      reportWaiting: false,
+      monthReport: null,
+      slideIn: null,
+    })
+
+    // Nothing plays a day, closes the end, or resumes the game.
+    const { game } = store.getState()
+    expect(() => store.getState().advance(10)).not.toThrow()
+    store.getState().closePanel()
+    store.getState().togglePause()
+    store.getState().setSpeed(10)
+    store.getState().openPanel('manage')
+    expect(store.getState()).toMatchObject({
+      panel: 'bankruptcy',
+      speed: PAUSED,
+    })
+    expect(store.getState().game).toBe(game)
+  })
+
+  it('opens its « Faillite » once the panel open when it ended closes', () => {
+    // Every panel pauses the game, so only a test gets here.
+    const store = createGameStore(NEAR_THE_END, NO_EVENTS)
+    store.getState().setSpeed(3)
+    store.getState().openPanel('finances')
+    store.getState().advance(20)
+    expect(store.getState()).toMatchObject({
+      game: { day: 214, ended: END },
+      panel: 'finances',
+      speed: PAUSED,
+      resumeSpeed: 3,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: 'bankruptcy',
+      speed: PAUSED,
+      resumeSpeed: 3,
+    })
+  })
+
+  it('opens a game that went bankrupt on its « Faillite », as « Continuer » does after a reload, and the next game as usual', () => {
+    const store = createGameStore(NEAR_THE_END, NO_EVENTS)
+    store.getState().advance(20)
+    const reloaded = deserialize(serialize(store.getState().game))
+    expect(createGameStore(reloaded).getState().panel).toBe('bankruptcy')
+
+    const other = createGameStore(createInitialState(1))
+    other.getState().startGame(reloaded)
+    expect(other.getState()).toMatchObject({
+      game: { day: 214, ended: END },
+      panel: 'bankruptcy',
+      speed: PAUSED,
+      resumeSpeed: NORMAL_SPEED,
+    })
+    other.getState().closePanel()
+    expect(other.getState().panel).toBe('bankruptcy')
+
+    // « Recommencer »
+    other.getState().startGame(newGame('?seed=8', reloaded.profile))
+    expect(other.getState()).toMatchObject({
+      game: { day: 0, ended: null, profile: reloaded.profile },
       panel: null,
       speed: NORMAL_SPEED,
       resumeSpeed: null,

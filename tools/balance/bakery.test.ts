@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { BAKERY, BAKERY_MEMO } from '../../src/engine/bakery.ts'
+import { toCalendar } from '../../src/engine/calendar.ts'
 import { DIFFICULTIES, FOOD_TRUCK } from '../../src/engine/day.ts'
+import type { DecisionChange } from '../../src/engine/decisions.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
 import type { Day, GameState } from '../../src/engine/types.ts'
 import { balance } from '../../src/finance/journal.ts'
 import { STAFF } from '../../src/engine/staff.ts'
+import { simulate } from '../sim/simulate.ts'
 import {
   AT_TRUCK_HIRE,
   BAKER_HIRE,
@@ -255,6 +258,45 @@ describe('playBakeryGame', () => {
     expect(game.croissantsSold).toBeLessThanOrEqual(game.croissantsMade)
     expect(game.energyAtOpenCloses).toBeGreaterThan(0)
     expect(game.energyAtOpenCloses).toBeLessThanOrEqual(100 * game.openDays)
+  })
+
+  it('counts only the days a game played before it ended, its last cash at the month ends after (#160)', () => {
+    // An owner who pays themself 3 000 $ a week at Difficile: the close of
+    // November 30th, day 213, ends the game, before the ninth month ends.
+    const greedy: DecisionChange = {
+      kind: 'ownerWeeklyPay',
+      pay: cents(300_000),
+    }
+    const { game, state } = playBakeryGame(
+      7,
+      'difficile',
+      [greedy],
+      DIFFICULTIES,
+      9,
+    )
+    expect(state.ended).toEqual({ reason: 'bankruptcy', day: 213 })
+    const played = simulate(7, 400, 'difficile', [greedy])
+    expect(played.days).toBe(214)
+    const { daysOpen } = state.decisions
+    const open = played.daySummaries.filter(({ day }) =>
+      daysOpen.includes(toCalendar(day).weekday),
+    )
+    expect(game.openDays).toBe(open.length)
+    expect(game.energyAtOpenCloses).toBe(
+      open.reduce((total, { energy }) => total + energy, 0),
+    )
+    expect(game.croissantsSold).toBe(
+      played.daySummaries.reduce(
+        (total, { sold }) => total + sold.croissant,
+        0,
+      ),
+    )
+    const last = balance(state.journal, '1000', { toDay: 213 })
+    expect(game.cashAtMonthEnds).toHaveLength(9)
+    expect(game.cashAtMonthEnds.slice(0, 7)).toEqual(
+      monthEnds(7).map((day) => balance(state.journal, '1000', { toDay: day })),
+    )
+    expect(game.cashAtMonthEnds.slice(6)).toEqual([last, last, last])
   })
 
   it('signs the contracts on day 0, renews them as they end, and makes their croissants only in the bakery game', () => {

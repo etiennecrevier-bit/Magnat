@@ -4,6 +4,7 @@ import {
   type BakeryContent,
   type DifficultyId,
   type EventCard,
+  type FinancingContent,
   type OvenTerms,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
@@ -30,6 +31,7 @@ import {
 } from './bakery.ts'
 import { endOfMonth, toCalendar } from './calendar.ts'
 import { createInitialState, tick } from './clock.ts'
+import { GROCERS } from './contracts.ts'
 import {
   CUSTOMERS,
   DEFIS,
@@ -41,12 +43,14 @@ import {
 } from './day.ts'
 import { applyDecision, type DecisionChange } from './decisions.ts'
 import { NO_EVENTS, conditionsHold } from './events.ts'
+import { FINANCING } from './financing.ts'
 import { monthlyFixedCosts } from './fixedCosts.ts'
 import { inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
 import { PERCENTILES } from './percentiles.ts'
 import { defaultProfile } from './profile.ts'
 import { deserialize, serialize } from './save.ts'
+import { STAFF } from './staff.ts'
 import type { BakeryState, Day, GameState } from './types.ts'
 
 const SEED = 42
@@ -812,9 +816,14 @@ describe('bakeryMorning', () => {
 // Two years of play at each difficulty, the bakery opened with a leased
 // oven, closed, opened with a bought one, closed and taken back during its
 // notice, then closed for good, the croissants made all along, a day saved
-// and loaded back each month.
+// and loaded back each month. The games run far below zero, so no
+// bankruptcy ends them (#160).
 describe('two years with the bakery', () => {
   const DAYS = 730
+  const NO_BANKRUPTCY: FinancingContent = {
+    ...FINANCING,
+    bankruptcy: { ...FINANCING.bankruptcy, months: Number.MAX_SAFE_INTEGER },
+  }
   const PLAN: Plan = {
     0: [
       OPEN.louer,
@@ -838,7 +847,21 @@ describe('two years with the bakery', () => {
       for (const change of PLAN[state.day] ?? []) {
         state = applyDecision(state, change)
       }
-      state = tick(state)
+      state = tick(
+        state,
+        FOOD_TRUCK,
+        CUSTOMERS,
+        DIFFICULTIES,
+        PERSONAL,
+        ENERGY,
+        NO_EVENTS,
+        DEFIS,
+        PERCENTILES,
+        BAKERY,
+        GROCERS,
+        STAFF,
+        NO_BANKRUPTCY,
+      )
       const day = state.day - 1
       const { totalDebit, totalCredit } = trialBalance(state.journal, day)
       if (totalDebit !== totalCredit) {

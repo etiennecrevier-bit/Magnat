@@ -129,6 +129,8 @@ export function followUpsOnly(content: EventContent): EventContent {
  * the first day, and draws its outcome from a stream of that day; then the
  * day is played with `dayStream(seed, day)`. So every branch that starts on
  * the same morning plays the same business days, whatever was drawn before.
+ * A branch whose game ends, in bankruptcy (#160), stops on the morning
+ * after its last day, as the game left it.
  */
 export function playWindow(
   state: GameState,
@@ -139,7 +141,7 @@ export function playWindow(
   const followUps = followUpsOnly(content)
   const choose = eventChooser('random', streamOf(CHOOSER_SALT, seed, state.day))
   let played = state
-  for (let offset = 0; offset < days; offset += 1) {
+  for (let offset = 0; offset < days && played.ended === null; offset += 1) {
     const { day } = played
     if (played.events.pending !== null) {
       played = answerEvent(

@@ -1,8 +1,9 @@
-import { useEffect, useRef, type Ref } from 'react'
-import type {
-  EventCard as Card,
-  DifficultyId,
-  EventContent,
+import { useCallback, useEffect, useRef, type Ref } from 'react'
+import {
+  isNoticeCard,
+  type EventCard as Card,
+  type DifficultyId,
+  type EventContent,
 } from '../content/schema.ts'
 import { allowedChoices } from '../engine/challenge.ts'
 import { DEFIS, EVENTS } from '../engine/day.ts'
@@ -13,6 +14,7 @@ import {
   allowedChoiceForKey,
   choiceKey,
   handleCardEscape,
+  pickChoice,
 } from './choiceKeys.ts'
 import { FORCED_CHOICE_REASON } from './defis.ts'
 import { choiceChanges, formatChangeLine } from './eventChanges.ts'
@@ -247,7 +249,10 @@ function eventResult(
  * Escape does nothing before the choice, and if the browser closes the
  * dialog anyway, it opens again while the event waits. « Continuer », or
  * Escape once the result shows, closes it, and the game resumes at the
- * speed from before the card.
+ * speed from before the card. A notice, such as Mme Prudhomme's letters,
+ * closes as soon as its one choice is made, with no result to read: the
+ * card keeps its choice until it is gone, and the Journal des événements
+ * keeps what came of it.
  */
 export default function EventCard() {
   const game = useGame((state) => state.game)
@@ -265,8 +270,9 @@ export default function EventCard() {
   const card = EVENTS.events.find((event) => event.id === id)
   const choosing = pending !== null ? card : undefined
   const allowed = choosing === undefined ? null : allowedChoices(game, DEFIS)
+  const notice = card !== undefined && isNoticeCard(card)
   const result =
-    card === undefined || chosen === undefined || before === null
+    card === undefined || chosen === undefined || before === null || notice
       ? null
       : eventResult(card, chosen, before, game)
 
@@ -283,17 +289,27 @@ export default function EventCard() {
     if (showsResult) resultRef.current?.focus()
   }, [showsResult])
 
+  const choose = useCallback(
+    (choice: string) => {
+      if (choosing === undefined) return
+      pickChoice(choosing, choice, chooseEvent, () =>
+        dialogRef.current?.close(),
+      )
+    },
+    [choosing, chooseEvent],
+  )
+
   useEffect(() => {
     if (choosing === undefined) return
     const onKeyDown = (event: KeyboardEvent) => {
       const choice = allowedChoiceForKey(event, choosing.choices, allowed)
       if (choice === null) return
       event.preventDefault()
-      chooseEvent(choice)
+      choose(choice)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [choosing, allowed, chooseEvent])
+  }, [choosing, allowed, choose])
 
   if (card === undefined) return null
   const onContinue = () => dialogRef.current?.close()
@@ -321,7 +337,7 @@ export default function EventCard() {
         portrait={portraitUrl(card.character.id)}
         result={result}
         allowed={allowed}
-        onChoose={chooseEvent}
+        onChoose={choose}
         onContinue={onContinue}
         titleRef={titleRef}
         resultRef={resultRef}
