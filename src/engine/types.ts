@@ -348,7 +348,27 @@ export interface GameState {
    * closed below zero.
    */
   readonly financing: FinancingState
+  /**
+   * How and when the game ended; null while it goes on. `playDay()` sets it
+   * at the close that ends it, and no day is played after (#160). A Défi
+   * never ends this way: its own `status` says when it is over.
+   */
+  readonly ended: GameEnd | null
 }
+
+/** The end of a game. */
+export interface GameEnd {
+  /** Why it ended. */
+  readonly reason: GameEndReason
+  /** The last day played, whose close ended it. */
+  readonly day: Day
+}
+
+/**
+ * Why a game ended: `bankruptcy`, Encaisse below zero at every close of
+ * the content's whole calendar months in a row.
+ */
+export type GameEndReason = 'bankruptcy'
 
 /** The ways out of a negative encaisse a game took (#159). */
 export interface FinancingState {

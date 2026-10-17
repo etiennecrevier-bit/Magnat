@@ -986,8 +986,12 @@ const eventChoiceSchema = z
   .strictObject({
     id: idSchema,
     label: frenchText(CHOICE_LABEL_MAX_LENGTH),
-    /** What the owner would know before choosing, as the card shows it. */
-    tags: z.array(choiceTagSchema).min(1),
+    /**
+     * What the owner would know before choosing, as the card shows it: at
+     * least one on a card with a choice to make, none needed on a notice
+     * (see `isNoticeCard`).
+     */
+    tags: z.array(choiceTagSchema),
     /** Their chances sum to 1. */
     outcomes: z.array(eventOutcomeSchema).min(1),
   })
@@ -1143,9 +1147,22 @@ const eventSchema = z
     situation: frenchText(SITUATION_MAX_LENGTH),
     quote: frenchText().optional(),
     conditions: eventConditionsSchema.optional(),
-    choices: z.array(eventChoiceSchema).min(2).max(3),
+    /** Two or three to choose from, or one on a notice (see `isNoticeCard`). */
+    choices: z.array(eventChoiceSchema).min(1).max(3),
   })
-  .superRefine(({ situation, quote, choices }, ctx) => {
+  .superRefine((card, ctx) => {
+    const { situation, quote, choices } = card
+    if (isNoticeCard(card)) checkNotice(card, ctx)
+    else {
+      choices.forEach(({ tags }, c) => {
+        if (tags.length > 0) return
+        ctx.addIssue({
+          code: 'custom',
+          message: 'a choice to make shows at least one tag',
+          path: ['choices', c, 'tags'],
+        })
+      })
+    }
     const everyOutcome = choices.flatMap(({ outcomes }) =>
       outcomes.map(({ effects }) => effects),
     )
@@ -1172,6 +1189,50 @@ const eventSchema = z
   })
 
 export type EventCard = z.output<typeof eventSchema>
+
+/**
+ * Whether `card` is a notice, such as Mme Prudhomme's letters before a
+ * bankruptcy (#160): a single choice, which only says it was read. No draw
+ * brings one, and its choice changes nothing.
+ */
+export function isNoticeCard({ choices }: Pick<EventCard, 'choices'>): boolean {
+  return choices.length === 1
+}
+
+/**
+ * What a notice is held to: a weight of 0, none by standing, and its one
+ * choice with one outcome and no effect.
+ */
+function checkNotice(
+  {
+    weight,
+    weightByStanding,
+    choices,
+  }: Pick<EventCard, 'weight' | 'weightByStanding' | 'choices'>,
+  ctx: z.RefinementCtx,
+): void {
+  const issue = (message: string, path: (string | number)[]) =>
+    ctx.addIssue({ code: 'custom', message, path })
+  if (weight !== 0) {
+    issue('a notice has a weight of 0: no draw brings it', ['weight'])
+  }
+  if (weightByStanding !== undefined) {
+    issue('a notice has no weight by standing', ['weightByStanding'])
+  }
+  const outcomes = choices[0]?.outcomes ?? []
+  if (outcomes.length !== 1) {
+    issue('the choice of a notice has one outcome', ['choices', 0, 'outcomes'])
+  }
+  if (outcomes.some(({ effects }) => effects.length > 0)) {
+    issue('the choice of a notice changes nothing: no effect', [
+      'choices',
+      0,
+      'outcomes',
+      0,
+      'effects',
+    ])
+  }
+}
 
 /** How often events come: the first day, the gap and the daily chance. */
 const eventPacingSchema = z.strictObject({
@@ -1480,10 +1541,54 @@ export const financingContentSchema = z
     maxShareRounds: z.int().nonnegative(),
     /** The difficulties at which she lends once a game at most. */
     noSecondLoanAt: z.array(difficultyIdSchema),
+    /** When a negative encaisse ends the game (#160). */
+    bankruptcy: z.strictObject({
+      /**
+       * The whole calendar months in a row, Encaisse below zero at every
+       * close of each, whose last close ends the game.
+       */
+      months: z.int().positive(),
+      /**
+       * The letters that warn of it, by the months they come after, each
+       * the morning after the close that reaches them.
+       */
+      notices: z.array(
+        z.strictObject({ afterMonths: z.int().positive(), event: idSchema }),
+      ),
+    }),
   })
   .refine(({ loanEvent, investorEvent }) => loanEvent !== investorEvent, {
     message: 'the loan and the investor come on cards of their own',
     path: ['investorEvent'],
+  })
+  .superRefine(({ loanEvent, investorEvent, bankruptcy }, ctx) => {
+    const seen = new Set([loanEvent, investorEvent])
+    bankruptcy.notices.forEach(({ afterMonths, event }, n) => {
+      const path = ['bankruptcy', 'notices', n]
+      const before = bankruptcy.notices[n - 1]
+      if (before !== undefined && afterMonths <= before.afterMonths) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'the notices come in order, each after more months',
+          path: [...path, 'afterMonths'],
+        })
+      }
+      if (afterMonths >= bankruptcy.months) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `a notice comes before the ${bankruptcy.months} months that end the game`,
+          path: [...path, 'afterMonths'],
+        })
+      }
+      if (seen.has(event)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `the event ${event} is already one of the financing's cards`,
+          path: [...path, 'event'],
+        })
+      }
+      seen.add(event)
+    })
   })
 
 export type FinancingContent = z.output<typeof financingContentSchema>
@@ -1973,8 +2078,9 @@ function defiContentFor(events: EventContent) {
 }
 
 /**
- * The grocers' content, checked against `events`: each renewal is a card of
- * it that only comes as a follow-up.
+ * The financing's rules, checked against `events`: the loan's and the
+ * investor's cards, with a weight of 0 and an effect of their kind, and the
+ * bankruptcy's notices.
  */
 function financingContentFor(events: EventContent) {
   const cards = new Map(events.events.map((card) => [card.id, card]))
@@ -2002,6 +2108,22 @@ function financingContentFor(events: EventContent) {
         ctx.addIssue({ code: 'custom', message: reason, path: [key] })
       }
     }
+    financing.bankruptcy.notices.forEach(({ event }, n) => {
+      const card = cards.get(event)
+      const reason =
+        card === undefined
+          ? `no event has the id ${event}`
+          : !isNoticeCard(card)
+            ? `the event ${event} is no notice: it has more than one choice`
+            : null
+      if (reason !== null) {
+        ctx.addIssue({
+          code: 'custom',
+          message: reason,
+          path: ['bankruptcy', 'notices', n, 'event'],
+        })
+      }
+    })
   })
 }
 
@@ -2101,10 +2223,12 @@ export function loadEnergyContent(raw: unknown = energyJson): EnergyContent {
  * an Error naming every invalid field: besides each field, event ids must
  * be unique, choice ids unique within their event, each choice's chances
  * must sum to 1, every follow-up must name an event of the file, a contract
- * and a grocer walking away happen when the choice is made, and every
- * effect a tag names must be one of its choice's, of one unit when the tag
- * shows its amount. Pass `raw` only to check other data; by default it
- * reads `events.json`.
+ * and a grocer walking away happen when the choice is made, every effect a
+ * tag names must be one of its choice's, of one unit when the tag shows its
+ * amount, every choice of a card with two or three shows a tag, and a card
+ * with one, a notice, has a weight of 0 and none by standing, and its
+ * choice one outcome with no effect. Pass `raw` only to check other data;
+ * by default it reads `events.json`.
  */
 export function loadEventContent(raw: unknown = eventsJson): EventContent {
   return parsed(eventContentSchema, raw, 'events.json')
@@ -2164,13 +2288,15 @@ export function loadStaffContent(raw: unknown = staffJson): StaffContent {
 }
 
 /**
- * Validates the emergency loan's and the share sale's rules against the
- * event cards `events` and returns them typed. Throws an Error naming every
- * invalid field: besides each field, the two cards differ, and each is a
- * card of `events` with a weight of 0, so no draw brings it, and a choice
- * with an effect of its kind, the loan's or the sale's. Pass `raw` only to
- * check other data; by default it reads `financing.json`, against
- * `events.json`.
+ * Validates the emergency loan's, the share sale's and the bankruptcy's
+ * rules against the event cards `events` and returns them typed. Throws an
+ * Error naming every invalid field: besides each field, the two cards
+ * differ, and each is a card of `events` with a weight of 0, so no draw
+ * brings it, and a choice with an effect of its kind, the loan's or the
+ * sale's; the bankruptcy's notices come after more months each, all before
+ * the months that end the game, each a notice of `events` (see
+ * `isNoticeCard`) of its own. Pass `raw` only to check other data; by
+ * default it reads `financing.json`, against `events.json`.
  */
 export function loadFinancingContent(
   raw: unknown = financingJson,

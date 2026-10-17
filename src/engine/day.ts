@@ -14,6 +14,7 @@ import {
   type DifficultyId,
   type EnergyContent,
   type EventContent,
+  type FinancingContent,
   type FoodTruckContent,
   type GrocerContent,
   type PersonalContent,
@@ -35,6 +36,7 @@ import {
   bakeryMorning,
   isBakeryRunning,
 } from './bakery.ts'
+import { endAtClose } from './bankruptcy.ts'
 import { monthsSinceStart, toCalendar } from './calendar.ts'
 import {
   challengeDifficulties,
@@ -52,7 +54,7 @@ import {
 } from './customers.ts'
 import { startOfDay } from './effects.ts'
 import { effectsOf, energyAtClose } from './energy.ts'
-import { closingFinancing, financingCharges } from './financing.ts'
+import { FINANCING, closingFinancing, financingCharges } from './financing.ts'
 import {
   PRODUCTS,
   onHand,
@@ -201,8 +203,8 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
 
 /**
  * Plays business day `morning.day` with `morning.decisions`. Throws an Error
- * while an event waits for the player's choice, and once the game's Défi, if
- * any, is over. First the start of the day: the delayed effects of the events'
+ * while an event waits for the player's choice, once the game has ended, and
+ * once the game's Défi, if any, is over. First the start of the day: the delayed effects of the events'
  * choices due that day, then the receivables due (see `startOfDay`). Then the
  * street that day, with the changes in effect folded together (see `streetOn`).
  * On the 1st of the month, open or closed: the month's charges (see
@@ -242,10 +244,11 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * to the street in effect that day, the deliveries and those missed, the
  * owner's personal account, their energy, the events, without the changes
  * whose last day it was, the financing with Encaisse at the close (see
- * `closingFinancing`), the receivables brought up to the close, the day
- * added to the week under way, summed up on a Sunday (see `recordDay`),
- * and, in a Défi of `defis`, the day added to its progress, which may end
- * it (see `recordChallengeDay`), with the
+ * `closingFinancing`), the game ended if that close ends it, by
+ * `financing`'s rules (see `endAtClose`), the receivables brought up to the
+ * close, the day added to the week under way, summed up on a Sunday (see
+ * `recordDay`), and, in a Défi of `defis`, the day added to its progress,
+ * which may end it (see `recordChallengeDay`), with the
  * owner's lowest energy since the last close, the start of the day's effects
  * included, and at this one; never mutates `morning`. Cash may go negative.
  */
@@ -260,11 +263,18 @@ export function playDay(
   bakeryContent: BakeryContent = BAKERY,
   grocers: GrocerContent = GROCERS,
   staff: StaffContent = STAFF,
+  financing: FinancingContent = FINANCING,
 ): GameState {
   const { pending } = morning.events
   if (pending !== null) {
     throw new Error(
       `Day ${morning.day} cannot be played: the event ${pending.event} is waiting for a choice`,
+    )
+  }
+  const { ended } = morning
+  if (ended !== null) {
+    throw new Error(
+      `Day ${morning.day} cannot be played: the game ended in ${ended.reason} on day ${ended.day}`,
     )
   }
   const { challenge } = morning
@@ -492,7 +502,8 @@ export function playDay(
       balance(journal, CASH, { toDay: day }),
     ),
   }
-  const recorded = { ...closing, ...recordDay(closing, open, expired.cost) }
+  const ending = { ...closing, ended: endAtClose(closing, financing) }
+  const recorded = { ...ending, ...recordDay(ending, open, expired.cost) }
   if (challenge === null) return recorded
   const defi = defiById(defis, challenge.id)
   const opening = openingJournal(

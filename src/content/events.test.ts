@@ -73,6 +73,12 @@ const GROCER_CARDS = [
  */
 const FINANCING_CARDS = ['pretUrgence', 'offreDuvent']
 
+/**
+ * Mme Prudhomme's letters of issue #160, which the engine brings as the
+ * months below zero add up to a bankruptcy: notices, with one choice.
+ */
+const NOTICE_CARDS = ['premierAvis', 'deuxiemeAvis', 'dernierAvis']
+
 /** The portraits of issue #95, one per character but the silhouette. */
 const PORTRAITS = [
   'gillesLacasse',
@@ -311,7 +317,7 @@ describe('events.json', () => {
     expect(essai?.weight).toBe(0)
   })
 
-  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, the six of #156, then the two of #159, in order', () => {
+  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, the six of #156, the two of #159, then the three of #160, in order', () => {
     expect(content.events.map(({ id }) => id)).toEqual([
       'essai',
       ...CARDS,
@@ -319,7 +325,15 @@ describe('events.json', () => {
       ...R06_CARDS,
       ...GROCER_CARDS,
       ...FINANCING_CARDS,
+      ...NOTICE_CARDS,
     ])
+  })
+
+  it('gives every card two or three choices, but the notices of #160, which have one', () => {
+    for (const { id, choices } of content.events) {
+      if (NOTICE_CARDS.includes(id)) expect(choices, id).toHaveLength(1)
+      else expect(choices.length, id).toBeGreaterThanOrEqual(2)
+    }
   })
 
   it('dates only « Le 1er juillet », on June 30', () => {
@@ -329,10 +343,11 @@ describe('events.json', () => {
     expect(dated).toEqual([['premierJuillet', { month: 6, dayOfMonth: 30 }]])
   })
 
-  it('may draw every card but essai and those of #159, which the engine brings, unless it only comes as a follow-up', () => {
+  it('may draw every card but essai and those of #159 and #160, which the engine brings, unless it only comes as a follow-up', () => {
     for (const { id, weight, conditions } of content.events.slice(1)) {
-      if (FINANCING_CARDS.includes(id)) expect(weight, id).toBe(0)
-      else if (conditions?.followUpOnly !== true)
+      if ([...FINANCING_CARDS, ...NOTICE_CARDS].includes(id)) {
+        expect(weight, id).toBe(0)
+      } else if (conditions?.followUpOnly !== true)
         expect(weight, id).toBeGreaterThan(0)
     }
   })
@@ -375,9 +390,10 @@ describe('events.json', () => {
     }
   })
 
-  it('charges for every outcome of every choice at Difficile, refusing included', () => {
+  it('charges for every outcome of every choice at Difficile, refusing included, but the notices of #160, which change nothing', () => {
     const free = content.events
       .slice(1)
+      .filter(({ id }) => !NOTICE_CARDS.includes(id))
       .flatMap(({ id, choices }) =>
         choices.flatMap(({ id: choice, outcomes }) =>
           outcomes.flatMap(({ effects }, outcome) =>
@@ -675,9 +691,54 @@ describe('loadEventContent rejects', () => {
     expect(loaded.events[0]?.choices[0]?.outcomes).toHaveLength(3)
   })
 
-  it.each([1, 4])('%i choices', (count) => {
-    const choices = Array.from({ length: count }, (_, i) => choice(`c${i}`))
-    rejects(file([card({ choices })]), '→ at events[0].choices')
+  it('4 choices, or none', () => {
+    for (const count of [0, 4]) {
+      const choices = Array.from({ length: count }, (_, i) => choice(`c${i}`))
+      rejects(file([card({ choices })]), '→ at events[0].choices')
+    }
+  })
+
+  it('a single choice, a notice, that a draw may bring, or by standing', () => {
+    const lone = [choice('compris', { tags: [] })]
+    rejects(
+      file([card({ choices: lone })]),
+      'a notice has a weight of 0: no draw brings it',
+      '→ at events[0].weight',
+    )
+    rejects(
+      file([
+        card({ weight: 0, weightByStanding: { behind: 1 }, choices: lone }),
+      ]),
+      'a notice has no weight by standing',
+      '→ at events[0].weightByStanding',
+    )
+  })
+
+  it('a single choice, a notice, with an effect or two outcomes', () => {
+    const notice = (outcomes: Json[]) =>
+      file([
+        card({
+          weight: 0,
+          choices: [choice('compris', { tags: [], outcomes })],
+        }),
+      ])
+    rejects(
+      notice([outcome({ effects: [{ kind: 'energy', amount: -5 }] })]),
+      'the choice of a notice changes nothing: no effect',
+      '→ at events[0].choices[0].outcomes[0].effects',
+    )
+    rejects(
+      notice([outcome({ chance: 0.5 }), outcome({ chance: 0.5 })]),
+      'the choice of a notice has one outcome',
+      '→ at events[0].choices[0].outcomes',
+    )
+  })
+
+  it('a notice with no tag, a weight of 0, one outcome and no effect, which loads', () => {
+    const loaded = loadEventContent(
+      file([card({ weight: 0, choices: [choice('compris', { tags: [] })] })]),
+    )
+    expect(loaded.events[0]?.choices).toHaveLength(1)
   })
 
   it.each([0, -0.1, 1.5])('an outcome of chance %j', (chance) => {
@@ -701,6 +762,7 @@ describe('loadEventContent rejects', () => {
     )
     rejects(
       file([card({ choices: [choice('a', { tags: [] }), choice('b')] })]),
+      'a choice to make shows at least one tag',
       '→ at events[0].choices[0].tags',
     )
   })

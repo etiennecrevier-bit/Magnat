@@ -932,6 +932,14 @@ describe('the shipped rules', () => {
       investorDaysAfterLoan: 14,
       maxShareRounds: 2,
       noSecondLoanAt: ['difficile'],
+      bankruptcy: {
+        months: 6,
+        notices: [
+          { afterMonths: 1, event: 'premierAvis' },
+          { afterMonths: 3, event: 'deuxiemeAvis' },
+          { afterMonths: 5, event: 'dernierAvis' },
+        ],
+      },
     })
     expect(LOAN).toEqual({
       kind: 'emergencyLoan',

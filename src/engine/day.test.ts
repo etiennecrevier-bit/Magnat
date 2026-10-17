@@ -13,6 +13,7 @@ import {
   type DayType,
   type DayTypeId,
   type EnergyContent,
+  type FinancingContent,
   type FoodTruckContent,
   type PersonalContent,
   type ProductId,
@@ -35,9 +36,11 @@ import {
 } from '../finance/statements.ts'
 import { BAKERY } from './bakery.ts'
 import { createInitialState, tick, toCalendar } from './clock.ts'
+import { GROCERS } from './contracts.ts'
 import { SEGMENTS, dayTypeOf, perSegment, serveWalkIns } from './customers.ts'
 import {
   CUSTOMERS,
+  DEFIS,
   DIFFICULTIES,
   ENERGY,
   FOOD_TRUCK,
@@ -52,12 +55,15 @@ import {
 } from './decisions.ts'
 import { applyEffect } from './effects.ts'
 import { FULL_ENERGY, fatigueOf } from './energy.ts'
-import { chargesOn, isFinancingMemo } from './financing.ts'
+import { NO_EVENTS } from './events.ts'
+import { FINANCING, chargesOn, isFinancingMemo } from './financing.ts'
 import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
 import { cents, mulRatio, type Cents } from './money.ts'
+import { PERCENTILES } from './percentiles.ts'
 import { LABELS } from './personal.ts'
 import { defaultProfile } from './profile.ts'
 import { servers } from './service.ts'
+import { STAFF } from './staff.ts'
 import type { EventEffect } from '../content/schema.ts'
 import type {
   Day,
@@ -94,6 +100,8 @@ interface Content {
   customers: CustomerContent
   difficulties: DifficultyContent
   energy: EnergyContent
+  /** The financing's rules, the shipped ones when not given. */
+  financing?: FinancingContent
 }
 
 const SHIPPED: Content = {
@@ -404,6 +412,13 @@ function step(state: GameState, content: Content): GameState {
     content.difficulties,
     PERSONAL,
     content.energy,
+    NO_EVENTS,
+    DEFIS,
+    PERCENTILES,
+    BAKERY,
+    GROCERS,
+    STAFF,
+    content.financing ?? FINANCING,
   )
 }
 
@@ -1474,8 +1489,13 @@ describe("the owner's energy", () => {
 
 describe('prices and crowds over a year', () => {
   // The shipped segments, crowds and days open from seed 42, with so much
-  // stock that no sale is ever lost.
+  // stock that no sale is ever lost. Its cost takes the encaisse far below
+  // zero, so no bankruptcy ends the year (#160).
   const AMPLE = restocking(byProduct(() => buyDaily(500)))
+  const NO_BANKRUPTCY: FinancingContent = {
+    ...FINANCING,
+    bankruptcy: { ...FINANCING.bankruptcy, months: Number.MAX_SAFE_INTEGER },
+  }
   const STEP_CENTS = 30
   const PRICES = 6
   const { step } = FOOD_TRUCK.decisionLimits.priceCents
@@ -1507,7 +1527,10 @@ describe('prices and crowds over a year', () => {
     if (known !== undefined) return known
 
     const changes = id === undefined ? [] : [pricing(id, price ?? 0)]
-    const content = shipped(AMPLE, ...changes)
+    const content = {
+      ...shipped(AMPLE, ...changes),
+      financing: NO_BANKRUPTCY,
+    }
     const bought = perSegment(() => byProduct(() => 0))
     const crowds = {
       semaine: { visits: 0, bought: byProduct(() => 0) },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isNoticeCard,
   loadEventContent,
   textParts,
   type DifficultyId,
@@ -738,7 +739,10 @@ describe('every tag of every card tells the amount played', () => {
               applies,
             )
           }
-          expect(shown.length, `${id}, ${choice.id}`).toBeGreaterThan(0)
+          // A notice's one choice shows none (#160).
+          expect(shown.length > 0, `${id}, ${choice.id}`).toBe(
+            !isNoticeCard({ choices }),
+          )
         }
       }
     },

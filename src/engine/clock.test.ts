@@ -42,7 +42,7 @@ const DEFAULT_ACCOUNT = openingAccount(
 )
 
 describe('createInitialState', () => {
-  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile, the owner at full energy, no event, nobody owing anything, a first week to come, partial, from the opening cash, no Défi, no bakery, no contract, nobody on staff, the owner at work and no financing", () => {
+  it("starts on day 0, seeded, with no stock, no marketing spent, the default difficulty's opening books and savings, the starting decisions, the default profile, the owner at full energy, no event, nobody owing anything, a first week to come, partial, from the opening cash, no Défi, no bakery, no contract, nobody on staff, the owner at work, no financing and not ended", () => {
     expect(createInitialState(42)).toEqual({
       day: 0,
       seed: 42,
@@ -88,6 +88,7 @@ describe('createInitialState', () => {
         belowZeroSince: null,
         lastLoanRequestDay: null,
       },
+      ended: null,
     })
     expect(FULL_ENERGY).toBe(100)
   })
