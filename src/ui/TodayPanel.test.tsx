@@ -4,6 +4,7 @@ import { createInitialState, tick } from '../engine/clock.ts'
 import { cents } from '../engine/money.ts'
 import { netWorthParts, type NetWorthParts } from '../engine/netWorth.ts'
 import type { DaySummary } from '../engine/types.ts'
+import type { FinancingSummary } from './financingSummary.ts'
 import { gameStore } from './store.ts'
 import TodayPanel, { TodayPanelView } from './TodayPanel.tsx'
 
@@ -19,9 +20,27 @@ const WORTH: NetWorthParts = {
   total: cents(123_753_087),
 }
 
-function render(lastDay: DaySummary | null, netWorth = WORTH) {
+function render(
+  lastDay: DaySummary | null,
+  netWorth = WORTH,
+  financing: FinancingSummary | null = null,
+) {
   return renderToStaticMarkup(
-    <TodayPanelView lastDay={lastDay} netWorth={netWorth} />,
+    <TodayPanelView
+      lastDay={lastDay}
+      netWorth={netWorth}
+      financing={financing}
+    />,
+  )
+}
+
+/** The « Financement » block's lines, tags removed. */
+function financingLines(html: string): string[] {
+  const block = /<section class="today__financing"[^>]*>(.*?)<\/section>/.exec(
+    html,
+  )?.[1]
+  return [...(block ?? '').matchAll(/<li>(.*?)<\/li>/g)].map(([, item]) =>
+    (item ?? '').replace(/<[^>]*>/g, ''),
   )
 }
 
@@ -182,6 +201,47 @@ describe('TodayPanelView', () => {
     expect(netWorthLines(html).parts.slice(2)).toEqual([
       ['Biens personnels', `0,00${S}$`],
       ['Dettes personnelles', `0,00${S}$`],
+    ])
+  })
+
+  it('shows no « Financement » before a loan or a share sale', () => {
+    expect(render(null)).not.toContain('Financement')
+  })
+
+  it('shows « Financement » under the net worth: each loan open, the shares sold and the next dividend so far', () => {
+    const html = render(null, WORTH, {
+      hadLoans: true,
+      loans: [
+        {
+          lender: 'Caisse populaire Saint-Prudent',
+          owed: cents(1_234_567),
+          next: { amount: cents(117_042), day: 61 },
+        },
+      ],
+      shares: [{ investor: 'Duvent Capital', tenths: 200 }],
+      dividend: { day: 61, amount: cents(45_678), final: false },
+    })
+    expect(html).toMatch(
+      /<\/ul><section class="today__financing" aria-labelledby="today-financing"><h2 id="today-financing">Financement<\/h2>/,
+    )
+    expect(financingLines(html)).toEqual([
+      `Prêt d&#x27;urgence · Caisse populaire Saint-Prudent${S}: 12${S}345,67${S}$ à rembourser, prochain versement de 1${S}170,42${S}$ le 1er juillet`,
+      `Duvent Capital${S}: 20${S}% des actions`,
+      `Prochain dividende le 1er juillet${S}: 456,78${S}$ à ce jour`,
+    ])
+  })
+
+  it("says when no loan is open any more, and shows the dividend on the morning it is paid, and a share's tenths", () => {
+    const html = render(null, WORTH, {
+      hadLoans: true,
+      loans: [],
+      shares: [{ investor: 'Duvent Capital', tenths: 205 }],
+      dividend: { day: 61, amount: cents(45_678), final: true },
+    })
+    expect(financingLines(html)).toEqual([
+      'Aucun prêt d&#x27;urgence en cours',
+      `Duvent Capital${S}: 20,5${S}% des actions`,
+      `Dividende aujourd&#x27;hui${S}: 456,78${S}$`,
     ])
   })
 

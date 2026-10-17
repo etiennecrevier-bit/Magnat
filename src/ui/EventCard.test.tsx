@@ -10,6 +10,8 @@ import { createInitialState } from '../engine/clock.ts'
 import { EVENTS } from '../engine/day.ts'
 import type { GameState } from '../engine/types.ts'
 import EventCard, { EventCardView, type EventResult } from './EventCard.tsx'
+import { formatBriefMoney } from './formatMoney.ts'
+import { portraitUrl } from './portraits.ts'
 import { gameStore, newChallenge, type GameStoreState } from './store.ts'
 
 // A static render reads a Zustand store's initial state, so the connected
@@ -376,6 +378,64 @@ describe('EventCard', () => {
     expect(html.match(/ disabled=""/g)).toHaveLength(2)
     // A Défi plays the cards as written, and its tags say so.
     expect(choices(html)[0]?.tags[0]).toBe(`Ventes +750${S}$`)
+  })
+
+  it.each([
+    {
+      event: 'pretUrgence',
+      portrait: 'mmePrudhomme',
+      name: 'Mme Prudhomme',
+      title: 'Le prêt d&#x27;urgence',
+    },
+    {
+      event: 'offreDuvent',
+      portrait: 'maxDuvent',
+      name: 'Max Duvent',
+      title: 'L&#x27;offre de Max Duvent',
+    },
+  ])(
+    'shows $name with their portrait on $event, with honest tags (#159)',
+    ({ event, portrait, name, title }) => {
+      gameStore.getState().startGame(waiting(event))
+      const html = renderToStaticMarkup(<EventCard />)
+      const url = portraitUrl(portrait)
+      expect(url).not.toBeNull()
+      expect(html).toContain(
+        `<img class="event-card__portrait" src="${url}" alt="" width="96" height="96"/>`,
+      )
+      expect(html).toContain(`<p class="event-card__name">${name}</p>`)
+      expect(html).toContain(`>${title}</h2>`)
+      expect(choices(html).map(({ label }) => label)).toEqual([
+        'Accepter',
+        'Refuser',
+      ])
+      // At Moyen, refusing costs no energy, so no tag says it does.
+      expect(choices(html)[1]?.tags).toEqual([
+        'L&#x27;encaisse reste sous zéro',
+      ])
+    },
+  )
+
+  it('shows the terms of the emergency loan and of the share sale in their tags', () => {
+    gameStore.getState().startGame(waiting('pretUrgence'))
+    expect(choices(renderToStaticMarkup(<EventCard />))[0]?.tags).toEqual([
+      // The content's own spaces; the amounts take no-break ones.
+      'Encaisse visée : un mois de frais fixes',
+      `Prêt d&#x27;au plus 15${S}000${S}$`,
+      'Intérêts 18 % · 12 mois',
+      'Frais de dossier 2 %',
+    ])
+    gameStore.getState().startGame(waiting('offreDuvent'))
+    const tags = choices(renderToStaticMarkup(<EventCard />))[0]?.tags
+    gameStore.getState().chooseEvent('accepter')
+    const [sale] = gameStore.getState().game.financing.shareSales
+    // The tag says what accepting pays in, at the game's difficulty.
+    expect(tags).toEqual([
+      `Encaisse +${formatBriefMoney(sale!.amount)}`,
+      '20 % des actions · pour toujours',
+      '20 % des profits chaque trimestre',
+    ])
+    expect(sale?.share).toBe(0.2)
   })
 
   it('shows nothing for an event the content does not hold', () => {

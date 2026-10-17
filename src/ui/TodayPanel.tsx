@@ -4,25 +4,42 @@ import { PRODUCTS } from '../engine/inventory.ts'
 import { cents, sub } from '../engine/money.ts'
 import { netWorthParts, type NetWorthParts } from '../engine/netWorth.ts'
 import type { DaySummary } from '../engine/types.ts'
-import { formatGameDate } from './formatGameDate.ts'
+import { financingSummary, type FinancingSummary } from './financingSummary.ts'
+import { formatDayAndMonth, formatGameDate } from './formatGameDate.ts'
 import { formatMoney } from './formatMoney.ts'
 import { useGame } from './store.ts'
 import { todayNumbers, totalUnits } from './todayNumbers.ts'
 import './TodayPanel.css'
+
+// A share shows to a tenth of a percent, a no-break space (U+00A0) before
+// its sign.
+const TENTHS_PER_PERCENT = 10
+const PERCENT = ' %'
+
+/** A share in tenths of a percent: « 20 % », « 20,5 % ». */
+function formatShare(tenths: number): string {
+  const whole = Math.floor(tenths / TENTHS_PER_PERCENT)
+  const tenth = tenths % TENTHS_PER_PERCENT
+  return `${tenth === 0 ? whole : `${whole},${tenth}`}${PERCENT}`
+}
 
 /**
  * Yesterday at the truck: units sold, lost and spoiled, by product and in
  * all, the revenue and the customers served. The folded strip shows the
  * same numbers (see todayNumbers.ts). Then the owner's « Valeur nette » this
  * morning and its four parts, from the first morning on, the debts below
- * zero so the parts add up to it.
+ * zero so the parts add up to it. Then, once the game took an emergency
+ * loan or sold shares, « Financement »: the loans still open, the shares
+ * sold and the next dividend.
  */
 export function TodayPanelView({
   lastDay,
   netWorth,
+  financing = null,
 }: {
   lastDay: DaySummary | null
   netWorth: NetWorthParts
+  financing?: FinancingSummary | null
 }) {
   const numbers = lastDay === null ? null : todayNumbers(lastDay)
   const parts = [
@@ -95,6 +112,49 @@ export function TodayPanelView({
           </li>
         ))}
       </ul>
+      {financing !== null && <FinancingBlock financing={financing} />}
+    </section>
+  )
+}
+
+function FinancingBlock({ financing }: { financing: FinancingSummary }) {
+  const { hadLoans, loans, shares, dividend } = financing
+  return (
+    <section className="today__financing" aria-labelledby="today-financing">
+      <h2 id="today-financing">Financement</h2>
+      <ul>
+        {loans.map(({ lender, owed, next }, index) => (
+          <li key={index}>
+            Prêt d'urgence · {lender}&nbsp;: {formatMoney(owed)} à rembourser
+            {next !== null && (
+              <>
+                , prochain versement de {formatMoney(next.amount)} le{' '}
+                {formatDayAndMonth(next.day)}
+              </>
+            )}
+          </li>
+        ))}
+        {hadLoans && loans.length === 0 && (
+          <li>Aucun prêt d'urgence en cours</li>
+        )}
+        {shares.map(({ investor, tenths }) => (
+          <li key={investor}>
+            {investor}&nbsp;: {formatShare(tenths)} des actions
+          </li>
+        ))}
+        {dividend !== null && (
+          <li>
+            {dividend.final ? (
+              <>Dividende aujourd'hui&nbsp;: {formatMoney(dividend.amount)}</>
+            ) : (
+              <>
+                Prochain dividende le {formatDayAndMonth(dividend.day)}&nbsp;:{' '}
+                {formatMoney(dividend.amount)} à ce jour
+              </>
+            )}
+          </li>
+        )}
+      </ul>
     </section>
   )
 }
@@ -111,5 +171,11 @@ export default function TodayPanel() {
     () => netWorthParts({ day, journal, financing, personal }),
     [day, journal, financing, personal],
   )
-  return <TodayPanelView lastDay={lastDay} netWorth={netWorth} />
+  const summary = useMemo(
+    () => financingSummary({ day, journal, financing }),
+    [day, journal, financing],
+  )
+  return (
+    <TodayPanelView lastDay={lastDay} netWorth={netWorth} financing={summary} />
+  )
 }
