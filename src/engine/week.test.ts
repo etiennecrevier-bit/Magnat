@@ -25,11 +25,13 @@ import {
   FOOD_TRUCK,
   PERSONAL,
   openingJournal,
+  playDay,
 } from './day.ts'
 import { applyDecision } from './decisions.ts'
 import { NO_EVENTS, resolveEvent } from './events.ts'
 import { perProduct } from './inventory.ts'
 import { cents, type Cents } from './money.ts'
+import { netWorth } from './netWorth.ts'
 import { defaultProfile } from './profile.ts'
 import { next, seedRng } from './rng.ts'
 import { deserialize, serialize } from './save.ts'
@@ -311,12 +313,14 @@ describe('recordDay', () => {
     expectAsTheBooks(report, state.journal, openingCash())
     expect(report.previousBest).toBeNull()
     expect(report.energy).toBe(state.lastDay?.energy)
+    // Nothing came up that Monday morning, so nothing moved since the close.
     expect(state.weekHistory).toEqual([
       {
         firstDay: 0,
         sales: report.sales,
         netIncome: report.netIncome,
         cashAtEnd: report.cashAtEnd,
+        netWorth: netWorth(state),
       },
     ])
     expect(state.weekSoFar).toEqual({
@@ -325,6 +329,18 @@ describe('recordDay', () => {
       days: [],
       modifiers: [],
     })
+  })
+
+  it("keeps the owner's net worth at the close of the Sunday, after the day's pay and expenses", () => {
+    // Day 6 is the first Sunday; the owner is paid on Fridays.
+    const sunday = playDay(play(startedAs(), 6).state)
+    expect(toCalendar(6).weekday).toBe(7)
+    expect(sunday.personal.movements.length).toBeGreaterThan(0)
+    // No share sold: the equity at the close, and the owner's own cash.
+    const atClose =
+      balanceSheet(sunday.journal, 6).equity.total.amount + sunday.personal.cash
+    expect(sunday.weekHistory.at(-1)?.netWorth).toBe(atClose)
+    expect(netWorth(sunday)).toBe(atClose)
   })
 })
 
@@ -470,11 +486,14 @@ describe('a year of weeks', () => {
           state.events.history.filter(({ day }) => day >= first),
         )
         expect(report.receivables).toEqual(state.receivables)
+        // The morning's card, if any, waits for its choice, so nothing
+        // moved the net worth since the close.
         expect(state.weekHistory.at(-1)).toEqual({
           firstDay: report.firstDay,
           sales: report.sales,
           netIncome: report.netIncome,
           cashAtEnd: report.cashAtEnd,
+          netWorth: netWorth(state),
         })
         checked += 1
         if (report.events.length > 0) eventful += 1

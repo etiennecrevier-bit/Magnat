@@ -55,6 +55,7 @@ function record(index: number): WeekRecord {
     sales: cents(100_000 + index * 1_000),
     netIncome: cents(index % 2 === 0 ? 20_000 : -3_456),
     cashAtEnd: cents(500_000 - index * 10_000),
+    netWorth: cents(2_000_000 + index * 5_000),
   }
 }
 

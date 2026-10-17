@@ -2,14 +2,37 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { cents } from '../engine/money.ts'
+import { netWorthParts, type NetWorthParts } from '../engine/netWorth.ts'
 import type { DaySummary } from '../engine/types.ts'
+import { gameStore } from './store.ts'
 import TodayPanel, { TodayPanelView } from './TodayPanel.tsx'
 
 // Every space in an amount is a no-break space (U+00A0).
 const S = '\u00a0'
 
-function render(lastDay: DaySummary | null) {
-  return renderToStaticMarkup(<TodayPanelView lastDay={lastDay} />)
+/** A net worth whose parts are all there: 1 237 530,87 $ in all. */
+const WORTH: NetWorthParts = {
+  companyShare: cents(98_765_432),
+  personalCash: cents(-12_345),
+  personalAssets: cents(40_000_000),
+  personalDebts: cents(15_000_000),
+  total: cents(123_753_087),
+}
+
+function render(lastDay: DaySummary | null, netWorth = WORTH) {
+  return renderToStaticMarkup(
+    <TodayPanelView lastDay={lastDay} netWorth={netWorth} />,
+  )
+}
+
+/** The « Valeur nette » line's amount, then each part's label and amount. */
+function netWorthLines(html: string) {
+  const total = /Valeur nette\u00a0: <strong>([^<]*)<\/strong>/.exec(html)?.[1]
+  const list = /<ul class="today__net-worth-parts">(.*?)<\/ul>/.exec(html)
+  const parts = [...(list?.[1] ?? '').matchAll(/<li>([^<]*)<\/li>/g)].map(
+    ([, item = '']) => item.split(`${S}: `),
+  )
+  return { total, parts }
 }
 
 /**
@@ -129,6 +152,39 @@ describe('TodayPanelView', () => {
     expect(lastDay.revenue).toBeGreaterThan(0)
   })
 
+  it('shows the « Valeur nette » and its four parts before the first day is over, the debts below zero', () => {
+    // 987 654,32 $ − 123,45 $ + 400 000 $ − 150 000 $
+    expect(WORTH.total).toBe(98_765_432 - 12_345 + 40_000_000 - 15_000_000)
+    expect(netWorthLines(render(null))).toEqual({
+      total: `1${S}237${S}530,87${S}$`,
+      parts: [
+        ['Part de l&#x27;entreprise', `987${S}654,32${S}$`],
+        ['Argent personnel', `-123,45${S}$`],
+        ['Biens personnels', `400${S}000,00${S}$`],
+        ['Dettes personnelles', `-150${S}000,00${S}$`],
+      ],
+    })
+  })
+
+  it("shows the « Valeur nette » after yesterday's numbers once a day is played", () => {
+    const game = tick(tick(createInitialState(42)))
+    const worth = netWorthParts(game)
+    const html = render(game.lastDay, worth)
+    expect(html).toMatch(
+      /Clients servis.*<\/p><p class="today__net-worth">Valeur nette.*<\/ul><\/section>$/,
+    )
+    expect(netWorthLines(html).parts.map(([label]) => label)).toEqual([
+      'Part de l&#x27;entreprise',
+      'Argent personnel',
+      'Biens personnels',
+      'Dettes personnelles',
+    ])
+    expect(netWorthLines(html).parts.slice(2)).toEqual([
+      ['Biens personnels', `0,00${S}$`],
+      ['Dettes personnelles', `0,00${S}$`],
+    ])
+  })
+
   it('has no tooltips', () => {
     expect(render(tick(createInitialState(42)).lastDay)).not.toContain('title=')
   })
@@ -139,5 +195,11 @@ describe('TodayPanel', () => {
     expect(renderToStaticMarkup(<TodayPanel />)).toContain(
       'La première journée n&#x27;est pas encore terminée.',
     )
+  })
+
+  it("shows the owner's net worth from the app store", () => {
+    const worth = netWorthParts(gameStore.getState().game)
+    expect(worth.total).toBeGreaterThan(0)
+    expect(renderToStaticMarkup(<TodayPanel />)).toBe(render(null, worth))
   })
 })

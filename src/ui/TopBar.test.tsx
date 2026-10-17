@@ -5,10 +5,13 @@ import { defiById } from '../engine/challenge.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { DEFIS, FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision } from '../engine/decisions.ts'
-import { cents } from '../engine/money.ts'
+import { applyEffect } from '../engine/effects.ts'
+import { cents, type Cents } from '../engine/money.ts'
+import { netWorth } from '../engine/netWorth.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
 import { balance } from '../finance/journal.ts'
+import { formatMoney } from './formatMoney.ts'
 import { gameStore, newChallenge, type GameStoreState } from './store.ts'
 import TopBar, { TopBarView } from './TopBar.tsx'
 
@@ -38,6 +41,8 @@ function render(
   energy = 100,
   defiLabel: string | null = null,
   defiEnergy: string | null = null,
+  netWorth = cents(2_500_000),
+  netWorthChange: Cents | null = null,
 ) {
   return renderToStaticMarkup(
     <TopBarView
@@ -45,6 +50,8 @@ function render(
       day={day}
       cash={cash}
       fixedCosts={cents(175_000)}
+      netWorth={netWorth}
+      netWorthChange={netWorthChange}
       energy={energy}
       avatar="homme"
       speed={speed}
@@ -102,13 +109,30 @@ describe('TopBarView', () => {
     )
   })
 
-  it('shows the cash gauge, then the energy gauge, between the date and the buttons', () => {
+  it('shows the cash gauge, the net worth, then the energy gauge, between the date and the buttons', () => {
     const html = render(0, 1, cents(-12_345), "Le P'tit Camion", 30)
     expect(html).toMatch(
-      /^<header class="top-bar"><div class="top-bar__title">.*<\/div><div class="top-bar__gauges"><p class="cash-gauge cash-gauge--negative">.*<\/p><p class="energy-gauge energy-gauge--tired">.*<\/p><\/div><div class="top-bar__panels"><button/,
+      /^<header class="top-bar"><div class="top-bar__title">.*<\/div><div class="top-bar__gauges"><p class="cash-gauge cash-gauge--negative">.*<\/p><p class="net-worth-gauge">.*<\/p><p class="energy-gauge energy-gauge--tired">.*<\/p><\/div><div class="top-bar__panels"><button/,
     )
     expect(html).toContain(`-123,45${S}$`)
     expect(html).toContain('Fatigué')
+  })
+
+  it('shows the net worth, with an arrow for its change this week', () => {
+    const html = render(
+      0,
+      1,
+      cents(0),
+      "Le P'tit Camion",
+      100,
+      null,
+      null,
+      cents(3_141_592),
+      cents(-50_000),
+    )
+    expect(html).toContain(
+      `<span class="net-worth-gauge__label">Valeur nette</span> <span class="net-worth-gauge__amount">31${S}415,92${S}$</span> <span class="net-worth-gauge__change net-worth-gauge__change--down" role="img" aria-label="\u2212500${S}$ cette semaine">▼</span>`,
+    )
   })
 
   it('has buttons that open the Gérer le camion and Vos finances dialogs, before the speeds', () => {
@@ -185,6 +209,36 @@ describe('TopBarView', () => {
 })
 
 describe('TopBar', () => {
+  it("shows the owner's net worth from the app store, with no arrow before a Sunday is played", () => {
+    const worth = netWorth(gameStore.getState().game)
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toContain(
+      `<p class="net-worth-gauge"><span class="net-worth-gauge__label">Valeur nette</span> <span class="net-worth-gauge__amount">${formatMoney(worth)}</span></p>`,
+    )
+  })
+
+  it("shows the net worth's change since the last Sunday's close", () => {
+    // The morning of Monday, day 7, after the first Sunday: no change yet.
+    gameStore.getState().startGame(playedTo('moyen', 42, 0, 7))
+    expect(renderToStaticMarkup(<TopBar />)).not.toContain(
+      'net-worth-gauge__change',
+    )
+    // Then 60 $ come into the owner's pocket that morning.
+    gameStore
+      .getState()
+      .startGame(
+        applyEffect(
+          playedTo('moyen', 42, 0, 7),
+          { kind: 'personal', label: 'Cadeau', amountCents: cents(6_000) },
+          FOOD_TRUCK,
+          'test',
+        ),
+      )
+    expect(renderToStaticMarkup(<TopBar />)).toContain(
+      `<span class="net-worth-gauge__change net-worth-gauge__change--up" role="img" aria-label="+60${S}$ cette semaine">▲</span>`,
+    )
+  })
+
   it("shows the app store: the profile's name, day 0 at normal speed, with the starting cash and a rested owner", () => {
     const html = renderToStaticMarkup(<TopBar />)
     expect(html).toContain('<p class="top-bar__name">Le P&#x27;tit Camion</p>')

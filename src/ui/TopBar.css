@@ -70,7 +70,8 @@
   outline-offset: 2px;
 }
 
-/* The encaisse and the owner's energy, side by side as long as they fit. */
+/* The encaisse, the owner's net worth and their energy, side by side as long
+   as they fit. */
 .top-bar__gauges {
   grid-area: gauges;
   display: flex;
@@ -167,13 +168,14 @@
 }
 
 /* Measured with the longest texts: the date (about 275 px), the cash gauge
-   with a large negative amount (about 335 px), the energy gauge (about
-   260 px), the two panel buttons (about 320 px), the four speed buttons
-   (about 200 px) and the gear (44 px). All on one row need about 1565 px;
-   below that the energy gauge wraps under the encaisse in its cell. The row
-   itself holds down to about 1290 px, where the cell still fits the cash
-   gauge. Below that the gauges get a row of their own under the date and
-   the buttons. */
+   with a large negative amount (about 335 px), the net worth with as large
+   an amount and its arrow (about 265 px), the energy gauge (about 260 px),
+   the two panel buttons (about 320 px), the four speed buttons (about
+   200 px) and the gear (44 px). All on one row need about 1855 px; below
+   that the energy gauge, then the net worth, wrap under the encaisse in its
+   cell. The row itself holds down to about 1290 px, where the cell still
+   fits the cash gauge, the widest of the three. Below that the gauges get a
+   row of their own under the date and the buttons. */
 @media (max-width: 1287px) {
   .top-bar {
     grid-template-columns: 1fr auto auto auto;

@@ -79,7 +79,8 @@ import {
   saleEntries,
 } from './financing.ts'
 import { PRODUCTS, inventoryValue } from './inventory.ts'
-import { cents, sum } from './money.ts'
+import { cents, sub, sum } from './money.ts'
+import { netWorth } from './netWorth.ts'
 import { LABELS, isKept } from './personal.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
@@ -95,6 +96,7 @@ import type {
   Hire,
   VisitOutcome,
   WeekDay,
+  WeekRecord,
   WeekReport,
   WeekSoFar,
 } from './types.ts'
@@ -107,7 +109,9 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 16 adds the end
+ * change can no longer load (rule 8 in CLAUDE.md). Version 17 adds the
+ * owner's net worth at the close of each week's Sunday: a version 16 game
+ * still loads, with none for the weeks it reported. Version 16 adds the end
  * of a game, by bankruptcy: a version 15 game still loads, as a game that
  * goes on. Version 15 adds the
  * emergency loans and the share sales: a version 14 game still loads, with
@@ -136,9 +140,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 16
+export const SAVE_VERSION = 17
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const NETWORTHLESS_VERSION = 16
 const ENDLESS_VERSION = 15
 const FINANCINGLESS_VERSION = 14
 const STAFFLESS_VERSION = 13
@@ -431,6 +436,7 @@ const weekRecordSchema = z.strictObject({
   sales: signedMoney,
   netIncome: signedMoney,
   cashAtEnd: signedMoney,
+  netWorth: signedMoney.nullable(),
 })
 
 // Keyed by every ChallengeStatus, so a new one fails the type check until a
@@ -586,8 +592,14 @@ type Parsed = Omit<Save, 'weekSoFar' | 'financing'> & {
   readonly financing: FinancingState | null
 }
 
-/** A version 15 save: a game that goes on. */
-const endlessSchema = saveSchema
+/** A version 16 save: no net worth for the weeks it reported. */
+const networthlessSchema = saveSchema.extend({
+  saveVersion: z.literal(NETWORTHLESS_VERSION),
+  weekHistory: z.array(weekRecordSchema.omit({ netWorth: true })),
+})
+
+/** A version 15 save: a game that goes on too. */
+const endlessSchema = networthlessSchema
   .omit({ ended: true })
   .extend({ saveVersion: z.literal(ENDLESS_VERSION) })
 
@@ -691,8 +703,9 @@ export function serialize(state: GameState): string {
  * nothing was played: the books open on day 0 either way.
  *
  * Throws an Error that starts with "Invalid save:" and names the problem
- * unless: the text is JSON of the current `SAVE_VERSION`, or of version 15,
- * which loads as a game that goes on, or of version 14,
+ * unless: the text is JSON of the current `SAVE_VERSION`, or of version 16,
+ * which loads with no net worth for the weeks it reported, or of version 15,
+ * which also loads as a game that goes on, or of version 14,
  * which also loads with no financing, its closes below zero read from its
  * books, or of version 13,
  * which also loads with nobody on staff, the owner at work and nothing missed,
@@ -733,7 +746,8 @@ export function serialize(state: GameState): string {
  * `checkWeek()`; the Défi, if any, is one of `defis` and passes
  * `checkChallenge()`; the contracts pass `checkContracts()` against
  * `grocers`; the staff passes `checkStaff()` against `staff`; the
- * financing passes `checkFinancing()` against `financing`; and the end of
+ * financing passes `checkFinancing()` against `financing`; the last week's
+ * net worth, if any, passes `checkNetWorth()`; and the end of
  * the game, if it ended, passes `checkEnded()` against `financing`.
  *
  * The products, limits, restock kinds, `awarenessDays` and the truck's
@@ -799,6 +813,7 @@ export function deserialize(
   checkContracts(save, grocers)
   checkStaff(save, staff)
   checkFinancing(save, journal, financing)
+  checkNetWorth(save, journal)
   checkEnded(save, financing)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
@@ -842,35 +857,50 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
   if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  if (saveVersion === NETWORTHLESS_VERSION) {
+    return withNetWorths(checked(networthlessSchema, raw))
+  }
   if (saveVersion === ENDLESS_VERSION) {
-    return withEnded(checked(endlessSchema, raw))
+    return withNetWorths(withEnded(checked(endlessSchema, raw)))
   }
   if (saveVersion === FINANCINGLESS_VERSION) {
-    return withEnded(withFinancing(checked(financinglessSchema, raw)))
+    return withNetWorths(
+      withEnded(withFinancing(checked(financinglessSchema, raw))),
+    )
   }
   if (saveVersion === STAFFLESS_VERSION) {
-    return withEnded(withFinancing(withStaff(checked(stafflessSchema, raw))))
+    return withNetWorths(
+      withEnded(withFinancing(withStaff(checked(stafflessSchema, raw)))),
+    )
   }
   if (saveVersion === CONTRACTLESS_VERSION) {
-    return withEnded(
-      withFinancing(withStaff(withContracts(checked(contractlessSchema, raw)))),
+    return withNetWorths(
+      withEnded(
+        withFinancing(
+          withStaff(withContracts(checked(contractlessSchema, raw))),
+        ),
+      ),
     )
   }
   if (saveVersion === BAKERYLESS_VERSION) {
-    return withEnded(
-      withFinancing(
-        withStaff(
-          withContracts(withBakery(checked(bakerylessSchema, raw), bakery)),
+    return withNetWorths(
+      withEnded(
+        withFinancing(
+          withStaff(
+            withContracts(withBakery(checked(bakerylessSchema, raw), bakery)),
+          ),
         ),
       ),
     )
   }
   if (saveVersion === CHALLENGELESS_VERSION) {
     const save = checked(challengelessSchema, raw)
-    return withEnded(
-      withFinancing(
-        withStaff(
-          withContracts(withBakery({ ...save, challenge: null }, bakery)),
+    return withNetWorths(
+      withEnded(
+        withFinancing(
+          withStaff(
+            withContracts(withBakery({ ...save, challenge: null }, bakery)),
+          ),
         ),
       ),
     )
@@ -903,25 +933,49 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
     weekHistory: [],
     challenge: null,
   })
-  return withEnded(
-    withFinancing(
-      withStaff(
-        withContracts(withBakery({ ...save, weekSoFar: null }, bakery)),
+  return withNetWorths(
+    withEnded(
+      withFinancing(
+        withStaff(
+          withContracts(withBakery({ ...save, weekSoFar: null }, bakery)),
+        ),
       ),
     ),
   )
 }
 
-/** A save from before the end of a game as the current version: not ended. */
+/**
+ * A save from before the net worth of each week as the current version:
+ * none for the weeks it reported.
+ */
+function withNetWorths<
+  Old extends {
+    readonly saveVersion: typeof NETWORTHLESS_VERSION
+    readonly weekHistory: readonly Omit<WeekRecord, 'netWorth'>[]
+  },
+>(
+  save: Old,
+): Omit<Old, 'saveVersion' | 'weekHistory'> & {
+  readonly saveVersion: typeof SAVE_VERSION
+  readonly weekHistory: WeekRecord[]
+} {
+  return {
+    ...save,
+    saveVersion: SAVE_VERSION,
+    weekHistory: save.weekHistory.map((week) => ({ ...week, netWorth: null })),
+  }
+}
+
+/** A save from before the end of a game as version 16: not ended. */
 function withEnded<
   Old extends { readonly saveVersion: typeof ENDLESS_VERSION },
 >(
   save: Old,
 ): Omit<Old, 'saveVersion'> & {
-  readonly saveVersion: typeof SAVE_VERSION
+  readonly saveVersion: typeof NETWORTHLESS_VERSION
   readonly ended: null
 } {
-  return { ...save, saveVersion: SAVE_VERSION, ended: null }
+  return { ...save, saveVersion: NETWORTHLESS_VERSION, ended: null }
 }
 
 /**
@@ -1722,6 +1776,9 @@ function weekSince(
  *   bilan's, the end and the lowest of a week those of its days;
  * - the history holds at most `WEEKS_KEPT` weeks, each 7 days after the one
  *   before, the last `lastWeek`'s, and none without it;
+ * - the weeks of the history with no net worth, those an older save
+ *   reported, come before all the others (`checkNetWorth()` checks the
+ *   last one's);
  * - the changes to the street of both weeks come from events in `events`.
  */
 function checkWeek(
@@ -1878,6 +1935,48 @@ function checkWeek(
         recorded.cashAtEnd !== lastWeek.cashAtEnd
   ) {
     invalid("the last week of weekHistory is not lastWeek's")
+  }
+  const valued = weekHistory.findIndex(({ netWorth: worth }) => worth !== null)
+  const unvalued = weekHistory.findLastIndex(
+    ({ netWorth: worth }) => worth === null,
+  )
+  if (valued !== -1 && unvalued > valued) {
+    invalid(
+      `week ${unvalued + 1} of weekHistory has no net worth, after week ${valued + 1}, which has one`,
+    )
+  }
+}
+
+/**
+ * Checks, once the week, the personal account and the financing are, that
+ * the last week of the history, if it has a net worth, has the owner's at
+ * the close of its Sunday (see `netWorth`): with the books up to that
+ * Sunday, the rounds of shares sold by then, and the personal cash less
+ * what moved it since.
+ */
+function checkNetWorth(save: Save, journal: Journal): void {
+  const recorded = save.weekHistory.at(-1)
+  if (recorded === undefined || recorded.netWorth === null) return
+  const sunday = sundayOf(recorded.firstDay)
+  // Every change to the personal cash is a movement, and those since the
+  // Sunday are all in the months the account keeps.
+  const since = save.personal.movements.filter(({ day }) => day > sunday)
+  const atClose = netWorth({
+    day: sunday,
+    journal,
+    financing: {
+      ...save.financing,
+      shareSales: save.financing.shareSales.filter(({ day }) => day <= sunday),
+    },
+    personal: {
+      ...save.personal,
+      cash: sub(save.personal.cash, sum(since.map(({ amount }) => amount))),
+    },
+  })
+  if (recorded.netWorth !== atClose) {
+    invalid(
+      `the last week of weekHistory has a net worth of ${recorded.netWorth}, not the ${atClose} the owner had at the close of day ${sunday}`,
+    )
   }
 }
 

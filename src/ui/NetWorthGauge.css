@@ -1,0 +1,30 @@
+.net-worth-gauge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5rem;
+  margin: 0;
+}
+
+.net-worth-gauge__label {
+  color: #cbd2d9;
+}
+
+.net-worth-gauge__amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.net-worth-gauge__change {
+  font-size: 0.75rem;
+}
+
+/* Text colours keep at least 4.5:1 against the top bar's #1f2933. */
+.net-worth-gauge__change--up {
+  color: #7bd389;
+}
+
+.net-worth-gauge__change--down {
+  color: #ff9b9b;
+}

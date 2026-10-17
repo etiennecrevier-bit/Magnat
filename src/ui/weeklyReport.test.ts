@@ -431,6 +431,7 @@ describe('recentWeeks', () => {
       sales: cents(firstDay * 100),
       netIncome: cents(-firstDay),
       cashAtEnd: cents(firstDay * 1000),
+      netWorth: cents(firstDay * 2000),
     }
   }
 
