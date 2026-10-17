@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import pacing from '../content/pacing.json'
 import type { Avatar } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
-import { DEFIS } from '../engine/day.ts'
+import { DEFIS, DIFFICULTIES, FOOD_TRUCK } from '../engine/day.ts'
 import type { Cents } from '../engine/money.ts'
 import { netWorth as netWorthOf, netWorthChange } from '../engine/netWorth.ts'
 import type { Day } from '../engine/types.ts'
@@ -21,6 +21,7 @@ import { NetWorthGaugeView } from './NetWorthGauge.tsx'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
 import ReportPanel from './ReportPanel.tsx'
 import SettingsPanel from './SettingsPanel.tsx'
+import StaffPanel from './StaffPanel.tsx'
 import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
 import './TopBar.css'
 
@@ -63,6 +64,8 @@ interface TopBarViewProps {
   onSpeedChange: (speed: number) => void
   /** Opens the « Gérer le camion » panel. */
   onManage: () => void
+  /** Opens the « Qui fait quoi » panel. */
+  onStaff: () => void
   /** Opens the « Vos finances » panel. */
   onFinances: () => void
   /** The chip of the Défi played, « Défi · semaine 2 de 3 »; null if none. */
@@ -90,6 +93,7 @@ export function TopBarView({
   speed,
   onSpeedChange,
   onManage,
+  onStaff,
   onFinances,
   defiLabel,
   defiEnergy,
@@ -135,6 +139,14 @@ export function TopBarView({
           onClick={onManage}
         >
           Gérer le camion
+        </button>
+        <button
+          type="button"
+          className="top-bar__panel"
+          aria-haspopup="dialog"
+          onClick={onStaff}
+        >
+          Qui fait quoi
         </button>
         <button
           type="button"
@@ -190,6 +202,7 @@ export default function TopBar() {
   const weekHistory = useGame((state) => state.game.weekHistory)
   const energy = useGame((state) => state.game.energy)
   const challenge = useGame((state) => state.game.challenge)
+  const bakery = useGame((state) => state.game.bakery)
   const speed = useGame((state) => state.speed)
   const setSpeed = useGame((state) => state.setSpeed)
   const togglePause = useGame((state) => state.togglePause)
@@ -219,8 +232,16 @@ export default function TopBar() {
   // A Défi's truck came on its first day, from which its loan counts.
   const firstDay = challenge?.startDay ?? 0
   const fixedCosts = useMemo(
-    () => monthlyFixedCosts(day, difficulty, firstDay),
-    [day, difficulty, firstDay],
+    () =>
+      monthlyFixedCosts(
+        day,
+        difficulty,
+        firstDay,
+        FOOD_TRUCK,
+        DIFFICULTIES,
+        bakery,
+      ),
+    [day, difficulty, firstDay, bakery],
   )
   const defi = challenge === null ? null : defiById(DEFIS, challenge.id)
   const defiLabel =
@@ -241,6 +262,7 @@ export default function TopBar() {
         speed={speed}
         onSpeedChange={setSpeed}
         onManage={() => openPanel('manage')}
+        onStaff={() => openPanel('staff')}
         onFinances={() => openPanel('finances')}
         defiLabel={defiLabel}
         defiEnergy={defiEnergy}
@@ -248,6 +270,7 @@ export default function TopBar() {
         onSettings={() => openPanel('settings')}
       />
       {panel === 'manage' && <ManagePanel />}
+      {panel === 'staff' && <StaffPanel />}
       {panel === 'finances' && <FinancesPanel />}
       {panel === 'defi' && <DefiPanel />}
       {panel === 'settings' && <SettingsPanel />}

@@ -1,0 +1,83 @@
+/* The card itself is the shared .panel (panel.css), its note and fields
+   those of « Gérer le camion » (ManagePanel.css). Text colours keep at
+   least 4.5:1 against its cream #fff7e8. */
+.staff {
+  --panel-width: 56rem;
+}
+
+.staff section + section {
+  margin-top: 1.25rem;
+}
+
+/* The owner and each employee, side by side as long as they fit. */
+.staff__team {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.staff__member {
+  padding: 0.5rem 0.75rem 0.75rem;
+  border: 1px solid #c9b48f;
+  border-radius: 8px;
+}
+
+.staff__member h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.staff__member p {
+  margin: 0 0 0.5rem;
+}
+
+.staff__confirm p {
+  font-weight: 600;
+}
+
+.staff__full {
+  font-weight: 600;
+}
+
+.staff__roles,
+.staff__candidates {
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each role's toggle with its details beside it, under it on a phone. */
+.staff__roles li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.staff__role-details {
+  color: #52606d;
+}
+
+.staff__candidates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.staff__candidates li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.staff .button:disabled {
+  border-color: #c9b48f;
+  background: transparent;
+  color: #7b6f63;
+  cursor: not-allowed;
+}

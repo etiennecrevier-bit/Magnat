@@ -170,13 +170,14 @@
 /* Measured with the longest texts: the date (about 275 px), the cash gauge
    with a large negative amount (about 335 px), the net worth with as large
    an amount and its arrow (about 265 px), the energy gauge (about 260 px),
-   the two panel buttons (about 320 px), the four speed buttons (about
-   200 px) and the gear (44 px). All on one row need about 1855 px; below
-   that the energy gauge, then the net worth, wrap under the encaisse in its
-   cell. The row itself holds down to about 1290 px, where the cell still
-   fits the cash gauge, the widest of the three. Below that the gauges get a
-   row of their own under the date and the buttons. */
-@media (max-width: 1287px) {
+   the three panel buttons (about 465 px, « Qui fait quoi » 146 px of it
+   with its gap), the four speed buttons (about 200 px) and the gear
+   (44 px). All on one row need about 2000 px; below that the energy gauge,
+   then the net worth, wrap under the encaisse in its cell. The row itself
+   holds down to about 1436 px, where the cell still fits the cash gauge,
+   the widest of the three. Below that the gauges get a row of their own
+   under the date and the buttons. */
+@media (max-width: 1433px) {
   .top-bar {
     grid-template-columns: 1fr auto auto auto;
     grid-template-areas:
@@ -185,9 +186,9 @@
   }
 }
 
-/* The date and all the buttons (about 920 px) no longer fit on one row, so
-   the panel buttons move down under the gauges. */
-@media (max-width: 937px) {
+/* The date and all the buttons (about 1066 px) no longer fit on one row,
+   so the panel buttons move down under the gauges. */
+@media (max-width: 1083px) {
   .top-bar {
     grid-template-columns: 1fr auto auto;
     grid-template-areas:
