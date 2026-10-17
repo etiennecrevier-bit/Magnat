@@ -592,12 +592,11 @@ describe("the mill's discount", () => {
     )
   }
 
-  /** What « Achat de marchandises » cost on `state`'s day. */
-  function purchases(state: GameState): number {
+  /** What « Achat de marchandises » cost on `day`, by default `state`'s. */
+  function purchases(state: GameState, day: number = state.day): number {
     return entriesOf(state.journal)
       .filter(
-        ({ day, memo }) =>
-          day === state.day && memo === 'Achat de marchandises',
+        (entry) => entry.day === day && entry.memo === 'Achat de marchandises',
       )
       .reduce((total, { lines }) => total + (lines[0]?.debit ?? 0), 0)
   }
@@ -614,22 +613,31 @@ describe("the mill's discount", () => {
   it('takes 5 % off each unit of the next restock that buys anything, then is used up', () => {
     expect(discounted).toEqual({ cafe: 43, chocolat: 52, croissant: 104 })
     // The mill comes after the morning's restock.
-    const tuesday = playDay(goTo(TUESDAY, 'meunerie'))
+    const tuesdayMorning = goTo(TUESDAY, 'meunerie')
+    const tuesday = playDay(tuesdayMorning)
     expect(purchases(tuesday)).toBe(restockCost(TUESDAY, listed))
     expect(tuesday.town.discount).toBe(0.05)
-    const wednesdayMorning = tick(tuesday)
+    const wednesdayMorning = tick(tuesdayMorning)
     expect(wednesdayMorning.town).toEqual({ trip: null, discount: 0.05 })
     const wednesday = playDay(wednesdayMorning)
-    expect(purchases(wednesday)).toBeGreaterThan(0)
-    expect(purchases(wednesday)).toBe(restockCost(wednesdayMorning, discounted))
+    const wednesdayCost = restockCost(wednesdayMorning, discounted)
+    expect(wednesdayCost).toBeGreaterThan(0)
+    expect(purchases(wednesday)).toBe(wednesdayCost)
     for (const [product, unitCost] of Object.entries(lotsOf(wednesday))) {
       expect(unitCost, product).toBe(discounted[product as ProductId])
     }
     expect(wednesday.town.discount).toBe(0)
-    const thursdayMorning = tick(wednesday)
-    expect(purchases(playDay(thursdayMorning))).toBe(
-      restockCost(thursdayMorning, listed),
-    )
+    const thursdayMorning = tick(wednesdayMorning)
+    expect(thursdayMorning.town).toEqual(noTrips())
+    const thursdayCost = restockCost(thursdayMorning, listed)
+    expect(purchases(playDay(thursdayMorning))).toBe(thursdayCost)
+    // Played day after day, each restock is in the books once, at its price.
+    const friday = tick(thursdayMorning)
+    expect(
+      [TUESDAY.day, wednesdayMorning.day, thursdayMorning.day].map((day) =>
+        purchases(friday, day),
+      ),
+    ).toEqual([restockCost(TUESDAY, listed), wednesdayCost, thursdayCost])
   })
 
   it('waits through closed days and restocks that buy nothing', () => {
@@ -666,12 +674,26 @@ describe("the mill's discount", () => {
   })
 
   it('never stacks on a discount waiting', () => {
-    const again = goTo(tick(playDay(goTo(TUESDAY, 'meunerie'))), 'meunerie')
+    const again = goTo(tick(goTo(TUESDAY, 'meunerie')), 'meunerie')
+    expect(again.town).toEqual({ trip: 'meunerie', discount: 0.05 })
     const twice = playDay(again)
-    expect(purchases(twice)).toBe(restockCost(again, discounted))
+    const againCost = restockCost(again, discounted)
+    expect(purchases(twice)).toBe(againCost)
     expect(twice.town.discount).toBe(0.05)
-    const after = tick(twice)
-    expect(purchases(playDay(after))).toBe(restockCost(after, discounted))
+    const after = tick(again)
+    expect(after.town).toEqual({ trip: null, discount: 0.05 })
+    const afterClose = playDay(after)
+    const afterCost = restockCost(after, discounted)
+    expect(purchases(afterClose)).toBe(afterCost)
+    expect(afterClose.town.discount).toBe(0)
+    const last = tick(after)
+    expect(last.town).toEqual(noTrips())
+    const lastCost = restockCost(last, listed)
+    expect(purchases(playDay(last))).toBe(lastCost)
+    const end = tick(last)
+    expect(
+      [again.day, after.day, last.day].map((day) => purchases(end, day)),
+    ).toEqual([againCost, afterCost, lastCost])
   })
 
   it('keeps the stock at what the Stocks account carries, through a save', () => {
