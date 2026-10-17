@@ -1,12 +1,19 @@
-import type { EnergyContent } from '../content/schema.ts'
+import type {
+  EnergyContent,
+  GrocerContent,
+  GrocerId,
+} from '../content/schema.ts'
 import {
   loadMessages,
   type MessageKind,
   type Messages,
 } from '../content/messages.ts'
+import { GROCERS } from '../engine/contracts.ts'
 import { ENERGY } from '../engine/day.ts'
 import { fatigueOf } from '../engine/energy.ts'
+import { STAFF_MEMO, staffMemo } from '../engine/staff.ts'
 import type { Day, GameState } from '../engine/types.ts'
+import { entriesSince } from '../finance/journal.ts'
 import type { GameStore } from './store.ts'
 
 /** The shipped messages, validated once. */
@@ -34,8 +41,16 @@ export interface Message {
 /** Something that calls for a message. */
 export interface Trigger {
   readonly kind: MessageKind
-  /** The day it is about: the rent's, or the morning the owner woke up on. */
+  /**
+   * The day it is about: the rent's, the morning the owner woke up on, the
+   * delivery's, or the morning the employee started or left.
+   */
   readonly day: Day
+  /**
+   * Who it is from, when the game names them: « Normand, Épicerie Chez
+   * Normand », or the employee. The other kinds' sender is the content's.
+   */
+  readonly from?: string
 }
 
 /** What the messages remember from one game to the next. */
@@ -57,17 +72,20 @@ export const NO_MEMORY: MessageMemory = {
 /**
  * What calls for a message once the game moves on from `previous` to
  * `next`, oldest first. Nothing does unless days were played. Each rent that
- * went unpaid on the days played calls for the landlord's. Waking up
- * exhausted, from a morning that was not (before a decision left the owner
- * exhausted, as `memory.exhaustedByDecision` keeps), calls for the owner's
- * own, once a game week at most: the week of `memory.exhaustedWeek` is
- * skipped. Returns the memory to keep.
+ * went unpaid on the days played calls for the landlord's. On those days
+ * too, the grocers' and the employees' (see `contractTriggers` and
+ * `staffTriggers`). Waking up exhausted, from a morning that was not
+ * (before a decision left the owner exhausted, as
+ * `memory.exhaustedByDecision` keeps), calls for the owner's own, once a
+ * game week at most: the week of `memory.exhaustedWeek` is skipped. Returns
+ * the memory to keep.
  */
 export function triggersBetween(
   previous: GameState,
   next: GameState,
   memory: MessageMemory,
   energy: EnergyContent = ENERGY,
+  grocers: GrocerContent = GROCERS,
 ): { triggers: Trigger[]; memory: MessageMemory } {
   const exhausted = (state: GameState) =>
     fatigueOf(state.energy, energy) === 'exhausted'
@@ -78,9 +96,13 @@ export function triggersBetween(
   if (next.day < previous.day) {
     return { triggers: [], memory: { ...memory, exhaustedByDecision: false } }
   }
-  const triggers: Trigger[] = next.personal.unpaidRents
-    .filter((day) => day >= previous.day)
-    .map((day) => ({ kind: 'landlord', day }))
+  const triggers: Trigger[] = [
+    ...next.personal.unpaidRents
+      .filter((day) => day >= previous.day)
+      .map((day): Trigger => ({ kind: 'landlord', day })),
+    ...contractTriggers(previous, next, grocers),
+    ...staffTriggers(previous, next),
+  ].sort((a, b) => a.day - b.day)
   const week = Math.floor(next.day / DAYS_PER_WEEK)
   const wokeExhausted =
     (!exhausted(previous) || memory.exhaustedByDecision) && exhausted(next)
@@ -90,6 +112,104 @@ export function triggersBetween(
     return { triggers, memory: { ...kept, exhaustedWeek: week } }
   }
   return { triggers, memory: kept }
+}
+
+/**
+ * What the grocers' contracts call for over the days played from
+ * `previous` to `next`, in that order: each delivery missed, the grocer's
+ * `missedDelivery`, but the one that brings a contract to `maxStrikes`
+ * missed, which ends it, their `contractBroken` instead; then each contract
+ * of `previous` that ran out, their `contractEnded`, dated its last
+ * delivery or miss. One message ends a contract, whichever way. The
+ * grocer signs « Normand, Épicerie Chez Normand ».
+ */
+export function contractTriggers(
+  previous: GameState,
+  next: GameState,
+  grocers: GrocerContent = GROCERS,
+): Trigger[] {
+  const from = (grocer: GrocerId) => {
+    const { owner, name } = grocers.grocers[grocer]
+    return `${owner}, ${name}`
+  }
+  const strikes = new Map<GrocerId, number>(
+    previous.contracts.running.map(({ grocer, strikes }) => [grocer, strikes]),
+  )
+  const broken = new Set<GrocerId>()
+  const triggers: Trigger[] = []
+  const missed = playedSince(next.contracts.missed, previous.day)
+  for (const { day, grocer } of missed) {
+    const count = (strikes.get(grocer) ?? 0) + 1
+    strikes.set(grocer, count)
+    const ends = count >= grocers.maxStrikes
+    if (ends) broken.add(grocer)
+    triggers.push({
+      kind: ends ? 'contractBroken' : 'missedDelivery',
+      day,
+      from: from(grocer),
+    })
+  }
+  const delivered = playedSince(next.contracts.deliveries, previous.day)
+  for (const { grocer, startDay } of previous.contracts.running) {
+    const runs = next.contracts.running.some(
+      (contract) =>
+        contract.grocer === grocer && contract.startDay === startDay,
+    )
+    if (runs || broken.has(grocer)) continue
+    const last = Math.max(
+      ...[...delivered, ...missed]
+        .filter((done) => done.grocer === grocer)
+        .map(({ day }) => day),
+      previous.day,
+    )
+    triggers.push({ kind: 'contractEnded', day: last, from: from(grocer) })
+  }
+  return triggers
+}
+
+/**
+ * What the employees call for over the days played from `previous` to
+ * `next`, read from the journal as the mornings left it, so someone who
+ * leaves and is hired again in between counts both times: each
+ * « Formation » paid, the employee's `hired`, and each « Préavis », their
+ * `fired`, dated that morning. Cancelling a hire who had not started pays
+ * neither, and calls for nothing.
+ */
+export function staffTriggers(previous: GameState, next: GameState): Trigger[] {
+  const training = staffMemo(STAFF_MEMO.training, '')
+  const notice = staffMemo(STAFF_MEMO.notice, '')
+  const triggers: Trigger[] = []
+  for (const { day, memo } of entriesSince(next.journal, previous.day)) {
+    if (memo.startsWith(training)) {
+      triggers.push({ kind: 'hired', day, from: memo.slice(training.length) })
+    } else if (memo.startsWith(notice)) {
+      triggers.push({ kind: 'fired', day, from: memo.slice(notice.length) })
+    }
+  }
+  return triggers
+}
+
+/**
+ * The items of `list`, kept by day, from `day` on: read from the end, so a
+ * long game's history costs no more than its last days.
+ */
+function playedSince<T extends { readonly day: Day }>(
+  list: readonly T[],
+  day: Day,
+): readonly T[] {
+  let from = list.length
+  while (from > 0 && (list[from - 1]?.day ?? day) >= day) from -= 1
+  return list.slice(from)
+}
+
+/**
+ * Who sends the messages of `kind` when the game does not name them: the
+ * content's sender. Throws a RangeError for a kind the game always names.
+ */
+function senderOf(messages: Messages, kind: MessageKind): string {
+  const sender = messages[kind]
+  if ('from' in sender) return sender.from
+  throw new RangeError(`The game names who sends ${kind}`)
 }
 
 /**
@@ -122,8 +242,9 @@ export function received(
 
 /**
  * Hands `onMessage` a message each time the game in `store` calls for one
- * (see `triggersBetween`), with a line of its kind picked with `random`,
- * never the last one of that kind shown. Returns a function that stops it.
+ * (see `triggersBetween`), from the sender the game names or else the
+ * content's, with a line of its kind picked with `random`, never the last
+ * one of that kind shown. Returns a function that stops it.
  */
 export function startMessages(
   store: GameStore,
@@ -139,8 +260,12 @@ export function startMessages(
     if (state.game === previous.game) return
     const found = triggersBetween(previous.game, state.game, memory, energy)
     memory = found.memory
-    for (const { kind, day } of found.triggers) {
-      const { from, lines } = messages[kind]
+    for (const {
+      kind,
+      day,
+      from = senderOf(messages, kind),
+    } of found.triggers) {
+      const { lines } = messages[kind]
       const text = pickLine(lines, random, lastLine[kind] ?? null)
       lastLine[kind] = text
       onMessage({ id: nextId, kind, from, text, day })

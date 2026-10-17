@@ -20,7 +20,7 @@ import type {
   GameState,
 } from '../engine/types.ts'
 import { formatDayAndMonth, formatWeekdayName } from './formatGameDate.ts'
-import { formatBriefMoney } from './formatMoney.ts'
+import { formatBriefMoney, formatCount } from './formatMoney.ts'
 import type { GameStore } from './store.ts'
 
 // The Défis as the player reads them: the engine plays them and judges
@@ -33,7 +33,6 @@ const NO_BREAK_SPACE = ' '
 const COLON = `${NO_BREAK_SPACE}:`
 const OPEN_QUOTE = `«${NO_BREAK_SPACE}`
 const CLOSE_QUOTE = `${NO_BREAK_SPACE}»`
-const DIGITS_PER_GROUP = /\B(?=(\d{3})+(?!\d))/g
 // Calendar facts: a Défi counts its weeks from its first day.
 const DAYS_PER_WEEK = 7
 // A share is shown to a tenth of a percent.
@@ -159,11 +158,6 @@ export function energyFloorLine(
 ): string | null {
   const text = energyFloorText(energy, defi)
   return text === null ? null : `Énergie${COLON} ${text}`
-}
-
-/** A count with its thousands apart: « 1 150 ». */
-function formatCount(count: number): string {
-  return String(count).replace(DIGITS_PER_GROUP, NO_BREAK_SPACE)
 }
 
 /** A share in tenths of a percent: « 3 % », « 3,1 % ». */

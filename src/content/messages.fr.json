@@ -1,5 +1,5 @@
 {
-  "_note": "Short messages the player receives during a game (#84): the landlord's when the owner's rent goes unpaid, and the owner's own thoughts the first time each week they wake up exhausted. Standard French, no amounts. The owner's lines are gender-neutral, since the avatar may be a woman or a man.",
+  "_note": "Short messages the player receives during a game (#84, #163): the landlord's when the owner's rent goes unpaid, the owner's own thoughts the first time each week they wake up exhausted, a grocer's when a delivery is missed (missedDelivery), when their contract runs out (contractEnded) or when the last missed delivery they allow ends it (contractBroken), and an employee's when they start (hired) or are let go (fired). The game names the grocer and the employee, so those kinds have no from. Standard French, no amounts. The owner's lines are gender-neutral, since the avatar may be a woman or a man; so are the grocers' and the employees', who may be either too, and so is what they say of the owner.",
   "landlord": {
     "from": "Votre propriétaire",
     "lines": [
@@ -20,6 +20,55 @@
       "Mes paupières ont voté pour une fermeture hâtive. Le reste de moi n'a pas eu son mot à dire.",
       "Je compte les croissants et je trouve un nombre différent à chaque fois.",
       "Dormir est sur ma liste de choses à faire. Juste après tout le reste."
+    ]
+  },
+  "missedDelivery": {
+    "lines": [
+      "Mes tablettes à croissants sont vides ce matin. Mes clients aussi ont l'air vides.",
+      "J'ai attendu la livraison toute la matinée. Le café, lui, est arrivé à l'heure.",
+      "Pas de croissants ce matin. J'ai dû expliquer ça à mes habitués, merci bien.",
+      "Une livraison manquée, ça se remarque. Deux, ça se raconte dans le quartier.",
+      "Je ne vous demande pas la lune. Juste les croissants promis, le jour promis.",
+      "Mon comptoir avait gardé une place pour vos croissants. Elle est restée vide."
+    ]
+  },
+  "contractEnded": {
+    "lines": [
+      "Notre entente arrive à son terme. On s'en reparle bientôt, si ça vous dit.",
+      "Le contrat est rempli. Je passe vous voir pour la suite.",
+      "C'était la dernière semaine prévue. Je garde votre numéro bien en vue.",
+      "Fin du contrat. Mes tablettes vont trouver le temps long.",
+      "Notre entente est terminée. Mes clients me demandent déjà si elle revient."
+    ]
+  },
+  "contractBroken": {
+    "lines": [
+      "Trop de livraisons manquées. Je mets fin à notre entente, sans rancune. Enfin, presque.",
+      "Je ne peux pas vendre des croissants qui n'arrivent pas. Notre contrat s'arrête ici.",
+      "J'ai trouvé un autre fournisseur. Lui livre le jour prévu.",
+      "C'est terminé entre nous. Commercialement parlant.",
+      "Une entente, ça se respecte des deux côtés. Je déchire la mienne.",
+      "Mes clients m'ont posé trop de questions sur les croissants absents. Je mets fin au contrat."
+    ]
+  },
+  "hired": {
+    "lines": [
+      "Première journée faite. Je pense que je vais aimer ça ici.",
+      "Merci pour la chance. Je compte bien la mériter.",
+      "J'ai appris où sont les tasses, les serviettes et le bouton de la machine. Le reste va suivre.",
+      "Le tablier est propre et la formation commencée. Je suis à votre service.",
+      "Je viens d'annoncer à ma mère que j'ai un nouvel emploi. Elle veut des croissants.",
+      "Merci pour l'embauche. Je serai là à l'heure, promis."
+    ]
+  },
+  "fired": {
+    "lines": [
+      "Bon. Je rends le tablier. Merci pour le préavis, au moins.",
+      "Je m'en doutais un peu. Les clients vont me manquer, vous un peu moins.",
+      "Je repars avec ma dernière paie et une bonne recette de café.",
+      "Pas de rancune. Si jamais vous changez d'idée, vous avez mon numéro.",
+      "Le préavis est arrivé. Je garde le souvenir des matins tranquilles.",
+      "On ne pourra pas dire que je n'ai pas essayé. Bonne chance pour la suite."
     ]
   }
 }

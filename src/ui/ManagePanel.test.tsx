@@ -2,9 +2,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DecisionKind } from '../content/schema.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
-import { startingDecisions } from '../engine/decisions.ts'
+import { applyDecision, startingDecisions } from '../engine/decisions.ts'
 import { cents } from '../engine/money.ts'
-import type { DaySummary, Decisions } from '../engine/types.ts'
+import type { DaySummary, Decisions, GameState } from '../engine/types.ts'
+import { bakeryBoard, type BakeryBoard } from './bakeryBoard.ts'
 import ManagePanel, { ManagePanelView } from './ManagePanel.tsx'
 import { NumberFieldView } from './NumberField.tsx'
 import { segmentFacts } from './segmentFacts.ts'
@@ -32,12 +33,14 @@ function render(
   decisions: Decisions = startingDecisions(),
   lastDay: DaySummary | null = null,
   locked: readonly DecisionKind[] = [],
+  bakery: BakeryBoard = bakeryBoard(createInitialState(1)),
 ) {
   return renderToStaticMarkup(
     <ManagePanelView
       decisions={decisions}
       lastDay={lastDay}
       locked={locked}
+      bakery={bakery}
       onChange={() => {}}
       onClose={() => {}}
     />,
@@ -76,6 +79,11 @@ function button(html: string, label: string): string {
   return found
 }
 
+/** The panel up to « Fournil », whose own tests are further down. */
+function truckPart(html: string): string {
+  return html.split('<section class="manage__bakery"')[0] ?? ''
+}
+
 /** The first played day, a Tuesday: day 0 is a Monday, when the truck is closed. */
 function playedDay(): DaySummary {
   const { lastDay } = tick(tick(createInitialState(42)))
@@ -96,6 +104,7 @@ describe('ManagePanelView', () => {
       'Horaire',
       'Votre salaire',
       'Marketing',
+      'Fournil',
     ])
   })
 
@@ -148,7 +157,7 @@ describe('ManagePanelView', () => {
 
   it('lays out each order by the kind of its rule', () => {
     const html = render()
-    const rules = texts(html, 'fieldset')
+    const rules = texts(truckPart(html), 'fieldset')
     expect(rules).toHaveLength(3)
     const [cafe = '', chocolat = '', croissant = ''] = rules
     expect(cafe).toContain('<legend>Café</legend>')
@@ -178,7 +187,7 @@ describe('ManagePanelView', () => {
   })
 
   it('has a labelled group of seven day toggles, pressed on the days open', () => {
-    const html = render()
+    const html = truckPart(render())
     expect(html).toContain('role="group" aria-label="Jours d&#x27;ouverture"')
     const days = tags(html, 'button').filter(
       (tag) => attribute(tag, 'aria-pressed') !== undefined,
@@ -223,7 +232,7 @@ describe('ManagePanelView', () => {
   })
 
   it('says no day is over before the first one', () => {
-    const html = render()
+    const html = truckPart(render())
     expect(html).toContain(
       '<h3 id="manage-facts">Hier, par segment</h3><p>Aucune journée terminée pour l&#x27;instant.</p>',
     )
@@ -232,7 +241,7 @@ describe('ManagePanelView', () => {
 
   it('shows yesterday by segment: units sold and visits without a sale', () => {
     const lastDay = playedDay()
-    const html = render(startingDecisions(), lastDay)
+    const html = truckPart(render(startingDecisions(), lastDay))
     expect(html).toContain(
       '<div class="manage__scroll" role="region" aria-labelledby="manage-facts" tabindex="0"><table class="data-table">',
     )
@@ -275,7 +284,7 @@ describe('ManagePanelView', () => {
   })
 
   it('disables the days a Défi locks, saying why, and leaves the rest', () => {
-    const html = render(startingDecisions(), null, ['daysOpen'])
+    const html = truckPart(render(startingDecisions(), null, ['daysOpen']))
     expect(html).toContain(
       '<h3 id="manage-days">Horaire</h3><p id="manage-locked-daysOpen" class="manage__locked">Le Défi fixe l&#x27;horaire.</p>',
     )
@@ -291,13 +300,18 @@ describe('ManagePanelView', () => {
     expect(html.match(/class="manage__locked"/g)).toHaveLength(1)
   })
 
-  it('disables each field and stepper of the other kinds a Défi locks', () => {
-    const html = render(startingDecisions(), null, [
+  it('disables each field and stepper of the other kinds a Défi locks, never the bakery', () => {
+    const whole = render(startingDecisions(), null, [
       'price',
       'restock',
       'ownerWeeklyPay',
       'marketingDaily',
     ])
+    // A Défi locks none of the bakery's changes.
+    expect(whole.split('<section class="manage__bakery"')[1]).not.toContain(
+      'disabled',
+    )
+    const html = truckPart(whole)
     expect(
       [
         ...html.matchAll(/<p id="([^"]*)" class="manage__locked">([^<]*)</g),
@@ -352,6 +366,142 @@ describe('ManagePanelView', () => {
   })
 })
 
+/** The « Fournil » section of the panel for `game`. */
+function bakeryPart(game: GameState): string {
+  const html = render(startingDecisions(), null, [], bakeryBoard(game))
+  return `<section class="manage__bakery"${html.split('<section class="manage__bakery"')[1] ?? ''}`
+}
+
+/** The text of each paragraph and list item, in order, tags removed. */
+function lines(html: string): string[] {
+  return [...html.matchAll(/<(p|li)\b[^>]*>(.*?)<\/\1>/g)].map(([, , text]) =>
+    (text ?? '').replace(/<[^>]*>/g, ''),
+  )
+}
+
+/** `game` played to the morning of `day`. */
+function playedTo(game: GameState, day: number): GameState {
+  let next = game
+  while (next.day < day) next = tick(next)
+  return next
+}
+
+describe('« Fournil »', () => {
+  const START = createInitialState(42)
+
+  it('shows a closed bakery, how to open it, its costs and the unit cost of a croissant bought and made side by side', () => {
+    const html = bakeryPart(START)
+    expect(html).toMatch(
+      /^<section class="manage__bakery" aria-labelledby="manage-bakery"><h3 id="manage-bakery">Fournil<\/h3><p class="manage__bakery-status">Fermé<\/p>/,
+    )
+    expect(texts(html, 'button')).toEqual([
+      'Ouvrir · four loué',
+      'Ouvrir · four acheté',
+      'Acheter',
+      'Fabriquer',
+    ])
+    expect(html).not.toContain('disabled')
+    expect(lines(html)).toEqual([
+      'Fermé',
+      `Déménagement${S}: 1${S}500,00${S}$`,
+      `Loyer${S}: 2${S}400,00${S}$ par mois`,
+      `Four loué${S}: 600,00${S}$ par mois`,
+      `Four acheté${S}: 25${S}000,00${S}$`,
+      `Capacité${S}: 300 croissants par jour`,
+      `Frais fixes du fournil${S}: 3${S}000,00${S}$ par mois avec le four loué · 2${S}400,00${S}$ par mois avec le four acheté`,
+    ])
+    expect(html).toContain(
+      `<table class="data-table manage__unit-costs"><caption>Coût d&#x27;un croissant</caption><thead><tr><th scope="col" class="number">Acheté</th><th scope="col" class="number">Fabriqué</th></tr></thead><tbody><tr><td class="number">1,10${S}$</td><td class="number">0,55${S}$</td></tr></tbody></table>`,
+    )
+    expect(html).toContain(
+      'role="group" aria-label="Provenance des croissants"><button type="button" class="toggle" aria-pressed="true">Acheter</button><button type="button" class="toggle" aria-pressed="false">Fabriquer</button>',
+    )
+    expect(html).toContain('<legend>Fournée</legend>')
+    expect(attribute(input(html, 'manage-bake-quantity'), 'value')).toBe('70')
+    expect(html).toContain('>Fournée quotidienne</label>')
+    expect(html).toContain(
+      '<span id="manage-bake-quantity-unit" class="field__unit">croissants</span>',
+    )
+  })
+
+  it('never shows a break-even figure', () => {
+    for (const game of [
+      START,
+      playedTo(applyDecision(START, { kind: 'openBakery', oven: 'louer' }), 3),
+    ]) {
+      expect(bakeryPart(game)).not.toMatch(/seuil|rentab|équilibre|point mort/i)
+    }
+  })
+
+  it('shows a bakery open with a leased oven, which closing gives notice to', () => {
+    const open = playedTo(
+      applyDecision(START, { kind: 'openBakery', oven: 'louer' }),
+      3,
+    )
+    const html = bakeryPart(open)
+    expect(lines(html).slice(0, 2)).toEqual([
+      'Ouvert depuis le 2 mai · four loué',
+      `Fermer donne un préavis${S}: dernier jour le 30 juin`,
+    ])
+    expect(texts(html, 'button')[0]).toBe('Fermer le fournil')
+    expect(lines(html)).toContain(
+      `Frais fixes du fournil${S}: 3${S}000,00${S}$ par mois`,
+    )
+  })
+
+  it('shows tomorrow when the plan changes it, and only the oven it has to take the notice back', () => {
+    const open = playedTo(
+      applyDecision(START, { kind: 'openBakery', oven: 'louer' }),
+      3,
+    )
+    const closing = applyDecision(open, { kind: 'closeBakery' })
+    expect(lines(bakeryPart(closing)).slice(0, 2)).toEqual([
+      'Ouvert depuis le 2 mai · four loué',
+      `Demain${S}: en préavis, dernier jour le 30 juin`,
+    ])
+    const html = bakeryPart(tick(closing))
+    expect(lines(html)[0]).toBe(`En préavis${S}: dernier jour le 30 juin`)
+    expect(tags(html, 'button').slice(0, 2)).toEqual([
+      '<button type="button" class="button">',
+      '<button type="button" class="button" disabled="">',
+    ])
+  })
+
+  it('cancels an opening planned for tomorrow, and says it opens', () => {
+    const html = bakeryPart(
+      applyDecision(START, { kind: 'openBakery', oven: 'acheter' }),
+    )
+    expect(lines(html).slice(0, 2)).toEqual([
+      'Fermé',
+      `Demain${S}: ouvert · four acheté`,
+    ])
+    expect(texts(html, 'button')[0]).toBe('Annuler l&#x27;ouverture')
+  })
+
+  it('leases no oven once the business owns one, which it says', () => {
+    let game = playedTo(
+      applyDecision(START, { kind: 'openBakery', oven: 'acheter' }),
+      3,
+    )
+    game = playedTo(applyDecision(game, { kind: 'closeBakery' }), 63)
+    const html = bakeryPart(game)
+    expect(lines(html)).toContain(`Four acheté${S}: déjà à vous`)
+    expect(html).toContain(
+      '<button type="button" class="button" disabled="">Ouvrir · four loué</button><button type="button" class="button">Ouvrir · four acheté</button>',
+    )
+  })
+
+  it('says the croissants are bought while no bakery runs to make them', () => {
+    const html = bakeryPart(
+      applyDecision(START, { kind: 'croissantSource', source: 'fabriquer' }),
+    )
+    expect(html).toContain('aria-pressed="true">Fabriquer</button>')
+    expect(lines(html)).toContain(
+      'Sans fournil ouvert, les croissants sont achetés.',
+    )
+  })
+})
+
 describe('NumberFieldView', () => {
   it('shows what is wrong, tied to the field, and announces it', () => {
     const html = renderToStaticMarkup(
@@ -388,6 +538,12 @@ describe('ManagePanel', () => {
     expect(renderToStaticMarkup(<ManagePanel />)).toMatch(
       /^<dialog class="panel manage" aria-labelledby="manage-title"><div class="panel__content">.*<\/dialog>$/,
     )
+  })
+
+  it('shows the bakery planned for the next morning', () => {
+    gameStore.getState().decide({ kind: 'openBakery', oven: 'louer' })
+    const html = renderToStaticMarkup(<ManagePanel />)
+    expect(html).toContain(`<p>Demain${S}: ouvert · four loué</p>`)
   })
 
   it('shows the decisions waiting for the next morning', () => {

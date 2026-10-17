@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
+import { useMemo, useState } from 'react'
 import { decisionKindSchema, type DecisionKind } from '../content/schema.ts'
 import { isLocked } from '../engine/challenge.ts'
 import { CUSTOMERS, DEFIS, FOOD_TRUCK } from '../engine/day.ts'
 import { latestDecisions, type DecisionChange } from '../engine/decisions.ts'
 import { PRODUCTS } from '../engine/inventory.ts'
 import type { DaySummary, Decisions, GameState } from '../engine/types.ts'
+import { bakeryBoard, type BakeryBoard } from './bakeryBoard.ts'
+import { BakerySection } from './BakerySection.tsx'
 import {
   PRICE_STEP_TEXT,
   RESTOCK_LABELS,
@@ -18,6 +19,7 @@ import {
   stepPrice,
 } from './decisionInput.ts'
 import { lockReason } from './defis.ts'
+import { useFieldDialog } from './fieldDialog.ts'
 import { formatAmount } from './formatMoney.ts'
 import { NumberField } from './NumberField.tsx'
 import { segmentFacts, type SegmentFacts } from './segmentFacts.ts'
@@ -71,19 +73,23 @@ interface ManagePanelViewProps {
   lastDay: DaySummary | null
   /** The kinds of decision the Défi played locks; none outside a Défi. */
   locked: readonly DecisionKind[]
+  /** The « Fournil » section. */
+  bakery: BakeryBoard
   onChange: OnChange
   onClose: () => void
 }
 
 /**
  * What the player runs the truck with: prices, orders, days open, their pay
- * and marketing, beside yesterday's facts by segment. The decisions a Défi
- * locks are disabled, with the reason under their section's title.
+ * and marketing, beside yesterday's facts by segment, then the bakery. The
+ * decisions a Défi locks are disabled, with the reason under their
+ * section's title.
  */
 export function ManagePanelView({
   decisions,
   lastDay,
   locked,
+  bakery,
   onChange,
   onClose,
 }: ManagePanelViewProps) {
@@ -147,6 +153,7 @@ export function ManagePanelView({
             onChange={onChange}
           />
         </section>
+        <BakerySection board={bakery} onChange={onChange} />
       </div>
     </div>
   )
@@ -398,65 +405,34 @@ function lockedKinds(game: GameState): DecisionKind[] {
 }
 
 /**
- * The panel wired to the app store, in a modal dialog: the page behind it
- * is out of reach and Escape closes it. Fermer keeps what was typed, after
- * any invalid text is fixed; Escape drops what is still being typed. The
- * changes already made stay either way.
+ * The panel wired to the app store, in a modal dialog (see
+ * `useFieldDialog`): the page behind it is out of reach and Escape closes
+ * it. Fermer keeps what was typed, after any invalid text is fixed; Escape
+ * drops what is still being typed. The changes already made stay either
+ * way.
  */
 export default function ManagePanel() {
   const decisions = useGame((state) => latestDecisions(state.game))
   const game = useGame((state) => state.game)
   const lastDay = useGame((state) => state.game.lastDay)
+  const bakery = useMemo(() => bakeryBoard(game), [game])
   const decide = useGame((state) => state.decide)
   const closePanel = useGame((state) => state.closePanel)
-  const dialogRef = useRef<HTMLDialogElement>(null)
-  // Set as Escape starts closing the dialog. The browser then moves the
-  // focus back to the opener, and the field losing it would commit its
-  // draft before React re-renders, so this is a ref, read at once.
-  const cancelled = useRef(false)
-
-  useEffect(() => {
-    const dialog = dialogRef.current
-    // StrictMode runs this twice; the second time, the dialog is open.
-    if (dialog !== null && !dialog.open) dialog.showModal()
-  }, [])
-
-  const onChange = (change: DecisionChange) => {
-    if (!cancelled.current) decide(change)
-  }
-
-  const close = () => {
-    const dialog = dialogRef.current
-    if (dialog === null) return
-    // The field being typed in commits as it loses the focus, and shows its
-    // message now if its text is invalid. Any such field keeps the panel
-    // open and gets the focus back.
-    const active = document.activeElement
-    if (active instanceof HTMLElement && dialog.contains(active)) {
-      flushSync(() => active.blur())
-    }
-    const invalid = dialog.querySelector<HTMLElement>('[aria-invalid="true"]')
-    if (invalid !== null) {
-      invalid.focus()
-      return
-    }
-    dialog.close()
-  }
+  const { dialogRef, onChange, close, onCancel } = useFieldDialog(decide)
 
   return (
     <dialog
       ref={dialogRef}
       className="panel manage"
       aria-labelledby={TITLE_ID}
-      onCancel={() => {
-        cancelled.current = true
-      }}
+      onCancel={onCancel}
       onClose={closePanel}
     >
       <ManagePanelView
         decisions={decisions}
         lastDay={lastDay}
         locked={lockedKinds(game)}
+        bakery={bakery}
         onChange={onChange}
         onClose={close}
       />

@@ -30,8 +30,8 @@ export const PAUSED = 0
 export const NORMAL_SPEED = 1
 
 /**
- * The panels: « Gérer le camion », « Vos finances », the Défi's and
- * « Réglages », which the top bar opens, the event card, which opens on its
+ * The panels: « Gérer le camion », « Qui fait quoi », « Vos finances », the
+ * Défi's and « Réglages », which the top bar opens, the event card, which opens on its
  * own when an event comes up, the « Bilan » of the week or the month, which
  * opens on its own on the morning it comes or from the card that slides
  * in, and the end of a game, which opens on its own once the game is over
@@ -40,6 +40,7 @@ export const NORMAL_SPEED = 1
  */
 export type Panel =
   | 'manage'
+  | 'staff'
   | 'finances'
   | 'defi'
   | 'settings'

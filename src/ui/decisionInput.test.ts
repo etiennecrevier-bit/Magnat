@@ -5,7 +5,9 @@ import { FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
 import { PRODUCTS } from '../engine/inventory.ts'
 import { cents } from '../engine/money.ts'
+import { STAFF } from '../engine/staff.ts'
 import {
+  bakeChange,
   daysOpenChange,
   marketingChange,
   ownerPayChange,
@@ -15,6 +17,7 @@ import {
   restockChange,
   restockFields,
   stepPrice,
+  wageChange,
   type FieldResult,
 } from './decisionInput.ts'
 import { formatAmount } from './formatMoney.ts'
@@ -251,6 +254,75 @@ describe('restockChange', () => {
   })
 })
 
+describe('bakeChange', () => {
+  const buyDaily = { kind: 'buyDaily', quantity: 70 } as const
+  const topUp = { kind: 'topUp', whenBelow: 40, upTo: 120 } as const
+
+  it('changes the daily batch, or one field of a top-up', () => {
+    expect(bakeChange('quantity', '0', buyDaily)).toEqual({
+      kind: 'change',
+      change: { kind: 'bake', rule: { kind: 'buyDaily', quantity: 0 } },
+    })
+    expect(bakeChange('upTo', '300', topUp)).toEqual({
+      kind: 'change',
+      change: {
+        kind: 'bake',
+        rule: { kind: 'topUp', whenBelow: 40, upTo: 300 },
+      },
+    })
+    expect(bakeChange('quantity', '70', buyDaily)).toEqual({
+      kind: 'unchanged',
+    })
+  })
+
+  it.each([
+    ['', "Entrez un nombre entier d'unités."],
+    ['-1', "Entrez un nombre entier d'unités."],
+    ['301', `La quantité doit être entre 0 et 300${S}unités.`],
+  ])('turns down "%s" in French, within the capacity', (text, message) => {
+    expect(bakeChange('quantity', text, buyDaily)).toEqual({
+      kind: 'invalid',
+      message,
+    })
+  })
+
+  it("names the bake rule's own fields", () => {
+    expect(bakeChange('whenBelow', '121', topUp)).toEqual({
+      kind: 'invalid',
+      message: `«${S}Cuire sous${S}» ne peut pas dépasser «${S}Cuire jusqu'à${S}» (120${S}unités).`,
+    })
+  })
+})
+
+describe('wageChange', () => {
+  it('changes an hourly wage within the role', () => {
+    expect(wageChange('amelie', 'camion', '18,25', cents(1750))).toEqual({
+      kind: 'change',
+      change: { kind: 'setWage', candidate: 'amelie', hourlyWage: 1825 },
+    })
+    expect(wageChange('amelie', 'camion', '17,50 $', cents(1750))).toEqual({
+      kind: 'unchanged',
+    })
+  })
+
+  it.each([
+    ['dix', 'Entrez un montant en dollars, par exemple 3,25.'],
+    [
+      '15,99',
+      `Le salaire doit être entre 16,00${S}$ et 25,00${S}$ de l'heure.`,
+    ],
+    [
+      '25,01',
+      `Le salaire doit être entre 16,00${S}$ et 25,00${S}$ de l'heure.`,
+    ],
+  ])('turns down "%s" at the truck in French', (text, message) => {
+    expect(wageChange('amelie', 'camion', text, cents(1750))).toEqual({
+      kind: 'invalid',
+      message,
+    })
+  })
+})
+
 describe('restockFields', () => {
   it('lists a rule by its kind', () => {
     expect(restockFields({ kind: 'buyDaily', quantity: 70 })).toEqual([
@@ -356,6 +428,59 @@ describe('the panel and the engine agree', () => {
             expect(engineAccepts(result.change)).toBe(true)
           }
         }
+      }
+    },
+  )
+
+  it('on every bake field, from -5 to 400 units', () => {
+    for (const rule of [
+      START.bake,
+      { kind: 'topUp', whenBelow: 40, upTo: 120 } as const,
+    ]) {
+      const state = applyDecision(STATE, { kind: 'bake', rule })
+      for (const { field } of restockFields(rule)) {
+        for (let units = -5; units <= 400; units += 1) {
+          const result = bakeChange(field, String(units), rule)
+          const next =
+            rule.kind === 'buyDaily'
+              ? { kind: 'buyDaily' as const, quantity: units }
+              : { ...rule, [field]: units }
+          let engine = true
+          try {
+            applyDecision(state, { kind: 'bake', rule: next })
+          } catch (error) {
+            if (!(error instanceof RangeError)) throw error
+            engine = false
+          }
+          expect(accepted(result), `${field} ${units}`).toBe(engine)
+        }
+      }
+    }
+  })
+
+  it.each(Object.keys(STAFF.roles) as (keyof typeof STAFF.roles)[])(
+    'on every hourly wage of %s, in cents from 10,00 $ to 35,00 $',
+    (role) => {
+      const hired = applyDecision(STATE, {
+        kind: 'hire',
+        role,
+        candidate: 'amelie',
+      })
+      const current = STAFF.roles[role].hourlyWageCents.start
+      for (let wage = 1000; wage <= 3500; wage += 1) {
+        const result = wageChange('amelie', role, typed(wage), cents(current))
+        let engine = true
+        try {
+          applyDecision(hired, {
+            kind: 'setWage',
+            candidate: 'amelie',
+            hourlyWage: cents(wage),
+          })
+        } catch (error) {
+          if (!(error instanceof RangeError)) throw error
+          engine = false
+        }
+        expect(accepted(result), `${wage} cents`).toBe(engine)
       }
     },
   )

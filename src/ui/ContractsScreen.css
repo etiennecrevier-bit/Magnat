@@ -1,0 +1,31 @@
+/* One card per grocer, as the Journal des événements lays out its entries.
+   Text colours keep at least 4.5:1 against #f5f7fa. */
+.contracts__grocer {
+  max-width: 40rem;
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid #2b2622;
+  background: #f5f7fa;
+}
+
+.contracts__grocer h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.contracts__grocer p {
+  margin: 0;
+}
+
+.contracts__owner {
+  color: #52606d;
+}
+
+.contracts__owed {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.contracts__total {
+  margin: 1rem 0 0;
+}

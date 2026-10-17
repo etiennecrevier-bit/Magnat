@@ -10,7 +10,9 @@ import { cents, type Cents } from '../engine/money.ts'
 import { netWorth } from '../engine/netWorth.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
-import { balance } from '../finance/journal.ts'
+import { closedBakery } from '../engine/bakery.ts'
+import { balance, postEntry } from '../finance/journal.ts'
+import { LOW_BELOW_MONTHS, monthlyFixedCosts } from './cashLevel.ts'
 import { formatMoney } from './formatMoney.ts'
 import { gameStore, newChallenge, type GameStoreState } from './store.ts'
 import TopBar, { TopBarView } from './TopBar.tsx'
@@ -57,6 +59,7 @@ function render(
       speed={speed}
       onSpeedChange={() => {}}
       onManage={() => {}}
+      onStaff={() => {}}
       onFinances={() => {}}
       defiLabel={defiLabel}
       defiEnergy={defiEnergy}
@@ -135,9 +138,9 @@ describe('TopBarView', () => {
     )
   })
 
-  it('has buttons that open the Gérer le camion and Vos finances dialogs, before the speeds', () => {
+  it('has buttons that open the Gérer le camion, Qui fait quoi and Vos finances dialogs, before the speeds', () => {
     expect(render(0, 1)).toContain(
-      '<div class="top-bar__panels"><button type="button" class="top-bar__panel" aria-haspopup="dialog">Gérer le camion</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Vos finances</button></div><div class="top-bar__speeds"',
+      '<div class="top-bar__panels"><button type="button" class="top-bar__panel" aria-haspopup="dialog">Gérer le camion</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Qui fait quoi</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Vos finances</button></div><div class="top-bar__speeds"',
     )
   })
 
@@ -302,6 +305,67 @@ describe('TopBar', () => {
     const closed = renderToStaticMarkup(<TopBar />)
     expect(closed).not.toContain('<dialog')
     expect(closed).toContain('aria-label="Vitesse ×3" aria-pressed="true"')
+  })
+
+  it('shows « Qui fait quoi » only while it is open, paused', () => {
+    gameStore.getState().setSpeed(3)
+    gameStore.getState().openPanel('staff')
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toMatch(
+      /^<header class="top-bar">.*<\/header><dialog class="panel staff" aria-labelledby="staff-title">.*<\/dialog>$/,
+    )
+    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+      label: 'Pause',
+      pressed: 'true',
+    })
+
+    gameStore.getState().closePanel()
+    const closed = renderToStaticMarkup(<TopBar />)
+    expect(closed).not.toContain('<dialog')
+    expect(closed).toContain('aria-label="Vitesse ×3" aria-pressed="true"')
+  })
+
+  it("reads the encaisse against the bakery's rent and lease too", () => {
+    // The bakery open since day 1 with a leased oven, and Encaisse set, as
+    // a fixture, to the low threshold of the truck's fixed costs alone.
+    let game = applyDecision(createInitialState(1), {
+      kind: 'openBakery',
+      oven: 'louer',
+    })
+    game = tick(tick(game))
+    const truckOnly = monthlyFixedCosts(game.day, game.profile.difficulty)
+    const withBakery = monthlyFixedCosts(
+      game.day,
+      game.profile.difficulty,
+      0,
+      FOOD_TRUCK,
+      undefined,
+      game.bakery,
+    )
+    expect(withBakery).toBeGreaterThan(truckOnly)
+    const target = truckOnly * LOW_BELOW_MONTHS
+    const gap = target - balance(game.journal, '1000', { toDay: game.day })
+    game = {
+      ...game,
+      journal: postEntry(game.journal, {
+        day: game.day,
+        memo: 'Ajustement',
+        lines:
+          gap > 0
+            ? [
+                { account: '1000', debit: cents(gap), credit: cents(0) },
+                { account: '3000', debit: cents(0), credit: cents(gap) },
+              ]
+            : [
+                { account: '3000', debit: cents(-gap), credit: cents(0) },
+                { account: '1000', debit: cents(0), credit: cents(-gap) },
+              ],
+      }),
+    }
+    gameStore.getState().startGame(game)
+    expect(renderToStaticMarkup(<TopBar />)).toContain('cash-gauge--low')
+    gameStore.getState().startGame({ ...game, bakery: closedBakery() })
+    expect(renderToStaticMarkup(<TopBar />)).toContain('cash-gauge--healthy')
   })
 
   it('shows « Réglages » only while it is open, paused, then resumes at the speed before', () => {

@@ -12,9 +12,18 @@ function shipped() {
   // Each kind as a plain record; the tests leave `_note` alone.
   return structuredClone(messagesJson) as unknown as Record<
     string,
-    { from: string; lines: string[] } & Record<string, unknown>
+    { from?: string; lines: string[] } & Record<string, unknown>
   >
 }
+
+/** The kinds whose sender the game names: a grocer or an employee. */
+const NAMED_BY_GAME = [
+  'missedDelivery',
+  'contractEnded',
+  'contractBroken',
+  'hired',
+  'fired',
+] as const
 
 /** Every shipped line. */
 function allLines(): string[] {
@@ -25,10 +34,13 @@ function allLines(): string[] {
 const NO_BREAK_SPACE = ' '
 
 describe('messages.fr.json', () => {
-  it('loads, naming who each kind is from', () => {
+  it('loads, naming who each kind is from, but those the game names', () => {
     const messages = loadMessages()
     expect(messages.landlord.from).toBe('Votre propriétaire')
     expect(messages.exhausted.from).toBe('Vous')
+    for (const kind of NAMED_BY_GAME) {
+      expect(Object.keys(messages[kind]), kind).toEqual(['lines'])
+    }
   })
 
   it(`holds at least ${MIN_LINES_PER_KIND} lines of each kind`, () => {
@@ -101,6 +113,16 @@ describe('loadMessages', () => {
     const raw = shipped()
     raw.exhausted!.lines[3] = raw.landlord!.lines[0]!
     expect(() => loadMessages(raw)).toThrow(/twice/)
+  })
+
+  it('rejects a sender on a kind the game names, and none on the others', () => {
+    const named = shipped()
+    named.hired!.from = 'Amélie'
+    expect(() => loadMessages(named)).toThrow()
+
+    const unnamed = shipped()
+    delete unnamed.landlord!.from
+    expect(() => loadMessages(unnamed)).toThrow()
   })
 
   it('rejects an unknown key in a kind', () => {
