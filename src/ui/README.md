@@ -64,8 +64,8 @@ The engine runs « Le rêve » (#162, `src/engine/dream.ts`); the UI reads it an
 ## Aller à…
 
 The engine sends the owner into town (#164, `src/engine/places.ts`); the UI reads it and hands a trip to `applyDecision()`, which makes it that very morning.
-- **« Aller à… »**, a panel the top bar opens (`TripPanel.tsx`, `tripBoard.ts`), with a button after « Vos finances », hidden in a Défi: each place with what the owner does there and what it gives, « Trajet : 25 min · visite : 30 min » with the vehicle's minutes, « Départ 10 h · retour 11 h 20 » or « Toute la journée », and « Fermé pendant ce temps » when the truck opens today and no employee works at it. « Y aller » is enabled only when the engine takes the trip (`tripRefusal()`), the reason shown otherwise, such as « Mme Prudhomme vous a déjà reçu cette année »; the day's trip shows « Aujourd'hui » and « Annuler ».
-- **The top bar** shows « En route vers la Caisse », the place's `towards`, under the date on a day with a trip (`enRouteLine()`).
+- **« Aller à… »**, a panel the top bar opens (`TripPanel.tsx`, `tripBoard.ts`), with a button after « Vos finances », hidden in a Défi: each place with what the owner does there and what it gives, « Trajet : 25 min · visite : 30 min » with the vehicle's minutes, « Départ 10 h · retour 11 h 20 » or « Toute la journée », and « Fermé pendant ce temps » when the truck opens today and no employee works at it. « Y aller » is enabled only when the engine takes the trip (`tripRefusal()`), the reason shown otherwise, such as « Mme Prudhomme vous a déjà reçu cette année » or, for the permits office, « Rien à déposer pour l'instant »; the day's trip shows « Aujourd'hui » and « Annuler », disabled with « Déplacement obligatoire aujourd'hui » on the day a card booked, such as « Changer de coin de rue ». The event card shows no change line for a booked trip, as for a closed day.
+- **The top bar** shows « En route vers la Caisse », the place's `towards`, under the date on a day with a trip, chosen or booked (`enRouteLine()`).
 
 ## Starting and saving a game
 

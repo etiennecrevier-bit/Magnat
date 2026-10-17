@@ -355,7 +355,7 @@ export function playDay(
       `Day ${morning.day} cannot be played: the Défi ${challenge.id} is over`,
     )
   }
-  const started = startOfDay(morning, content, grocers)
+  const started = startOfDay(morning, content, grocers, places)
   const { day, decisions } = started
   const { dayOfMonth, weekday } = toCalendar(day)
   const { modifiers } = started.events

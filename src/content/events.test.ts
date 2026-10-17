@@ -817,6 +817,24 @@ describe('loadEventContent rejects', () => {
     }
   })
 
+  it('a trip for the morning the card is chosen, or to no place (#164)', () => {
+    rejects(
+      withEffects({ kind: 'trip', place: 'bureauPermis' }),
+      'a trip happens on a later day',
+    )
+    rejects(
+      withEffects({ kind: 'trip', place: 'banque', inDays: 1 }),
+      '→ at events[0].choices[0].outcomes[0].effects[0].place',
+    )
+    for (const timing of [{ inDays: 1 }, { onNextWeekday: 3 }]) {
+      const effect = { kind: 'trip', place: 'bureauPermis', ...timing }
+      expect(
+        loadEventContent(withEffects(effect)).events[0]?.choices[0]?.outcomes[0]
+          ?.effects,
+      ).toEqual([effect])
+    }
+  })
+
   it('a contract signed, or a grocer walking away, on a later day', () => {
     for (const effect of [
       { kind: 'contract', grocer: 'chezNormand' },

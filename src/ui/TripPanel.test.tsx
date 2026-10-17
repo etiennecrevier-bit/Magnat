@@ -2,7 +2,9 @@ import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
+import { EVENTS } from '../engine/day.ts'
 import type { DecisionChange } from '../engine/decisions.ts'
+import { resolveEvent } from '../engine/events.ts'
 import { goTo } from '../engine/places.ts'
 import type { GameState } from '../engine/types.ts'
 import { gameStore, type GameStoreState } from './store.ts'
@@ -96,6 +98,25 @@ describe('TripPanelView', () => {
     )
     expect(html).toContain(
       `<button type="button" class="button" aria-label="Annuler${S}: Le fournil">Annuler</button></li>`,
+    )
+  })
+
+  it('disables « Annuler » with the reason for a trip a card booked', () => {
+    const booked = tick(
+      resolveEvent(
+        {
+          ...TUESDAY,
+          events: {
+            ...TUESDAY.events,
+            pending: { event: 'conesOrange', followUp: false },
+          },
+        },
+        'changerDeCoin',
+        EVENTS,
+      ),
+    )
+    expect(render(booked)).toContain(
+      `<button type="button" class="button" aria-label="Annuler${S}: Le Bureau des permis et des formulaires" aria-describedby="trip-bureauPermis-refusal" disabled="">Annuler</button><p id="trip-bureauPermis-refusal" class="trip__refusal">Déplacement obligatoire aujourd&#x27;hui</p></li>`,
     )
   })
 

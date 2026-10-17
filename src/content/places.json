@@ -1,5 +1,5 @@
 {
-  "_note": "« Aller à… » (#164): the places in town the owner goes to, in the order the panel lists them. A trip is decided for the day under way, one a day. The owner leaves the truck at leavesAtMinute, walks walkMinutes there, stays visitMinutes and walks back; the best vehicle of « Le rêve » multiplies each walk by its travelTime factor, rounded to the minute. A wholeDay place takes the whole day, whatever the vehicle. While the owner is away the truck serves only if an employee works at it: customers who come meanwhile find it closed. Each trip takes energyCost energy on top of the day. Effects: loanAppointment brings Mme Prudhomme's appointment card (appointmentEvent in financing.json) the next morning, when she would lend; discount takes share off the unit cost of the next « Achat de marchandises » that buys anything, without stacking; none does nothing yet. Numbers to tune in P4-11.",
+  "_note": "« Aller à… » (#164): the places in town the owner goes to, in the order the panel lists them. A trip is decided for the day under way, one a day. The owner leaves the truck at leavesAtMinute, walks walkMinutes there, stays visitMinutes and walks back; the best vehicle of « Le rêve » multiplies each walk by its travelTime factor, rounded to the minute. A wholeDay place takes the whole day, whatever the vehicle. While the owner is away the truck serves only if an employee works at it: customers who come meanwhile find it closed. Each trip takes energyCost energy on top of the day. Effects: loanAppointment brings Mme Prudhomme's appointment card (appointmentEvent in financing.json) the next morning, when she would lend; discount takes share off the unit cost of the next « Achat de marchandises » that buys anything, without stacking; filing is where a card's choice sends the owner to file its forms, as « Changer de coin de rue » does, and nobody goes by hand; none does nothing yet. Numbers to tune in P4-11.",
   "leavesAtMinute": 600,
   "energyCost": 3,
   "places": [
@@ -27,7 +27,7 @@
       "towards": "le Bureau des permis",
       "does": "Déposer les formulaires",
       "wholeDay": true,
-      "effect": { "kind": "none" }
+      "effect": { "kind": "filing" }
     },
     {
       "id": "fournil",

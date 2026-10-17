@@ -52,7 +52,7 @@ import { cents } from './money.ts'
 import { netWorth, netWorthChange } from './netWorth.ts'
 import { PERCENTILES } from './percentiles.ts'
 import { LABELS } from './personal.ts'
-import { goTo, noTrips } from './places.ts'
+import { goTo, noTrips, wentTo } from './places.ts'
 import { PROFILE_CONTENT } from './profile.ts'
 import { SAVE_VERSION, deserialize, serialize } from './save.ts'
 import { STAFF } from './staff.ts'
@@ -287,8 +287,9 @@ function pocketCard(label: string, amount: number, firstDay = 1): EventContent {
 // energy, « Cadeau d'essai » in their pocket, a headline, and the street
 // changed: fewer walk-ins to day 15, more chic ones to day 3, less chocolat
 // to day 5 and no café to day 2, with what customers will pay raised on day
-// 2 alone and the truck closed on day 3, both queued, a contract signed with
-// Épicerie Chez Normand and Dépanneur 24/24 away to day 30.
+// 2 alone and the truck closed on day 3, both queued, as is a trip to the
+// fournil on day 3, a contract signed with Épicerie Chez Normand and
+// Dépanneur 24/24 away to day 30.
 const WAITING = withEvents(createInitialState(SEED))
 const CHOSEN = resolveEvent(WAITING, 'toutEssayer', ESSAI)
 const CHOSEN_SAVE = serialize(CHOSEN)
@@ -727,6 +728,7 @@ describe('serialize and deserialize', () => {
       [2, 'willingness'],
       [3, 'collectReceivable'],
       [3, 'closed'],
+      [3, 'trip'],
       [4, 'charge'],
     ])
     expect(
@@ -4946,7 +4948,7 @@ describe('the trips in town', () => {
   // FORTNIGHT is the morning of Monday, day 14, before it is played.
   const MILL = goTo(FORTNIGHT, 'meunerie')
   const DISCOUNT = tick(MILL)
-  const OFFICE = goTo(FORTNIGHT, 'bureauPermis')
+  const OFFICE = wentTo(FORTNIGHT, 'bureauPermis')
 
   it('give back the trip of the day, at its morning and its close, and a discount waiting', () => {
     expect(reloaded(MILL)).toStrictEqual(MILL)
@@ -4989,10 +4991,23 @@ describe('the trips in town', () => {
     ])
   })
 
-  it('rejects a trip, or a discount, in a Défi', () => {
-    const defi = startChallenge('travauxSaintDenis', SEED)
-    const reason = `the Défi ${defi.challenge?.id} has a trip in town`
-    expectInvalid(withValue('town.trip', 'fournil', serialize(defi)), [reason])
-    expectInvalid(withValue('town.discount', 0.05, serialize(defi)), [reason])
+  it('give back the trip a card booked in a Défi, and reject a discount there', () => {
+    const defi = startChallenge('payeDans60Jours', SEED, FOOD_TRUCK, DEFIS)
+    const moved = resolveEvent(
+      {
+        ...defi,
+        events: {
+          ...defi.events,
+          pending: { event: 'conesOrange', followUp: false },
+        },
+      },
+      'changerDeCoin',
+    )
+    const filing = playDay(tick(moved))
+    expect(filing.town.trip).toBe('bureauPermis')
+    expect(reloaded(filing)).toStrictEqual(filing)
+    expectInvalid(withValue('town.discount', 0.05, serialize(defi)), [
+      `the Défi ${defi.challenge?.id} has a discount waiting`,
+    ])
   })
 })

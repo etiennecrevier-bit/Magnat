@@ -534,7 +534,7 @@ describe('the changes to the street', () => {
     expect(lastClosed?.lastDay?.energy).toBe(100)
   })
 
-  it('conesOrange: « Changer de coin de rue » pays the permit and closes tomorrow only', () => {
+  it('conesOrange: « Changer de coin de rue » pays the permit and files it at the permits office tomorrow, the whole day (#164)', () => {
     const morning = firstMorning('conesOrange')
     const { day } = morning
     const chosen = choose(morning, 'conesOrange', 'changerDeCoin')
@@ -543,10 +543,19 @@ describe('the changes to the street', () => {
     ).toEqual([
       { day, debited: RENT_AND_PERMIT, credited: CASH, amount: 115_000 },
     ])
+    expect(chosen.events.delayed).toContainEqual({
+      day: day + 1,
+      event: 'conesOrange',
+      effect: { kind: 'trip', place: 'bureauPermis' },
+    })
     const days = playOut(chosen)
-    expect(daysWhen(days, day, day + 21, ({ closed }) => closed)).toEqual([
-      day + 1,
-    ])
+    // The street never closes the truck: with nobody else at it, the
+    // owner's day at the office does.
+    expect(daysWhen(days, day, day + 21, ({ closed }) => closed)).toEqual([])
+    const filed = days.find(({ lastDay }) => lastDay?.day === day + 1)
+    expect(filed?.decisions.daysOpen).toContain(toCalendar(day + 1).weekday)
+    expect(filed?.lastDay?.visits).toEqual([])
+    expect(filed?.lastDay?.revenue).toBe(0)
   })
 
   it('machineTousse: the tape that gives way stops the café for 4 days, 3 days later', () => {

@@ -243,6 +243,7 @@ export default function TopBar() {
   const bakery = useGame((state) => state.game.bakery)
   const dream = useGame((state) => state.game.dream)
   const town = useGame((state) => state.game.town)
+  const events = useGame((state) => state.game.events)
   const speed = useGame((state) => state.speed)
   const setSpeed = useGame((state) => state.setSpeed)
   const togglePause = useGame((state) => state.togglePause)
@@ -309,7 +310,7 @@ export default function TopBar() {
         onFinances={() => openPanel('finances')}
         onDream={challenge === null ? () => openPanel('dream') : null}
         onTrip={challenge === null ? () => openPanel('trip') : null}
-        enRoute={enRouteLine({ town })}
+        enRoute={enRouteLine({ day, events, town })}
         defiLabel={defiLabel}
         defiEnergy={defiEnergy}
         onDefi={() => openPanel('defi')}

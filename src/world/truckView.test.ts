@@ -441,14 +441,19 @@ describe('chosenModifiers', () => {
         pending: { event: 'conesOrange', followUp: false },
       },
     }
-    const moved = resolveEvent(waiting, 'changerDeCoin')
-    const kinds = (game: GameState) =>
-      chosenModifiers(game).map(({ change, choice }) => [change.kind, choice])
-    expect(kinds(moved)).toEqual([['walkIns', 'changerDeCoin']])
-    expect(kinds(tick(moved))).toEqual([
-      ['walkIns', 'changerDeCoin'],
-      ['closed', 'changerDeCoin'],
-    ])
+    // « Prendre son mal en patience » cuts the walk-ins for a week, then
+    // less for two more, a change it queues for a week later.
+    const waited = resolveEvent(waiting, 'patienter')
+    const changes = (game: GameState) =>
+      chosenModifiers(game).map(({ change, fromDay, choice }) => [
+        change.kind,
+        fromDay,
+        choice,
+      ])
+    expect(changes(waited)).toEqual([['walkIns', tuesday.day, 'patienter']])
+    let week = waited
+    for (let day = 0; day < 7; day += 1) week = tick(week)
+    expect(changes(week)).toEqual([['walkIns', tuesday.day + 7, 'patienter']])
   })
 
   it('takes the last choice of the card on its first day or before, and none for a Défi', () => {

@@ -3,6 +3,7 @@ import type {
   FinancingContent,
   FoodTruckContent,
   GrocerContent,
+  PlacesContent,
   TimedEventEffect,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
@@ -25,6 +26,7 @@ import { FINANCING, sellShares, takeEmergencyLoan } from './financing.ts'
 import { takeFifo } from './inventory.ts'
 import { cents, mulInt, type Cents } from './money.ts'
 import { addMovement } from './personal.ts'
+import { PLACES, wentTo } from './places.ts'
 import { next } from './rng.ts'
 import type { Day, GameState, Receivable, StreetModifier } from './types.ts'
 
@@ -133,6 +135,8 @@ export function untimed(effect: TimedEventEffect): EventEffect {
  *   rules (see `takeEmergencyLoan`).
  * - `shareSale`: the shares sold, while `financing` leaves a round (see
  *   `sellShares`).
+ * - `trip`: the owner goes to the place of `places` that day, in place of
+ *   any trip chosen before (see `wentTo`). No draw.
  */
 export function applyEffect(
   state: GameState,
@@ -141,6 +145,7 @@ export function applyEffect(
   event: string,
   grocers: GrocerContent = GROCERS,
   financing: FinancingContent = FINANCING,
+  places: PlacesContent = PLACES,
 ): GameState {
   const { day } = state
   switch (effect.kind) {
@@ -304,13 +309,15 @@ export function applyEffect(
       return takeEmergencyLoan(state, effect, content, financing)
     case 'shareSale':
       return sellShares(state, effect, financing)
+    case 'trip':
+      return wentTo(state, effect.place, places)
   }
 }
 
 /**
  * The start of business day `state.day`, before the restock: first the
  * delayed effects due that day, in order (see `applyEffect`, with
- * `grocers`), then each receivable due, collected in full in its own
+ * `grocers` and `places`), then each receivable due, collected in full in its own
  * « Encaissement » entry, Dr 1000 Encaisse / Cr 1100 Comptes clients.
  * Returns a new state; never mutates `state`.
  */
@@ -318,6 +325,7 @@ export function startOfDay(
   state: GameState,
   content: FoodTruckContent,
   grocers: GrocerContent = GROCERS,
+  places: PlacesContent = PLACES,
 ): GameState {
   const { day } = state
   const { delayed } = state.events
@@ -329,7 +337,15 @@ export function startOfDay(
       events: { ...state.events, delayed: delayed.slice(due) },
     }
     for (const { event, effect } of delayed.slice(0, due)) {
-      started = applyEffect(started, effect, content, event, grocers)
+      started = applyEffect(
+        started,
+        effect,
+        content,
+        event,
+        grocers,
+        undefined,
+        places,
+      )
     }
   }
 

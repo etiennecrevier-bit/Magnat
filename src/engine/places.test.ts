@@ -39,13 +39,16 @@ import {
   PLACES,
   awayFromCounter,
   discountAtClose,
+  bookedTrip,
   goTo,
   loanAppointment,
   noTrips,
   placeOf,
   takesTheDay,
+  todaysTrip,
   tripRefusal,
   tripTime,
+  wentTo,
 } from './places.ts'
 import { deserialize, serialize } from './save.ts'
 import type { DreamState, GameState, PerProduct, Visit } from './types.ts'
@@ -221,7 +224,7 @@ describe('tripTime', () => {
       from: 36_000,
       to: 42_600,
     })
-    expect(awayFromCounter(goTo(TUESDAY, 'bureauPermis'))).toBeNull()
+    expect(awayFromCounter(wentTo(TUESDAY, 'bureauPermis'))).toBeNull()
   })
 })
 
@@ -239,8 +242,14 @@ describe('goTo', () => {
     expect(goTo(fournil, null)).toEqual(TUESDAY)
   })
 
+  it('never sends the owner to the permits office by hand: only a card has forms to file there', () => {
+    expect(placeOf('bureauPermis').effect).toEqual({ kind: 'filing' })
+    expect(tripRefusal(TUESDAY, 'bureauPermis')).toBe('nothingToFile')
+    expect(() => goTo(TUESDAY, 'bureauPermis')).toThrow(/nothingToFile/)
+  })
+
   it('sends the owner away all day to the permits office, and back for another place or none', () => {
-    const office = goTo(TUESDAY, 'bureauPermis')
+    const office = wentTo(TUESDAY, 'bureauPermis')
     expect(takesTheDay('bureauPermis')).toBe(true)
     expect(office.ownerAway).toBe(true)
     expect(goTo(office, 'meunerie').ownerAway).toBe(false)
@@ -375,7 +384,7 @@ describe('a trip without an employee', () => {
   })
 
   it('ends with the night: the next morning has no trip and the owner in', () => {
-    const office = tick(goTo(TUESDAY, 'bureauPermis'))
+    const office = tick(wentTo(TUESDAY, 'bureauPermis'))
     expect(office.town.trip).toBeNull()
     expect(office.ownerAway).toBe(false)
     expect(tick(goTo(TUESDAY, 'fournil')).town).toEqual(noTrips())
@@ -403,7 +412,7 @@ describe('a trip with an employee at the truck', () => {
 
 describe('a trip that takes the whole day', () => {
   it('keeps the truck closed without an employee, the owner taking only the trip', () => {
-    const morning = goTo(TUESDAY, 'bureauPermis')
+    const morning = wentTo(TUESDAY, 'bureauPermis')
     const close = playDay(morning)
     expect(visitsOf(close)).toEqual([])
     expect(close.lastDay?.revenue).toBe(0)
@@ -413,7 +422,7 @@ describe('a trip that takes the whole day', () => {
   })
 
   it('opens the truck with an employee at it', () => {
-    const close = playDay(goTo(STAFFED_TUESDAY, 'bureauPermis'))
+    const close = playDay(wentTo(STAFFED_TUESDAY, 'bureauPermis'))
     expect(visitsOf(close).length).toBeGreaterThan(0)
     expect(close.lastDay?.revenue).toBeGreaterThan(0)
     expect(close.energy).toBe(STAFFED_TUESDAY.energy - PLACES.energyCost)
@@ -431,7 +440,7 @@ describe('a trip that takes the whole day', () => {
       while (morning.day < 7) morning = tick(morning)
       return morning
     }
-    const alone = playDay(goTo(monday(signed), 'bureauPermis'))
+    const alone = playDay(wentTo(monday(signed), 'bureauPermis'))
     expect(alone.lastDay?.deliveries).toEqual([])
     expect(alone.lastDay?.missed).toEqual([{ day: 7, grocer: 'chezNormand' }])
     const deliverer = deciding(signed, {
@@ -439,7 +448,7 @@ describe('a trip that takes the whole day', () => {
       role: 'livreur',
       candidate: 'kevin',
     })
-    const delivered = playDay(goTo(monday(deliverer), 'bureauPermis'))
+    const delivered = playDay(wentTo(monday(deliverer), 'bureauPermis'))
     expect(delivered.lastDay?.deliveries).toHaveLength(1)
     expect(delivered.lastDay?.missed).toEqual([])
   })
@@ -451,11 +460,14 @@ describe('a trip that takes the whole day', () => {
       AT_TRUCK,
     ]
     const alone = playDay(
-      goTo(tick(deciding(createInitialState(SEED), ...BAKING)), 'bureauPermis'),
+      wentTo(
+        tick(deciding(createInitialState(SEED), ...BAKING)),
+        'bureauPermis',
+      ),
     )
     expect(alone.lastDay?.sold.croissant).toBe(0)
     const baker = playDay(
-      goTo(
+      wentTo(
         tick(
           deciding(createInitialState(SEED), ...BAKING, {
             kind: 'hire',
@@ -467,6 +479,78 @@ describe('a trip that takes the whole day', () => {
       ),
     )
     expect(baker.lastDay?.sold.croissant).toBeGreaterThan(0)
+  })
+})
+
+describe('« Changer de coin de rue », filed at the permits office the next day', () => {
+  /** « Les cônes orange » chosen on the morning of `state`, a Tuesday. */
+  function moved(state: GameState): GameState {
+    return resolveEvent(
+      {
+        ...state,
+        events: {
+          ...state.events,
+          pending: { event: 'conesOrange', followUp: false },
+        },
+      },
+      'changerDeCoin',
+      EVENTS,
+    )
+  }
+
+  it('books Wednesday at the permits office, which the player can neither drop nor trade', () => {
+    const tuesday = moved(TUESDAY)
+    expect(bookedTrip(tuesday)).toBeNull()
+    expect(tripRefusal(tuesday, 'fournil')).toBeNull()
+    const wednesday = tick(tuesday)
+    expect(wednesday.events.delayed).toContainEqual({
+      day: 2,
+      event: 'conesOrange',
+      effect: { kind: 'trip', place: 'bureauPermis' },
+    })
+    expect(wednesday.town.trip).toBeNull()
+    expect(bookedTrip(wednesday)).toBe('bureauPermis')
+    expect(todaysTrip(wednesday)).toBe('bureauPermis')
+    for (const place of ['fournil', 'meunerie', 'bureauPermis'] as const) {
+      expect(tripRefusal(wednesday, place)).toBe('booked')
+      expect(() => goTo(wednesday, place)).toThrow(/booked/)
+    }
+    expect(() => goTo(wednesday, null)).toThrow(/booked/)
+    // The truck is no longer closed by the street.
+    const close = playDay(wednesday)
+    expect(close.lastDay?.modifiers.map(({ change }) => change.kind)).toEqual([
+      'walkIns',
+    ])
+    expect(close.town.trip).toBe('bureauPermis')
+    expect(close.ownerAway).toBe(true)
+    const thursday = tick(wednesday)
+    expect(todaysTrip(thursday)).toBeNull()
+    expect(thursday.ownerAway).toBe(false)
+  })
+
+  it('keeps the truck closed that day without an employee, the owner taking only the trip', () => {
+    const wednesday = tick(moved(TUESDAY))
+    const close = playDay(wednesday)
+    expect(visitsOf(close)).toEqual([])
+    expect(close.lastDay?.revenue).toBe(0)
+    expect(close.energy).toBe(wednesday.energy - PLACES.energyCost)
+    expect(close.weekSoFar.days.at(-1)).toMatchObject({ day: 2, open: false })
+  })
+
+  it('opens the truck that day with an employee at it', () => {
+    const wednesday = tick(moved(STAFFED_TUESDAY))
+    const close = playDay(wednesday)
+    expect(visitsOf(close).length).toBeGreaterThan(0)
+    expect(close.lastDay?.revenue).toBeGreaterThan(0)
+    expect(close.energy).toBe(wednesday.energy - PLACES.energyCost)
+    expect(close.weekSoFar.days.at(-1)).toMatchObject({ day: 2, open: true })
+  })
+
+  it('keeps the booked trip through a save', () => {
+    const wednesday = tick(moved(TUESDAY))
+    expect(deserialize(serialize(wednesday))).toStrictEqual(wednesday)
+    const close = playDay(wednesday)
+    expect(deserialize(serialize(close))).toStrictEqual(close)
   })
 })
 

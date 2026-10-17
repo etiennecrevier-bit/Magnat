@@ -2873,7 +2873,8 @@ function checkFinancing(
 
 /**
  * What the trips in town could be at the save's day, against `places`: no
- * trip nor discount in a Défi; no trip on a morning after the game ended;
+ * discount in a Défi, whose trips only a card's choice books; no trip on a
+ * morning after the game ended;
  * the owner away all day on a trip that takes the whole day (see
  * `ownerAway`); and a discount of 0 or the share of a place of `places`
  * whose effect is a discount.
@@ -2881,8 +2882,8 @@ function checkFinancing(
 function checkTown(save: Save, places: PlacesContent): void {
   const { day, lastDay, challenge, ended, ownerAway } = save
   const { trip, discount } = save.town
-  if (challenge !== null && (trip !== null || discount !== 0)) {
-    invalid(`the Défi ${challenge.id} has a trip in town`)
+  if (challenge !== null && discount !== 0) {
+    invalid(`the Défi ${challenge.id} has a discount waiting`)
   }
   if (ended !== null && lastDay?.day !== day && trip !== null) {
     invalid(`the game ended on day ${ended.day}, yet trip is ${trip}`)

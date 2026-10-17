@@ -112,16 +112,50 @@ export function awayFromCounter(
 }
 
 /**
+ * The trip a card's choice booked for the morning of `state.day`, which
+ * the start of the day makes (see `startOfDay`): the place of the first
+ * delayed `trip` effect due by then; null when none is.
+ */
+export function bookedTrip(
+  state: Pick<GameState, 'day' | 'events'>,
+): PlaceId | null {
+  const booked = state.events.delayed.find(
+    ({ day, effect }) => day <= state.day && effect.kind === 'trip',
+  )
+  return booked?.effect.kind === 'trip' ? booked.effect.place : null
+}
+
+/**
+ * The trip of business day `state.day`: the one the player chose, or else
+ * the one a card booked for it (see `bookedTrip`); null when the owner
+ * stays at the truck.
+ */
+export function todaysTrip(
+  state: Pick<GameState, 'day' | 'events' | 'town'>,
+): PlaceId | null {
+  return state.town.trip ?? bookedTrip(state)
+}
+
+/**
  * Why the owner cannot go to `id` on the morning of `state.day`, or null
  * when they can: `defi` in a Défi, `ended` once the game has ended,
- * `played` once the day is played, and, for a place whose effect is the
- * lender's appointment, why she would not lend the next morning, on the
- * terms of `events`' card, as the books stand now (see `lendingRefusal`):
- * `came`, `mayNotLend` or `noNeed`, which `events` without her card gives
- * too.
+ * `played` once the day is played, `booked` when a card's choice booked
+ * the day's trip (see `bookedTrip`), `nothingToFile` for a place whose
+ * effect is `filing`, where only a card sends the owner, and, for a place
+ * whose effect is the lender's appointment, why she would not lend the
+ * next morning, on the terms of `events`' card, as the books stand now
+ * (see `lendingRefusal`): `came`, `mayNotLend` or `noNeed`, which `events`
+ * without her card gives too.
  */
 export type TripRefusal =
-  'defi' | 'ended' | 'played' | 'came' | 'mayNotLend' | 'noNeed'
+  | 'defi'
+  | 'ended'
+  | 'played'
+  | 'booked'
+  | 'nothingToFile'
+  | 'came'
+  | 'mayNotLend'
+  | 'noNeed'
 
 /** See `TripRefusal`. Throws a RangeError for an id that is no place. */
 export function tripRefusal(
@@ -133,9 +167,9 @@ export function tripRefusal(
   foodTruck: FoodTruckContent = FOOD_TRUCK,
 ): TripRefusal | null {
   const place = placeOf(id, content)
-  if (state.challenge !== null) return 'defi'
-  if (state.ended !== null) return 'ended'
-  if (state.lastDay?.day === state.day) return 'played'
+  const staying = stayRefusal(state)
+  if (staying !== null) return staying
+  if (place.effect.kind === 'filing') return 'nothingToFile'
   if (place.effect.kind === 'loanAppointment') {
     const terms = appointmentLoan(events, financing)
     if (terms === null) return 'noNeed'
@@ -148,11 +182,9 @@ export function tripRefusal(
 /**
  * The morning of `state.day` with the owner going to `id`, or staying at
  * the truck when it is null, in place of any trip chosen before that
- * morning. A place that takes the whole day sends the owner away all day
- * (see `ownerAway`); leaving it for another, or for none, brings them
- * back. Throws a RangeError naming the reason when the owner cannot go
- * there (see `tripRefusal`), or cannot stay when the day is played, the
- * game ended, or in a Défi. Returns a new state; never mutates `state`.
+ * morning (see `wentTo`). Throws a RangeError naming the reason when the
+ * owner cannot go there (see `tripRefusal`), or cannot stay (see
+ * `stayRefusal`). Returns a new state; never mutates `state`.
  */
 export function goTo(
   state: GameState,
@@ -174,6 +206,22 @@ export function goTo(
       `Invalid decision: cannot go to ${String(id)}: ${refusal}`,
     )
   }
+  return wentTo(state, id, content)
+}
+
+/**
+ * `state` with the owner going to `id` on day `state.day`, or staying at
+ * the truck when it is null, in place of any trip before, whatever the
+ * rules: what `goTo` does once it allows it, and what a card's `trip`
+ * effect does. A place that takes the whole day sends the owner away all
+ * day (see `ownerAway`); leaving it for another, or for none, brings them
+ * back. Returns a new state; never mutates `state`.
+ */
+export function wentTo(
+  state: GameState,
+  id: PlaceId | null,
+  content: PlacesContent = PLACES,
+): GameState {
   const { trip } = state.town
   const wasAllDay = trip !== null && takesTheDay(trip, content)
   const allDay = id !== null && takesTheDay(id, content)
@@ -185,13 +233,16 @@ export function goTo(
 }
 
 /**
- * Why the owner cannot drop the day's trip: in a Défi, once the game ended
- * or once the day is played (see `TripRefusal`).
+ * Why the owner cannot stay at the truck, or change the day's trip, on
+ * the morning of `state.day`: in a Défi, once the game ended, once the day
+ * is played, or when a card's choice booked the day's trip (see
+ * `TripRefusal`); null when they can.
  */
-function stayRefusal(state: GameState): TripRefusal | null {
+export function stayRefusal(state: GameState): TripRefusal | null {
   if (state.challenge !== null) return 'defi'
   if (state.ended !== null) return 'ended'
   if (state.lastDay?.day === state.day) return 'played'
+  if (bookedTrip(state) !== null) return 'booked'
   return null
 }
 

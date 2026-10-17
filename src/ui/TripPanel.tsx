@@ -49,7 +49,8 @@ export function TripPanelView({
 
 /**
  * A place: « Y aller », disabled with the reason when the owner cannot go,
- * or « Annuler » for the day's trip.
+ * or « Annuler » for the day's trip, disabled with the reason when a card
+ * booked it.
  */
 export function PlaceCard({
   row,
@@ -59,7 +60,9 @@ export function PlaceCard({
   onChange: (change: DecisionChange) => void
 }) {
   const { id, name, does, gives, time, schedule, closesTruck, chosen } = row
+  const { refusal } = row
   const refusalId = `trip-${id}-refusal`
+  const describedBy = refusal === null ? undefined : refusalId
   return (
     <li className={chosen ? 'trip__place trip__place--chosen' : 'trip__place'}>
       <h3>{name}</h3>
@@ -74,6 +77,8 @@ export function PlaceCard({
           type="button"
           className="button"
           aria-label={`Annuler${COLON} ${name}`}
+          aria-describedby={describedBy}
+          disabled={refusal !== null}
           onClick={() => onChange({ kind: 'goTo', place: null })}
         >
           Annuler
@@ -83,16 +88,16 @@ export function PlaceCard({
           type="button"
           className="button button--primary"
           aria-label={`Y aller${COLON} ${name}`}
-          aria-describedby={row.refusal === null ? undefined : refusalId}
-          disabled={row.refusal !== null}
+          aria-describedby={describedBy}
+          disabled={refusal !== null}
           onClick={() => onChange({ kind: 'goTo', place: id })}
         >
           Y aller
         </button>
       )}
-      {row.refusal !== null && !chosen && (
+      {refusal !== null && (
         <p id={refusalId} className="trip__refusal">
-          {row.refusal}
+          {refusal}
         </p>
       )}
     </li>

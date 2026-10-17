@@ -12,7 +12,7 @@ import { applyEffect } from '../engine/effects.ts'
 import { resolveEvent } from '../engine/events.ts'
 import { FINANCING } from '../engine/financing.ts'
 import { cents } from '../engine/money.ts'
-import { goTo } from '../engine/places.ts'
+import { goTo, wentTo } from '../engine/places.ts'
 import type { GameState } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
@@ -104,7 +104,7 @@ describe('tripBoard', () => {
           schedule: null,
           closesTruck: true,
           chosen: false,
-          refusal: null,
+          refusal: "Rien à déposer pour l'instant",
         },
         {
           id: 'fournil',
@@ -214,6 +214,37 @@ describe('tripBoard', () => {
   })
 })
 
+describe('a trip a card booked', () => {
+  /** The Wednesday after « Changer de coin de rue » was chosen on Tuesday. */
+  const BOOKED = tick(
+    resolveEvent(
+      {
+        ...TUESDAY,
+        events: {
+          ...TUESDAY.events,
+          pending: { event: 'conesOrange', followUp: false },
+        },
+      },
+      'changerDeCoin',
+      EVENTS,
+    ),
+  )
+
+  it("shows as the day's trip, which the player can neither drop nor trade", () => {
+    const board = tripBoard(BOOKED)
+    expect(board.trip).toBe('bureauPermis')
+    expect(
+      board.rows.map(({ id, chosen, refusal }) => [id, chosen, refusal]),
+    ).toEqual([
+      ['caisse', false, "Déplacement obligatoire aujourd'hui"],
+      ['meunerie', false, "Déplacement obligatoire aujourd'hui"],
+      ['bureauPermis', true, "Déplacement obligatoire aujourd'hui"],
+      ['fournil', false, "Déplacement obligatoire aujourd'hui"],
+    ])
+    expect(enRouteLine(BOOKED)).toBe('En route vers le Bureau des permis')
+  })
+})
+
 describe('clockTime', () => {
   it.each([
     [600, `10${S}h`],
@@ -231,11 +262,11 @@ describe('enRouteLine', () => {
     expect(enRouteLine(goTo(TUESDAY, 'meunerie'))).toBe(
       'En route vers la meunerie',
     )
-    expect(enRouteLine(goTo(TUESDAY, 'bureauPermis'))).toBe(
+    expect(enRouteLine(wentTo(TUESDAY, 'bureauPermis'))).toBe(
       'En route vers le Bureau des permis',
     )
-    expect(enRouteLine({ town: { trip: 'caisse', discount: 0 } })).toBe(
-      'En route vers la Caisse',
-    )
+    expect(
+      enRouteLine({ ...TUESDAY, town: { trip: 'caisse', discount: 0 } }),
+    ).toBe('En route vers la Caisse')
   })
 })

@@ -152,7 +152,8 @@
                   "investor": "Investisseur d'essai",
                   "amountCents": 100000,
                   "share": 0.2
-                }
+                },
+                { "kind": "trip", "place": "fournil", "inDays": 2 }
               ]
             }
           ]
@@ -500,7 +501,7 @@
           "label": "Changer de coin de rue",
           "tags": [
             { "text": "Permis −{montant}", "effect": "permis" },
-            "Fermé demain",
+            "Demain au Bureau des permis",
             { "text": "Clients −{montant}", "effect": "clients" }
           ],
           "outcomes": [
@@ -515,7 +516,7 @@
                   "account": "6100",
                   "name": "permis"
                 },
-                { "kind": "closed", "days": 1, "inDays": 1 },
+                { "kind": "trip", "place": "bureauPermis", "inDays": 1 },
                 {
                   "kind": "walkIns",
                   "factor": 0.9,

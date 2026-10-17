@@ -92,6 +92,16 @@ export const grocerIdSchema = z.enum([
 
 export type GrocerId = z.infer<typeof grocerIdSchema>
 
+/** The places in town the owner goes to (#164), by id. */
+export const placeIdSchema = z.enum([
+  'caisse',
+  'meunerie',
+  'bureauPermis',
+  'fournil',
+])
+
+export type PlaceId = z.infer<typeof placeIdSchema>
+
 export type Avatar = z.infer<typeof avatarSchema>
 
 const productSchema = z.strictObject({
@@ -778,6 +788,11 @@ function effectSchemas<Extra extends z.core.$ZodShape>(extra: Extra) {
       share: z.number().gt(0).lt(1),
       ...extra,
     }),
+    /**
+     * Sends the owner to `place` for the day (#164), as « Aller à… » does,
+     * a trip the player cannot drop.
+     */
+    z.strictObject({ kind: z.literal('trip'), place: placeIdSchema, ...extra }),
   ] as const
 }
 
@@ -834,6 +849,15 @@ const timedEffectSchema = z
       (effect.kind !== 'emergencyLoan' && effect.kind !== 'shareSale') ||
       (effect.inDays === undefined && effect.onNextWeekday === undefined),
     { message: 'an emergency loan, or a share sale, happens now' },
+  )
+  // The morning a card is chosen, the player may already have sent the
+  // owner elsewhere: a card's trip is for a later day.
+  .refine(
+    (effect) =>
+      effect.kind !== 'trip' ||
+      effect.inDays !== undefined ||
+      effect.onNextWeekday !== undefined,
+    { message: 'a trip happens on a later day' },
   )
 
 export type TimedEventEffect = z.output<typeof timedEffectSchema>
@@ -1779,20 +1803,11 @@ export const dreamContentSchema = z
 
 export type DreamContent = z.output<typeof dreamContentSchema>
 
-/** The places in town the owner goes to (#164), by id. */
-export const placeIdSchema = z.enum([
-  'caisse',
-  'meunerie',
-  'bureauPermis',
-  'fournil',
-])
-
-export type PlaceId = z.infer<typeof placeIdSchema>
-
 /**
  * What going to a place does: brings the lender's appointment card the
  * next morning, takes `share` off the unit cost of the next restock that
- * buys anything, or nothing yet.
+ * buys anything, files what a card's choice asks, so only a card's `trip`
+ * sends the owner there, or nothing yet.
  */
 const placeEffectSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('loanAppointment') }),
@@ -1800,6 +1815,7 @@ const placeEffectSchema = z.discriminatedUnion('kind', [
     kind: z.literal('discount'),
     share: z.number().gt(0).lt(1),
   }),
+  z.strictObject({ kind: z.literal('filing') }),
   z.strictObject({ kind: z.literal('none') }),
 ])
 

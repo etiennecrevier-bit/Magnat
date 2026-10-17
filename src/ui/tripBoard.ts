@@ -6,6 +6,8 @@ import { isLoanOpen } from '../engine/financing.ts'
 import {
   PLACES,
   placeOf,
+  stayRefusal,
+  todaysTrip,
   tripRefusal,
   tripTime,
   type TripRefusal,
@@ -44,9 +46,12 @@ export interface PlaceRow {
    * today, and no employee works at it.
    */
   readonly closesTruck: boolean
-  /** Whether it is today's trip. */
+  /** Whether it is today's trip, chosen or booked by a card. */
   readonly chosen: boolean
-  /** Why the owner cannot go there today; null when they can. */
+  /**
+   * Why the owner cannot go there today, or, for today's trip, cannot
+   * stay at the truck instead; null when they can.
+   */
   readonly refusal: string | null
 }
 
@@ -54,7 +59,10 @@ export interface PlaceRow {
 export interface TripBoard {
   /** The places, in the content's order. */
   readonly rows: readonly PlaceRow[]
-  /** Today's trip; null when the owner stays at the truck. */
+  /**
+   * Today's trip, chosen or booked by a card (see `todaysTrip`); null when
+   * the owner stays at the truck.
+   */
   readonly trip: PlaceId | null
 }
 
@@ -63,11 +71,13 @@ export function tripBoard(game: GameState): TripBoard {
   const closesTruck =
     opensToday(game) &&
     !game.decisions.staff.some(({ role }) => role === 'camion')
+  const trip = todaysTrip(game)
   return {
-    trip: game.town.trip,
+    trip,
     rows: PLACES.places.map((place): PlaceRow => {
       const time = tripTime(place.id, game.dream)
-      const refusal = tripRefusal(game, place.id)
+      const chosen = trip === place.id
+      const refusal = chosen ? stayRefusal(game) : tripRefusal(game, place.id)
       return {
         id: place.id,
         name: place.name,
@@ -80,16 +90,21 @@ export function tripBoard(game: GameState): TripBoard {
           ? null
           : `Départ ${clockTime(time.leavesAtMinute)} · retour ${clockTime(time.backAtMinute)}`,
         closesTruck,
-        chosen: game.town.trip === place.id,
+        chosen,
         refusal: refusal === null ? null : refusalLine(game, refusal),
       }
     }),
   }
 }
 
-/** « En route vers la Caisse » while the day has a trip; null otherwise. */
-export function enRouteLine(game: Pick<GameState, 'town'>): string | null {
-  const { trip } = game.town
+/**
+ * « En route vers la Caisse » while the day has a trip, chosen or booked
+ * by a card (see `todaysTrip`); null otherwise.
+ */
+export function enRouteLine(
+  game: Pick<GameState, 'day' | 'events' | 'town'>,
+): string | null {
+  const trip = todaysTrip(game)
   return trip === null ? null : `En route vers ${placeOf(trip).towards}`
 }
 
@@ -123,6 +138,7 @@ function givesLine(effect: PlaceEffect): string | null {
       return 'Son offre de prêt arrive demain matin'
     case 'discount':
       return `−${Math.round(effect.share * 100)}${PERCENT} sur le prochain achat de marchandises`
+    case 'filing':
     case 'none':
       return null
   }
@@ -137,6 +153,10 @@ function refusalLine(game: GameState, refusal: TripRefusal): string {
       return 'La partie est terminée'
     case 'played':
       return 'La journée est jouée'
+    case 'booked':
+      return "Déplacement obligatoire aujourd'hui"
+    case 'nothingToFile':
+      return "Rien à déposer pour l'instant"
     case 'came':
       return 'Mme Prudhomme vous a déjà reçu cette année'
     case 'mayNotLend':
