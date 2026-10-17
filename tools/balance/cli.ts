@@ -15,14 +15,20 @@ import {
 } from '../sim/simulate.ts'
 import { TRUCK_STRATEGIES, type BakeryJob } from './bakery.ts'
 import { formatBakeryReport } from './bakeryReport.ts'
+import { CONTRACT_PLANS, type GrowthJob } from './growth.ts'
+import { GROWTH_MARKERS, formatGrowthSection } from './growthReport.ts'
 import {
-  defisSection,
+  DEFIS_MARKERS,
   formatDefiPercentileJson,
   formatDefisSection,
-  withDefisSection,
 } from './defisReport.ts'
 import { formatPercentileJson, formatPhase3Report } from './phase3.ts'
-import { formatReport, withHandWritten } from './report.ts'
+import {
+  formatReport,
+  sectionOf,
+  withHandWritten,
+  withSection,
+} from './report.ts'
 import {
   playAll,
   type DefisJob,
@@ -38,8 +44,10 @@ import {
 // plays each Défi, a few side by side, and writes their percentile table
 // and the Défis section of the phase-3 report; with `--bakery`, plays the
 // bakery against its twins at each difficulty and writes the phase-4
-// report. The time each job took goes to the console only, so the same
-// options always write the same files.
+// report; with `--growth`, plays the growth strategies at each difficulty
+// and writes their section of the phase-4 report. The time each job took
+// goes to the console only, so the same options always write the same
+// files.
 
 /** The grid of strategies, `docs/balance/phase-2.md`. */
 export interface GridArgs {
@@ -91,7 +99,19 @@ export interface BakeryArgs {
   readonly out: string
 }
 
-export type BalanceArgs = GridArgs | PercentileArgs | DefisArgs | BakeryArgs
+/** The growth strategies, `--growth`. */
+export interface GrowthArgs {
+  readonly mode: 'growth'
+  /** Seeds each difficulty and strategy plays. */
+  readonly games: number
+  /** Months each game plays. */
+  readonly months: number
+  /** Absolute path of the report its section goes in. */
+  readonly out: string
+}
+
+export type BalanceArgs =
+  GridArgs | PercentileArgs | DefisArgs | BakeryArgs | GrowthArgs
 
 function repoFile(path: string): string {
   return fileURLToPath(new URL(`../../${path}`, import.meta.url))
@@ -125,11 +145,14 @@ const BAKERY_DEFAULTS = {
   out: repoFile('docs/balance/phase-4.md'),
 }
 
+const GROWTH_DEFAULTS = BAKERY_DEFAULTS
+
 export const USAGE = [
   `Usage: npm run balance -- [--years <n>] [--games <n>] [--events ${EVENT_POLICIES.join('|')}] [--contracts ${CONTRACT_POLICIES.join('|')}] [--financing ${FINANCING_POLICIES.join('|')}] [--out <file>]`,
   '       npm run balance -- --percentiles [--years <n>] [--games <n>] [--out <file>] [--json <file>]',
   '       npm run balance -- --defis [--games <n>] [--search <n>] [--out <file>] [--json <file>]',
   '       npm run balance -- --bakery [--games <n>] [--months <n>] [--out <file>]',
+  '       npm run balance -- --growth [--games <n>] [--months <n>] [--out <file>]',
 ].join('\n')
 
 /**
@@ -143,13 +166,14 @@ export const USAGE = [
  * would); with it, `--json` (resolved the
  * same way), and other defaults. With `--defis`, `--games`, `--search` (a
  * whole number from 1), `--out` and `--json`, and defaults of their own.
- * With `--bakery`, `--games`, `--months` (a whole number from 1) and
- * `--out`, and defaults of their own. Throws on anything else, including
+ * With `--bakery` or `--growth`, `--games`, `--months` (a whole number
+ * from 1) and `--out`, and defaults of their own. Throws on anything else,
+ * including
  * positional arguments, `--events` with `--percentiles` or `--defis`, whose
  * owners always answer at random, `--contracts` or `--financing` with
  * either, `--years` or `--percentiles` with
  * `--defis`, `--search` without it, `--json` with neither, any other option
- * with `--bakery`, and `--months` without it.
+ * with `--bakery` or `--growth`, and `--months` without either.
  */
 export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
   const { values } = parseArgs({
@@ -158,6 +182,7 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
       percentiles: { type: 'boolean' },
       defis: { type: 'boolean' },
       bakery: { type: 'boolean' },
+      growth: { type: 'boolean' },
       years: { type: 'string' },
       months: { type: 'string' },
       search: { type: 'string' },
@@ -171,6 +196,30 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
     strict: true,
     allowPositionals: false,
   })
+  if (values.growth === true) {
+    for (const [option, value] of [
+      ['--percentiles', values.percentiles],
+      ['--defis', values.defis],
+      ['--bakery', values.bakery],
+      ['--years', values.years],
+      ['--search', values.search],
+      ['--events', values.events],
+      ['--contracts', values.contracts],
+      ['--financing', values.financing],
+      ['--json', values.json],
+    ] as const) {
+      if (value !== undefined) {
+        throw new RangeError(`${option} does not go with --growth`)
+      }
+    }
+    const defaults = GROWTH_DEFAULTS
+    return {
+      mode: 'growth',
+      games: wholeNumber('--games', values.games, defaults.games, 1),
+      months: wholeNumber('--months', values.months, defaults.months, 1),
+      out: resolve(values.out ?? defaults.out),
+    }
+  }
   if (values.bakery === true) {
     for (const [option, value] of [
       ['--percentiles', values.percentiles],
@@ -195,7 +244,7 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
     }
   }
   if (values.months !== undefined) {
-    throw new RangeError('--months goes only with --bakery')
+    throw new RangeError('--months goes only with --bakery or --growth')
   }
   if (values.defis === true) {
     for (const [option, value] of [
@@ -305,6 +354,9 @@ export async function main(argv: readonly string[]): Promise<number> {
       case 'bakery':
         await writeBakery(args, started)
         break
+      case 'growth':
+        await writeGrowth(args, started)
+        break
     }
     return 0
   } catch (error) {
@@ -366,7 +418,11 @@ async function writePercentiles(
     out,
     withHandWritten(
       previous,
-      withDefisSection(formatPhase3Report(run), defisSection(previous)),
+      withSection(
+        formatPhase3Report(run),
+        sectionOf(previous, DEFIS_MARKERS),
+        DEFIS_MARKERS,
+      ),
     ),
   )
   console.log(
@@ -395,7 +451,10 @@ async function writeDefis(
   const table = await formatDefiPercentileJson(run)
   mkdirSync(dirname(json), { recursive: true })
   writeFileSync(json, table)
-  writeFile(out, withDefisSection(readPrevious(out), formatDefisSection(run)))
+  writeFile(
+    out,
+    withSection(readPrevious(out), formatDefisSection(run), DEFIS_MARKERS),
+  )
   console.log(
     `Wrote ${json} and ${out} in ${seconds(performance.now() - started)}`,
   )
@@ -421,7 +480,49 @@ async function writeBakery(
       )
     },
   )
-  writeReport(out, formatBakeryReport({ games, months, runs }))
+  const previous = readPrevious(out)
+  writeFile(
+    out,
+    withHandWritten(
+      previous,
+      withSection(
+        formatBakeryReport({ games, months, runs }),
+        sectionOf(previous, GROWTH_MARKERS),
+        GROWTH_MARKERS,
+      ),
+    ),
+  )
+  console.log(`Wrote ${out} in ${seconds(performance.now() - started)}`)
+}
+
+async function writeGrowth(
+  { games, months, out }: GrowthArgs,
+  started: number,
+): Promise<void> {
+  const runs = await playAll(
+    difficultyIdSchema.options.flatMap((difficulty) =>
+      CONTRACT_PLANS.map((contracts): GrowthJob => ({
+        kind: 'growth',
+        difficulty,
+        contracts,
+        games,
+        months,
+      })),
+    ),
+    ({ difficulty, contracts, strategies }) => {
+      console.log(
+        `${DIFFICULTIES.difficulties[difficulty].name}, contracts ${contracts}: ${strategies.length} strategies × ${games} games in ${seconds(performance.now() - started)}`,
+      )
+    },
+  )
+  writeFile(
+    out,
+    withSection(
+      readPrevious(out),
+      formatGrowthSection({ games, months, runs }),
+      GROWTH_MARKERS,
+    ),
+  )
   console.log(`Wrote ${out} in ${seconds(performance.now() - started)}`)
 }
 

@@ -7,14 +7,16 @@ import type {
 } from '../sim/simulate.ts'
 import type { BakeryJob, BakeryRun } from './bakery.ts'
 import type { DefiRun } from './defis.ts'
+import type { GrowthJob, GrowthRun } from './growth.ts'
 import type { OwnersRun } from './owners.ts'
 import type { BalanceOptions, DifficultyRun } from './play.ts'
 import type { Strategy } from './strategies.ts'
 
-// Plays each difficulty of a run, each Défi, or each difficulty and truck
-// strategy of the bakery's run, on its own worker thread (worker.ts), a few
-// side by side. Each job plays the same games in the same order as
-// runBalance(), runOwners(), runDefi() or runBakery() would, so the run is
+// Plays each difficulty of a run, each Défi, each difficulty and truck
+// strategy of the bakery's run, or each difficulty and contract plan of the
+// growth run, on its own worker thread (worker.ts), a few side by side.
+// Each job plays the same games in the same order as runBalance(),
+// runOwners(), runDefi(), runBakery() or runGrowth() would, so the run is
 // the same.
 
 /** Worker threads at once at most: the machine is shared. */
@@ -52,7 +54,7 @@ export interface DefisJob {
   readonly search: number
 }
 
-export type WorkerJob = GridJob | OwnersJob | DefisJob | BakeryJob
+export type WorkerJob = GridJob | OwnersJob | DefisJob | BakeryJob | GrowthJob
 
 /** What a worker posts back for `Job`. */
 export type JobRun<Job extends WorkerJob> = Job extends DefisJob
@@ -61,11 +63,13 @@ export type JobRun<Job extends WorkerJob> = Job extends DefisJob
     ? OwnersRun
     : Job extends BakeryJob
       ? BakeryRun
-      : DifficultyRun
+      : Job extends GrowthJob
+        ? GrowthRun
+        : DifficultyRun
 
 /**
  * What `job` plays, for its error messages: a difficulty, a Défi, or a
- * difficulty and a truck strategy.
+ * difficulty and a truck strategy or a contract plan.
  */
 export function jobLabel(job: WorkerJob): string {
   switch (job.kind) {
@@ -73,6 +77,8 @@ export function jobLabel(job: WorkerJob): string {
       return job.defi
     case 'bakery':
       return `${job.difficulty} ${job.strategy}`
+    case 'growth':
+      return `${job.difficulty} contracts ${job.contracts}`
     default:
       return job.difficulty
   }
