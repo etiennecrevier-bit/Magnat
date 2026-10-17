@@ -17,7 +17,7 @@ import { NO_EVENTS } from '../../src/engine/events.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
 import { PERCENTILES } from '../../src/engine/percentiles.ts'
 import { STAFF, weeklyWage } from '../../src/engine/staff.ts'
-import type { GameState } from '../../src/engine/types.ts'
+import type { Day, GameState } from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import { balance } from '../../src/finance/journal.ts'
 import {
@@ -175,15 +175,22 @@ export const TRUCK_STRATEGIES: readonly TruckStrategy[] = [
  * The grocers' cards with no draw: only the renewals come, each the morning
  * after a contract's last delivery.
  */
-const RENEWALS_ONLY = {
+export const RENEWALS_ONLY = {
   ...grocerCards(EVENTS),
   pacing: { ...EVENTS.pacing, dailyChance: 0 },
 }
 
 /** One game's months, as the report reads them. */
 export interface BakeryGame {
-  /** Encaisse at the close of each month's last day, the first month's first. */
+  /**
+   * Encaisse at the close of each month's last day, the first month's
+   * first. After a bankruptcy, the months left repeat the last close's.
+   */
   readonly cashAtMonthEnds: readonly Cents[]
+  /** Days played, day 0 included. */
+  readonly daysPlayed: number
+  /** The day whose close ended the game in bankruptcy (#160); null if none. */
+  readonly endedDay: Day | null
   /** Days the truck opened. */
   readonly openDays: number
   /** Croissants sold. */
@@ -197,9 +204,10 @@ export interface BakeryGame {
 /** One price set and oven of a job: its games, seed 1 first. */
 export interface BakeryCell {
   readonly set: string
+  readonly prices: BakeryPrices
   readonly oven: OvenTerms
   readonly games: readonly BakeryGame[]
-  /** Each game's payback month against its twin (see `paybackMonth`). */
+  /** Each game's payback month against its twin (see `gamePayback`). */
   readonly paybacks: readonly (number | null)[]
 }
 
@@ -221,7 +229,10 @@ export interface BakeryRun {
   readonly months: number
   /** The twins, seed 1 first. */
   readonly twins: readonly BakeryGame[]
-  /** Each price set, then each oven, in the order of `PRICE_SETS` and `OVENS`. */
+  /**
+   * Each price set, then each oven, in the order of `priceSetsFor` and
+   * `OVENS`.
+   */
   readonly cells: readonly BakeryCell[]
 }
 
@@ -269,14 +280,50 @@ export function bakeryChanges(
 ): DecisionChange[] {
   return [
     ...truckChanges(strategy),
+    ...openingChanges(strategy.croissantsPerDay, oven),
+  ]
+}
+
+/**
+ * The changes that open the bakery with `oven`, make there the
+ * `croissantsPerDay` the truck buys each morning, and hire the baker who
+ * makes them.
+ */
+export function openingChanges(
+  croissantsPerDay: number,
+  oven: OvenTerms,
+): DecisionChange[] {
+  return [
     { kind: 'openBakery', oven },
     { kind: 'croissantSource', source: 'fabriquer' },
-    {
-      kind: 'bake',
-      rule: { kind: 'buyDaily', quantity: strategy.croissantsPerDay },
-    },
+    { kind: 'bake', rule: { kind: 'buyDaily', quantity: croissantsPerDay } },
     BAKER_HIRE,
   ]
+}
+
+/** The name of the price set `priceSetsFor` adds off the grid. */
+export const SHIPPED = 'shipped'
+
+/**
+ * The price sets a job at `difficulty` plays: `PRICE_SETS`, then, named
+ * `SHIPPED`, the prices `difficulties` gives that difficulty, when they
+ * are none of those.
+ */
+export function priceSetsFor(
+  difficulty: DifficultyId,
+  difficulties: DifficultyContent = DIFFICULTIES,
+): PriceSet[] {
+  const prices = difficulties.bakery[difficulty]
+  const onGrid = PRICE_SETS.some(({ prices: each }) => samePrices(each, prices))
+  return onGrid ? [...PRICE_SETS] : [...PRICE_SETS, { name: SHIPPED, prices }]
+}
+
+/** Whether `a` and `b` are the same prices. */
+export function samePrices(a: BakeryPrices, b: BakeryPrices): boolean {
+  return (
+    a.ingredientCostCents === b.ingredientCostCents &&
+    a.monthlyRentCents === b.monthlyRentCents
+  )
 }
 
 /** `difficulties` with the bakery at `prices` at every difficulty. */
@@ -330,10 +377,12 @@ export function playBakeryGame(
   let openDays = 0
   let croissantsSold = 0
   let energyAtOpenCloses = 0
+  let daysPlayed = 0
   for (let day = 0; day <= lastDay; day += 1) {
     if (state.ended === null) {
       const opens = state.decisions.daysOpen.includes(toCalendar(day).weekday)
       state = playMorning(state, events, choose, PERCENTILES, difficulties)
+      daysPlayed += 1
       if (opens) {
         openDays += 1
         energyAtOpenCloses += state.lastDay?.energy ?? 0
@@ -354,6 +403,8 @@ export function playBakeryGame(
   return {
     game: {
       cashAtMonthEnds,
+      daysPlayed,
+      endedDay: state.ended?.day ?? null,
       openDays,
       croissantsSold,
       croissantsMade,
@@ -388,8 +439,18 @@ export function paybackMonth(
 }
 
 /**
+ * The payback month of the bakery game `game` against its twin `twin` (see
+ * `paybackMonth`); null when either ended in bankruptcy, since the months
+ * after repeat its last close and compare nothing.
+ */
+export function gamePayback(game: BakeryGame, twin: BakeryGame): number | null {
+  if (game.endedDay !== null || twin.endedDay !== null) return null
+  return paybackMonth(game.cashAtMonthEnds, twin.cashAtMonthEnds)
+}
+
+/**
  * Plays `job`: seeds 1 to `games`, each first as the twin, then with the
- * bakery at each price set and oven, in order.
+ * bakery at each price set of `priceSetsFor` and oven, in order.
  */
 export function runBakery({
   difficulty,
@@ -410,7 +471,7 @@ export function runBakery({
         strategy.contracts,
       ).game,
   )
-  const cells = PRICE_SETS.flatMap(({ name: set, prices }) =>
+  const cells = priceSetsFor(difficulty).flatMap(({ name: set, prices }) =>
     OVENS.map((oven): BakeryCell => {
       const played = seeds.map(
         (seed) =>
@@ -425,14 +486,14 @@ export function runBakery({
       )
       return {
         set,
+        prices,
         oven,
         games: played,
-        paybacks: played.map((game, index) =>
-          paybackMonth(
-            game.cashAtMonthEnds,
-            twins[index]?.cashAtMonthEnds ?? [],
-          ),
-        ),
+        paybacks: played.map((game, index) => {
+          const twin = twins[index]
+          if (twin === undefined) throw new RangeError(`No twin for ${index}`)
+          return gamePayback(game, twin)
+        }),
       }
     }),
   )

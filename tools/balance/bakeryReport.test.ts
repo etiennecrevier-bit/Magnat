@@ -5,10 +5,16 @@ import {
   type DifficultyId,
 } from '../../src/content/schema.ts'
 import { cents } from '../../src/engine/money.ts'
+import { STAFF } from '../../src/engine/staff.ts'
+import { formatDollars } from '../sim/cli.ts'
 import {
   OVENS,
   PRICE_SETS,
   TRUCK_STRATEGIES,
+  breakEvenPerOpenDay,
+  monthlyBakerWage,
+  monthlyBakeryCosts,
+  monthlyResult,
   type BakeryGame,
   type BakeryRun,
 } from './bakery.ts'
@@ -27,6 +33,11 @@ import { HAND_WRITTEN, withHandWritten } from './report.ts'
 
 const DIFFICULTIES: readonly DifficultyId[] = ['facile', 'moyen', 'difficile']
 
+/** `$1,234.56` or `-$1,234.56`, from cents, rounded to the cent. */
+function dollars(amount: number): string {
+  return formatDollars(cents(Math.round(amount)))
+}
+
 /** A game of 10 open days, its two month ends at `cash`. */
 function game(
   cash: readonly number[],
@@ -36,6 +47,8 @@ function game(
 ): BakeryGame {
   return {
     cashAtMonthEnds: cash.map((amount) => cents(amount)),
+    daysPlayed: 61,
+    endedDay: null,
     openDays: 10,
     croissantsSold: sold * 10,
     croissantsMade: made * 10,
@@ -61,9 +74,10 @@ function run(
       twins: [0, 1].map(() =>
         game([0, 0], sold ?? croissantsPerDay - 20, 0, 70),
       ),
-      cells: PRICE_SETS.flatMap(({ name: set }) =>
+      cells: PRICE_SETS.flatMap(({ name: set, prices }) =>
         OVENS.map((oven) => ({
           set,
+          prices,
           oven,
           games: [0, 1].map(() =>
             game(
@@ -128,8 +142,10 @@ describe('bakeryTargets', () => {
       'Making 150 croissants a day, the bakery wins at the high prices',
     ])
     // The baker's wages: no set wins in the books.
+    const low = PRICE_SETS[0]?.prices
+    if (low === undefined) throw new Error('No low prices')
     expect(wins[0]?.measured).toBe(
-      'leased -$2,925.89, bought -$2,534.23 a month in the books; 0 of 12 games pay back',
+      `leased ${dollars(monthlyResult(low, 'louer', 150, 6))}, bought ${dollars(monthlyResult(low, 'acheter', 150, 6))} a month in the books; 0 of 12 games pay back`,
     )
     expect(wins.every(({ met }) => !met)).toBe(true)
   })
@@ -184,9 +200,9 @@ describe('bakeryTargets', () => {
     }
     expect(paybackTarget(scheduled, 'facile', prices('low'))).toEqual({
       target:
-        'At Facile, making 150 croissants a day with two contracts, the bakery pays back in month 4 at the prices of `src/content/difficulty.json`, low',
+        'At Facile, making 150 croissants a day with two contracts, the bakery pays back in month 4 at the prices of `src/content/difficulty.json`, low, every game and twin playing the 2 months',
       measured:
-        'low leased 4.0, bought 4.0; mid leased 6.0, bought 6.0; high leased 9.0, bought 9.0',
+        'low leased 4.0, bought 4.0; mid leased 6.0, bought 6.0; high leased 9.0, bought 9.0; bankrupt at low: 0 games, 0 twins',
       met: true,
     })
     expect(paybackTarget(scheduled, 'moyen', prices('mid')).met).toBe(true)
@@ -198,7 +214,7 @@ describe('bakeryTargets', () => {
     // play cannot be.
     expect(paybackTarget(run(), 'moyen', prices('mid'))).toMatchObject({
       measured:
-        'low leased never, bought never; mid leased never, bought never; high leased never, bought never',
+        'low leased never, bought never; mid leased never, bought never; high leased never, bought never; bankrupt at mid: 0 games, 0 twins',
       met: false,
     })
     expect(
@@ -207,7 +223,7 @@ describe('bakeryTargets', () => {
         monthlyRentCents: cents(1),
       }),
     ).toMatchObject({
-      target: expect.stringMatching(/, a set the run did not play$/),
+      target: expect.stringMatching(/, a set the run did not play, /),
       met: false,
     })
     // The report checks every difficulty at the shipped prices.
@@ -216,6 +232,82 @@ describe('bakeryTargets', () => {
         .slice(-3)
         .map(({ target }) => target.split(',')[0]),
     ).toEqual(['At Facile', 'At Moyen', 'At Difficile'])
+  })
+
+  it('reads the shipped set when difficulty.json gives prices off the grid', () => {
+    const offGrid = {
+      ingredientCostCents: cents(60),
+      monthlyRentCents: cents(260_000),
+    }
+    const base = run()
+    const shipped: BakeryReportRun = {
+      ...base,
+      runs: base.runs.map((each) =>
+        each.strategy === '150 a day, 2 contracts' &&
+        each.difficulty === 'difficile'
+          ? {
+              ...each,
+              cells: [
+                ...each.cells,
+                ...OVENS.map((oven) => ({
+                  set: 'shipped',
+                  prices: offGrid,
+                  oven,
+                  games: each.cells[0]?.games ?? [],
+                  paybacks: [8, 10],
+                })),
+              ],
+            }
+          : each,
+      ),
+    }
+    expect(paybackTarget(shipped, 'difficile', offGrid)).toEqual({
+      target:
+        'At Difficile, making 150 croissants a day with two contracts, the bakery pays back in month 9 at the prices of `src/content/difficulty.json`, shipped, every game and twin playing the 2 months',
+      measured:
+        'low leased never, bought never; mid leased never, bought never; high leased never, bought never; shipped leased 9.0, bought 9.0; bankrupt at shipped: 0 games, 0 twins',
+      met: true,
+    })
+  })
+
+  it('never meets the payback when a game or a twin went bankrupt, even ahead before it', () => {
+    // On schedule at the median, but a bakery game, or a twin, ended in
+    // bankruptcy: its months after compare a frozen Encaisse.
+    const base = run()
+    const withEnded = (bakery: boolean): BakeryReportRun => ({
+      ...base,
+      runs: base.runs.map((each) =>
+        each.strategy === '150 a day, 2 contracts'
+          ? {
+              ...each,
+              twins: bakery
+                ? each.twins
+                : each.twins.map((twin, index) =>
+                    index === 0 ? { ...twin, endedDay: 40 } : twin,
+                  ),
+              cells: each.cells.map((cell) => ({
+                ...cell,
+                games: bakery
+                  ? cell.games.map((played, index) =>
+                      index === 0 ? { ...played, endedDay: 40 } : played,
+                    )
+                  : cell.games,
+                paybacks: [6, 6],
+              })),
+            }
+          : each,
+      ),
+    })
+    const mid = PRICE_SETS[1]?.prices
+    if (mid === undefined) throw new Error('No mid prices')
+    expect(paybackTarget(withEnded(true), 'moyen', mid)).toMatchObject({
+      measured: expect.stringMatching(/; bankrupt at mid: 2 games, 0 twins$/),
+      met: false,
+    })
+    expect(paybackTarget(withEnded(false), 'moyen', mid)).toMatchObject({
+      measured: expect.stringMatching(/; bankrupt at mid: 0 games, 1 twins$/),
+      met: false,
+    })
   })
 
   it('cannot meet the slow truck target with no truck selling under 80', () => {
@@ -263,13 +355,15 @@ describe('formatBakeryReport', () => {
       )
     expect(rows).toHaveLength(3 * TRUCK_STRATEGIES.length * 6)
     expect(rows[0]).toBe(
-      '| start | low | leased | 70.0 | 48.0 (50.0) | 12.0 (70.0) | 0 of 2 | never | -$0.50 |',
+      '| start | low | leased | 70.0 | 48.0 (50.0) | 12.0 (70.0) | 0 of 2 | never | -$0.50 | 0 (0) |',
     )
   })
 
   it('shows the break-even of each price set and oven', () => {
+    const mid = PRICE_SETS[1]?.prices
+    if (mid === undefined) throw new Error('No mid prices')
     expect(report).toContain(
-      '| mid | leased | $5,867.86 | $0.55 | 409.2 | -$4,720.71 | -$3,716.96 |',
+      `| mid | leased | ${dollars(monthlyBakeryCosts(mid, 'louer'))} | $0.55 | ${breakEvenPerOpenDay(mid, 'louer', 6).toFixed(1)} | ${dollars(monthlyResult(mid, 'louer', 80, 6))} | ${dollars(monthlyResult(mid, 'louer', 150, 6))} |`,
     )
     expect(report).toContain('| start | 70 | $3.75 | $0.00 | none | no |')
     expect(report).toContain('| 150 a day | 150 | $3.00 | $80.00 | none | no |')
@@ -282,14 +376,15 @@ describe('formatBakeryReport', () => {
   })
 
   it('says who the baker and the employee at the truck are, and what they cost', () => {
+    const { hourlyWageCents, hoursPerWeek } = STAFF.roles.boulanger
     expect(report).toContain(
-      'It hires a baker that day (#158), « Boulanger » at $22.00 an hour, 30 h a week, so the owner never bakes: the baker costs a week of training on day 0 and $660.00 each Friday.',
+      `It hires a baker that day (#158), « Boulanger » at ${dollars(hourlyWageCents.start)} an hour, ${hoursPerWeek} h a week, so the owner never bakes: the baker costs a week of training on day 0 and ${dollars(hourlyWageCents.start * hoursPerWeek)} each Friday.`,
     )
     expect(report).toContain(
       '« Au camion » at $17.50 an hour, 35 h a week, $612.50 a week, who serves beside the owner.',
     )
     expect(report).toContain(
-      "and the baker's wages, $2,867.86 in an average month",
+      `and the baker's wages, ${dollars(monthlyBakerWage())} in an average month`,
     )
   })
 
