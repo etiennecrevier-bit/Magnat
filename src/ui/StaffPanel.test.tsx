@@ -117,12 +117,12 @@ describe('StaffPanelView', () => {
     )
   })
 
-  it('shows someone fired as leaving tomorrow, with nothing left to change', () => {
+  it('shows someone fired as leaving tomorrow, with what they do today and nothing left to change', () => {
     const html = render(
       decided(amelieAtWork(), { kind: 'fire', candidate: 'amelie' }),
     )
     expect(cards(html)[1]).toBe(
-      `Amélie Gagnon|Au camion · 612,50${S}$ par semaine|Part demain`,
+      `Amélie Gagnon|Au camion · 612,50${S}$ par semaine|Aujourd&#x27;hui${S}: Au camion · Part demain`,
     )
   })
 

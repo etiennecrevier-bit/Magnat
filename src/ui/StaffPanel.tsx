@@ -172,7 +172,9 @@ function MemberCard({
             {formatMoney(member.training ?? cents(0))}
           </>
         )}
-        {status === 'leavesTomorrow' && <>Part demain</>}
+        {status === 'leavesTomorrow' && (
+          <>Aujourd'hui&nbsp;: {tasksText(member.tasks)} · Part demain</>
+        )}
       </p>
       {status !== 'leavesTomorrow' && (
         <NumberField

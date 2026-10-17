@@ -188,16 +188,17 @@ describe('staffBoard', () => {
     })
   })
 
-  it('shows someone fired as leaving tomorrow, not yet a candidate again', () => {
+  it('shows someone fired as leaving tomorrow, still at work today, not yet a candidate again', () => {
+    // Day 1, a Tuesday: the truck opens.
     const working = tick(
       decided(START, { kind: 'hire', role: 'camion', candidate: 'amelie' }),
     )
-    const board = staffBoard(
-      decided(working, { kind: 'fire', candidate: 'amelie' }),
-    )
+    const fired = decided(working, { kind: 'fire', candidate: 'amelie' })
+    expect(todayWork(fired).opens).toBe(true)
+    const board = staffBoard(fired)
     expect(board.members[0]).toMatchObject({
       status: 'leavesTomorrow',
-      tasks: [],
+      tasks: ['truck'],
       fireCost: null,
     })
     expect(board.candidates.map(({ candidate }) => candidate)).not.toContain(

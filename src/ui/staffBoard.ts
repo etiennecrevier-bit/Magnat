@@ -129,7 +129,10 @@ export interface MemberRow {
   /** What that comes to a week. */
   readonly weeklyWage: Cents
   readonly status: MemberStatus
-  /** What they do today; none when they are not at work today. */
+  /**
+   * What they do today, leaving tomorrow or not; none for a hire who has
+   * not started.
+   */
   readonly tasks: readonly Task[]
   /**
    * What letting them go costs: their notice, at today's wage, for one at
@@ -209,7 +212,7 @@ export function staffBoard(
     hourlyWage: hire.hourlyWage,
     weeklyWage: weeklyWage(hire, content),
     status,
-    tasks: status === 'atWork' ? employeeTasks(hire.role, work) : [],
+    tasks: status === 'startsTomorrow' ? [] : employeeTasks(hire.role, work),
     fireCost,
     training:
       status === 'startsTomorrow'
