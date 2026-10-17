@@ -13,7 +13,7 @@ import {
   type SaveStorage,
   type StoredSave,
 } from './saves.ts'
-import { continueStoredGame } from './startMenu.ts'
+import { continueStoredGame, savedLine } from './startMenu.ts'
 import { createGameStore, newChallenge } from './store.ts'
 
 afterEach(() => {
@@ -155,5 +155,23 @@ describe('a Défi and the saved game', () => {
     hide()
     expect(store.getState().game.day).toBe(FIRST_OF_JUNE)
     expect(deserialize(items[SAVE_KEY]!)).toEqual(store.getState().game)
+  })
+})
+
+describe('savedLine', () => {
+  it('names the business and the morning it is on', () => {
+    expect(savedLine({ ...CONTINUED, day: 31 })).toBe(
+      'Continued, jeudi 1er juin, an 1',
+    )
+  })
+
+  it('names the day a game that went bankrupt did (#160)', () => {
+    expect(
+      savedLine({
+        ...CONTINUED,
+        day: 214,
+        ended: { reason: 'bankruptcy', day: 213 },
+      }),
+    ).toBe('Continued, faillite le 30 novembre, an 1')
   })
 })

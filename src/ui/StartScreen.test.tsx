@@ -112,6 +112,17 @@ describe('StartMenuView', () => {
     )
   })
 
+  it('names a saved game that went bankrupt with the day it did (#160)', () => {
+    const html = menu({
+      status: 'found',
+      game: { ...SAVED_GAME, ended: { reason: 'bankruptcy', day: 213 } },
+    })
+    expect(buttons(html)[0]).toEqual({ text: 'Continuer', primary: true })
+    expect(html).toContain(
+      'class="start-screen__saved">Chez Mimi, faillite le 30 novembre, an 1</p>',
+    )
+  })
+
   it('leaves the import and the visual effects to « Réglages »', () => {
     const html = menu({ status: 'found', game: SAVED_GAME })
     expect(html).not.toContain('Importer')

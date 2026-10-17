@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Ref } from 'react'
 import { useStore } from 'zustand'
+import BankruptcyEnd from './BankruptcyEnd.tsx'
 import DefiEnd from './DefiEnd.tsx'
 import { keepBestMedals } from './defis.ts'
 import EventLog from './EventLog.tsx'
@@ -111,7 +112,8 @@ export function GameScreensView({
 /**
  * The screens, opening on Aujourd'hui, with the La Presse-Citron ticker along
  * the bottom and the week's card sliding in above it. Once a Défi is over,
- * its end shows over them, whose « Retour au menu » calls `onMenu`. Every
+ * its end shows over them, and once a game went bankrupt, its « Faillite »,
+ * each with a « Retour au menu » that calls `onMenu`. Every
  * medal the game wins is kept in `settings`, a Défi won and then loaded
  * included, and so is whether the screens are folded, which R also toggles.
  * A game started in their place, such as one imported, gets new screens and
@@ -175,6 +177,7 @@ export default function GameScreens({
       <WeekSlideIn />
       <Ticker key={`ticker-${gamesStarted}`} />
       {panel === 'defiEnd' && <DefiEnd onMenu={onMenu} />}
+      {panel === 'bankruptcy' && <BankruptcyEnd onMenu={onMenu} />}
     </>
   )
 }

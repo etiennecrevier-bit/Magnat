@@ -1,6 +1,12 @@
 import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createInitialState, tick } from '../engine/clock.ts'
+import { FOOD_TRUCK } from '../engine/day.ts'
+import { applyDecision } from '../engine/decisions.ts'
+import { cents } from '../engine/money.ts'
+import { defaultProfile } from '../engine/profile.ts'
+import type { GameState } from '../engine/types.ts'
 import GameScreens, { GameScreensView, type Screen } from './GameScreens.tsx'
 import ScreensStrip from './ScreensStrip.tsx'
 import {
@@ -9,6 +15,22 @@ import {
   SETTINGS_KEY,
   type SettingsStorage,
 } from './settings.ts'
+import { gameStore, type GameStoreState } from './store.ts'
+
+// A static render reads a Zustand store's initial state, so the screens
+// read the app store's current state through this stand-in.
+vi.mock('./store.ts', async (importOriginal) => {
+  const store = await importOriginal<typeof import('./store.ts')>()
+  return {
+    ...store,
+    useGame: <T,>(selector: (state: GameStoreState) => T): T =>
+      selector(store.gameStore.getState()),
+  }
+})
+
+afterEach(() => {
+  gameStore.setState(gameStore.getInitialState(), true)
+})
 
 function render(screen: Screen, autosaveFailed = false, folded = false) {
   return renderToStaticMarkup(
@@ -221,6 +243,25 @@ describe('GameScreens', () => {
     expect(html.slice(render('today').length)).toMatch(
       /^<div class="week-slide-in" role="status"><\/div>(<aside class="ticker" aria-label="La Presse-Citron">.*<\/aside>)?$/,
     )
+  })
+
+  it('shows the « Faillite » over them once the game went bankrupt (#160)', () => {
+    // Seed 7 at Difficile, its owner paying themself 3 000 $ a week.
+    let game: GameState = applyDecision(
+      createInitialState(7, FOOD_TRUCK, {
+        ...defaultProfile(),
+        difficulty: 'difficile',
+      }),
+      { kind: 'ownerWeeklyPay', pay: cents(300_000) },
+    )
+    while (game.ended === null) game = tick(game)
+    gameStore.getState().startGame(game)
+    expect(gameStore.getState().panel).toBe('bankruptcy')
+    const html = renderToStaticMarkup(<GameScreens onMenu={() => {}} />)
+    expect(html).toMatch(
+      /<dialog class="panel bankruptcy-end" aria-labelledby="bankruptcy-title">.*<\/dialog>$/,
+    )
+    expect(html).not.toContain('defi-end')
   })
 
   it('passes on a failed autosave', () => {

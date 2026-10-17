@@ -311,6 +311,27 @@ describe('EventCard', () => {
     expect(choices(html)).toHaveLength(3)
   })
 
+  it('shows a notice, Mme Prudhomme’s letter, with its one choice and no tag (#160)', () => {
+    gameStore.getState().startGame(waiting('premierAvis'))
+    const html = renderToStaticMarkup(<EventCard />)
+    expect(html).toContain('>Premier avis</h2>')
+    expect(choices(html)).toEqual([
+      { shortcut: '1', key: '1', label: 'Compris', tags: [] },
+    ])
+  })
+
+  it('keeps the choice of a notice once it is made, as the card closes with no result to read (#160)', () => {
+    gameStore.getState().startGame(waiting('premierAvis'))
+    gameStore.getState().chooseEvent('compris')
+    const html = renderToStaticMarkup(<EventCard />)
+    expect(choices(html).map(({ label }) => label)).toEqual(['Compris'])
+    expect(html).not.toContain('event-card__result')
+    expect(gameStore.getState().game.events.history.at(-1)).toMatchObject({
+      event: 'premierAvis',
+      choice: 'compris',
+    })
+  })
+
   it('shows what the choice did once it is made', () => {
     // At Moyen, with the shipped scaling of 1.1: −110 $ + 220 $ − 20
     // croissants at 1,10 $ + 1 100 $ of shares sold now, −55 $ later.

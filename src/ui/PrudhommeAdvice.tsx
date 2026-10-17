@@ -7,12 +7,14 @@ const CLOSE_QUOTE = ' »'
 /**
  * « Le conseil de Mme Prudhomme »: the banker's line on a report, with her
  * portrait when it has one, and what it is on when that is not the whole
- * report. The weekly and the monthly reports show it under their facts.
+ * report. The weekly and the monthly reports show it under their facts;
+ * the « Faillite » screen, under another title.
  */
 export function PrudhommeAdvice({
   advice,
   portrait,
   about = null,
+  title = 'Le conseil de Mme Prudhomme',
 }: {
   advice: string
   /** The URL of her portrait; null shows none. */
@@ -22,12 +24,11 @@ export function PrudhommeAdvice({
    * numbers it uses; null shows nothing.
    */
   about?: string | null
+  /** What the card is called, over her line. */
+  title?: string
 }) {
   return (
-    <section
-      className="prudhomme-advice"
-      aria-label="Le conseil de Mme Prudhomme"
-    >
+    <section className="prudhomme-advice" aria-label={title}>
       {/* Low in a report, under its chart: it loads once scrolled to. */}
       {portrait !== null && (
         <img
@@ -40,7 +41,7 @@ export function PrudhommeAdvice({
         />
       )}
       <div>
-        <p className="prudhomme-advice__title">Le conseil de Mme Prudhomme</p>
+        <p className="prudhomme-advice__title">{title}</p>
         {about !== null && <p className="prudhomme-advice__about">{about}</p>}
         <p className="prudhomme-advice__text">
           {`${OPEN_QUOTE}${advice}${CLOSE_QUOTE}`}
