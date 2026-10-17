@@ -8,6 +8,7 @@ import {
   grocerIdSchema,
   medalSchema,
   ovenTermsSchema,
+  placeIdSchema,
   productIdSchema,
   rungIdSchema,
   segmentIdSchema,
@@ -23,6 +24,7 @@ import {
   type FinancingContent,
   type FoodTruckContent,
   type GrocerContent,
+  type PlacesContent,
   type StaffContent,
 } from '../content/schema.ts'
 import { isAccountCode, type AccountCode } from '../finance/accounts.ts'
@@ -104,6 +106,7 @@ import { PRODUCTS, inventoryValue } from './inventory.ts'
 import { cents, sub, sum } from './money.ts'
 import { netWorth } from './netWorth.ts'
 import { LABELS, isKept } from './personal.ts'
+import { PLACES, noTrips, takesTheDay } from './places.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
 import { STAFF } from './staff.ts'
@@ -118,6 +121,7 @@ import type {
   GameState,
   Hire,
   PersonalMovement,
+  TownState,
   VisitOutcome,
   WeekDay,
   WeekRecord,
@@ -133,7 +137,9 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 18 adds « Le
+ * change can no longer load (rule 8 in CLAUDE.md). Version 19 adds the
+ * owner's trips in town: a version 18 game still loads, with no trip and no
+ * discount waiting. Version 18 adds « Le
  * rêve »: a version 17 game still loads, with nothing bought and no «
  * Magnat » yet. Version 17 adds the
  * owner's net worth at the close of each week's Sunday: a version 16 game
@@ -166,9 +172,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 18
+export const SAVE_VERSION = 19
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const TOWNLESS_VERSION = 18
 const DREAMLESS_VERSION = 17
 const NETWORTHLESS_VERSION = 16
 const ENDLESS_VERSION = 15
@@ -590,6 +597,13 @@ const dreamSchema = z.strictObject({
   magnatOn: gameDay.nullable(),
 })
 
+// `checkTown()` checks the trip against the day and the discount against
+// the places.
+const townSchema = z.strictObject({
+  trip: placeIdSchema.nullable(),
+  discount: z.number().min(0).lt(1),
+})
+
 const saveSchema = z.strictObject({
   saveVersion: z.literal(SAVE_VERSION),
   day: gameDay,
@@ -617,6 +631,7 @@ const saveSchema = z.strictObject({
   financing: financingSchema,
   ended: endedSchema.nullable(),
   dream: dreamSchema,
+  town: townSchema,
 })
 
 // The week under way, and an older save's financing, may come from the
@@ -639,13 +654,23 @@ type Parsed = Omit<Save, 'weekSoFar' | 'financing'> & {
   readonly financing: FinancingState | null
 }
 
-/** A save as parsed, as version 17 has it: nothing of « Le rêve ». */
-type Dreamless = Omit<Parsed, 'saveVersion' | 'dream'> & {
+/** A save as parsed, as version 18 has it: no trip in town. */
+type Townless = Omit<Parsed, 'saveVersion' | 'town'> & {
+  readonly saveVersion: typeof TOWNLESS_VERSION
+}
+
+/** A save as parsed, as version 17 has it: nothing of « Le rêve » either. */
+type Dreamless = Omit<Townless, 'saveVersion' | 'dream'> & {
   readonly saveVersion: typeof DREAMLESS_VERSION
 }
 
-/** A version 17 save: nothing of « Le rêve ». */
-const dreamlessSchema = saveSchema
+/** A version 18 save: no trip in town. */
+const townlessSchema = saveSchema
+  .omit({ town: true })
+  .extend({ saveVersion: z.literal(TOWNLESS_VERSION) })
+
+/** A version 17 save: nothing of « Le rêve » either. */
+const dreamlessSchema = townlessSchema
   .omit({ dream: true })
   .extend({ saveVersion: z.literal(DREAMLESS_VERSION) })
 
@@ -750,6 +775,7 @@ export function serialize(state: GameState): string {
     financing: state.financing,
     ended: state.ended,
     dream: state.dream,
+    town: state.town,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -761,8 +787,10 @@ export function serialize(state: GameState): string {
  * nothing was played: the books open on day 0 either way.
  *
  * Throws an Error that starts with "Invalid save:" and names the problem
- * unless: the text is JSON of the current `SAVE_VERSION`, or of version 16,
- * which loads with no net worth for the weeks it reported, or of version 15,
+ * unless: the text is JSON of the current `SAVE_VERSION`, or of version 18,
+ * which loads with no trip in town, or of version 17, which also loads with
+ * nothing of « Le rêve », or of version 16,
+ * which also loads with no net worth for the weeks it reported, or of version 15,
  * which also loads as a game that goes on, or of version 14,
  * which also loads with no financing, its closes below zero read from its
  * books, or of version 13,
@@ -805,8 +833,9 @@ export function serialize(state: GameState): string {
  * `checkChallenge()`; the contracts pass `checkContracts()` against
  * `grocers`; the staff passes `checkStaff()` against `staff`; the
  * financing passes `checkFinancing()` against `financing`; the last week's
- * net worth, if any, passes `checkNetWorth()`; and the end of
- * the game, if it ended, passes `checkEnded()` against `financing`.
+ * net worth, if any, passes `checkNetWorth()`; the end of
+ * the game, if it ended, passes `checkEnded()` against `financing`; and the
+ * trips in town pass `checkTown()` against `places`.
  *
  * The products, limits, restock kinds, `awarenessDays` and the truck's
  * price are those of `content` as it is now, the events, choices, outcomes
@@ -828,6 +857,7 @@ export function deserialize(
   staff: StaffContent = STAFF,
   financing: FinancingContent = FINANCING,
   dream: DreamContent = DREAM,
+  places: PlacesContent = PLACES,
 ): GameState {
   const loaded = parsed(text, bakery)
   const journal = rebuilt(loaded.journal)
@@ -885,6 +915,7 @@ export function deserialize(
   checkFinancing(save, journal, financing)
   checkNetWorth(save, journal, dream)
   checkEnded(save, financing)
+  checkTown(save, places)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -912,6 +943,7 @@ export function deserialize(
     financing: save.financing,
     ended: save.ended,
     dream: save.dream,
+    town: save.town,
   }
 }
 
@@ -928,6 +960,16 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
   if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  return withTown(townless(raw, saveVersion, bakery))
+}
+
+/** An older save, up to version 18, as version 18. */
+function townless(
+  raw: object,
+  saveVersion: unknown,
+  bakery: BakeryContent,
+): Townless {
+  if (saveVersion === TOWNLESS_VERSION) return checked(townlessSchema, raw)
   return withDream(dreamless(raw, saveVersion, bakery))
 }
 
@@ -1026,18 +1068,33 @@ function dreamless(
 }
 
 /**
- * A save from before « Le rêve » as the current version: nothing bought,
- * no « Magnat » yet.
+ * A save from before the trips in town as the current version: no trip,
+ * no discount waiting.
+ */
+function withTown<
+  Old extends { readonly saveVersion: typeof TOWNLESS_VERSION },
+>(
+  save: Old,
+): Omit<Old, 'saveVersion'> & {
+  readonly saveVersion: typeof SAVE_VERSION
+  readonly town: TownState
+} {
+  return { ...save, saveVersion: SAVE_VERSION, town: noTrips() }
+}
+
+/**
+ * A save from before « Le rêve » as version 18: nothing bought, no «
+ * Magnat » yet.
  */
 function withDream<
   Old extends { readonly saveVersion: typeof DREAMLESS_VERSION },
 >(
   save: Old,
 ): Omit<Old, 'saveVersion'> & {
-  readonly saveVersion: typeof SAVE_VERSION
+  readonly saveVersion: typeof TOWNLESS_VERSION
   readonly dream: DreamState
 } {
-  return { ...save, saveVersion: SAVE_VERSION, dream: noDream() }
+  return { ...save, saveVersion: TOWNLESS_VERSION, dream: noDream() }
 }
 
 /**
@@ -2811,6 +2868,33 @@ function checkFinancing(
     invalid(
       `the journal does not hold « ${missing.memo} » on day ${missing.day} as the financing owes it`,
     )
+  }
+}
+
+/**
+ * What the trips in town could be at the save's day, against `places`: no
+ * trip nor discount in a Défi; no trip on a morning after the game ended;
+ * the owner away all day on a trip that takes the whole day (see
+ * `ownerAway`); and a discount of 0 or the share of a place of `places`
+ * whose effect is a discount.
+ */
+function checkTown(save: Save, places: PlacesContent): void {
+  const { day, lastDay, challenge, ended, ownerAway } = save
+  const { trip, discount } = save.town
+  if (challenge !== null && (trip !== null || discount !== 0)) {
+    invalid(`the Défi ${challenge.id} has a trip in town`)
+  }
+  if (ended !== null && lastDay?.day !== day && trip !== null) {
+    invalid(`the game ended on day ${ended.day}, yet trip is ${trip}`)
+  }
+  if (trip !== null && takesTheDay(trip, places) && !ownerAway) {
+    invalid(`the trip to ${trip} takes the whole day, yet the owner is in`)
+  }
+  const shares = places.places.flatMap(({ effect }) =>
+    effect.kind === 'discount' ? [effect.share] : [],
+  )
+  if (discount !== 0 && !shares.includes(discount)) {
+    invalid(`town.discount is ${discount}, no place's discount`)
   }
 }
 

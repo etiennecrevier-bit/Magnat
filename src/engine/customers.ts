@@ -227,7 +227,11 @@ export const NO_CHANGES: CrowdChanges = {
  * Then customers line up by arrival minute; those arriving the same minute
  * keep the order they were drawn in, base customers first, then extra,
  * then the street's, and arrive at the start of the minute. Every crowd
- * shares one line and one stock.
+ * shares one line and one stock. One who arrives while every server is
+ * away (see `openLine()`), such as the owner on a trip with nobody else at
+ * the truck, finds it closed: they never come, with no visit and no count
+ * of their segment, though they were drawn all the same, so the draws stay
+ * those of a day without the trip.
  * One who wants nothing walks on. One who wants something looks at the line
  * (`openLine()` in service.ts) and leaves it, buying nothing, if more than
  * `maxAheadInLine` customers are still waiting or the wait is longer than
@@ -336,6 +340,8 @@ export function serveWalkIns(
   let totalWait = 0
   let longestWait = 0
   for (const { arrivalMinute, segment, wanted, tooExpensive } of arrivals) {
+    // Nobody at the counter: they find the truck closed and never stop.
+    if (!line.isOpen(arrivalMinute * SECONDS_PER_MINUTE)) continue
     const bought = perProduct(() => 0) as Record<ProductId, number>
     let outcome: VisitOutcome = tooExpensive ? 'tooExpensive' : 'browsed'
     let servedMinute: number | null = null

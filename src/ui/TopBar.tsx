@@ -26,6 +26,8 @@ import ReportPanel from './ReportPanel.tsx'
 import SettingsPanel from './SettingsPanel.tsx'
 import StaffPanel from './StaffPanel.tsx'
 import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
+import TripPanel from './TripPanel.tsx'
+import { enRouteLine } from './tripBoard.ts'
 import './TopBar.css'
 
 function speedLabel(speed: number): string {
@@ -75,6 +77,10 @@ interface TopBarViewProps {
   onFinances: () => void
   /** Opens « Le rêve »; null hides its button, as in a Défi. */
   onDream?: (() => void) | null
+  /** Opens « Aller à… »; null hides its button, as in a Défi. */
+  onTrip?: (() => void) | null
+  /** « En route vers la Caisse » on a day with a trip; null shows none. */
+  enRoute?: string | null
   /** The chip of the Défi played, « Défi · semaine 2 de 3 »; null if none. */
   defiLabel: string | null
   /**
@@ -104,6 +110,8 @@ export function TopBarView({
   onStaff,
   onFinances,
   onDream = null,
+  onTrip = null,
+  enRoute = null,
   defiLabel,
   defiEnergy,
   onDefi,
@@ -114,6 +122,7 @@ export function TopBarView({
       <div className="top-bar__title">
         <p className="top-bar__name">{businessName}</p>
         <p className="top-bar__date">{formatGameDate(day)}</p>
+        {enRoute !== null && <p className="top-bar__en-route">{enRoute}</p>}
         {defiLabel !== null && (
           <button
             type="button"
@@ -165,6 +174,16 @@ export function TopBarView({
         >
           Vos finances
         </button>
+        {onTrip !== null && (
+          <button
+            type="button"
+            className="top-bar__panel"
+            aria-haspopup="dialog"
+            onClick={onTrip}
+          >
+            Aller à…
+          </button>
+        )}
         {onDream !== null && (
           <button
             type="button"
@@ -223,6 +242,7 @@ export default function TopBar() {
   const challenge = useGame((state) => state.game.challenge)
   const bakery = useGame((state) => state.game.bakery)
   const dream = useGame((state) => state.game.dream)
+  const town = useGame((state) => state.game.town)
   const speed = useGame((state) => state.speed)
   const setSpeed = useGame((state) => state.setSpeed)
   const togglePause = useGame((state) => state.togglePause)
@@ -288,6 +308,8 @@ export default function TopBar() {
         onStaff={() => openPanel('staff')}
         onFinances={() => openPanel('finances')}
         onDream={challenge === null ? () => openPanel('dream') : null}
+        onTrip={challenge === null ? () => openPanel('trip') : null}
+        enRoute={enRouteLine({ town })}
         defiLabel={defiLabel}
         defiEnergy={defiEnergy}
         onDefi={() => openPanel('defi')}
@@ -297,6 +319,7 @@ export default function TopBar() {
       {panel === 'staff' && <StaffPanel />}
       {panel === 'finances' && <FinancesPanel />}
       {panel === 'dream' && <DreamPanel />}
+      {panel === 'trip' && <TripPanel />}
       {panel === 'defi' && <DefiPanel />}
       {panel === 'settings' && <SettingsPanel />}
       {panel === 'event' && <EventCard />}

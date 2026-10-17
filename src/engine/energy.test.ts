@@ -28,6 +28,7 @@ const OPEN: Workday = {
   stressed: false,
   bakingCost: 0,
   deliveryCost: 0,
+  tripCost: 0,
 }
 const CLOSED: Workday = { ...OPEN, worked: false }
 
@@ -142,6 +143,22 @@ describe('energyAtClose', () => {
     expect(energyAtClose(37, { ...away, worked: false }, PLAIN)).toBe(37)
     expect(energyAtClose(0, away, PLAIN)).toBe(0)
     expect(energyAtClose(FULL_ENERGY, away, PLAIN)).toBe(FULL_ENERGY)
+  })
+
+  it("takes a trip's energy on top of the day, open, closed or away", () => {
+    expect(energyAtClose(80, { ...OPEN, tripCost: 3 }, PLAIN)).toBe(71)
+    expect(
+      energyAtClose(80, { ...OPEN, customersServed: 40, tripCost: 3 }, PLAIN),
+    ).toBe(61)
+    expect(energyAtClose(30, { ...CLOSED, tripCost: 3 }, PLAIN)).toBe(72)
+    // Full by the rest, then the trip.
+    expect(energyAtClose(90, { ...CLOSED, tripCost: 3 }, PLAIN)).toBe(97)
+    const away = { ...OPEN, away: true, customersServed: 40, tripCost: 3 }
+    expect(energyAtClose(37, away, PLAIN)).toBe(34)
+    expect(energyAtClose(2, away, PLAIN)).toBe(0)
+    expect(
+      energyAtClose(37, { ...away, worked: false, stressed: true }, PLAIN),
+    ).toBe(24)
   })
 
   it('still takes the stress of debt from an owner away', () => {

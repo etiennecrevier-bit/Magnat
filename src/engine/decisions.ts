@@ -14,6 +14,8 @@ import {
   type DreamContent,
   type FoodTruckContent,
   type OvenTerms,
+  type PlaceId,
+  type PlacesContent,
   type ProductId,
   type RestockRule,
   type RungId,
@@ -42,6 +44,7 @@ import {
 import { PRODUCTS } from './inventory.ts'
 import type { Cents } from './money.ts'
 import { addMovement } from './personal.ts'
+import { PLACES, goTo } from './places.ts'
 import { STAFF } from './staff.ts'
 import type {
   BakeryPlan,
@@ -109,6 +112,14 @@ export type DecisionChange =
       /** Buys a rung of « Le rêve » that very morning. */
       readonly kind: 'buy'
       readonly rung: RungId
+    }
+  | {
+      /**
+       * Sends the owner to a place in town that very day, or keeps them at
+       * the truck when it is null (#164).
+       */
+      readonly kind: 'goTo'
+      readonly place: PlaceId | null
     }
 
 /**
@@ -179,8 +190,11 @@ export function latestDecisions(state: GameState): Decisions {
  * A restock rule may name the more units the rungs of « Le rêve » owned
  * allow, with `dream` (see `dreamLimits`).
  *
- * `buy` is the one change that does not wait: it buys the rung of `dream`
- * on the morning of `state.day`, before the day is played (see `bought`).
+ * `buy` and `goTo` are the changes that do not wait: `buy` buys the rung
+ * of `dream` on the morning of `state.day`, before the day is played (see
+ * `bought`), and `goTo` sends the owner to a place of `places` that day,
+ * or keeps them at the truck, in place of the trip chosen before (see
+ * `goTo` in places.ts, which says when it throws a RangeError).
  */
 export function applyDecision(
   state: GameState,
@@ -191,9 +205,13 @@ export function applyDecision(
   staff: StaffContent = STAFF,
   dream: DreamContent = DREAM,
   difficulties: DifficultyContent = DIFFICULTIES,
+  places: PlacesContent = PLACES,
 ): GameState {
   if (change.kind === 'buy') {
     return bought(state, change.rung, content, dream, difficulties)
+  }
+  if (change.kind === 'goTo') {
+    return goTo(state, change.place, places, undefined, undefined, content)
   }
   if (isLockable(change.kind) && isLocked(state, change.kind, defis)) {
     throw new RangeError(

@@ -61,6 +61,12 @@ The engine runs « Le rêve » (#162, `src/engine/dream.ts`); the UI reads it an
 - **« Magnat »** (`MagnatScreen.tsx`) opens on its own the morning after the close at which the net worth first reached the last title, with the business, the net worth and « Continuer »; the store opens that morning's report, then its event card, after it. The game goes on.
 - « Gérer le camion » takes the restock rules up to what the bigger truck allows (`dreamLimits()`), and « Vos finances » tags a home's payment that went unpaid « impayé », as a rent.
 
+## Aller à…
+
+The engine sends the owner into town (#164, `src/engine/places.ts`); the UI reads it and hands a trip to `applyDecision()`, which makes it that very morning.
+- **« Aller à… »**, a panel the top bar opens (`TripPanel.tsx`, `tripBoard.ts`), with a button after « Vos finances », hidden in a Défi: each place with what the owner does there and what it gives, « Trajet : 25 min · visite : 30 min » with the vehicle's minutes, « Départ 10 h · retour 11 h 20 » or « Toute la journée », and « Fermé pendant ce temps » when the truck opens today and no employee works at it. « Y aller » is enabled only when the engine takes the trip (`tripRefusal()`), the reason shown otherwise, such as « Mme Prudhomme vous a déjà reçu cette année »; the day's trip shows « Aujourd'hui » and « Annuler ».
+- **The top bar** shows « En route vers la Caisse », the place's `towards`, under the date on a day with a trip (`enRouteLine()`).
+
 ## Starting and saving a game
 
 `src/App.tsx` opens on the start screen (`StartScreen.tsx`) over the world. The top bar, the screens, the game loop and the autosave only start once a game does, so the menu never advances time or overwrites the saved game.

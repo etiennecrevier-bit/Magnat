@@ -11,6 +11,7 @@ import type {
   GrocerId,
   Medal,
   OvenTerms,
+  PlaceId,
   ProductId,
   RestockRule,
   RungId,
@@ -340,8 +341,9 @@ export interface GameState {
   readonly staff: readonly Employee[]
   /**
    * Whether the owner is away all of business day `day`: they neither serve,
-   * deliver nor bake, and their energy holds. `tick()` clears it for the
-   * next morning.
+   * deliver nor bake, and their energy holds but for a trip's. A trip to a
+   * place that takes the whole day sets it. `tick()` clears it for the next
+   * morning.
    */
   readonly ownerAway: boolean
   /**
@@ -360,6 +362,23 @@ export interface GameState {
    * day the owner became « Magnat ». Empty in a Défi.
    */
   readonly dream: DreamState
+  /** The owner's trips in town (#164), and what they still give. */
+  readonly town: TownState
+}
+
+/** The owner's trips in town (#164). */
+export interface TownState {
+  /**
+   * The place the owner goes to on business day `day`, by its id in the
+   * content; null when they stay at the truck. `tick()` clears it for the
+   * next morning.
+   */
+  readonly trip: PlaceId | null
+  /**
+   * The share a trip to the mill takes off the unit cost of the next
+   * restock that buys anything, above 0 and below 1; 0 when none waits.
+   */
+  readonly discount: number
 }
 
 /** What the player climbed of « Le rêve » (#162). */

@@ -231,7 +231,7 @@ export function dreamBonuses(
 }
 
 /**
- * What multiplies a trip's time in town (P4-09): the best vehicle owned's
+ * What multiplies a trip's time in town (#164): the best vehicle owned's
  * factor, 1 with none.
  */
 export function travelTimeFactor(

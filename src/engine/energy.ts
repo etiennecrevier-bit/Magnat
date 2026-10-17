@@ -35,7 +35,7 @@ export interface Workday {
   readonly worked: boolean
   /**
    * Whether the owner was away all day: they neither worked, rested,
-   * delivered nor baked.
+   * delivered nor baked, though their trip may have taken some energy.
    */
   readonly away: boolean
   /** The customers the owner served at the counter. */
@@ -46,6 +46,8 @@ export interface Workday {
   readonly bakingCost: number
   /** What the morning's deliveries to the grocers took; 0 with none. */
   readonly deliveryCost: number
+  /** What the day's trip in town took (#164); 0 without one. */
+  readonly tripCost: number
 }
 
 /**
@@ -72,10 +74,11 @@ export function effectsOf(
 /**
  * The owner's energy at the close of a day they started with `energy`. A
  * day they work costs `openDayCost`, plus `costPerCustomerServed` for each
- * customer they served, plus `bakingCost` and `deliveryCost`; a day off
- * gives `closedDayRecovery` back, then the morning's baking and deliveries
- * take theirs; a day away changes nothing. Then, on a payday in debt, the
- * stress takes `debtStress`. Each change stops at 0 and at `FULL_ENERGY`.
+ * customer they served, plus `bakingCost`, `deliveryCost` and `tripCost`; a
+ * day off gives `closedDayRecovery` back, then the morning's baking and
+ * deliveries and the trip take theirs; a day away takes only the trip's.
+ * Then, on a payday in debt, the stress takes `debtStress`. Each change
+ * stops at 0 and at `FULL_ENERGY`.
  */
 export function energyAtClose(
   energy: number,
@@ -86,22 +89,24 @@ export function energyAtClose(
     stressed,
     bakingCost,
     deliveryCost,
+    tripCost,
   }: Workday,
   content: EnergyContent,
 ): number {
   let level = away
-    ? energy
+    ? clampEnergy(energy - tripCost)
     : worked
       ? clampEnergy(
           energy -
             (content.openDayCost +
               content.costPerCustomerServed * customersServed +
               bakingCost +
-              deliveryCost),
+              deliveryCost +
+              tripCost),
         )
       : clampEnergy(
           clampEnergy(energy + content.closedDayRecovery) -
-            (bakingCost + deliveryCost),
+            (bakingCost + deliveryCost + tripCost),
         )
   if (stressed) level = clampEnergy(level - content.debtStress)
   return level
