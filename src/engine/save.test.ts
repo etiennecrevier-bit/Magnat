@@ -47,6 +47,7 @@ import { NO_EVENTS, drawEvent, noEvents, resolveEvent } from './events.ts'
 import { FINANCING } from './financing.ts'
 import { inventoryValue } from './inventory.ts'
 import { cents } from './money.ts'
+import { netWorth, netWorthChange } from './netWorth.ts'
 import { PERCENTILES } from './percentiles.ts'
 import { LABELS } from './personal.ts'
 import { PROFILE_CONTENT } from './profile.ts'
@@ -328,10 +329,40 @@ function withoutWeek(save: Json): void {
 }
 
 /**
+ * Takes the net worth out of each week of `save`'s history, if it has one,
+ * as version 16 wrote it.
+ */
+function withoutNetWorths(save: Json): void {
+  for (const week of (save.weekHistory as Json[] | undefined) ?? []) {
+    delete week.netWorth
+  }
+}
+
+/** `state`, saved as version 16, before the net worth of each week. */
+function v16(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutNetWorths(save)
+  return JSON.stringify({ ...save, saveVersion: 16 })
+}
+
+/**
+ * `state` as a save written before the net worth of each week loads it:
+ * with none for the weeks of its history.
+ */
+function unvalued(state: GameState): GameState {
+  return {
+    ...state,
+    weekHistory: state.weekHistory.map((week) => ({ ...week, netWorth: null })),
+  }
+}
+
+/**
  * Takes the end of the game out of `save`, as version 15 wrote it: the save
- * of a game that goes on.
+ * of a game that goes on, with no net worth for its weeks, which came
+ * later.
  */
 function withoutEnd(save: Json): void {
+  withoutNetWorths(save)
   expect(save.ended).toBeNull()
   delete save.ended
 }
@@ -509,8 +540,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(16)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 16 })
+    expect(SAVE_VERSION).toBe(17)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 17 })
   })
 
   it.each<Profile>([
@@ -878,10 +909,12 @@ describe('serialize and deserialize', () => {
       DAY_400,
       { ...CHOSEN, contracts: noContracts() },
     ]) {
-      expect(deserialize(v11(state))).toStrictEqual(state)
+      expect(deserialize(v11(state))).toStrictEqual(unvalued(state))
     }
     const defi = startChallenge('travauxSaintDenis', SEED)
-    expect(deserialize(v11(played(5, defi)))).toStrictEqual(played(5, defi))
+    expect(deserialize(v11(played(5, defi)))).toStrictEqual(
+      unvalued(played(5, defi)),
+    )
   })
 
   it('load a version 12 game as one with no contract and no delivery', () => {
@@ -897,7 +930,7 @@ describe('serialize and deserialize', () => {
       DAY_400,
       { ...CHOSEN, contracts: noContracts() },
     ]) {
-      expect(deserialize(v12(state))).toStrictEqual(state)
+      expect(deserialize(v12(state))).toStrictEqual(unvalued(state))
     }
   })
 
@@ -908,7 +941,7 @@ describe('serialize and deserialize', () => {
       SUNDAY_CLOSE,
       DAY_400,
     ]) {
-      expect(deserialize(v10(state))).toStrictEqual(state)
+      expect(deserialize(v10(state))).toStrictEqual(unvalued(state))
     }
     expect(deserialize(v10(DAY_0_CHOSEN), FOOD_TRUCK, DAY_0_CARD)).toEqual(
       DAY_0_CHOSEN,
@@ -1051,7 +1084,8 @@ describe('deserialize rejects', () => {
     0,
     1,
     6,
-    17,
+    18,
+    '17',
     '16',
     '15',
     '14',
@@ -1645,7 +1679,20 @@ describe('deserialize rejects', () => {
     )
 
     it('with cash below zero, which loads', () => {
-      const back = deserialize(withValue('personal.cash', -500))
+      // The last week's net worth moves with the cash, as the check reads
+      // the cash at its close back from the cash now.
+      const last = FORTNIGHT.weekHistory.length - 1
+      const before = FORTNIGHT.weekHistory[last]?.netWorth ?? 0
+      const back = deserialize(
+        withValue(
+          'personal.cash',
+          -500,
+          withValue(
+            `weekHistory.${last}.netWorth`,
+            before - 500 - FORTNIGHT.personal.cash,
+          ),
+        ),
+      )
       expect(back.personal.cash).toBe(-500)
     })
 
@@ -3781,7 +3828,7 @@ describe('the staff and the missed deliveries', () => {
       createInitialState(SEED),
       DAY_400,
     ]) {
-      expect(deserialize(v13(state))).toStrictEqual(state)
+      expect(deserialize(v13(state))).toStrictEqual(unvalued(state))
     }
   })
 
@@ -4040,6 +4087,23 @@ describe('the emergency loans and the share sales', () => {
     }
   })
 
+  it("load a game that sold shares on a Monday morning, the Sunday before's net worth without them", () => {
+    // Monday, July 3rd, day 63, the morning after Sunday, day 62.
+    const monday = playOn(LOANED, 3)
+    expect(monday.day).toBe(63)
+    expect(monday.weekHistory.at(-1)?.firstDay).toBe(56)
+    const sold = resolveEvent(
+      offering(monday, 'offreDuvent'),
+      'accepter',
+      CARDS,
+    )
+    expect(sold.financing.shareSales).toMatchObject([{ day: 63 }])
+    expect(netWorthChange(sold)).not.toBe(0)
+    const back = reloaded(sold)
+    expect(back).toStrictEqual(sold)
+    expect(netWorthChange(back)).toBe(netWorthChange(sold))
+  })
+
   it('load a version 14 game as one with no financing, the closes below zero read from its books', () => {
     // The bill's day closed below zero with no event content in play, so
     // nobody came.
@@ -4053,7 +4117,7 @@ describe('the emergency loans and the share sales', () => {
       played(10, below),
       DAY_400,
     ]) {
-      expect(deserialize(v14(state))).toStrictEqual(state)
+      expect(deserialize(v14(state))).toStrictEqual(unvalued(state))
     }
   })
 
@@ -4335,7 +4399,7 @@ describe('the end of a game', () => {
       played(150, BILLED),
       DAY_400,
     ]) {
-      expect(deserialize(v15(state))).toStrictEqual(state)
+      expect(deserialize(v15(state))).toStrictEqual(unvalued(state))
     }
   })
 
@@ -4457,5 +4521,87 @@ describe('the end of a game', () => {
       'the game ended in bankruptcy on day 213 after 6 whole months below zero, not 7',
       rules,
     )
+  })
+})
+
+describe('the net worth of each week', () => {
+  // `FORTNIGHT`, the morning of day 14, has the weeks of days 0 and 7.
+  const LAST = 1
+
+  it("keep each Sunday's net worth through a save", () => {
+    expect(FORTNIGHT.weekHistory).toHaveLength(2)
+    for (const state of [FORTNIGHT, DAY_400]) {
+      const worths = state.weekHistory.map(({ netWorth: worth }) => worth)
+      expect(worths).not.toContain(null)
+      expect(reloaded(state).weekHistory).toStrictEqual(state.weekHistory)
+    }
+    // Nothing came up on the Monday morning, so nothing moved since.
+    expect(FORTNIGHT.weekHistory[LAST]?.netWorth).toBe(netWorth(FORTNIGHT))
+  })
+
+  it('load a version 16 game with no net worth for its weeks', () => {
+    for (const state of [
+      createInitialState(SEED),
+      THURSDAY,
+      SUNDAY_CLOSE,
+      DAY_400,
+    ]) {
+      const loaded = deserialize(v16(state))
+      expect(loaded).toStrictEqual(unvalued(state))
+      expect(netWorthChange(loaded)).toBeNull()
+    }
+  })
+
+  it('load a version 16 game played on to its next Sunday, then saved again, with a net worth for that week alone', () => {
+    const loaded = deserialize(v16(FORTNIGHT))
+    // The morning of day 21, after Sunday, day 20.
+    const after = played(7, loaded)
+    expect(
+      after.weekHistory.map(({ netWorth: worth }) => worth === null),
+    ).toEqual([true, true, false])
+    expect(netWorthChange(after)).toBe(0)
+    const back = reloaded(after)
+    expect(back).toStrictEqual(after)
+    expect(serialize(played(7, back))).toBe(serialize(played(7, after)))
+  })
+
+  it('load a game saved the Monday morning an event moved the personal cash', () => {
+    const card = pocketCard('Cadeau', 6_000)
+    const chosen = resolveEvent(drawEvent(FORTNIGHT, card), 'oui', card)
+    expect(chosen.personal.cash - FORTNIGHT.personal.cash).toBe(6_000)
+    expect(netWorthChange(chosen)).toBe(6_000)
+    expect(deserialize(serialize(chosen), FOOD_TRUCK, card)).toStrictEqual(
+      chosen,
+    )
+  })
+
+  it.each([1.5, '100', undefined])('reject the net worth %j', (worth) => {
+    expectInvalid(withValue(`weekHistory.${LAST}.netWorth`, worth), [
+      `→ at weekHistory[${LAST}].netWorth`,
+    ])
+  })
+
+  it('reject a week with no net worth after one with it', () => {
+    expectInvalid(withValue(`weekHistory.${LAST}.netWorth`, null), [
+      'week 2 of weekHistory has no net worth, after week 1, which has one',
+    ])
+  })
+
+  it.each([1, -1])(
+    'reject a last week whose net worth is %j cent off the books and the personal account',
+    (off) => {
+      const worth = (FORTNIGHT.weekHistory[LAST]?.netWorth ?? 0) + off
+      expectInvalid(withValue(`weekHistory.${LAST}.netWorth`, worth), [
+        `the last week of weekHistory has a net worth of ${worth}, not the ${worth - off} the owner had at the close of day 13`,
+      ])
+    },
+  )
+
+  it("load an earlier week's net worth as it is", () => {
+    const worth = (FORTNIGHT.weekHistory[0]?.netWorth ?? 0) + 1
+    expect(
+      deserialize(withValue('weekHistory.0.netWorth', worth)).weekHistory[0]
+        ?.netWorth,
+    ).toBe(worth)
   })
 })

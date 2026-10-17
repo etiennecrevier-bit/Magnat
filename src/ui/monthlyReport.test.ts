@@ -117,7 +117,7 @@ function record({
   netIncome,
   cashAtEnd,
 }: WeekReport): WeekRecord {
-  return { firstDay, sales, netIncome, cashAtEnd }
+  return { firstDay, sales, netIncome, cashAtEnd, netWorth: null }
 }
 
 /**

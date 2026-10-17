@@ -2,14 +2,16 @@ import { describe, expect, it } from 'vitest'
 import type { AccountCode } from '../finance/accounts.ts'
 import { emptyJournal, postEntry, type Journal } from '../finance/journal.ts'
 import { balanceSheet } from '../finance/statements.ts'
-import { createInitialState } from './clock.ts'
+import { createInitialState, tick } from './clock.ts'
+import { FOOD_TRUCK } from './day.ts'
+import { applyEffect } from './effects.ts'
 import { sellShares } from './financing.ts'
 import { cents } from './money.ts'
-import { netWorth } from './netWorth.ts'
-import type { GameState, ShareSale } from './types.ts'
+import { netWorth, netWorthChange, netWorthParts } from './netWorth.ts'
+import type { GameState, ShareSale, WeekRecord } from './types.ts'
 
-// « Valeur nette » (#160, of #161's formula): the owner's share of the
-// company's equity, plus their own cash, worked out by hand.
+// « Valeur nette » (#161): the owner's share of the company's equity, plus
+// their own cash, worked out by hand.
 
 const CASH: AccountCode = '1000'
 const SHARE_CAPITAL: AccountCode = '3000'
@@ -111,6 +113,113 @@ describe('netWorth', () => {
     const state = createInitialState(42)
     expect(netWorth(state)).toBe(
       balanceSheet(state.journal, 0).equity.total.amount + state.personal.cash,
+    )
+  })
+})
+
+describe('netWorthParts', () => {
+  it('gives the share of the company, the cash, no assets and no debts yet, and their total', () => {
+    // 12 000 $ − 20 % × 12 000 $, then 3 000 $.
+    expect(
+      netWorthParts(game(booksAt(1_200_000), 300_000, [sale(0.2)])),
+    ).toEqual({
+      companyShare: 960_000,
+      personalCash: 300_000,
+      personalAssets: 0,
+      personalDebts: 0,
+      total: 1_260_000,
+    })
+  })
+
+  it('takes a share sale out of the share of the company, and leaves the cash alone', () => {
+    const before = netWorthParts(game(booksAt(1_200_000), 300_000))
+    const after = netWorthParts(
+      sellShares(game(booksAt(1_200_000), 300_000), {
+        kind: 'shareSale',
+        investor: 'Duvent Capital',
+        amountCents: cents(2_000_000),
+        share: 0.2,
+      }),
+    )
+    // 12 000 $, then 80 % × (12 000 $ + 20 000 $).
+    expect(before.companyShare).toBe(1_200_000)
+    expect(after.companyShare).toBe(2_560_000)
+    expect(after.personalCash).toBe(before.personalCash)
+    expect(after.total - before.total).toBe(2_000_000 - 640_000)
+  })
+})
+
+/** A week of the history whose Sunday closed with `worth`. */
+function week(firstDay: number, worth: number | null): WeekRecord {
+  return {
+    firstDay,
+    sales: cents(0),
+    netIncome: cents(0),
+    cashAtEnd: cents(0),
+    netWorth: worth === null ? null : cents(worth),
+  }
+}
+
+describe('netWorthChange', () => {
+  // 12 000 $ + 3 000 $ now.
+  const now = game(booksAt(1_200_000), 300_000)
+
+  it('is null until a Sunday is played', () => {
+    expect(netWorthChange({ ...now, weekHistory: [] })).toBeNull()
+  })
+
+  it('is null when the last week has no net worth, from an older save', () => {
+    expect(
+      netWorthChange({
+        ...now,
+        weekHistory: [week(0, 900_000), week(7, null)],
+      }),
+    ).toBeNull()
+  })
+
+  it.each([
+    { sunday: 1_400_000, change: 100_000 },
+    { sunday: 1_600_000, change: -100_000 },
+    { sunday: 1_500_000, change: 0 },
+  ])(
+    'is $change from a Sunday that closed with $sunday',
+    ({ sunday, change }) => {
+      expect(
+        netWorthChange({
+          ...now,
+          weekHistory: [week(0, 9_999_999), week(7, sunday)],
+        }),
+      ).toBe(change)
+    },
+  )
+
+  it('starts again from 0 at the close of a Sunday, then moves with what the Monday morning brings', () => {
+    let state = createInitialState(42)
+    while (state.day < 7) state = tick(state)
+    // Monday morning, day 7: the first Sunday, day 6, is closed and
+    // nothing came up since.
+    expect(state.weekHistory.at(-1)?.firstDay).toBe(0)
+    expect(netWorthChange(state)).toBe(0)
+
+    const sold = sellShares(state, {
+      kind: 'shareSale',
+      investor: 'Duvent Capital',
+      amountCents: cents(2_000_000),
+      share: 0.2,
+    })
+    const equity = balanceSheet(sold.journal, 7).equity.total.amount
+    // 20 000 $ in, 20 % of the equity with them in it out.
+    expect(netWorthChange(sold)).toBe(2_000_000 - Math.round(equity * 0.2))
+
+    const gift = applyEffect(
+      sold,
+      { kind: 'personal', label: 'Cadeau', amountCents: cents(6_000) },
+      FOOD_TRUCK,
+      'test',
+    )
+    expect(gift.personal.cash - sold.personal.cash).toBe(6_000)
+    expect(netWorthChange(gift)).toBe(
+      2_000_000 - Math.round(equity * 0.2) + 6_000,
     )
   })
 })

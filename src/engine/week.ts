@@ -12,6 +12,7 @@ import { mondayOf, sundayOf } from './calendar.ts'
 import { GROCERS } from './contracts.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
 import { add, cents, sub, sum, type Cents } from './money.ts'
+import { netWorth } from './netWorth.ts'
 import type {
   Day,
   GameState,
@@ -197,7 +198,8 @@ export function openingWeek(journal: Journal): WeekSoFar {
  * books. The changes to the street are those of `lastDay`. On a Sunday, the
  * week is summed up as `lastWeek` (see `WeekReport`), with its ventes and
  * bénéfice net from the état des résultats over its days, added to
- * `weekHistory`, of which the last `WEEKS_KEPT` are kept, and the next week
+ * `weekHistory` with the owner's net worth at the close (see `netWorth`),
+ * of which the last `WEEKS_KEPT` are kept, and the next week
  * starts from the Sunday's close. Throws an Error unless a day was played.
  */
 export function recordDay(
@@ -286,6 +288,7 @@ export function recordDay(
     sales: report.sales,
     netIncome: report.netIncome,
     cashAtEnd: report.cashAtEnd,
+    netWorth: netWorth(closing),
   }
   return {
     weekSoFar: {

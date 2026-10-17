@@ -652,6 +652,11 @@ export interface WeekRecord {
   readonly netIncome: Cents
   /** Encaisse at the close of the Sunday. */
   readonly cashAtEnd: Cents
+  /**
+   * The owner's net worth at the close of the Sunday (see `netWorth`); null
+   * for a week a save from before version 17 reported.
+   */
+  readonly netWorth: Cents | null
 }
 
 /** The event cards of a game. */
