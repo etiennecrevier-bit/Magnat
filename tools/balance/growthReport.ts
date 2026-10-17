@@ -5,7 +5,7 @@ import {
 import { GROCERS } from '../../src/engine/contracts.ts'
 import { DIFFICULTIES, FOOD_TRUCK } from '../../src/engine/day.ts'
 import { endOfMonth } from '../../src/engine/calendar.ts'
-import { titleOf } from '../../src/engine/dream.ts'
+import { DREAM, titleOf } from '../../src/engine/dream.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
 import { STAFF } from '../../src/engine/staff.ts'
 import { formatDollars } from '../sim/cli.ts'
@@ -85,9 +85,10 @@ export const CAREFUL: Omit<GrowthStrategy, 'financing'> = {
 }
 
 /**
- * The title the best strategy's median net worth earns at the end, at
- * each difficulty; null where #166 sets none, and the report only shows
- * it. No game of any strategy may reach the last, « Magnat ».
+ * The title the best strategy's median net worth earns at least at the
+ * end, at each difficulty, as Étienne read #166 (Coordinatron #1052); null
+ * where #166 sets none, and the report only shows it. No game of any
+ * strategy may reach the last, « Magnat ».
  */
 export const TITLE_TARGETS: Readonly<Record<DifficultyId, string | null>> = {
   facile: 'Commerçant',
@@ -212,7 +213,7 @@ export function growthTargets(run: GrowthReportRun): GrowthTarget[] {
       ),
     },
     {
-      target: `The best strategy's median net worth at the end of month ${run.months} earns ${difficultyIdSchema.options
+      target: `The best strategy's median net worth at the end of month ${run.months} earns at least ${difficultyIdSchema.options
         .flatMap((difficulty) => {
           const title = TITLE_TARGETS[difficulty]
           return title === null
@@ -304,7 +305,7 @@ function titleCheck(
   const netWorth = medianCents(best.games.map((game) => game.netWorthAtEnd))
   const earned = titleOf(netWorth)?.name ?? 'none'
   return {
-    verdict: title === null ? 'n/a' : verdict(earned === title),
+    verdict: title === null ? 'n/a' : verdict(netWorth >= titleFloor(title)),
     measured: `« ${earned} », ${formatDollars(netWorth)} (${strategyLabel(best.strategy)})`,
   }
 }
@@ -506,6 +507,16 @@ function duventRow(
     formatCount(worth.length - avoided),
     formatCount(anyway),
   ])
+}
+
+/**
+ * The net worth `name`, one of `dream.json`'s titles, starts at. Throws a
+ * RangeError for any other name.
+ */
+export function titleFloor(name: string): number {
+  const title = DREAM.titles.find((each) => each.name === name)
+  if (title === undefined) throw new RangeError(`No title is named ${name}`)
+  return title.netWorthCents
 }
 
 const VERDICTS: Readonly<Record<Verdict, string>> = {

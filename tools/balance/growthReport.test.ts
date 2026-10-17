@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import type { DifficultyId } from '../../src/content/schema.ts'
-import { DREAM } from '../../src/engine/dream.ts'
 import { cents } from '../../src/engine/money.ts'
 import {
   CONTRACT_PLANS,
@@ -20,6 +19,7 @@ import {
   rankStrategies,
   sameStrategy,
   strategiesAt,
+  titleFloor,
   type GrowthReportRun,
   type Verdict,
 } from './growthReport.ts'
@@ -34,13 +34,6 @@ import {
 // test.
 
 const DIFFICULTIES: readonly DifficultyId[] = ['facile', 'moyen', 'difficile']
-
-/** The net worth each title starts at, from dream.json. */
-function titleAt(name: string): number {
-  const title = DREAM.titles.find((each) => each.name === name)
-  if (title === undefined) throw new Error(`No title ${name}`)
-  return title.netWorthCents
-}
 
 /** A game that never goes below zero, at a net worth of $50,000. */
 function game(overrides: Partial<GrowthGame> = {}): GrowthGame {
@@ -118,7 +111,7 @@ function onTarget(): GrowthReportRun {
     }
     if (sameStrategy(strategy, BEST)) {
       const title = difficulty === 'difficile' ? 'Débrouillard' : 'Commerçant'
-      return game({ netWorthAtEnd: cents(titleAt(title) + 1) })
+      return game({ netWorthAtEnd: cents(titleFloor(title) + 1) })
     }
     // A few of the games that took Max Duvent's money gain by it.
     if (strategy.contracts === 'three' && strategy.financing === 'accept') {
@@ -186,7 +179,7 @@ describe('growthTargets', () => {
     expect(targets.map(({ target }) => target)).toEqual([
       'The naive strategy (three contracts on day 30, nothing else): at Moyen and Difficile, more than half its games first close below zero in month 2 or 3; elsewhere, more than half take an emergency loan and none goes bankrupt',
       'The careful strategy (one contract at a time, with a reserve, nothing else) never closes below zero, the financing accepted or refused',
-      "The best strategy's median net worth at the end of month 24 earns « Commerçant » at Facile and « Débrouillard » at Difficile",
+      "The best strategy's median net worth at the end of month 24 earns at least « Commerçant » at Facile and « Débrouillard » at Difficile",
       'No game of any strategy reaches « Magnat » within 24 months',
       "Max Duvent's money is worth taking in 10% to 50% of the games that take it",
     ])
@@ -215,30 +208,36 @@ describe('growthTargets', () => {
   })
 
   it('misses each target when the games say so', () => {
+    // Every game at $20,000: below « Débrouillard », the first title.
+    const poor = (played: GrowthGame) => ({
+      ...played,
+      netWorthAtEnd: cents(2_000_000),
+    })
     const missed = run((strategy, difficulty, seed) => {
       if (isNaive(strategy)) {
         // Below zero in month 4 at Moyen and Difficile; bankrupt at Facile.
-        return difficulty === 'facile'
-          ? game({ emergencyLoans: 1, endedDay: 300 })
-          : game({ firstDayBelowZero: 100 })
+        return poor(
+          difficulty === 'facile'
+            ? game({ emergencyLoans: 1, endedDay: 300 })
+            : game({ firstDayBelowZero: 100 }),
+        )
       }
       if (isCareful(strategy) && seed === 2) {
-        return game({ firstDayBelowZero: 200 })
+        return poor(game({ firstDayBelowZero: 200 }))
       }
       if (sameStrategy(strategy, BEST)) {
-        return game({
-          netWorthAtEnd: cents(titleAt('Entrepreneur')),
-          magnat: difficulty === 'moyen',
-        })
+        return poor(game({ magnat: difficulty === 'moyen' }))
       }
       // Max Duvent always worth taking.
       if (strategy.contracts === 'three' && strategy.financing === 'accept') {
-        return game({
-          duventCame: true,
-          withoutDuvent: { endedDay: 300, netWorthAtEnd: cents(0) },
-        })
+        return poor(
+          game({
+            duventCame: true,
+            withoutDuvent: { endedDay: 300, netWorthAtEnd: cents(0) },
+          }),
+        )
       }
-      return game()
+      return poor(game())
     })
     expect(verdicts(missed)).toEqual([
       ['missed', 'missed', 'missed'],
@@ -256,6 +255,36 @@ describe('growthTargets', () => {
     )
     expect(careful?.checks.facile.measured).toMatch(/^2 of 4 close below zero/)
     expect(duvent?.checks.moyen.measured).toBe('100%, 22 of 22')
+  })
+
+  it('meets a title with a higher one, and knows only the titles of dream.json', () => {
+    const rich = run((strategy) =>
+      sameStrategy(strategy, BEST)
+        ? game({ netWorthAtEnd: cents(titleFloor('Entrepreneur')) })
+        : game({ netWorthAtEnd: cents(titleFloor('Débrouillard') - 1) }),
+    )
+    const [, , title] = growthTargets(rich)
+    expect(DIFFICULTIES.map((d) => title?.checks[d].verdict)).toEqual([
+      'met',
+      'n/a',
+      'met',
+    ])
+    expect(title?.checks.facile.measured).toMatch(/^« Entrepreneur », /)
+    // Just under « Commerçant » at Facile.
+    const short = run((strategy) =>
+      game({
+        netWorthAtEnd: cents(
+          sameStrategy(strategy, BEST)
+            ? titleFloor('Commerçant') - 1
+            : titleFloor('Débrouillard'),
+        ),
+      }),
+    )
+    expect(growthTargets(short)[2]?.checks.facile).toMatchObject({
+      verdict: 'missed',
+      measured: expect.stringMatching(/^« Débrouillard », \$99,999\.99 /),
+    })
+    expect(() => titleFloor('Baron')).toThrow('No title is named Baron')
   })
 
   it('needs more than half of the naive games, and at least one game that took Max Duvent', () => {
