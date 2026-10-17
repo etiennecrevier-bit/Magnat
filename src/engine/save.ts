@@ -1936,9 +1936,9 @@ function checkWeek(
   ) {
     invalid("the last week of weekHistory is not lastWeek's")
   }
-  const valued = weekHistory.findIndex(({ netWorth }) => netWorth !== null)
+  const valued = weekHistory.findIndex(({ netWorth: worth }) => worth !== null)
   const unvalued = weekHistory.findLastIndex(
-    ({ netWorth }) => netWorth === null,
+    ({ netWorth: worth }) => worth === null,
   )
   if (valued !== -1 && unvalued > valued) {
     invalid(
