@@ -10,9 +10,10 @@ import {
   type TimedEventEffect,
 } from './schema.ts'
 
-// The emergency loan and the share sale (#159), and the bankruptcy (#160):
-// the rules of financing.json, checked against the event cards, the cards'
-// terms as their text and tags write them, and Mme Prudhomme's letters.
+// The emergency loan and the share sale (#159), the bankruptcy (#160) and
+// the appointment at the Caisse (#164): the rules of financing.json, checked
+// against the event cards, the cards' terms as their text and tags write
+// them, and Mme Prudhomme's letters.
 
 type Json = Record<string, unknown>
 
@@ -94,6 +95,7 @@ describe('financing.json', () => {
       _note: expect.any(String),
       loanEvent: 'pretUrgence',
       investorEvent: 'offreDuvent',
+      appointmentEvent: 'rendezVousCaisse',
       investorDaysAfterLoan: 14,
       maxShareRounds: 2,
       noSecondLoanAt: ['difficile'],
@@ -164,6 +166,27 @@ describe('financing.json', () => {
     expect(investor.quote).toContain(
       `${percent} des actions, et ${percent} des profits chaque trimestre`,
     )
+  })
+
+  it("brings Mme Prudhomme's appointment on a card no draw brings, offering her loan on the same terms and tags (#164)", () => {
+    const appointment = card(content.appointmentEvent)
+    const loan = card(content.loanEvent)
+    expect(appointment.weight).toBe(0)
+    expect(appointment.character).toEqual(loan.character)
+    expect(
+      effectsOf(appointment, 'emergencyLoan').map(({ choice }) => choice),
+    ).toEqual(['accepter'])
+    expect(effectsOf(appointment, 'emergencyLoan')).toEqual(
+      effectsOf(loan, 'emergencyLoan'),
+    )
+    expect(tagsOf(appointment, 'accepter')).toEqual(tagsOf(loan, 'accepter'))
+    expect(appointment.choices.map(({ id, label }) => [id, label])).toEqual([
+      ['accepter', 'Accepter'],
+      ['refuser', 'Refuser'],
+    ])
+    expect(appointment.quote).toContain("jusqu'à {montant:pret}")
+    expect(appointment.situation).not.toContain('sous zéro')
+    expect(tagsOf(appointment, 'refuser')[0]).toBe("L'encaisse ne bouge pas")
   })
 
   it('says refusing leaves the encaisse below zero, which P4-05 counts', () => {
@@ -264,6 +287,24 @@ describe('loadFinancingContent rejects', () => {
     rejects(
       { ...financingJson, investorEvent: 'pretUrgence' },
       'the loan and the investor come on cards of their own',
+    )
+  })
+
+  it("the appointment on the loan's or the investor's card, one a draw may bring, or one with no loan", () => {
+    const reason = 'the appointment comes on a card of its own'
+    rejects({ ...financingJson, appointmentEvent: 'pretUrgence' }, reason)
+    rejects({ ...financingJson, appointmentEvent: 'offreDuvent' }, reason)
+    const drawn = eventsWith('rendezVousCaisse', (event) => {
+      event.weight = 1
+    })
+    rejects(
+      financingJson,
+      'the event rendezVousCaisse has a weight above 0, so a draw may bring it',
+      drawn,
+    )
+    rejects(
+      { ...financingJson, appointmentEvent: 'premierAvis' },
+      'no choice of the event premierAvis has a emergencyLoan effect',
     )
   })
 

@@ -3370,6 +3370,76 @@
           ]
         }
       ]
+    },
+    {
+      "id": "rendezVousCaisse",
+      "weight": 0,
+      "character": {
+        "id": "mmePrudhomme",
+        "name": "Mme Prudhomme",
+        "role": "Directrice de comptes, Caisse populaire Saint-Prudent"
+      },
+      "title": "Le rendez-vous à la Caisse",
+      "situation": "Hier, à la Caisse populaire Saint-Prudent, Mme Prudhomme a ouvert votre dossier. Ce matin, elle vous attend devant le camion avec un formulaire déjà rempli et un stylo qui ne sert qu'à signer.",
+      "quote": "J'ai regardé vos chiffres. Je vous prête de quoi monter votre encaisse à un mois de frais fixes, jusqu'à {montant:pret}. Les frais de dossier se prennent dessus. Et je ne repasse pas avant l'an prochain.",
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Accepter",
+          "tags": [
+            "Encaisse visée : un mois de frais fixes",
+            {
+              "text": "Prêt d'au plus {montant}",
+              "effect": "pret"
+            },
+            "Intérêts 18 % · 12 mois",
+            "Frais de dossier 2 %"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Mme Prudhomme vous fait signer trois copies. L'argent est dans votre compte avant midi, les frais de dossier déjà retirés. Premier versement le 1er du mois prochain.",
+              "effects": [
+                {
+                  "kind": "emergencyLoan",
+                  "lender": "Caisse populaire Saint-Prudent",
+                  "monthsOfFixedCosts": 1,
+                  "maxCents": 1500000,
+                  "annualRateBasisPoints": 1800,
+                  "termMonths": 12,
+                  "feeShare": 0.02,
+                  "name": "pret"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Refuser",
+          "tags": [
+            "L'encaisse ne bouge pas",
+            {
+              "text": "Énergie −{montant}",
+              "effect": "energie"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Mme Prudhomme referme votre dossier. « Comme vous voudrez. On se revoit l'an prochain. »",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }
