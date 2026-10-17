@@ -1,5 +1,5 @@
 {
-  "_note": "The first employees of #158, as Étienne decided them on October 16, 2026: three roles, each with the hours worked a week and an hourly wage the player sets within [min, max], starting at the issue's (17,50 $, 16 $ and 22 $); the min and max are P4-03's proposal, for P4-11 to tune. Hiring costs trainingWeeks of pay up front (« Formation »), firing noticeWeeks (« Préavis »); the wages are paid each payday of foodtruck.json, a full week each time. At most maxEmployees at once. An employee at the truck serves at truckSpeed of a rested owner's speed. The candidates are invented; a portrait id with no image shows none.",
+  "_note": "The first employees of #158, as Étienne decided them on October 16, 2026: three roles, each with the hours worked a week and an hourly wage the player sets within [min, max], starting at the issue's (17,50 $, 16 $ and 22 $); the min and max are P4-03's proposal. The baker works 16 hours a week since P4-11 (#166): the oven runs mornings only, and at 30 hours the baker cost more than the bakery saved, so no bakery ever paid back (docs/balance/phase-4.md). Hiring costs trainingWeeks of pay up front (« Formation »), firing noticeWeeks (« Préavis »); the wages are paid each payday of foodtruck.json, a full week each time. At most maxEmployees at once. An employee at the truck serves at truckSpeed of a rested owner's speed. The candidates are invented; a portrait id with no image shows none.",
   "maxEmployees": 3,
   "trainingWeeks": 1,
   "noticeWeeks": 2,
@@ -17,7 +17,7 @@
     },
     "boulanger": {
       "name": "Boulanger",
-      "hoursPerWeek": 30,
+      "hoursPerWeek": 16,
       "hourlyWageCents": { "min": 1800, "start": 2200, "max": 3000 }
     }
   },

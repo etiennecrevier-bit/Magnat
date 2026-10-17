@@ -53,7 +53,7 @@ describe('bakeryBoard', () => {
       monthlyLease: LEASE,
       ovenPrice: BAKERY.oven.priceCents,
       ownsOven: false,
-      capacity: 300,
+      capacity: BAKERY.capacityPerDay,
       boughtUnitCost: 110,
       madeUnitCost: 55,
       source: 'acheter',

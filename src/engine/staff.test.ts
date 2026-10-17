@@ -56,6 +56,8 @@ function wages(memo: string, amount: number, day = DAY): JournalEntry {
 const AMELIE = employee('amelie', 'camion')
 const KEVIN = employee('kevin', 'livreur')
 const SOPHIE = employee('sophie', 'boulanger')
+/** The baker's hours a week, as staff.json ships them. */
+const BAKER_HOURS = STAFF.roles.boulanger.hoursPerWeek
 
 describe('the shipped staff', () => {
   it("holds the issue's three roles and wages, a week of training and two of notice", () => {
@@ -73,7 +75,7 @@ describe('the shipped staff', () => {
     ).toEqual([
       ['camion', 'Au camion', 35, 1750],
       ['livreur', 'Livreur', 10, 1600],
-      ['boulanger', 'Boulanger', 30, 2200],
+      ['boulanger', 'Boulanger', 16, 2200],
     ])
     expect(Object.keys(STAFF.candidates)).toHaveLength(12)
   })
@@ -142,8 +144,10 @@ describe('the wages', () => {
   it("are the hourly wage × the role's hours, in whole cents", () => {
     expect(weeklyWage(AMELIE)).toBe(1750 * 35)
     expect(weeklyWage(KEVIN)).toBe(1600 * 10)
-    expect(weeklyWage(SOPHIE)).toBe(2200 * 30)
-    expect(weeklyWages([AMELIE, KEVIN, SOPHIE])).toBe(61_250 + 16_000 + 66_000)
+    expect(weeklyWage(SOPHIE)).toBe(2200 * BAKER_HOURS)
+    expect(weeklyWages([AMELIE, KEVIN, SOPHIE])).toBe(
+      61_250 + 16_000 + 2200 * BAKER_HOURS,
+    )
     expect(weeklyWages([])).toBe(0)
   })
 
@@ -182,7 +186,7 @@ describe('staffMorning', () => {
     ])
     expect(entriesOf(journal)).toEqual([
       wages('Formation · Amélie Gagnon', 1750 * 35),
-      wages('Formation · Sophie Roy', 2500 * 30),
+      wages('Formation · Sophie Roy', 2500 * BAKER_HOURS),
     ])
   })
 

@@ -407,7 +407,7 @@ describe('« Fournil »', () => {
       `Loyer${S}: 2${S}400,00${S}$ par mois`,
       `Four loué${S}: 600,00${S}$ par mois`,
       `Four acheté${S}: 25${S}000,00${S}$`,
-      `Capacité${S}: 300 croissants par jour`,
+      `Capacité${S}: 800 croissants par jour`,
       `Frais fixes du fournil${S}: 3${S}000,00${S}$ par mois avec le four loué · 2${S}400,00${S}$ par mois avec le four acheté`,
     ])
     expect(html).toContain(

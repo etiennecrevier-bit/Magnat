@@ -298,7 +298,7 @@ describe('bakeChange', () => {
   it.each([
     ['', "Entrez un nombre entier d'unités."],
     ['-1', "Entrez un nombre entier d'unités."],
-    ['301', `La quantité doit être entre 0 et 300${S}unités.`],
+    ['801', `La quantité doit être entre 0 et 800${S}unités.`],
   ])('turns down "%s" in French, within the capacity', (text, message) => {
     expect(bakeChange('quantity', text, buyDaily)).toEqual({
       kind: 'invalid',

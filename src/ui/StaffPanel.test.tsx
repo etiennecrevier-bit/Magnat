@@ -113,7 +113,7 @@ describe('StaffPanelView', () => {
       decided(START, { kind: 'hire', role: 'boulanger', candidate: 'sophie' }),
     )
     expect(cards(html)[1]).toBe(
-      `Sophie Roy|Boulanger · 660,00${S}$ par semaine|Commence demain · Formation${S}: 660,00${S}$|Salaire horaire|$ de l&#x27;heure|Annuler l&#x27;embauche · sans frais`,
+      `Sophie Roy|Boulanger · 352,00${S}$ par semaine|Commence demain · Formation${S}: 352,00${S}$|Salaire horaire|$ de l&#x27;heure|Annuler l&#x27;embauche · sans frais`,
     )
   })
 
