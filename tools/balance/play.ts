@@ -6,14 +6,21 @@ import {
 import { SEGMENTS } from '../../src/engine/customers.ts'
 import { PRODUCTS } from '../../src/engine/inventory.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
-import type { Day, DaySummary, PerProduct } from '../../src/engine/types.ts'
+import type {
+  Day,
+  DaySummary,
+  PerProduct,
+  ShareSale,
+} from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import type { JournalEntry } from '../../src/finance/journal.ts'
 import { DIFFICULTIES, ENERGY, EVENTS } from '../../src/engine/day.ts'
+import { isFinancingMemo } from '../../src/engine/financing.ts'
 import {
   simulate,
   type ContractPolicy,
   type EventPolicy,
+  type FinancingPolicy,
 } from '../sim/simulate.ts'
 import { STRATEGIES, strategyChanges, type Strategy } from './strategies.ts'
 
@@ -21,6 +28,7 @@ import { STRATEGIES, strategyChanges, type Strategy } from './strategies.ts'
 // turns the games into the report and cli.ts writes it.
 
 const CASH: AccountCode = '1000'
+const BANK_LOANS: AccountCode = '2500'
 
 /** A business year, in days, as `--years` counts them. */
 export const DAYS_PER_YEAR = 365
@@ -67,6 +75,15 @@ export interface GameResult {
   readonly lostToStockouts: number
   /** Visits that bought nothing because a price was above what they pay. */
   readonly lostToPrices: number
+  /**
+   * What the Encaisse at the end holds that is not the owner's (#159): what
+   * the emergency loans still owe, and what the shares sold brought in.
+   */
+  readonly financedAtEnd: Cents
+  /** Emergency loans taken (#159). */
+  readonly emergencyLoans: number
+  /** Rounds of shares sold (#159). */
+  readonly shareSales: number
   /** The sha256 of the books, as `simulate` gives it. */
   readonly journalHash: string
   /** The days each kind of change to the street was in effect. */
@@ -95,6 +112,11 @@ export interface BalanceRun {
    * How the grocers' cards were answered; by default as the other cards.
    */
   readonly contracts?: ContractPolicy
+  /**
+   * How the financing's cards were answered; by default as the other
+   * cards.
+   */
+  readonly financing?: FinancingPolicy
   readonly difficulties: readonly DifficultyRun[]
 }
 
@@ -112,14 +134,20 @@ export interface BalanceOptions {
    * other cards.
    */
   readonly contracts?: ContractPolicy
+  /**
+   * How the financing's cards are answered (see `simulate`); by default as
+   * the other cards.
+   */
+  readonly financing?: FinancingPolicy
   /** Called after each difficulty is played. */
   readonly onProgress?: (run: DifficultyRun) => void
 }
 
 /**
  * Plays `strategy` from `seed` at `difficulty` for `days` days, from day 0,
- * answering the event cards by `events` and the grocers' by `contracts`, if
- * any (see `simulate`), and sums up the game. Throws what `simulate` throws.
+ * answering the event cards by `events`, the grocers' by `contracts` and the
+ * financing's by `financing`, if any (see `simulate`), and sums up the game.
+ * Throws what `simulate` throws.
  */
 export function playStrategy(
   strategy: Strategy,
@@ -128,6 +156,7 @@ export function playStrategy(
   days: number,
   events: EventPolicy = 'none',
   contracts: ContractPolicy | null = null,
+  financing: FinancingPolicy | null = null,
 ): GameResult {
   const result = simulate(
     seed,
@@ -138,6 +167,7 @@ export function playStrategy(
     EVENTS,
     DIFFICULTIES,
     contracts,
+    financing,
   )
   const { daySummaries, years } = result
   const lastYear = years.at(-1)
@@ -168,6 +198,9 @@ export function playStrategy(
     unitsSpoiled: totalUnits(daySummaries.map(({ spoiled }) => spoiled)),
     lostToStockouts: totalVisits(daySummaries, 'soldOut'),
     lostToPrices: totalVisits(daySummaries, 'tooExpensive'),
+    financedAtEnd: financedAtEnd(result.journal, result.shareSales),
+    emergencyLoans: result.loans.length,
+    shareSales: result.shareSales.length,
     journalHash: result.journalHash,
     modifierDays: result.modifierDays,
   }
@@ -175,9 +208,9 @@ export function playStrategy(
 
 /**
  * Plays every strategy at every difficulty on seeds 1 to `games`, for
- * `years` years each, answering the event cards by `events` and the
- * grocers' by `contracts`, if any. Throws a RangeError unless both are
- * whole numbers from 1.
+ * `years` years each, answering the event cards by `events`, the grocers'
+ * by `contracts` and the financing's by `financing`, if any. Throws a
+ * RangeError unless both are whole numbers from 1.
  */
 export function runBalance({
   years,
@@ -186,6 +219,7 @@ export function runBalance({
   difficulties = difficultyIdSchema.options,
   events = 'none',
   contracts,
+  financing,
   onProgress,
 }: BalanceOptions): BalanceRun {
   for (const [name, value] of [
@@ -204,6 +238,7 @@ export function runBalance({
     games,
     events,
     ...(contracts === undefined ? {} : { contracts }),
+    ...(financing === undefined ? {} : { financing }),
     difficulties: difficulties.map((difficulty) => {
       const run: DifficultyRun = {
         difficulty,
@@ -217,6 +252,7 @@ export function runBalance({
               days,
               events,
               contracts ?? null,
+              financing ?? null,
             ),
           ),
         })),
@@ -225,6 +261,25 @@ export function runBalance({
       return run
     }),
   }
+}
+
+/**
+ * What `entries`, the books at the end of a game, owe on its emergency
+ * loans, their Emprunts bancaires lent less those paid back, plus what
+ * `shareSales` brought in: cash in the Encaisse that is not the owner's.
+ */
+export function financedAtEnd(
+  entries: readonly JournalEntry[],
+  shareSales: readonly ShareSale[],
+): Cents {
+  let owed = 0
+  for (const { memo, lines } of entries) {
+    if (!isFinancingMemo(memo)) continue
+    for (const { account, debit, credit } of lines) {
+      if (account === BANK_LOANS) owed += credit - debit
+    }
+  }
+  return cents(shareSales.reduce((total, { amount }) => total + amount, owed))
 }
 
 /**

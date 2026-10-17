@@ -18,6 +18,7 @@ import {
   type DifficultyContent,
   type DifficultyId,
   type EventContent,
+  type FinancingContent,
   type FoodTruckContent,
   type GrocerContent,
   type StaffContent,
@@ -66,6 +67,16 @@ import {
 } from './decisions.ts'
 import { FULL_ENERGY } from './energy.ts'
 import { noEvents } from './events.ts'
+import {
+  FINANCING,
+  belowZeroSinceOf,
+  chargesOn,
+  isFinancingMemo,
+  isLoanOpen,
+  loanEntries,
+  noFinancing,
+  saleEntries,
+} from './financing.ts'
 import { PRODUCTS, inventoryValue } from './inventory.ts'
 import { cents, sum } from './money.ts'
 import { LABELS, isKept } from './personal.ts'
@@ -78,6 +89,7 @@ import type {
   ChallengeStatus,
   Day,
   Decisions,
+  FinancingState,
   GameState,
   Hire,
   VisitOutcome,
@@ -94,7 +106,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 14 adds the
+ * change can no longer load (rule 8 in CLAUDE.md). Version 15 adds the
+ * emergency loans and the share sales: a version 14 game still loads, with
+ * none, nobody come to lend yet and the closes below zero read from its
+ * books. Version 14 adds the
  * employees, the owner's absence and the missed deliveries: a version 13 game
  * still loads, with nobody on staff or wanted, the owner at work, no strike
  * and nothing missed. Version 13 adds the
@@ -118,9 +133,10 @@ import { WEEKS_KEPT, openingWeek } from './week.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 14
+export const SAVE_VERSION = 15
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const FINANCINGLESS_VERSION = 14
 const STAFFLESS_VERSION = 13
 const CONTRACTLESS_VERSION = 12
 const BAKERYLESS_VERSION = 11
@@ -485,6 +501,37 @@ const contractsSchema = z.strictObject({
 // decisions.
 const employeeSchema = hireSchema.extend({ hiredOnDay: gameDay })
 
+// `checkFinancing()` checks the days, the rounds, the closes below zero and
+// the books.
+const financingSchema = z.strictObject({
+  loans: z.array(
+    z.strictObject({
+      day: gameDay,
+      lender: text,
+      principal: z
+        .int()
+        .positive()
+        .transform((n) => cents(n)),
+      annualRateBasisPoints: count,
+      termMonths: z.int().positive(),
+      fee: money,
+    }),
+  ),
+  shareSales: z.array(
+    z.strictObject({
+      day: gameDay,
+      investor: text,
+      amount: z
+        .int()
+        .positive()
+        .transform((n) => cents(n)),
+      share: z.number().gt(0).lt(1),
+    }),
+  ),
+  belowZeroSince: gameDay.nullable(),
+  lastLoanRequestDay: gameDay.nullable(),
+})
+
 const saveSchema = z.strictObject({
   saveVersion: z.literal(SAVE_VERSION),
   day: gameDay,
@@ -509,26 +556,35 @@ const saveSchema = z.strictObject({
   contracts: contractsSchema,
   staff: z.array(employeeSchema),
   ownerAway: z.boolean(),
+  financing: financingSchema,
 })
 
-// The week under way may come from the books rather than the save.
-type Save = Omit<z.output<typeof saveSchema>, 'weekSoFar'> & {
+// The week under way, and an older save's financing, may come from the
+// books rather than the save.
+type Save = Omit<z.output<typeof saveSchema>, 'weekSoFar' | 'financing'> & {
   readonly weekSoFar: WeekSoFar
+  readonly financing: FinancingState
 }
 
 /**
- * A save as parsed: an older one has no week under way until the books it
- * holds are rebuilt.
+ * A save as parsed: an older one has no week under way, nor financing,
+ * until the books it holds are rebuilt.
  */
-type Parsed = Omit<Save, 'weekSoFar'> & {
+type Parsed = Omit<Save, 'weekSoFar' | 'financing'> & {
   readonly weekSoFar: WeekSoFar | null
+  readonly financing: FinancingState | null
 }
+
+/** A version 14 save: no emergency loan and no share sale. */
+const financinglessSchema = saveSchema
+  .omit({ financing: true })
+  .extend({ saveVersion: z.literal(FINANCINGLESS_VERSION) })
 
 /**
  * A version 13 save: nobody on staff or wanted, the owner at work, and
  * contracts with no strike and nothing missed.
  */
-const stafflessSchema = saveSchema
+const stafflessSchema = financinglessSchema
   .omit({ staff: true, ownerAway: true })
   .extend({
     saveVersion: z.literal(STAFFLESS_VERSION),
@@ -606,6 +662,7 @@ export function serialize(state: GameState): string {
     contracts: state.contracts,
     staff: state.staff,
     ownerAway: state.ownerAway,
+    financing: state.financing,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -617,8 +674,10 @@ export function serialize(state: GameState): string {
  * nothing was played: the books open on day 0 either way.
  *
  * Throws an Error that starts with "Invalid save:" and names the problem
- * unless: the text is JSON of the current `SAVE_VERSION`, or of version 13,
- * which loads with nobody on staff, the owner at work and nothing missed,
+ * unless: the text is JSON of the current `SAVE_VERSION`, or of version 14,
+ * which loads with no financing, its closes below zero read from its books,
+ * or of version 13,
+ * which also loads with nobody on staff, the owner at work and nothing missed,
  * or of version 12, which also loads with no contract, or of version 11,
  * which also loads with no
  * bakery, or of version 10, which also loads as a game that is not a Défi,
@@ -655,14 +714,17 @@ export function serialize(state: GameState): string {
  * Défi; the week under way, the last week reported and the history pass
  * `checkWeek()`; the Défi, if any, is one of `defis` and passes
  * `checkChallenge()`; the contracts pass `checkContracts()` against
- * `grocers`; and the staff passes `checkStaff()` against `staff`.
+ * `grocers`; the staff passes `checkStaff()` against `staff`; and the
+ * financing passes `checkFinancing()` against `financing`.
  *
  * The products, limits, restock kinds, `awarenessDays` and the truck's
  * price are those of `content` as it is now, the events, choices, outcomes
  * and personal labels those of `events`, the starting cash and the trucks'
- * terms those of `difficulties`, and the Défis those of `defis`, so tuning
- * that changes the days, narrows the others, drops an event, changes how a
- * game opens or changes a Défi can stop older saves from loading.
+ * terms those of `difficulties`, the Défis those of `defis` and the share
+ * rounds and second loans those of `financing`, so tuning that changes the
+ * days, narrows the others, drops an event, changes how a game opens,
+ * changes a Défi or allows fewer rounds or loans can stop older saves from
+ * loading.
  */
 export function deserialize(
   text: string,
@@ -673,6 +735,7 @@ export function deserialize(
   bakery: BakeryContent = BAKERY,
   grocers: GrocerContent = GROCERS,
   staff: StaffContent = STAFF,
+  financing: FinancingContent = FINANCING,
 ): GameState {
   const loaded = parsed(text, bakery)
   const journal = rebuilt(loaded.journal)
@@ -683,6 +746,14 @@ export function deserialize(
   const save: Save = {
     ...loaded,
     weekSoFar: loaded.weekSoFar ?? weekSince(loaded, journal, content, opening),
+    financing: loaded.financing ?? {
+      ...noFinancing(),
+      belowZeroSince: belowZeroSinceOf(
+        journal,
+        firstDay(loaded),
+        loaded.lastDay?.day ?? firstDay(loaded) - 1,
+      ),
+    },
   }
   checkInventory(save, journal)
   checkReceivables(save, journal)
@@ -708,6 +779,7 @@ export function deserialize(
   if (defi !== null) checkChallenge(save, journal, defi, content, opening)
   checkContracts(save, grocers)
   checkStaff(save, staff)
+  checkFinancing(save, journal, financing)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -732,6 +804,7 @@ export function deserialize(
     contracts: save.contracts,
     staff: save.staff,
     ownerAway: save.ownerAway,
+    financing: save.financing,
   }
 }
 
@@ -748,21 +821,30 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
   if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  if (saveVersion === FINANCINGLESS_VERSION) {
+    return withFinancing(checked(financinglessSchema, raw))
+  }
   if (saveVersion === STAFFLESS_VERSION) {
-    return withStaff(checked(stafflessSchema, raw))
+    return withFinancing(withStaff(checked(stafflessSchema, raw)))
   }
   if (saveVersion === CONTRACTLESS_VERSION) {
-    return withStaff(withContracts(checked(contractlessSchema, raw)))
+    return withFinancing(
+      withStaff(withContracts(checked(contractlessSchema, raw))),
+    )
   }
   if (saveVersion === BAKERYLESS_VERSION) {
-    return withStaff(
-      withContracts(withBakery(checked(bakerylessSchema, raw), bakery)),
+    return withFinancing(
+      withStaff(
+        withContracts(withBakery(checked(bakerylessSchema, raw), bakery)),
+      ),
     )
   }
   if (saveVersion === CHALLENGELESS_VERSION) {
     const save = checked(challengelessSchema, raw)
-    return withStaff(
-      withContracts(withBakery({ ...save, challenge: null }, bakery)),
+    return withFinancing(
+      withStaff(
+        withContracts(withBakery({ ...save, challenge: null }, bakery)),
+      ),
     )
   }
   // An older version's own schema first, strict, so a key it did not know
@@ -793,13 +875,29 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
     weekHistory: [],
     challenge: null,
   })
-  return withStaff(
-    withContracts(withBakery({ ...save, weekSoFar: null }, bakery)),
+  return withFinancing(
+    withStaff(withContracts(withBakery({ ...save, weekSoFar: null }, bakery))),
   )
 }
 
 /**
- * A save from before the employees as the current version: with nobody on
+ * A save from before the emergency loans and the share sales as the
+ * current version, its financing to be read from its books once they are
+ * rebuilt.
+ */
+function withFinancing<
+  Old extends { readonly saveVersion: typeof FINANCINGLESS_VERSION },
+>(
+  save: Old,
+): Omit<Old, 'saveVersion'> & {
+  readonly saveVersion: typeof SAVE_VERSION
+  readonly financing: null
+} {
+  return { ...save, saveVersion: SAVE_VERSION, financing: null }
+}
+
+/**
+ * A save from before the employees as version 14: with nobody on
  * staff, none wanted in the decisions and those pending, the owner at work,
  * no strike against a contract, nothing missed, and no delivery missed on
  * its last day.
@@ -817,7 +915,7 @@ function withStaff<
   Old,
   'saveVersion' | 'lastDay' | 'decisions' | 'pendingDecisions' | 'contracts'
 > & {
-  readonly saveVersion: typeof SAVE_VERSION
+  readonly saveVersion: typeof FINANCINGLESS_VERSION
   readonly lastDay: Save['lastDay']
   readonly decisions: SavedDecisions
   readonly pendingDecisions: SavedDecisions | null
@@ -828,7 +926,7 @@ function withStaff<
   const { contracts, pendingDecisions } = save
   return {
     ...save,
-    saveVersion: SAVE_VERSION,
+    saveVersion: FINANCINGLESS_VERSION,
     lastDay: save.lastDay === null ? null : { ...save.lastDay, missed: [] },
     decisions: { ...save.decisions, staff: [] },
     pendingDecisions:
@@ -1131,7 +1229,12 @@ function checkEvents(save: Save, content: EventContent): void {
     checkEvent(what, event)
     if (effect.kind === 'followUp')
       checkEvent(`${what}'s follow-up`, effect.event)
-    if (effect.kind === 'contract' || effect.kind === 'grocerAway') {
+    if (
+      effect.kind === 'contract' ||
+      effect.kind === 'grocerAway' ||
+      effect.kind === 'emergencyLoan' ||
+      effect.kind === 'shareSale'
+    ) {
       invalid(`${what} is a ${effect.kind}, which never waits`)
     }
   })
@@ -2139,6 +2242,124 @@ function keepsRoles(
         `${field}.staff gives ${candidate} the role ${role}, but they work as ${on.role}`,
       )
     }
+  }
+}
+
+/**
+ * What the financing could be at the save's day, against `rules`:
+ * - each emergency loan taken on a morning from the game's first day to
+ *   the save's day, in order, after the one before it closed (see
+ *   `isLoanOpen`), and at most one at a difficulty of `noSecondLoanAt`;
+ *   its fee no more than what it lent;
+ * - each share sale made on such a morning, in order, `maxShareRounds` at
+ *   most;
+ * - `belowZeroSince` what the closes in the books give (see
+ *   `belowZeroSinceOf`), and `lastLoanRequestDay` a morning from the first
+ *   day to the save's day;
+ * - the journal holds the entries of each loan and sale, and of each 1st
+ *   played (see `chargesOn`), and no other entry of the financing's memos,
+ *   in any order within a day.
+ */
+function checkFinancing(
+  save: Save,
+  journal: Journal,
+  rules: FinancingContent,
+): void {
+  const { day, lastDay, financing, profile } = save
+  const { loans, shareSales, belowZeroSince, lastLoanRequestDay } = financing
+  const first = firstDay(save)
+  const played = lastDay?.day ?? first - 1
+  const onAMorning = (what: string, at: Day) => {
+    if (at < first || at > day) {
+      invalid(
+        `${what} is on day ${at}, not a morning from day ${first} to day ${day}`,
+      )
+    }
+  }
+  loans.forEach((loan, index) => {
+    const what = `emergency loan ${index + 1}`
+    onAMorning(what, loan.day)
+    const before = loans[index - 1]
+    if (before !== undefined && isLoanOpen(before, loan.day)) {
+      invalid(
+        `${what} was taken on day ${loan.day}, while the one before it was still open`,
+      )
+    }
+    if (index > 0 && rules.noSecondLoanAt.includes(profile.difficulty)) {
+      invalid(`${what} is a second emergency loan at ${profile.difficulty}`)
+    }
+    if (loan.fee > loan.principal) {
+      invalid(
+        `${what} charged a fee of ${loan.fee}, more than the ${loan.principal} it lent`,
+      )
+    }
+  })
+  shareSales.forEach((sale, index) => {
+    const what = `share sale ${index + 1}`
+    onAMorning(what, sale.day)
+    const before = shareSales[index - 1]
+    if (before !== undefined && sale.day < before.day) {
+      invalid(
+        `${what} comes before the one before it: day ${sale.day} < day ${before.day}`,
+      )
+    }
+  })
+  if (shareSales.length > rules.maxShareRounds) {
+    invalid(
+      `${shareSales.length} rounds of shares were sold, more than the ${rules.maxShareRounds} a game may sell`,
+    )
+  }
+  const fromBooks = belowZeroSinceOf(journal, first, played)
+  if (belowZeroSince !== fromBooks) {
+    invalid(
+      `financing.belowZeroSince is ${belowZeroSince}, but the closes in the books give ${fromBooks}`,
+    )
+  }
+  if (lastLoanRequestDay !== null) {
+    onAMorning('financing.lastLoanRequestDay', lastLoanRequestDay)
+  }
+
+  const expected = attempt('the financing', () => {
+    const entries = [
+      ...loans.flatMap(loanEntries),
+      ...shareSales.flatMap(saleEntries),
+    ]
+    const since = Math.min(
+      ...loans.map((loan) => loan.day),
+      ...shareSales.map((sale) => sale.day),
+    )
+    for (let on = since + 1; on <= played; on += 1) {
+      entries.push(...chargesOn(journal, financing, on))
+    }
+    return entries
+  })
+  // Compared as a multiset: on a 1st, the journal holds the morning's loan
+  // or sale before the payments and dividends, which this builds after.
+  const key = ({ day: on, memo, lines }: JournalEntry) =>
+    JSON.stringify([
+      on,
+      memo,
+      lines.map(({ account, debit, credit }) => [account, debit, credit]),
+    ])
+  const owed = new Map<string, number>()
+  for (const entry of expected) {
+    owed.set(key(entry), (owed.get(key(entry)) ?? 0) + 1)
+  }
+  for (const entry of entriesOf(journal)) {
+    if (!isFinancingMemo(entry.memo)) continue
+    const left = owed.get(key(entry)) ?? 0
+    if (left === 0) {
+      invalid(
+        `the journal holds « ${entry.memo} » on day ${entry.day}, which the financing does not owe`,
+      )
+    }
+    owed.set(key(entry), left - 1)
+  }
+  const missing = expected.find((entry) => (owed.get(key(entry)) ?? 0) > 0)
+  if (missing !== undefined) {
+    invalid(
+      `the journal does not hold « ${missing.memo} » on day ${missing.day} as the financing owes it`,
+    )
   }
 }
 

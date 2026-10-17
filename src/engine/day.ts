@@ -21,7 +21,12 @@ import {
   type StaffContent,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
-import { emptyJournal, entriesOf, type Journal } from '../finance/journal.ts'
+import {
+  balance,
+  emptyJournal,
+  entriesOf,
+  type Journal,
+} from '../finance/journal.ts'
 import { loanSchedule } from '../finance/loan.ts'
 import {
   BAKED,
@@ -47,6 +52,7 @@ import {
 } from './customers.ts'
 import { startOfDay } from './effects.ts'
 import { effectsOf, energyAtClose } from './energy.ts'
+import { closingFinancing, financingCharges } from './financing.ts'
 import {
   PRODUCTS,
   onHand,
@@ -201,9 +207,11 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * street that day, with the changes in effect folded together (see `streetOn`).
  * On the 1st of the month, open or closed: the month's charges (see
  * `monthlyCharges`), the truck's counted in months from the game's first day,
- * day 0 or a Défi's first day, as if the truck came to the business then. Then,
- * open or closed, the bakery's morning with `bakeryContent` and the prices of
- * the game's difficulty (see `bakeryMorning`), then the staff's with `staff`,
+ * day 0 or a Défi's first day, as if the truck came to the business then,
+ * then what the emergency loans and the shares sold owe (see
+ * `financingCharges`). Then, open or closed, the bakery's morning with
+ * `bakeryContent` and the prices of the game's difficulty (see
+ * `bakeryMorning`), then the staff's with `staff`,
  * which hires and lets go as the decisions want (see `staffMorning`), and who
  * does what that day, the owner away all day or not (see `crewOf`). Then the
  * deliveries of the contracts with `grocers`, missed when nobody delivers, the
@@ -233,10 +241,11 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * the stock, the generator, the marketing history, `lastDay`, with the changes
  * to the street in effect that day, the deliveries and those missed, the
  * owner's personal account, their energy, the events, without the changes
- * whose last day it was, the
- * receivables brought up to the close, the day added to the week under way,
- * summed up on a Sunday (see `recordDay`), and, in a Défi of `defis`, the day
- * added to its progress, which may end it (see `recordChallengeDay`), with the
+ * whose last day it was, the financing with Encaisse at the close (see
+ * `closingFinancing`), the receivables brought up to the close, the day
+ * added to the week under way, summed up on a Sunday (see `recordDay`),
+ * and, in a Défi of `defis`, the day added to its progress, which may end
+ * it (see `recordChallengeDay`), with the
  * owner's lowest energy since the last close, the start of the day's effects
  * included, and at this one; never mutates `morning`. Cash may go negative.
  */
@@ -275,6 +284,7 @@ export function playDay(
     const { truck } = difficulties.difficulties[started.profile.difficulty]
     const month = monthsSinceStart(day) - monthsSinceStart(firstDay(started))
     journal = monthlyCharges(journal, day, month, content, truck)
+    journal = financingCharges(journal, started.financing, day)
   }
   const prices = difficulties.bakery[started.profile.difficulty]
   const bakery = bakeryMorning(
@@ -476,6 +486,11 @@ export function playDay(
         ? state.events
         : { ...state.events, modifiers: lasting },
     bakery: bakery.bakery,
+    financing: closingFinancing(
+      state.financing,
+      day,
+      balance(journal, CASH, { toDay: day }),
+    ),
   }
   const recorded = { ...closing, ...recordDay(closing, open, expired.cost) }
   if (challenge === null) return recorded

@@ -64,16 +64,17 @@ export function effectsAt(
 
 /**
  * `effect` at `difficulty`, with `scaling`'s multipliers; as it is without
- * scaling. A gain is what the player wants: a cash or a credit sale, the
- * owner's energy or cash going up, a change to the street above 1. A loss
+ * scaling. A gain is what the player wants: a cash or a credit sale, what
+ * shares sell for, the owner's energy or cash going up, a change to the
+ * street above 1. A loss
  * is the opposite: a charge, the owner's energy or cash going down, a
  * change to the street below 1. Money is scaled to the cent and energy to
  * the whole point, half away from zero, and neither reaches 0; energy moves
  * 100 points at most, the whole scale; a change to the street scales by its
  * distance from 1, so ×0.65
  * with losses ×1.3 becomes ×0.545, and never falls below `lowestFactor`.
- * Stock, durations, chances and receivable terms stay as the card writes
- * them.
+ * Stock, durations, chances, receivable terms, the share of the business
+ * sold and an emergency loan's terms stay as the card writes them.
  */
 export function scaledEffect(
   effect: TimedEventEffect,
@@ -87,6 +88,7 @@ export function scaledEffect(
       return { ...effect, amountCents: scaledMoney(effect.amountCents, losses) }
     case 'cashSale':
     case 'creditSale':
+    case 'shareSale':
       return { ...effect, amountCents: scaledMoney(effect.amountCents, gains) }
     case 'personal': {
       const { amountCents } = effect
@@ -202,8 +204,9 @@ function scaledNamed(
 }
 
 /**
- * The size of what `effects`, of one unit, add up to; null for none, or
- * when one shows no amount, such as stock or a closed day.
+ * The size of what `effects`, of one unit, add up to, an emergency loan
+ * counting the most it lends; null for none, or when one shows no amount,
+ * such as stock or a closed day.
  */
 function amountOf(effects: readonly TimedEventEffect[]): TagAmount | null {
   let total = 0
@@ -214,7 +217,11 @@ function amountOf(effects: readonly TimedEventEffect[]): TagAmount | null {
       case 'cashSale':
       case 'creditSale':
       case 'personal':
+      case 'shareSale':
         total += Math.abs(effect.amountCents)
+        break
+      case 'emergencyLoan':
+        total += effect.maxCents
         break
       case 'energy':
         total += Math.abs(effect.amount)

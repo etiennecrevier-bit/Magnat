@@ -1,5 +1,5 @@
 {
-  "_note": "Pacing from issue #155 (R-06): from day 10, 14 days apart, 8 % a morning, about one event every 3 to 4 weeks; an event dated that day comes whatever the gap and the chance. The twelve cards of issue #93 keep a weight of 1; P3-13 (#101) tuned their amounts, chances and effects at Moyen with `npm run balance -- --percentiles`, until no choice wins too often or too seldom: see docs/balance/phase-3.md. P3-13b (#137) scales what a choice gives and takes by difficulty, gives every Difficile choice a cost, adds four cards that Facile draws by the player's standing, and tuned the cards at each difficulty with the same report. R-06 (#155) caps the cards that came too often with maxPerGame, lets the chalet come on any tired summer morning, and adds thirteen cards whose amounts are starting values, not yet tuned. A card's text writes its amounts as {montant:name}, so they follow the scaling too. P4-01 (#156) adds the three grocers' offers, at a weight of 0.5 each, and their renewals, which come as follow-ups the morning after a contract's last delivery; their prices are grocers.json's, which no difficulty scales, so their text writes them out. With them in the draw, the chalet's weight goes from 4 to 5 to keep it in 80 % of the games, and the median gap between two events stays at 20 days. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
+  "_note": "Pacing from issue #155 (R-06): from day 10, 14 days apart, 8 % a morning, about one event every 3 to 4 weeks; an event dated that day comes whatever the gap and the chance. The twelve cards of issue #93 keep a weight of 1; P3-13 (#101) tuned their amounts, chances and effects at Moyen with `npm run balance -- --percentiles`, until no choice wins too often or too seldom: see docs/balance/phase-3.md. P3-13b (#137) scales what a choice gives and takes by difficulty, gives every Difficile choice a cost, adds four cards that Facile draws by the player's standing, and tuned the cards at each difficulty with the same report. R-06 (#155) caps the cards that came too often with maxPerGame, lets the chalet come on any tired summer morning, and adds thirteen cards whose amounts are starting values, not yet tuned. A card's text writes its amounts as {montant:name}, so they follow the scaling too. P4-01 (#156) adds the three grocers' offers, at a weight of 0.5 each, and their renewals, which come as follow-ups the morning after a contract's last delivery; their prices are grocers.json's, which no difficulty scales, so their text writes them out. With them in the draw, the chalet's weight goes from 4 to 5 to keep it in 80 % of the games, and the median gap between two events stays at 20 days. P4-04 (#159) adds Mme Prudhomme's emergency loan and Max Duvent's offer, at a weight of 0: no draw brings them, the engine does when the encaisse closes below zero (financing.json). Their tags write the loan's rate, term and fee and the share sold, which a test holds to their effects. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
   "pacing": { "firstDay": 10, "minDaysBetween": 14, "dailyChance": 0.08 },
   "scaling": {
     "_note": "Tuned at each difficulty with the event report of npm run balance -- --percentiles (#137): Facile keeps the gains and softens the losses, Moyen raises both, Difficile gives less and takes more. The issue's starting values (1 and 0.7, 1.3 and 1.3, 0.7 and 1.2) pushed choices off their targets, since a choice's money scales but the days it closes the truck or stops a product do not: see docs/balance/phase-3.md.",
@@ -137,7 +137,22 @@
                   "grocer": "chezNormand",
                   "priceFactor": 1.1
                 },
-                { "kind": "grocerAway", "grocer": "depanneur2424", "days": 30 }
+                { "kind": "grocerAway", "grocer": "depanneur2424", "days": 30 },
+                {
+                  "kind": "emergencyLoan",
+                  "lender": "Caisse d'essai",
+                  "monthsOfFixedCosts": 1,
+                  "maxCents": 100000,
+                  "annualRateBasisPoints": 1800,
+                  "termMonths": 12,
+                  "feeShare": 0.02
+                },
+                {
+                  "kind": "shareSale",
+                  "investor": "Investisseur d'essai",
+                  "amountCents": 100000,
+                  "share": 0.2
+                }
               ]
             }
           ]
@@ -3141,6 +3156,130 @@
             {
               "chance": 1,
               "result": "M. Kim hausse les épaules. Les clients de 3 h du matin mangeront des chips.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pretUrgence",
+      "weight": 0,
+      "character": {
+        "id": "mmePrudhomme",
+        "name": "Mme Prudhomme",
+        "role": "Directrice de comptes, Caisse populaire Saint-Prudent"
+      },
+      "title": "Le prêt d'urgence",
+      "situation": "Votre encaisse a fini la journée sous zéro. Ce matin, Mme Prudhomme, de la Caisse populaire Saint-Prudent, vous attend devant le camion avec un formulaire déjà rempli et un stylo qui ne sert qu'à signer.",
+      "quote": "Je vous prête de quoi remonter votre encaisse à un mois de frais fixes, jusqu'à {montant:pret}. Les frais de dossier se prennent dessus. Et je ne repasse pas avant l'an prochain.",
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Accepter",
+          "tags": [
+            "Encaisse visée : un mois de frais fixes",
+            { "text": "Prêt d'au plus {montant}", "effect": "pret" },
+            "Intérêts 18 % · 12 mois",
+            "Frais de dossier 2 %"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Mme Prudhomme vous fait signer trois copies. L'argent est dans votre compte avant midi, les frais de dossier déjà retirés. Premier versement le 1er du mois prochain.",
+              "effects": [
+                {
+                  "kind": "emergencyLoan",
+                  "lender": "Caisse populaire Saint-Prudent",
+                  "monthsOfFixedCosts": 1,
+                  "maxCents": 1500000,
+                  "annualRateBasisPoints": 1800,
+                  "termMonths": 12,
+                  "feeShare": 0.02,
+                  "name": "pret"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Refuser",
+          "tags": [
+            "L'encaisse reste sous zéro",
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Mme Prudhomme range son stylo. « Comme vous voudrez. » Votre encaisse, elle, reste sous zéro.",
+              "effects": [
+                {
+                  "kind": "energy",
+                  "amount": -5,
+                  "difficulties": ["difficile"],
+                  "name": "energie"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "offreDuvent",
+      "weight": 0,
+      "character": {
+        "id": "maxDuvent",
+        "name": "Max Duvent",
+        "role": "Duvent Capital"
+      },
+      "title": "L'offre de Max Duvent",
+      "situation": "Votre encaisse est sous zéro, et ça se sait. Une voiture sport se gare en travers de deux places. Max Duvent, de Duvent Capital, en descend et s'accoude à votre comptoir sans rien commander.",
+      "quote": "Je mets {montant:prix} dans votre entreprise, aujourd'hui même. En échange : 20 % des actions, et 20 % des profits chaque trimestre. Pour toujours, évidemment.",
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Accepter",
+          "tags": [
+            { "text": "Encaisse +{montant}", "effect": "prix" },
+            "20 % des actions · pour toujours",
+            "20 % des profits chaque trimestre"
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Max signe sans lire. « Bienvenue dans la famille Duvent. » Il passera chaque trimestre. Pour les dividendes.",
+              "effects": [
+                {
+                  "kind": "shareSale",
+                  "investor": "Duvent Capital",
+                  "amountCents": 2000000,
+                  "share": 0.2,
+                  "name": "prix"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "refuser",
+          "label": "Refuser",
+          "tags": [
+            "L'encaisse reste sous zéro",
+            { "text": "Énergie −{montant}", "effect": "energie" }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Max remet ses lunettes fumées. « Vous me rappellerez. Ils me rappellent tous. »",
               "effects": [
                 {
                   "kind": "energy",

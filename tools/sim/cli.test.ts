@@ -173,6 +173,9 @@ describe('formatReport', () => {
       owner: { morningEnergy: [], personalCash: cents(0), unpaidRents: [] },
       events: 'first',
       contracts: null,
+      financing: null,
+      loans: [],
+      shareSales: [],
       eventHistory: [],
       modifierDays: {
         walkIns: 15,

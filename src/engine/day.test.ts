@@ -52,6 +52,7 @@ import {
 } from './decisions.ts'
 import { applyEffect } from './effects.ts'
 import { FULL_ENERGY, fatigueOf } from './energy.ts'
+import { chargesOn, isFinancingMemo } from './financing.ts'
 import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
 import { cents, mulRatio, type Cents } from './money.ts'
 import { LABELS } from './personal.ts'
@@ -2236,6 +2237,91 @@ describe('the staff', () => {
     // With a baker, the owner away, the truck has its croissants.
     const baked = summary(tuesdayAway(staffed(...BAKING, AT_TRUCK, BAKER)))
     expect(baked.sold.croissant).toBeGreaterThan(0)
+  })
+})
+
+describe('the financing (#159)', () => {
+  const LENDER = 'Caisse populaire Saint-Prudent'
+  // The morning of October 1st, day 153, at Moyen, with 5 000 $ lent and
+  // shares sold on day 100.
+  const morning = after(153)
+  const financed: GameState = {
+    ...morning,
+    financing: {
+      ...morning.financing,
+      loans: [
+        {
+          day: 100,
+          lender: LENDER,
+          principal: cents(500_000),
+          annualRateBasisPoints: 1800,
+          termMonths: 12,
+          fee: cents(10_000),
+        },
+      ],
+      shareSales: [
+        {
+          day: 100,
+          investor: 'Duvent Capital',
+          amount: cents(2_000_000),
+          share: 0.2,
+        },
+      ],
+    },
+  }
+  const financingOn = (state: GameState, day: Day) =>
+    entriesOn(state, day).filter(({ memo }) => isFinancingMemo(memo))
+
+  it("pays the emergency loans, then the dividends, on the 1st, right after the month's charges", () => {
+    expect(toCalendar(153)).toMatchObject({ month: 10, dayOfMonth: 1 })
+    const closed = playDay(financed)
+    const due = chargesOn(closed.journal, financed.financing, 153)
+    expect(due.map(({ memo }) => memo)).toEqual([
+      `Intérêts · ${LENDER}`,
+      `Remboursement · ${LENDER}`,
+      'Dividende · Duvent Capital',
+    ])
+    const memos = entriesOn(closed, 153).map(({ memo }) => memo)
+    const from = memos.indexOf('Amortissement du camion') + 1
+    expect(memos.slice(from, from + due.length)).toEqual(
+      due.map(({ memo }) => memo),
+    )
+    expect(financingOn(closed, 153)).toEqual(due)
+  })
+
+  it('pays nothing on another day, nor without any financing', () => {
+    expect(financingOn(playDay({ ...financed, day: 154 }), 154)).toEqual([])
+    expect(financingOn(playDay(morning), 153)).toEqual([])
+  })
+
+  it('keeps the first close below zero while the closes stay below, and forgets it at one above', () => {
+    expect(playDay(morning).financing.belowZeroSince).toBeNull()
+    const cash = balance(morning.journal, CASH, { toDay: 153 })
+    const billed = applyEffect(
+      morning,
+      {
+        kind: 'charge',
+        amountCents: cents(cash + 500_000),
+        description: 'Facture',
+      },
+      FOOD_TRUCK,
+      'test',
+    )
+    const broke = playDay(billed)
+    expect(broke.financing.belowZeroSince).toBe(153)
+    const still = playDay({ ...broke, day: 154 })
+    expect(still.financing.belowZeroSince).toBe(153)
+    const saved = applyEffect(
+      { ...still, day: 155 },
+      {
+        kind: 'cashSale',
+        amountCents: cents(1_000_000),
+        description: 'Vente',
+      },
+      FOOD_TRUCK,
+      'test',
+    )
+    expect(playDay(saved).financing.belowZeroSince).toBeNull()
   })
 })
 

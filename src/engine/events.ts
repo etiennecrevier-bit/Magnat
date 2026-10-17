@@ -5,6 +5,7 @@ import {
   type EventChoiceRef,
   type EventConditions,
   type EventContent,
+  type FinancingContent,
   type FoodTruckContent,
   type GrocerContent,
   type PercentileContent,
@@ -19,6 +20,7 @@ import { allowedChoices } from './challenge.ts'
 import { GROCERS, mayOffer } from './contracts.ts'
 import { DEFIS, EVENTS, FOOD_TRUCK } from './day.ts'
 import { applyEffect, insertByDay, untimed, whenDue } from './effects.ts'
+import { FINANCING } from './financing.ts'
 import { PERCENTILES } from './percentiles.ts'
 import { next } from './rng.ts'
 import { effectsAt } from './scaling.ts'
@@ -309,9 +311,10 @@ export function conditionsHold(
  * outcome's effects that apply at the game's difficulty then run in order,
  * scaled as the game scales them (see `scalingOf` and `effectsAt`), those
  * that start now applied at once (see `applyEffect`, with `foodTruck`'s
- * unit costs) and the others queued for their day (see `whenDue`), as they
- * will run, a contract with one of `grocers`. The event goes into the
- * history and no longer waits. Returns a new state; never mutates `state`.
+ * unit costs and `financing`'s rules) and the others queued for their day
+ * (see `whenDue`), as they will run, a contract with one of `grocers`. The
+ * event goes into the history and no longer waits. Returns a new state;
+ * never mutates `state`.
  * Throws an Error when no event waits, and a RangeError when `content` does
  * not hold the event, the event has no such choice, or the game's Défi, one
  * of `defis`, forces the event that morning without allowing the choice
@@ -324,6 +327,7 @@ export function resolveEvent(
   foodTruck: FoodTruckContent = FOOD_TRUCK,
   defis: DefiContent = DEFIS,
   grocers: GrocerContent = GROCERS,
+  financing: FinancingContent = FINANCING,
 ): GameState {
   const { pending } = state.events
   if (pending === null) {
@@ -377,7 +381,7 @@ export function resolveEvent(
     const effect = untimed(timed)
     resolved =
       day === state.day
-        ? applyEffect(resolved, effect, foodTruck, event.id, grocers)
+        ? applyEffect(resolved, effect, foodTruck, event.id, grocers, financing)
         : {
             ...resolved,
             events: {

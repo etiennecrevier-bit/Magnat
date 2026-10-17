@@ -24,15 +24,21 @@ import { defaultProfile } from '../../src/engine/profile.ts'
 import type { DaySummary, PerProduct } from '../../src/engine/types.ts'
 import { getAccount } from '../../src/finance/accounts.ts'
 import { emptyJournal, postEntry } from '../../src/finance/journal.ts'
+import { NO_EVENTS } from '../../src/engine/events.ts'
 import {
+  answerEvent,
   contractChoices,
   contractChooser,
   eventChooser,
+  financingChoices,
+  financingChooser,
   grocerCards,
   grocerOf,
+  isFinancingCard,
   journalHash,
   modifierDays,
   simulate,
+  withFinancingCards,
   type SimulationResult,
 } from './simulate.ts'
 
@@ -715,5 +721,144 @@ describe('simulate with contracts', () => {
       'first',
     ] as const
     expect(simulate(...args).journalHash).toBe(simulate(...args).journalHash)
+  })
+})
+
+describe("the financing's cards (#159)", () => {
+  const card = (id: string) => {
+    const found = EVENTS.events.find((event) => event.id === id)
+    if (found === undefined) throw new Error(`No card ${id}`)
+    return found
+  }
+  const CARDS = ['pretUrgence', 'offreDuvent']
+
+  it('are the emergency loan and the share sale, and no other card', () => {
+    expect(EVENTS.events.filter(isFinancingCard).map(({ id }) => id)).toEqual(
+      CARDS,
+    )
+  })
+
+  it.each(CARDS)(
+    'finds the one choice of %s that accepts and the one that refuses',
+    (id) => {
+      expect(financingChoices(card(id))).toEqual({
+        accept: 'accepter',
+        refuse: 'refuser',
+      })
+    },
+  )
+
+  it('refuses a card without one choice of each', () => {
+    expect(() => financingChoices(card('chalet'))).toThrow(RangeError)
+  })
+
+  it('accepts them or refuses them, and leaves the others to the fallback', () => {
+    const fallback = () => 'autre'
+    expect(
+      CARDS.map((id) => financingChooser('accept', fallback)(card(id))),
+    ).toEqual(['accepter', 'accepter'])
+    expect(
+      CARDS.map((id) => financingChooser('refuse', fallback)(card(id))),
+    ).toEqual(['refuser', 'refuser'])
+    expect(financingChooser('accept', fallback)(card('chalet'))).toBe('autre')
+    expect(() => financingChooser('accept', null)(card('chalet'))).toThrow(
+      "Only the financing's cards come up: chalet",
+    )
+  })
+
+  it('adds them to content that lacks them, at its pacing, and leaves content that holds them', () => {
+    const added = withFinancingCards(NO_EVENTS)
+    expect(added.events.map(({ id }) => id)).toEqual(CARDS)
+    expect(added.pacing).toEqual(NO_EVENTS.pacing)
+    expect(withFinancingCards(EVENTS)).toBe(EVENTS)
+    const grocers = withFinancingCards(grocerCards(EVENTS))
+    expect(grocers.events.map(({ id }) => id).slice(-2)).toEqual(CARDS)
+  })
+
+  it('throws on a card waiting that the content played does not hold', () => {
+    const morning = tick(createInitialState(1))
+    const waiting = {
+      ...morning,
+      events: {
+        ...morning.events,
+        pending: { event: 'pretUrgence', followUp: false },
+      },
+    }
+    expect(() => answerEvent(waiting, NO_EVENTS, () => 'accepter')).toThrow(
+      'Day 1: the event pretUrgence waits, but the content played does not hold it',
+    )
+    expect(answerEvent(waiting, NO_EVENTS, null)).toBe(waiting)
+  })
+})
+
+describe('simulate with the financing', () => {
+  // Difficile, paying the owner 1 000 $ a week and spending 30 $ a day on
+  // marketing: the encaisse goes below zero within the year.
+  const BROKE: DecisionChange[] = [
+    { kind: 'ownerWeeklyPay', pay: cents(100_000) },
+    { kind: 'marketingDaily', budget: cents(3_000) },
+  ]
+  const play = (
+    financing: 'accept' | 'refuse' | null,
+    contracts: 'all' | null = null,
+  ) =>
+    simulate(
+      5,
+      365,
+      'difficile',
+      BROKE,
+      'none',
+      EVENTS,
+      DIFFICULTIES,
+      contracts,
+      financing,
+    )
+
+  it('with no other event, brings the financing’s cards and accepts them', () => {
+    const played = play('accept')
+    expect(played.financing).toBe('accept')
+    expect(played.eventHistory.length).toBeGreaterThan(0)
+    for (const { event, choice } of played.eventHistory) {
+      expect(['pretUrgence', 'offreDuvent']).toContain(event)
+      expect(choice).toBe('accepter')
+    }
+    expect(played.loans.length).toBeGreaterThan(0)
+    expect(played.loans.length + played.shareSales.length).toBe(
+      played.eventHistory.length,
+    )
+  })
+
+  it('refuses them, taking no loan and selling no shares', () => {
+    const played = play('refuse')
+    expect(played.eventHistory.length).toBeGreaterThan(0)
+    expect(
+      played.eventHistory.every(({ choice }) => choice === 'refuser'),
+    ).toBe(true)
+    expect(played.loans).toEqual([])
+    expect(played.shareSales).toEqual([])
+  })
+
+  it('with no financing policy and no event, brings none, as before', () => {
+    const played = play(null)
+    expect(played.financing).toBeNull()
+    expect(played.eventHistory).toEqual([])
+    expect(played.loans).toEqual([])
+    expect(played.journalHash).toBe(
+      simulate(5, 365, 'difficile', BROKE).journalHash,
+    )
+  })
+
+  it("brings them beside the grocers' cards, each answered by its policy", () => {
+    const played = play('accept', 'all')
+    const events = new Set(played.eventHistory.map(({ event }) => event))
+    expect(events.has('pretUrgence')).toBe(true)
+    expect([...events].some((event) => event.startsWith('contrat'))).toBe(true)
+    expect(
+      played.eventHistory.every(({ choice }) => choice === 'accepter'),
+    ).toBe(true)
+  })
+
+  it('plays the same game twice', () => {
+    expect(play('accept').journalHash).toBe(play('accept').journalHash)
   })
 })

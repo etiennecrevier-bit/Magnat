@@ -285,6 +285,8 @@ function laterLine(
     case 'closed':
     case 'contract':
     case 'grocerAway':
+    case 'emergencyLoan':
+    case 'shareSale':
       return []
   }
 }

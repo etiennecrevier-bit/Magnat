@@ -1,0 +1,8 @@
+{
+  "_note": "The two expensive ways out of a negative encaisse (#159), as Étienne decided them on October 16, 2026. The engine brings loanEvent, Mme Prudhomme's emergency loan, the first morning the encaisse closed below zero, once per game year of 365 days from day 0; she refuses while an earlier emergency loan is still open, and at the difficulties of noSecondLoanAt once there was one. investorEvent, Max Duvent's offer, comes the morning she refuses, or investorDaysAfterLoan days after her last loan if the encaisse is still below zero, for maxShareRounds rounds at most. Both cards have a weight of 0, so no draw brings them; their terms, the loan's amount, rate, term and fee and the share sold and its price, are their effects' in events.json.",
+  "loanEvent": "pretUrgence",
+  "investorEvent": "offreDuvent",
+  "investorDaysAfterLoan": 14,
+  "maxShareRounds": 2,
+  "noSecondLoanAt": ["difficile"]
+}

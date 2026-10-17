@@ -145,8 +145,31 @@ describe('scaledEffect', () => {
     }
   })
 
-  it('keeps stock, durations, chances and receivable terms as written', () => {
+  it('multiplies what shares sell for by the gains, but not the share sold (#159)', () => {
+    const shares: TimedEventEffect = {
+      kind: 'shareSale',
+      investor: 'Duvent Capital',
+      amountCents: cents(2_000_000),
+      share: 0.2,
+    }
+    expect(at('moyen', shares)).toEqual({ ...shares, amountCents: 2_600_000 })
+    expect(at('difficile', shares)).toEqual({
+      ...shares,
+      amountCents: 1_400_000,
+    })
+  })
+
+  it('keeps stock, durations, chances, receivable terms and an emergency loan as written', () => {
     const kept: TimedEventEffect[] = [
+      {
+        kind: 'emergencyLoan',
+        lender: 'Caisse populaire Saint-Prudent',
+        monthsOfFixedCosts: 1,
+        maxCents: cents(1_500_000),
+        annualRateBasisPoints: 1800,
+        termMonths: 12,
+        feeShare: 0.02,
+      },
       { kind: 'buyStock', product: 'croissant', units: 400 },
       { kind: 'useStock', product: 'croissant', units: 6, to: 'giveaway' },
       { kind: 'delayReceivable', client: 'Gilles Lacasse', days: 30 },
@@ -291,6 +314,39 @@ describe('choiceTags', () => {
       { text: 'Énergie −{montant}', amount: { unit: 'energy', points: 6 } },
     ])
   })
+})
+
+describe('the tags of the financing cards (#159)', () => {
+  const tagsOf = (event: string, difficulty: DifficultyId) => {
+    const choice = EVENTS.events
+      .find(({ id }) => id === event)
+      ?.choices.find(({ id }) => id === 'accepter')
+    return choiceTags(choice as EventChoice, difficulty, EVENTS)
+  }
+
+  it.each(DIFFICULTY_IDS)(
+    'shows the most the emergency loan lends, unscaled, at %s',
+    (difficulty) => {
+      expect(tagsOf('pretUrgence', difficulty)).toContainEqual({
+        text: "Prêt d'au plus {montant}",
+        amount: { unit: 'money', cents: 1_500_000 },
+      })
+    },
+  )
+
+  it.each([
+    ['facile', 2_000_000],
+    ['moyen', 2_200_000],
+    ['difficile', 1_700_000],
+  ] as const)(
+    'shows what the shares sell for at %s: %i',
+    (difficulty, price) => {
+      expect(tagsOf('offreDuvent', difficulty)[0]).toEqual({
+        text: 'Encaisse +{montant}',
+        amount: { unit: 'money', cents: price },
+      })
+    },
+  )
 })
 
 describe('cardText', () => {
@@ -488,6 +544,12 @@ describe('every tag of every card tells the amount played', () => {
         return moved(after, effect.description)
       case 'creditSale':
         return moved(after, `Vente à crédit · ${effect.client}`)
+      case 'shareSale':
+        return moved(after, `Émission d'actions · ${effect.investor}`)
+      case 'emergencyLoan':
+        // The tag shows the most the loan lends, whatever it lends that
+        // morning: financing.test.ts holds the loan to it.
+        return effect.maxCents
       case 'personal':
         return Math.abs(
           after.personal.movements

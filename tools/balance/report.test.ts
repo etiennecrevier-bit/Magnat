@@ -49,6 +49,9 @@ function game(seed: number, fields: Partial<GameResult> = {}): GameResult {
     unitsSpoiled: 0,
     lostToStockouts: 0,
     lostToPrices: 0,
+    financedAtEnd: cents(0),
+    emergencyLoans: 0,
+    shareSales: 0,
     journalHash: `books of seed ${seed}`,
     modifierDays: {
       walkIns: 0,
@@ -129,6 +132,8 @@ describe('summarize', () => {
       unitsSpoiled: 50,
       lostToStockouts: 2,
       lostToPrices: 10,
+      emergencyLoans: 1,
+      shareSales: 2,
     }),
     // Nothing sold nor spoiled: no spoilage.
     game(3, {
@@ -142,15 +147,18 @@ describe('summarize', () => {
       lostToLine: 25,
       lostToStockouts: 9,
       lostToPrices: 1,
+      emergencyLoans: 2,
+      financedAtEnd: cents(300),
     }),
   ]
 
-  it('takes the medians, the worst and the lowest over the games', () => {
+  it('takes the medians, the worst and the lowest over the games, and sums the financing', () => {
     expect(summarize(BASE, games, 4)).toEqual({
       strategy: BASE,
       index: 4,
       games: 3,
-      // Each game's cash and personal cash together: 800, 4,700 and 500.
+      // Each game's cash and personal cash together, less what is not the
+      // owner's: 800, 4,700 and 500 − 300.
       medianWealth: 800,
       medianCashAtEnd: 401,
       worstCashAtEnd: -300,
@@ -166,7 +174,17 @@ describe('summarize', () => {
       medianLostToStockouts: 5,
       medianLostToPrices: 7,
       medianLostToLine: 25,
+      emergencyLoans: 3,
+      shareSales: 2,
     })
+  })
+
+  it("leaves out of the wealth the cash that is not the owner's", () => {
+    const owned = game(1, { cashAtEnd: cents(1000), personalCash: cents(500) })
+    const financed = { ...owned, financedAtEnd: cents(1200) }
+    expect(summarize(BASE, [owned], 0).medianWealth).toBe(1500)
+    expect(summarize(BASE, [financed], 0).medianWealth).toBe(300)
+    expect(summarize(BASE, [financed], 0).medianCashAtEnd).toBe(1000)
   })
 
   it('takes the mean of the middle two of an even count', () => {
@@ -388,6 +406,8 @@ describe('formatReport', () => {
       unitsSpoiled: 100,
       lostToStockouts: 3,
       lostToPrices: 1200,
+      emergencyLoans: 1,
+      shareSales: 1,
       journalHash: 'a1',
     }),
     game(2, {
@@ -417,6 +437,8 @@ describe('formatReport', () => {
       firstDayBelowZero: 0,
       personalCash: cents(-100_000),
       unpaidRents: 12,
+      emergencyLoans: 2,
+      shareSales: 2,
       journalHash: `b${seed}`,
     }),
   )
@@ -451,14 +473,14 @@ describe('formatReport', () => {
   const lines = report.split('\n')
 
   const HEADER =
-    '| # | Prices | Croissants/day | Marketing/day | Days open | Pay/week | Median wealth at end | Median cash at end | Worst cash at end | Median net income | Personal cash at end | Unpaid rents | Lowest cash | Below zero | Average energy | Days exhausted | Botched | Spoilage | Lost to stockouts | Lost to prices | Lost to the line |'
-  const ALIGN = `| ---: | --- |${' ---: |'.repeat(19)}`
+    '| # | Prices | Croissants/day | Marketing/day | Days open | Pay/week | Median wealth at end | Median cash at end | Worst cash at end | Median net income | Personal cash at end | Unpaid rents | Lowest cash | Below zero | Average energy | Days exhausted | Botched | Spoilage | Lost to stockouts | Lost to prices | Lost to the line | Emergency loans | Share sales |'
+  const ALIGN = `| ---: | --- |${' ---: |'.repeat(21)}`
   const FIRST =
-    '| 1 | +20% | 110 | $30.00 | 7 | $700.00 | $1,617.28 | $1,117.29 | $1,000.01 | $150.01 | $500.00 | 0.5 | -$0.05 | 50% | 65.6 | 11 | 42.5 | 15.0% | 3.5 | 1,250.5 | 325.5 |'
+    '| 1 | +20% | 110 | $30.00 | 7 | $700.00 | $1,617.28 | $1,117.29 | $1,000.01 | $150.01 | $500.00 | 0.5 | -$0.05 | 50% | 65.6 | 11 | 42.5 | 15.0% | 3.5 | 1,250.5 | 325.5 | 1 | 1 |'
   const SECOND =
-    '| 2 | +20% | 110 | $0.00 | 7 | $700.00 | $1,617.28 | $1,117.29 | $1,000.01 | $150.01 | $500.00 | 0.5 | -$0.05 | 50% | 65.6 | 11 | 42.5 | 15.0% | 3.5 | 1,250.5 | 325.5 |'
+    '| 2 | +20% | 110 | $0.00 | 7 | $700.00 | $1,617.28 | $1,117.29 | $1,000.01 | $150.01 | $500.00 | 0.5 | -$0.05 | 50% | 65.6 | 11 | 42.5 | 15.0% | 3.5 | 1,250.5 | 325.5 | 1 | 1 |'
   const LAST =
-    '| 3 | -20% | 40 | $0.00 | 6 | $400.00 | -$21,000.00 | -$20,000.00 | -$20,000.00 | -$10,000.00 | -$1,000.00 | 12 | -$25,000.00 | 100% | 100.0 | 0 | 0 | 0.0% | 0 | 0 | 0 |'
+    '| 3 | -20% | 40 | $0.00 | 6 | $400.00 | -$21,000.00 | -$20,000.00 | -$20,000.00 | -$10,000.00 | -$1,000.00 | 12 | -$25,000.00 | 100% | 100.0 | 0 | 0 | 0.0% | 0 | 0 | 0 | 4 | 4 |'
 
   it('opens with the command that wrote it and what each game plays', () => {
     expect(lines.slice(0, 3)).toEqual([
@@ -615,6 +637,34 @@ describe('formatReport', () => {
     ])
     expect(generated('none', 'random')[1]).toBe(
       'The grocers offer their contracts and the player refuses every one.',
+    )
+  })
+
+  it("names how the financing's cards were answered, when a policy answered them", () => {
+    const generated = (financing?: 'accept' | 'refuse') =>
+      formatReport({ ...run, ...(financing && { financing }) })
+        .split('\n')
+        .filter(
+          (line) =>
+            line.startsWith('Generated by') ||
+            line.startsWith('When the encaisse'),
+        )
+    expect(generated()).toEqual([
+      expect.stringContaining(
+        'Generated by `npm run balance -- --years 1 --games 2`:',
+      ),
+    ])
+    expect(generated('accept')).toEqual([
+      expect.stringContaining(
+        'Generated by `npm run balance -- --years 1 --games 2 --financing accept`:',
+      ),
+      "When the encaisse closes below zero, the engine brings Mme Prudhomme's emergency loan or Max Duvent's offer for shares (#159), whatever the other cards, and the player accepts them: the loan, and the investor's shares. The wealth at the end leaves out the cash they bring in, which is not the owner's, and counts what they cost: the fee, the interest and the dividends. The last two columns show the strategies that needed them.",
+    ])
+    expect(generated('refuse')[1]).toBe(
+      "When the encaisse closes below zero, the engine brings Mme Prudhomme's emergency loan or Max Duvent's offer for shares (#159), whatever the other cards, and the player refuses them.",
+    )
+    expect(lines).toContain(
+      "- **Emergency loans**, **Share sales**: the emergency loans taken from Mme Prudhomme and the rounds of shares sold to Max Duvent, summed over the strategy's games; 0 when their cards never came up or were refused.",
     )
   })
 

@@ -6,6 +6,7 @@ import defisJson from './defis.json'
 import difficultyJson from './difficulty.json'
 import energyJson from './energy.json'
 import eventsJson from './events.json'
+import financingJson from './financing.json'
 import foodTruckJson from './foodtruck.json'
 import grocersJson from './grocers.json'
 import percentilesJson from './percentiles.json'
@@ -748,6 +749,33 @@ function effectSchemas<Extra extends z.core.$ZodShape>(extra: Extra) {
       days: z.int().positive(),
       ...extra,
     }),
+    /**
+     * An emergency loan from `lender` (#159): enough to bring Encaisse to
+     * `monthsOfFixedCosts` months of fixed costs, `maxCents` at most, paid
+     * back monthly over `termMonths` at `annualRateBasisPoints` a year,
+     * with `feeShare` of it charged up front.
+     */
+    z.strictObject({
+      kind: z.literal('emergencyLoan'),
+      lender: frenchText(),
+      monthsOfFixedCosts: z.number().positive(),
+      maxCents: positiveMoney,
+      annualRateBasisPoints: z.int().nonnegative(),
+      termMonths: z.int().positive(),
+      feeShare: share,
+      ...extra,
+    }),
+    /**
+     * Sells `share` of the business to `investor` for `amountCents` (#159),
+     * who takes that share of each quarter's profit from then on.
+     */
+    z.strictObject({
+      kind: z.literal('shareSale'),
+      investor: frenchText(),
+      amountCents: positiveMoney,
+      share: z.number().gt(0).lt(1),
+      ...extra,
+    }),
   ] as const
 }
 
@@ -797,6 +825,14 @@ const timedEffectSchema = z
       (effect.inDays === undefined && effect.onNextWeekday === undefined),
     { message: 'a contract, or a grocer walking away, happens now' },
   )
+  // The loan's amount reads the encaisse of the morning it is taken, and
+  // the investor pays when the deal is made.
+  .refine(
+    (effect) =>
+      (effect.kind !== 'emergencyLoan' && effect.kind !== 'shareSale') ||
+      (effect.inDays === undefined && effect.onNextWeekday === undefined),
+    { message: 'an emergency loan, or a share sale, happens now' },
+  )
 
 export type TimedEventEffect = z.output<typeof timedEffectSchema>
 
@@ -805,14 +841,17 @@ export type TagUnit = 'money' | 'energy' | 'percent'
 
 /**
  * The kinds of effect a tag may show the amount of, with what it shows:
- * money for a charge, a sale or the owner's own cash, points of energy, and
- * how far a change to the street moves from 1, as a percentage.
+ * money for a charge, a sale, the owner's own cash, the most an emergency
+ * loan lends or what shares sell for, points of energy, and how far a
+ * change to the street moves from 1, as a percentage.
  */
 export const TAG_UNITS = {
   charge: 'money',
   cashSale: 'money',
   creditSale: 'money',
   personal: 'money',
+  emergencyLoan: 'money',
+  shareSale: 'money',
   energy: 'energy',
   walkIns: 'percent',
   appeal: 'percent',
@@ -1421,6 +1460,35 @@ export const staffContentSchema = z
 export type StaffContent = z.output<typeof staffContentSchema>
 
 /**
+ * The emergency loan and the share sale (#159): the cards the engine
+ * brings when Encaisse closes below zero, and when it brings them. The
+ * terms are the cards' effects.
+ */
+export const financingContentSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    /** Mme Prudhomme's card, which offers the emergency loan. */
+    loanEvent: idSchema,
+    /** Max Duvent's card, which offers to buy shares. */
+    investorEvent: idSchema,
+    /**
+     * Days after the last emergency loan that Max Duvent comes, if Encaisse
+     * is still below zero.
+     */
+    investorDaysAfterLoan: z.int().positive(),
+    /** The share sales a game may make, one a round. */
+    maxShareRounds: z.int().nonnegative(),
+    /** The difficulties at which she lends once a game at most. */
+    noSecondLoanAt: z.array(difficultyIdSchema),
+  })
+  .refine(({ loanEvent, investorEvent }) => loanEvent !== investorEvent, {
+    message: 'the loan and the investor come on cards of their own',
+    path: ['investorEvent'],
+  })
+
+export type FinancingContent = z.output<typeof financingContentSchema>
+
+/**
  * The facts of a week the « Bilan de la semaine » may tell, in the order
  * that breaks a tie between equal weights.
  */
@@ -1908,6 +1976,35 @@ function defiContentFor(events: EventContent) {
  * The grocers' content, checked against `events`: each renewal is a card of
  * it that only comes as a follow-up.
  */
+function financingContentFor(events: EventContent) {
+  const cards = new Map(events.events.map((card) => [card.id, card]))
+  return financingContentSchema.superRefine((financing, ctx) => {
+    for (const [key, kind] of [
+      ['loanEvent', 'emergencyLoan'],
+      ['investorEvent', 'shareSale'],
+    ] as const) {
+      const id = financing[key]
+      const card = cards.get(id)
+      const holds = card?.choices.some(({ outcomes }) =>
+        outcomes.some(({ effects }) =>
+          effects.some((effect) => effect.kind === kind),
+        ),
+      )
+      const reason =
+        card === undefined
+          ? `no event has the id ${id}`
+          : card.weight !== 0
+            ? `the event ${id} has a weight above 0, so a draw may bring it`
+            : holds !== true
+              ? `no choice of the event ${id} has a ${kind} effect`
+              : null
+      if (reason !== null) {
+        ctx.addIssue({ code: 'custom', message: reason, path: [key] })
+      }
+    }
+  })
+}
+
 function grocerContentFor(events: EventContent) {
   const cards = new Map(events.events.map((card) => [card.id, card]))
   return grocerContentSchema.superRefine(({ grocers }, ctx) => {
@@ -2064,6 +2161,22 @@ export function loadGrocerContent(
  */
 export function loadStaffContent(raw: unknown = staffJson): StaffContent {
   return parsed(staffContentSchema, raw, 'staff.json')
+}
+
+/**
+ * Validates the emergency loan's and the share sale's rules against the
+ * event cards `events` and returns them typed. Throws an Error naming every
+ * invalid field: besides each field, the two cards differ, and each is a
+ * card of `events` with a weight of 0, so no draw brings it, and a choice
+ * with an effect of its kind, the loan's or the sale's. Pass `raw` only to
+ * check other data; by default it reads `financing.json`, against
+ * `events.json`.
+ */
+export function loadFinancingContent(
+  raw: unknown = financingJson,
+  events: EventContent = loadEventContent(),
+): FinancingContent {
+  return parsed(financingContentFor(events), raw, 'financing.json')
 }
 
 /**

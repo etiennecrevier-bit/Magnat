@@ -313,7 +313,7 @@ describe('EventCard', () => {
 
   it('shows what the choice did once it is made', () => {
     // At Moyen, with the shipped scaling of 1.1: −110 $ + 220 $ − 20
-    // croissants at 1,10 $ now, −55 $ later.
+    // croissants at 1,10 $ + 1 100 $ of shares sold now, −55 $ later.
     gameStore.getState().startGame(waiting())
     gameStore.getState().chooseEvent('toutEssayer')
     const html = renderToStaticMarkup(<EventCard />)
@@ -321,7 +321,7 @@ describe('EventCard', () => {
     expect(html).toContain(
       `<p class="event-card__chosen">Votre choix${S}: Tout essayer</p><p class="event-card__outcome">Tout a été essayé. Thérèse coche sa liste.</p>`,
     )
-    expect(html).toContain(`<li>Encaisse +88${S}$</li>`)
+    expect(html).toContain(`<li>Encaisse +1${S}188${S}$</li>`)
     expect(html).toContain(`<li>Encaisse ${M}55${S}$ jeudi</li>`)
     expect(html).toContain('Continuer')
   })
