@@ -2,6 +2,7 @@ import { useId, useMemo } from 'react'
 import type { ReportText } from '../content/reportText.ts'
 import { defiById } from '../engine/challenge.ts'
 import { DEFIS } from '../engine/day.ts'
+import { titleOf } from '../engine/dream.ts'
 import type { Cents } from '../engine/money.ts'
 import { percentileOnMorning } from '../engine/standing.ts'
 import type { ChallengeState, WeekReport } from '../engine/types.ts'
@@ -320,6 +321,11 @@ interface WeeklyReportViewProps {
    * week (see `percentileOnMorning`); null shows nothing.
    */
   percentile?: number | null
+  /**
+   * The title of « Le rêve » the owner's net worth earned at the close of
+   * the week; null shows none.
+   */
+  title?: string | null
   text?: ReportText
 }
 
@@ -327,13 +333,15 @@ interface WeeklyReportViewProps {
  * The « Bilan de la semaine » of `report`: its dates, ventes, bénéfice and
  * encaisse, the chart of its days, its facts, « Le conseil de Mme
  * Prudhomme » on them, even in a week with none, how the owner compares,
- * and La Presse-Citron's headline, with the Défi under way, if any, after
- * the figures. The percentile is rounded down. It never explains a term.
+ * the owner's title, and La Presse-Citron's headline, with the Défi under
+ * way, if any, after the figures. The percentile is rounded down. It never
+ * explains a term.
  */
 export function WeeklyReportView({
   report,
   challenge = null,
   percentile = null,
+  title = null,
   text = REPORT_TEXT,
 }: WeeklyReportViewProps) {
   const facts = factLines(report, text)
@@ -363,6 +371,9 @@ export function WeeklyReportView({
           {`Mieux que ${Math.floor(percentile)}${PERCENT} des propriétaires`}
         </p>
       )}
+      {title !== null && (
+        <p className="weekly-report__title">{`Titre${COLON} ${title}`}</p>
+      )}
       <p className="weekly-report__headline">
         <span className="weekly-report__paper">La Presse-Citron</span>{' '}
         {reportHeadline(report, text)}
@@ -372,14 +383,20 @@ export function WeeklyReportView({
 }
 
 /**
- * The report of the app store's last week, with how the owner compares and
- * the game's Défi under way.
+ * The report of the app store's last week, with how the owner compares,
+ * the title their net worth earned at the close of the week, outside a
+ * Défi, and the game's Défi under way.
  */
 export function LastWeekReport() {
   const report = useGame((state) => state.game.lastWeek)
   const challenge = useGame((state) => state.game.challenge)
   const game = useGame((state) => state.game)
   const percentile = useMemo(() => percentileOnMorning(game), [game])
+  const worth = useGame((state) => state.game.weekHistory.at(-1)?.netWorth)
+  const title =
+    challenge !== null || worth === undefined || worth === null
+      ? null
+      : (titleOf(worth)?.name ?? null)
   return report === null ? (
     <p>Aucun bilan pour l'instant.</p>
   ) : (
@@ -387,6 +404,7 @@ export function LastWeekReport() {
       report={report}
       challenge={challenge}
       percentile={percentile}
+      title={title}
     />
   )
 }

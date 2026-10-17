@@ -20,6 +20,15 @@
   font-size: 0.75rem;
 }
 
+/* The title of « Le rêve », on a line of its own under the amount, in the
+   gold of the speed pressed. */
+.net-worth-gauge__title {
+  flex-basis: 100%;
+  color: #f0b429;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
 /* Text colours keep at least 4.5:1 against the top bar's #1f2933. */
 .net-worth-gauge__change--up {
   color: #7bd389;

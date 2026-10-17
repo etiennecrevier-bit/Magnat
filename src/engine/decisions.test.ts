@@ -480,7 +480,7 @@ describe('applyDecision', () => {
 })
 
 describe('the kinds of change', () => {
-  it("are those a Défi may lock, and the bakery's and the staff's, which none may", () => {
+  it("are those a Défi may lock, and the bakery's, the staff's and the dream's, which none may", () => {
     expectTypeOf<
       Extract<DecisionChange['kind'], DecisionKind>
     >().toEqualTypeOf<DecisionKind>()
@@ -492,6 +492,7 @@ describe('the kinds of change', () => {
       | 'hire'
       | 'fire'
       | 'setWage'
+      | 'buy'
     >()
     expect(decisionKindSchema.options).toEqual([
       'price',

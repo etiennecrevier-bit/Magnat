@@ -54,4 +54,18 @@ describe('NetWorthGaugeView', () => {
   it('has no tooltip', () => {
     expect(render(1_000_000, 500)).not.toContain('title=')
   })
+
+  it('shows the title under the amount, when it earns one', () => {
+    expect(
+      renderToStaticMarkup(
+        <NetWorthGaugeView
+          netWorth={cents(2_500_000)}
+          change={null}
+          title="Débrouillard"
+        />,
+      ),
+    ).toBe(
+      `<p class="net-worth-gauge"><span class="net-worth-gauge__label">Valeur nette</span> <span class="net-worth-gauge__amount">25${S}000,00${S}$</span><span class="net-worth-gauge__title">Débrouillard</span></p>`,
+    )
+  })
 })

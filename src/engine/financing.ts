@@ -21,7 +21,9 @@ import {
   startOfQuarter,
   toCalendar,
 } from './calendar.ts'
+import { BAKERY } from './bakery.ts'
 import { DIFFICULTIES } from './day.ts'
+import { truckReplacedOn } from './dream.ts'
 import { monthlyFixedCosts } from './fixedCosts.ts'
 import { add, cents, mulRatio, sub, type Cents } from './money.ts'
 import { credit, debit } from './posting.ts'
@@ -185,7 +187,8 @@ export function isLoanOpen(
  * Takes the emergency loan `effect` offers on the morning of `state.day`,
  * if its lender may lend (see `mayLend`, with `rules`): enough to bring
  * Encaisse to `monthsOfFixedCosts` months of the fixed costs the next 1st
- * takes (see `monthlyFixedCosts`, with `content` and the game's bakery),
+ * takes (see `monthlyFixedCosts`, with `content`, the game's bakery and
+ * its truck, which a rung of « Le rêve » may have replaced),
  * `maxCents` at most, with `feeShare` of it as its fee. Its entries post
  * (see `loanEntries`) and it joins `financing.loans` with its terms.
  * Nothing when Encaisse already holds that much. Returns a new state;
@@ -207,6 +210,8 @@ export function takeEmergencyLoan(
     content,
     DIFFICULTIES,
     state.bakery,
+    BAKERY,
+    truckReplacedOn(state.dream),
   )
   const wanted = sub(
     mulRatio(fixedCosts, effect.monthsOfFixedCosts),

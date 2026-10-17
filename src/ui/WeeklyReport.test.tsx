@@ -8,6 +8,7 @@ import {
   FOOD_TRUCK,
   PERSONAL,
 } from '../engine/day.ts'
+import { titleOf } from '../engine/dream.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import { cents } from '../engine/money.ts'
 import { percentileOf } from '../engine/percentiles.ts'
@@ -312,6 +313,36 @@ describe('LastWeekReport', () => {
     expect(renderToStaticMarkup(<LastWeekReport />)).toContain(
       `Mieux que ${percentile}${S}% des propriétaires`,
     )
+  })
+
+  it('shows the title the net worth of its Sunday earned, outside a Défi', () => {
+    // Facile's owner brings the truck, so they start with a title.
+    let facile = createInitialState(1, FOOD_TRUCK, {
+      ...defaultProfile(),
+      difficulty: 'facile',
+    })
+    while (facile.day < 7) facile = tick(facile)
+    gameStore.setState({ game: facile })
+    const worth = facile.weekHistory.at(-1)?.netWorth ?? null
+    expect(worth).not.toBeNull()
+    const title = titleOf(cents(worth ?? 0))?.name
+    expect(title).toBeDefined()
+    expect(renderToStaticMarkup(<LastWeekReport />)).toContain(
+      `<p class="weekly-report__title">Titre${S}: ${title}</p>`,
+    )
+    const unvalued = {
+      ...facile,
+      weekHistory: facile.weekHistory.map((week) => ({
+        ...week,
+        netWorth: null,
+      })),
+    }
+    gameStore.setState({ game: unvalued })
+    expect(renderToStaticMarkup(<LastWeekReport />)).not.toContain('Titre')
+  })
+
+  it('shows no title with none given', () => {
+    expect(render()).not.toContain('weekly-report__title')
   })
 
   it('says there is no report before the first week closes', () => {

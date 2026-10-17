@@ -10,18 +10,38 @@ import {
   type DecisionKind,
   type DecisionLimits,
   type DefiContent,
+  type DifficultyContent,
+  type DreamContent,
   type FoodTruckContent,
   type OvenTerms,
   type ProductId,
   type RestockRule,
+  type RungId,
   type StaffContent,
   type StaffRoleId,
 } from '../content/schema.ts'
+import type { AccountCode } from '../finance/accounts.ts'
+import { balance, postEntry } from '../finance/journal.ts'
 import { BAKERY, holdsPremises, morningBakery } from './bakery.ts'
 import { isLocked } from './challenge.ts'
-import { DEFIS, FOOD_TRUCK } from './day.ts'
+import { DEFIS, DIFFICULTIES, FOOD_TRUCK, truckOnBooks } from './day.ts'
+import {
+  DREAM,
+  cashNeeded,
+  dreamBonuses,
+  dreamLimits,
+  isBought,
+  isPersonal,
+  isRungId,
+  prerequisitesMet,
+  purchaseCost,
+  purchaseEntries,
+  purchaseMovements,
+  rungOf,
+} from './dream.ts'
 import { PRODUCTS } from './inventory.ts'
 import type { Cents } from './money.ts'
+import { addMovement } from './personal.ts'
 import { STAFF } from './staff.ts'
 import type {
   BakeryPlan,
@@ -39,6 +59,8 @@ import type {
 // ISO 8601 weekdays run from 1 = Monday to 7 = Sunday; a calendar fact.
 const MONDAY = 1
 const SUNDAY = 7
+
+const CASH: AccountCode = '1000'
 
 /** One change the player makes to how the truck runs. */
 export type DecisionChange =
@@ -82,6 +104,11 @@ export type DecisionChange =
       readonly candidate: CandidateId
       /** What they earn an hour. */
       readonly hourlyWage: Cents
+    }
+  | {
+      /** Buys a rung of « Le rêve » that very morning. */
+      readonly kind: 'buy'
+      readonly rung: RungId
     }
 
 /**
@@ -148,6 +175,12 @@ export function latestDecisions(state: GameState): Decisions {
  * candidate `staff` does not know, if `fire` or `setWage` names one not
  * wanted, or if the staff then breaks `staff`'s limits (see
  * `validateDecisions`). A Défi locks none of these either.
+ *
+ * A restock rule may name the more units the rungs of « Le rêve » owned
+ * allow, with `dream` (see `dreamLimits`).
+ *
+ * `buy` is the one change that does not wait: it buys the rung of `dream`
+ * on the morning of `state.day`, before the day is played (see `bought`).
  */
 export function applyDecision(
   state: GameState,
@@ -156,7 +189,12 @@ export function applyDecision(
   defis: DefiContent = DEFIS,
   bakery: BakeryContent = BAKERY,
   staff: StaffContent = STAFF,
+  dream: DreamContent = DREAM,
+  difficulties: DifficultyContent = DIFFICULTIES,
 ): GameState {
+  if (change.kind === 'buy') {
+    return bought(state, change.rung, content, dream, difficulties)
+  }
   if (isLockable(change.kind) && isLocked(state, change.kind, defis)) {
     throw new RangeError(
       `Invalid decision: the Défi ${state.challenge?.id} locks ${change.kind}`,
@@ -169,8 +207,93 @@ export function applyDecision(
     bakery,
     staff,
   )
-  validateDecisions(decisions, content.decisionLimits, bakery, staff)
+  validateDecisions(
+    decisions,
+    dreamLimits(content.decisionLimits, dreamBonuses(state.dream, dream)),
+    bakery,
+    staff,
+  )
   return { ...state, pendingDecisions: decisions }
+}
+
+/**
+ * The morning of `state.day` with the rung `id` of `dream` bought. A
+ * personal rung moves the owner's cash (see `purchaseMovements`), selling
+ * back the rung it sells first; a company rung posts its entries, dated
+ * that day, before the day's own (see `purchaseEntries`), with the truck on
+ * the books that morning when it replaces it (see `truckOnBooks`). The rung
+ * joins `dream.bought` with what it cost (see `purchaseCost`).
+ *
+ * Throws a RangeError in a Défi, once the game has ended or the day is
+ * played, for an id that is no rung, one bought already, one coming
+ * soon, one whose ladder has a rung before it not bought yet, and when the
+ * cash it needs is not on hand (see `cashNeeded`): the owner's own for a
+ * personal rung, Encaisse for a company one.
+ */
+function bought(
+  state: GameState,
+  id: RungId,
+  content: FoodTruckContent,
+  dream: DreamContent,
+  difficulties: DifficultyContent,
+): GameState {
+  const { day, journal, personal } = state
+  const refuse = (reason: string): never => {
+    throw new RangeError(
+      `Invalid decision: cannot buy ${String(id)}, ${reason}`,
+    )
+  }
+  if (state.challenge !== null) refuse('a Défi has no dream')
+  if (state.ended !== null) refuse('the game has ended')
+  if (state.lastDay?.day === day) refuse(`day ${day} is played already`)
+  if (!isRungId(id)) refuse('it is no rung')
+  const { rung } = rungOf(id, dream)
+  if (isBought(state.dream, id)) refuse('it is bought already')
+  if (rung.comingSoon === true) refuse('it is not for sale yet')
+  if (!prerequisitesMet(state.dream, id, dream)) {
+    refuse('a rung before it is not bought yet')
+  }
+  const needed = cashNeeded(rung, dream)
+  if (isPersonal(rung)) {
+    if (personal.cash < needed) {
+      refuse(`the owner has ${personal.cash}, not ${needed}`)
+    }
+    return {
+      ...state,
+      personal: purchaseMovements(rung, day, dream).reduce(
+        (account, { label, amount }) =>
+          addMovement(account, day, label, amount),
+        personal,
+      ),
+      dream: {
+        ...state.dream,
+        bought: [
+          ...state.dream.bought,
+          { rung: id, day, cost: rung.priceCents },
+        ],
+      },
+    }
+  }
+  const cash = balance(journal, CASH, { toDay: day })
+  if (cash < needed) refuse(`Encaisse holds ${cash}, not ${needed}`)
+  const truck = truckOnBooks(
+    journal,
+    day,
+    state.profile.difficulty,
+    content,
+    difficulties,
+  )
+  return {
+    ...state,
+    journal: purchaseEntries(rung, day, truck).reduce(postEntry, journal),
+    dream: {
+      ...state.dream,
+      bought: [
+        ...state.dream.bought,
+        { rung: id, day, cost: purchaseCost(rung, truck) },
+      ],
+    },
+  }
 }
 
 /** Whether a Défi may lock changes of `kind`. */

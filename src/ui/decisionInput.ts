@@ -150,16 +150,18 @@ function quoted(text: string): string {
 
 /**
  * The restock rule of `product` with `field` set from the field's text,
- * the rule's other field kept. A top-up's threshold may not exceed what it
- * fills up to.
+ * within `units`, the content's limits unless the rungs of « Le rêve »
+ * owned allow more (see `dreamLimits`), the rule's other field kept. A
+ * top-up's threshold may not exceed what it fills up to.
  */
 export function restockChange(
   product: ProductId,
   field: RestockField,
   text: string,
   rule: RestockRule,
+  units: { readonly min: number; readonly max: number } = LIMITS.units,
 ): FieldResult {
-  const read = readRule(field, text, rule, LIMITS.units, RESTOCK_LABELS)
+  const read = readRule(field, text, rule, units, RESTOCK_LABELS)
   if (read.kind !== 'rule') return read
   return change({ kind: 'restock', product, rule: read.rule })
 }

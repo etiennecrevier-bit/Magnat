@@ -12,6 +12,7 @@ import {
   type Difficulty,
   type DifficultyContent,
   type DifficultyId,
+  type DreamContent,
   type EnergyContent,
   type EventContent,
   type FinancingContent,
@@ -52,6 +53,18 @@ import {
   type Served,
   type Withdrawal,
 } from './customers.ts'
+import {
+  DREAM,
+  crowned,
+  dreamBonuses,
+  dreamDepreciation,
+  dreamEnergy,
+  dreamService,
+  housingOf,
+  truckReplacedOn,
+  withDreamStreet,
+  type TruckOnBooks,
+} from './dream.ts'
 import { startOfDay } from './effects.ts'
 import { effectsOf, energyAtClose } from './energy.ts'
 import { FINANCING, closingFinancing, financingCharges } from './financing.ts'
@@ -65,6 +78,7 @@ import {
 } from './inventory.ts'
 import { marketingCrowd, rememberSpend } from './marketing.ts'
 import { add, cents, mulInt, mulRatio, sub, type Cents } from './money.ts'
+import { netWorth } from './netWorth.ts'
 import { inDebt, livePersonalDay } from './personal.ts'
 import { credit, debit, depreciate, pay, post } from './posting.ts'
 import { servers } from './service.ts'
@@ -106,6 +120,7 @@ export const DEFIS: DefiContent = loadDefiContent(undefined, EVENTS)
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
 const EQUIPMENT: AccountCode = '1500'
+const ACCUMULATED_DEPRECIATION: AccountCode = '1510'
 const BANK_LOANS: AccountCode = '2500'
 const SHARE_CAPITAL: AccountCode = '3000'
 const SALES: AccountCode = '4000'
@@ -143,6 +158,15 @@ const MEMO = {
   marketing: 'Marketing',
   ownerPay: 'Paie du propriétaire',
   spoilage: 'Marchandises périmées',
+} as const
+
+/**
+ * The memos of the truck's own monthly charges, which end once a rung of «
+ * Le rêve » replaces it.
+ */
+export const TRUCK_MEMO = {
+  depreciation: MEMO.depreciation,
+  lease: MEMO.lease,
 } as const
 
 const ZERO = cents(0)
@@ -196,6 +220,35 @@ function paidIn(capital: Cents): Journal {
   ])
 }
 
+/**
+ * The truck the books of a game of `difficulty` carry on the morning of
+ * `day`, before that day's entries: its price, and its book value, the
+ * price less the « Amortissement du camion » posted before `day`. Null when
+ * the truck is leased, which the books never carry.
+ */
+export function truckOnBooks(
+  journal: Journal,
+  day: Day,
+  difficulty: DifficultyId,
+  content: FoodTruckContent = FOOD_TRUCK,
+  difficulties: DifficultyContent = DIFFICULTIES,
+): TruckOnBooks | null {
+  if (difficulties.difficulties[difficulty].truck.kind === 'lease') return null
+  let depreciated = ZERO
+  for (const { day: on, memo, lines } of entriesOf(journal)) {
+    // Days never go down, so no later entry is before `day` either.
+    if (on >= day) break
+    if (memo !== MEMO.depreciation) continue
+    for (const line of lines) {
+      if (line.account === ACCUMULATED_DEPRECIATION) {
+        depreciated = add(depreciated, line.credit)
+      }
+    }
+  }
+  const { priceCents } = content.truck
+  return { priceCents, bookValue: sub(priceCents, depreciated) }
+}
+
 /** What one unit of `product` sells for on day `state.day`. */
 export function currentPrice(state: GameState, product: ProductId): Cents {
   return state.decisions.prices[product]
@@ -211,7 +264,9 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * On the 1st of the month, open or closed: the month's charges (see
  * `monthlyCharges`), the truck's counted in months from the game's first day,
  * day 0 or a Défi's first day, as if the truck came to the business then,
- * then what the emergency loans and the shares sold owe (see
+ * and none once a rung of `dream` replaced it (see `truckReplacedOn`), then
+ * the depreciation of the company's rungs (see `dreamDepreciation`), then
+ * what the emergency loans and the shares sold owe (see
  * `financingCharges`). Then, open or closed, the bakery's morning with
  * `bakeryContent` and the prices of the game's difficulty (see
  * `bakeryMorning`), then the staff's with `staff`,
@@ -226,7 +281,9 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * with the capacity the deliveries left if someone bakes, and none otherwise
  * (see `bake`), then the walk-in customers,
  * with those the marketing of the days before brings on top (see
- * `marketingCrowd`) and as the street changes them, lining up at the counter,
+ * `marketingCrowd`) and as the street, and the rungs owned, change them (see
+ * `withDreamStreet`), lining up at the counter, at the times and with the
+ * line the rungs owned leave (see `dreamService`),
  * where `servers()` serve them from the stock on hand, none of a product that
  * cannot be sold, the owner slower and botching units the more tired they are
  * that morning (see `effectsOf`), what the sales cost in packaging and card
@@ -236,8 +293,10 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * employee's (see `payWages`). Every day: the
  * spoilage at the close. Every entry is dated `morning.day`. Then the owner's
  * own day, outside the books, with `personal` as their living costs (see
- * `livePersonalDay`), and what the day did to their energy, with `energy` as
- * what tires them: only the customers they served count, and a day of baking
+ * `livePersonalDay`), their home's payment in place of the rent once they own
+ * one (see `housingOf`), and what the day did to their energy, with `energy`
+ * as what tires them and a closed day giving the rungs' energy back on top
+ * (see `dreamEnergy`): only the customers they served count, and a day of baking
  * takes `bakingEnergyCost` more and each delivery `deliveryEnergyCost` when
  * they do it, while a day away holds it (see `energyAtClose`). Returns a new
  * state on the same day with the books, the bakery, the staff, the contracts,
@@ -247,7 +306,9 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * whose last day it was, the financing with Encaisse at the close (see
  * `closingFinancing`), the game ended if that close ends it, by
  * `financing`'s rules (see `endAtClose`), the receivables brought up to the
- * close, the day added to the week under way, summed up on a Sunday (see
+ * close, `dream.magnatOn` set at the first close whose net worth reaches the
+ * last title, outside a Défi (see `crowned`), the day added to the week under
+ * way, summed up on a Sunday (see
  * `recordDay`), and, in a Défi of `defis`, the day added to its progress,
  * which may end it (see `recordChallengeDay`), with the
  * owner's lowest energy since the last close, the start of the day's effects
@@ -265,6 +326,7 @@ export function playDay(
   grocers: GrocerContent = GROCERS,
   staff: StaffContent = STAFF,
   financing: FinancingContent = FINANCING,
+  dream: DreamContent = DREAM,
 ): GameState {
   const { pending } = morning.events
   if (pending !== null) {
@@ -288,13 +350,22 @@ export function playDay(
   const { day, decisions } = started
   const { dayOfMonth, weekday } = toCalendar(day)
   const { modifiers } = started.events
-  const street = streetOn(modifiers, day)
+  const bonuses = dreamBonuses(started.dream, dream)
+  const street = withDreamStreet(streetOn(modifiers, day), bonuses)
   let journal = started.journal
 
   if (dayOfMonth === 1) {
     const { truck } = difficulties.difficulties[started.profile.difficulty]
     const month = monthsSinceStart(day) - monthsSinceStart(firstDay(started))
-    journal = monthlyCharges(journal, day, month, content, truck)
+    journal = monthlyCharges(
+      journal,
+      day,
+      month,
+      content,
+      truck,
+      truckReplacedOn(started.dream, dream),
+    )
+    journal = dreamDepreciation(journal, day, started.dream, dream)
     journal = financingCharges(journal, started.financing, day)
   }
   const prices = difficulties.bakery[started.profile.difficulty]
@@ -376,7 +447,7 @@ export function playDay(
         street.unavailable[product] ? 0 : onHand(made.lots, product),
       ),
       {
-        service: content.service,
+        service: dreamService(content.service, bonuses),
         servers: servers(state, energy, staff),
         botchedShare: effectsOf(state.energy, energy).botchedShare,
       },
@@ -439,6 +510,7 @@ export function playDay(
     decisions.ownerWeeklyPay,
     content.ownerPayWeekday,
     personal,
+    housingOf(state.dream, dream),
   )
   const closingEnergy = energyAtClose(
     state.energy,
@@ -456,7 +528,7 @@ export function playDay(
           ? delivered.deliveries.length * grocers.deliveryEnergyCost
           : 0,
     },
-    energy,
+    dreamEnergy(energy, bonuses),
   )
   const lasting = modifiers.filter(({ lastDay }) => lastDay > day)
 
@@ -503,8 +575,19 @@ export function playDay(
       balance(journal, CASH, { toDay: day }),
     ),
   }
-  const ending = { ...closing, ended: endAtClose(closing, financing) }
-  const recorded = { ...ending, ...recordDay(ending, open, expired.cost) }
+  const magnat =
+    challenge === null && closing.dream.magnatOn === null
+      ? crowned(closing.dream, netWorth(closing, dream), day, dream)
+      : closing.dream
+  const ending = {
+    ...closing,
+    dream: magnat,
+    ended: endAtClose(closing, financing),
+  }
+  const recorded = {
+    ...ending,
+    ...recordDay(ending, open, expired.cost, dream),
+  }
   if (challenge === null) return recorded
   const defi = defiById(defis, challenge.id)
   const opening = openingJournal(
@@ -527,7 +610,9 @@ function firstDay({ challenge }: GameState): Day {
  * What the 1st of the month costs, open or closed: the permit, parking and
  * commissary, the insurance, then the truck's own charges, which depend on
  * how it came to the business. `month` counts from the month the truck
- * came, its month 0.
+ * came, its month 0. A truck replaced on `replacedOn` takes no depreciation
+ * nor lease from that morning on, a purchase on the morning of a 1st coming
+ * before that day's charges, but a loan is still repaid.
  */
 function monthlyCharges(
   journal: Journal,
@@ -535,6 +620,7 @@ function monthlyCharges(
   month: number,
   content: FoodTruckContent,
   truck: Difficulty['truck'],
+  replacedOn: Day | null,
 ): Journal {
   const { permitParkingAndCommissary, insurance } = content.monthlyCostsCents
   let books = pay(
@@ -545,14 +631,21 @@ function monthlyCharges(
     permitParkingAndCommissary,
   )
   books = pay(books, day, MEMO.insurance, INSURANCE, insurance)
+  const replaced = replacedOn !== null && day >= replacedOn
   switch (truck.kind) {
     case 'owned':
-      return depreciate(books, day, month, content.truck, MEMO.depreciation)
+      return replaced
+        ? books
+        : depreciate(books, day, month, content.truck, MEMO.depreciation)
     case 'loan':
       books = repay(books, day, month, truck)
-      return depreciate(books, day, month, content.truck, MEMO.depreciation)
+      return replaced
+        ? books
+        : depreciate(books, day, month, content.truck, MEMO.depreciation)
     case 'lease':
-      return pay(books, day, MEMO.lease, TRUCK_LEASE, truck.monthlyLeaseCents)
+      return replaced
+        ? books
+        : pay(books, day, MEMO.lease, TRUCK_LEASE, truck.monthlyLeaseCents)
   }
 }
 

@@ -1,0 +1,50 @@
+/* The card itself is the shared .panel (panel.css), laid out as the end of
+   a game is (BankruptcyEnd.css), in the gold of the speed pressed. Text
+   colours keep at least 4.5:1 against its cream #fff7e8. */
+.magnat {
+  --panel-width: 32rem;
+  border-color: #b8860b;
+  text-align: center;
+}
+
+.magnat__content {
+  padding: 1.5rem 1.5rem 1.75rem;
+}
+
+.magnat__business {
+  margin: 0;
+  color: #5c5048;
+  font-weight: 600;
+}
+
+.magnat__content h2 {
+  margin: 0.25rem 0 0.75rem;
+  color: #7a5900;
+  font-size: 2.25rem;
+  letter-spacing: 0.02em;
+}
+
+.magnat__content h2:focus {
+  outline: none;
+}
+
+.magnat__worth {
+  margin: 0 0 1.25rem;
+  font-size: 1.125rem;
+}
+
+.magnat__amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* On a phone the panel takes the whole screen: the card's text sits in its
+   middle. */
+@media (max-width: 559px) {
+  .magnat[open] {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+}

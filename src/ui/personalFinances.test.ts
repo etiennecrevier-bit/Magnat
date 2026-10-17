@@ -85,4 +85,29 @@ describe('monthMovements', () => {
     expect(listed.some((m) => m.label === 'Loyer' && m.unpaid)).toBe(true)
     expect(listed.every((m) => m.day <= lastPlayed)).toBe(true)
   })
+
+  it('tags a home’s payment that went unpaid « impayé », as a rent', () => {
+    const account: PersonalAccount = {
+      cash: cents(-50_000),
+      movements: [
+        { day: 31, label: 'Hypothèque du condo', amount: cents(-110_000) },
+        { day: 32, label: 'Achat · Vélo électrique', amount: cents(-150_000) },
+      ],
+      unpaidRents: [31],
+    }
+    expect(monthMovements(account, 32)).toEqual([
+      {
+        day: 32,
+        label: 'Achat · Vélo électrique',
+        amount: -150_000,
+        unpaid: false,
+      },
+      {
+        day: 31,
+        label: 'Hypothèque du condo',
+        amount: -110_000,
+        unpaid: true,
+      },
+    ])
+  })
 })

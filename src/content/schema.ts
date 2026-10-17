@@ -4,6 +4,7 @@ import bakeryJson from './bakery.json'
 import defiPercentilesJson from './defis-percentiles.json'
 import defisJson from './defis.json'
 import difficultyJson from './difficulty.json'
+import dreamJson from './dream.json'
 import energyJson from './energy.json'
 import eventsJson from './events.json'
 import financingJson from './financing.json'
@@ -1595,6 +1596,174 @@ export const financingContentSchema = z
 export type FinancingContent = z.output<typeof financingContentSchema>
 
 /**
+ * The rungs of « Le rêve » (#162), by id: the owner's own ladder (`velo`
+ * to `chalet`), then the company's (`espresso` to `deuxiemeCamion`).
+ */
+export const rungIdSchema = z.enum([
+  'velo',
+  'voitureOccasion',
+  'condo',
+  'voitureLuxe',
+  'maison',
+  'chalet',
+  'espresso',
+  'grandCamion',
+  'deuxiemeCamion',
+])
+
+export type RungId = z.infer<typeof rungIdSchema>
+
+/** The two ladders of « Le rêve »: the owner's and the company's. */
+export const ladderSchema = z.enum(['personal', 'company'])
+
+export type Ladder = z.infer<typeof ladderSchema>
+
+/**
+ * What a rung gives once it is bought: a shorter trip in town (the best
+ * vehicle's `travelTime` counts, P4-09), a faster counter, a longer line,
+ * more units a restock rule may name, more walk-ins of one segment, or more
+ * energy back on a closed day.
+ */
+const dreamBonusSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('travelTime'), factor }),
+  z.strictObject({ kind: z.literal('serviceTime'), factor }),
+  z.strictObject({ kind: z.literal('line'), factor }),
+  z.strictObject({ kind: z.literal('stock'), factor }),
+  z.strictObject({
+    kind: z.literal('walkIns'),
+    segment: segmentIdSchema,
+    factor,
+  }),
+  z.strictObject({ kind: z.literal('closedDayRecovery'), extra: energyAmount }),
+])
+
+export type DreamBonus = z.output<typeof dreamBonusSchema>
+
+/** What every rung has. */
+const rungShape = {
+  id: rungIdSchema,
+  /** The rung, as the player and the books read it. */
+  name: frenchText(),
+  /** What buying it costs. */
+  priceCents: positiveMoney,
+  /** Shown but not for sale yet. */
+  comingSoon: z.boolean().optional(),
+  bonuses: z.array(dreamBonusSchema),
+}
+
+/** A rung the owner pays from their own cash, outside the books. */
+const personalRungSchema = z.strictObject({
+  ...rungShape,
+  /**
+   * The monthly payment that replaces the rent from the 1st it is bought:
+   * the label the personal account shows, and the amount.
+   */
+  housing: z
+    .strictObject({ label: frenchText(), monthlyCents: money })
+    .optional(),
+  /** An earlier rung with housing, sold back at its price when this is bought. */
+  sells: rungIdSchema.optional(),
+})
+
+export type PersonalRung = z.output<typeof personalRungSchema>
+
+/** A rung the company pays from Encaisse, which the books carry. */
+const companyRungSchema = z.strictObject({
+  ...rungShape,
+  /** Months it is depreciated over, straight line. */
+  usefulLifeMonths: z.int().positive(),
+  /**
+   * It replaces the truck: the old one is taken back at its book value, and
+   * its depreciation, or its lease, ends.
+   */
+  replacesTruck: z.boolean().optional(),
+})
+
+export type CompanyRung = z.output<typeof companyRungSchema>
+
+export type Rung = PersonalRung | CompanyRung
+
+/** A title the owner's net worth earns. */
+const dreamTitleSchema = z.strictObject({
+  name: frenchText(),
+  /** The net worth, at a close, that earns it. */
+  netWorthCents: positiveMoney,
+})
+
+export type DreamTitle = z.output<typeof dreamTitleSchema>
+
+/**
+ * « Le rêve » (#162): the two ladders, each climbed in order, and the
+ * titles of the owner's net worth, the last one crowning the « Magnat ».
+ */
+export const dreamContentSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    personal: z.array(personalRungSchema).min(1),
+    company: z.array(companyRungSchema).min(1),
+    titles: z.array(dreamTitleSchema).min(1),
+  })
+  .superRefine(({ personal, company, titles }, ctx) => {
+    const ids = [...personal, ...company].map(({ id }) => id)
+    for (const id of rungIdSchema.options) {
+      const times = ids.filter((rung) => rung === id).length
+      if (times !== 1) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `the rung ${id} must be in one ladder once, not ${times} times`,
+          path: [],
+        })
+      }
+    }
+    for (const [ladder, rungs] of [
+      ['personal', personal],
+      ['company', company],
+    ] as const) {
+      rungs.forEach(({ comingSoon }, index) => {
+        const after = rungs.slice(index + 1)
+        if (comingSoon === true && after.some((rung) => !rung.comingSoon)) {
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              'a rung coming soon must come after every rung for sale in its ladder',
+            path: [ladder, index, 'comingSoon'],
+          })
+        }
+      })
+    }
+    personal.forEach(({ sells }, index) => {
+      if (sells === undefined) return
+      const sold = personal.slice(0, index).find(({ id }) => id === sells)
+      if (sold?.housing === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `${sells} is not an earlier personal rung with housing`,
+          path: ['personal', index, 'sells'],
+        })
+      }
+    })
+    if (company.filter(({ replacesTruck }) => replacesTruck).length > 1) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'one company rung at most replaces the truck',
+        path: ['company'],
+      })
+    }
+    titles.forEach(({ netWorthCents }, index) => {
+      const before = titles[index - 1]
+      if (before !== undefined && netWorthCents <= before.netWorthCents) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'each title needs a higher net worth than the one before',
+          path: ['titles', index, 'netWorthCents'],
+        })
+      }
+    })
+  })
+
+export type DreamContent = z.output<typeof dreamContentSchema>
+
+/**
  * The facts of a week the « Bilan de la semaine » may tell, in the order
  * that breaks a tie between equal weights.
  */
@@ -2304,6 +2473,19 @@ export function loadFinancingContent(
   events: EventContent = loadEventContent(),
 ): FinancingContent {
   return parsed(financingContentFor(events), raw, 'financing.json')
+}
+
+/**
+ * Validates « Le rêve » and returns it typed, with money as `Cents`. Throws
+ * an Error naming every invalid field: besides each field, every rung is in
+ * one ladder once, a rung coming soon comes after every rung for sale in its
+ * ladder, a rung `sells` an earlier personal rung with housing, one company
+ * rung at most replaces the truck, and each title needs a higher net worth
+ * than the one before. Pass `raw` only to check other data; by default it
+ * reads `dream.json`.
+ */
+export function loadDreamContent(raw: unknown = dreamJson): DreamContent {
+  return parsed(dreamContentSchema, raw, 'dream.json')
 }
 
 /**

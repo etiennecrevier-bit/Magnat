@@ -8,6 +8,7 @@ import { applyEffect } from './effects.ts'
 import { sellShares } from './financing.ts'
 import { cents } from './money.ts'
 import { netWorth, netWorthChange, netWorthParts } from './netWorth.ts'
+import type { RungId } from '../content/schema.ts'
 import type { GameState, ShareSale, WeekRecord } from './types.ts'
 
 // « Valeur nette » (#161): the owner's share of the company's equity, plus
@@ -118,7 +119,7 @@ describe('netWorth', () => {
 })
 
 describe('netWorthParts', () => {
-  it('gives the share of the company, the cash, no assets and no debts yet, and their total', () => {
+  it('gives the share of the company, the cash, no assets and no debts with nothing of the dream, and their total', () => {
     // 12 000 $ − 20 % × 12 000 $, then 3 000 $.
     expect(
       netWorthParts(game(booksAt(1_200_000), 300_000, [sale(0.2)])),
@@ -146,6 +147,48 @@ describe('netWorthParts', () => {
     expect(after.companyShare).toBe(2_560_000)
     expect(after.personalCash).toBe(before.personalCash)
     expect(after.total - before.total).toBe(2_000_000 - 640_000)
+  })
+})
+
+describe('the personal assets', () => {
+  /** The owner's rungs: `rung` bought on `day`. */
+  const bought = (...rungs: [RungId, number][]) => ({
+    bought: rungs.map(([rung, day]) => ({ rung, day, cost: cents(1) })),
+    magnatOn: null,
+  })
+
+  it('count the owner’s rungs of « Le rêve » owned at the close of the day, at their price', () => {
+    const owner = {
+      ...game(booksAt(1_200_000), 300_000),
+      day: 10,
+      dream: bought(['velo', 3], ['voitureOccasion', 10], ['condo', 11]),
+    }
+    // A company rung adds nothing here: the books carry it.
+    expect(netWorthParts(owner)).toMatchObject({
+      personalAssets: 150_000 + 800_000,
+      total: 1_200_000 + 300_000 + 950_000,
+    })
+  })
+
+  it('stop counting the condo once the house sold it back', () => {
+    const owner = {
+      ...game(booksAt(0), 0),
+      day: 20,
+      dream: bought(
+        ['velo', 0],
+        ['voitureOccasion', 0],
+        ['condo', 0],
+        ['voitureLuxe', 0],
+        ['maison', 20],
+        ['espresso', 0],
+      ),
+    }
+    expect(netWorthParts(owner).personalAssets).toBe(
+      150_000 + 800_000 + 4_500_000 + 15_000_000,
+    )
+    expect(netWorthParts({ ...owner, day: 19 }).personalAssets).toBe(
+      150_000 + 800_000 + 4_000_000 + 4_500_000,
+    )
   })
 })
 

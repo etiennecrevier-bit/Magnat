@@ -3,6 +3,7 @@ import type {
   CustomerContent,
   DefiContent,
   DifficultyContent,
+  DreamContent,
   EnergyContent,
   EventContent,
   FinancingContent,
@@ -41,6 +42,7 @@ import {
   startingDecisions,
   validateDecisions,
 } from './decisions.ts'
+import { DREAM, noDream } from './dream.ts'
 import { applyEffect, insertByDay } from './effects.ts'
 import { FULL_ENERGY, nightRest } from './energy.ts'
 import { NO_EVENTS, drawEvent, noEvents } from './events.ts'
@@ -68,7 +70,8 @@ export { toCalendar, type CalendarDate } from './calendar.ts'
  * owner at full energy, no event yet, nobody owing the business anything, a
  * first week to come, partial, from the cash the books open with (see
  * `openingWeek`), no Défi, no bakery, with the croissants bought, no
- * contract, nobody on staff, the owner at work, no financing and not ended.
+ * contract, nobody on staff, the owner at work, no financing, not ended and
+ * nothing of « Le rêve » bought.
  * Throws a RangeError unless `seed` is an integer in [0, 2^32), if the
  * starting decisions break the content's limits, if `profile` breaks
  * `validateProfile()`, or if the difficulty leaves a negative Mise de fonds.
@@ -112,6 +115,7 @@ export function createInitialState(
     ownerAway: false,
     financing: noFinancing(),
     ended: null,
+    dream: noDream(),
   }
 }
 
@@ -192,8 +196,8 @@ export function startChallenge(
 /**
  * Plays business day `state.day` with `state.decisions` (see `playDay`, with
  * `bakery` as the bakery's content, `grocers` as the contracts', `staff` as
- * the employees' and `financing`'s rules, which may end the game at the
- * close), then moves on to the next morning, where
+ * the employees', `financing`'s rules, which may end the game at the
+ * close, and `dream` as « Le rêve »), then moves on to the next morning, where
  * the pending decisions, if any, take effect, after a night that gives the
  * owner some energy back (see `nightRest`), with the owner at work unless
  * something sends them away again, and where an event of `events` may
@@ -227,6 +231,7 @@ export function tick(
   grocers: GrocerContent = GROCERS,
   staff: StaffContent = STAFF,
   financing: FinancingContent = FINANCING,
+  dream: DreamContent = DREAM,
 ): GameState {
   const played = playDay(
     state,
@@ -240,6 +245,7 @@ export function tick(
     grocers,
     staff,
     financing,
+    dream,
   )
   const morning: GameState = {
     ...played,

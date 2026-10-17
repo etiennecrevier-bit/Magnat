@@ -8,14 +8,18 @@ const ARROWS = { up: '▲', down: '▼' } as const
 /**
  * The owner's « Valeur nette », with an arrow up or down for how it moved
  * since the last Sunday's close, `change`, which its label reads out: none
- * when it did not move, or before a week has a net worth to move from.
+ * when it did not move, or before a week has a net worth to move from. The
+ * title it earns of « Le rêve », if any, shows under it.
  */
 export function NetWorthGaugeView({
   netWorth,
   change,
+  title = null,
 }: {
   netWorth: Cents
   change: Cents | null
+  /** The title the net worth earns; null shows none. */
+  title?: string | null
 }) {
   const direction =
     change === null || change === 0 ? null : change > 0 ? 'up' : 'down'
@@ -34,6 +38,9 @@ export function NetWorthGaugeView({
             {ARROWS[direction]}
           </span>
         </>
+      )}
+      {title !== null && (
+        <span className="net-worth-gauge__title">{title}</span>
       )}
     </p>
   )

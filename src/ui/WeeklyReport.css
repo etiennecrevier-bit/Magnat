@@ -86,6 +86,12 @@
   font-weight: 600;
 }
 
+/* The owner's title of « Le rêve » at the close of the week. */
+.weekly-report__title {
+  margin: 0 0 1rem;
+  font-weight: 600;
+}
+
 /* A newspaper's band, as the ticker draws La Presse-Citron. */
 .weekly-report__headline {
   margin: 0 0 1rem;

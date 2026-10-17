@@ -1,5 +1,6 @@
 import type { PersonalContent } from '../content/schema.ts'
 import { monthsSinceStart, toCalendar } from './calendar.ts'
+import type { Housing } from './dream.ts'
 import { add, cents, sub, type Cents } from './money.ts'
 import type { Day, PersonalAccount, PersonalMovement } from './types.ts'
 
@@ -36,8 +37,9 @@ export function isKept(day: Day, today: Day): boolean {
 /**
  * The owner's day `day`, after the business's. On payday, `payWeekday`,
  * « Salaire » brings `pay` in. On the 1st of the month, day 0 included,
- * « Loyer » takes the rent out; it goes unpaid when it leaves the cash below
- * zero. On payday again, « Dépenses de la semaine » takes the week's
+ * « Loyer » takes the rent out, or, once the owner owns their home,
+ * `housing` takes its payment under its own label; either goes unpaid when
+ * it leaves the cash below zero. On payday again, « Dépenses de la semaine » takes the week's
  * expenses out. A day that is both does them in that order, and an amount
  * of 0 records nothing. Then whatever falls out of the months kept is
  * dropped. Returns a new account; never mutates `account`.
@@ -48,9 +50,14 @@ export function livePersonalDay(
   pay: Cents,
   payWeekday: number,
   content: PersonalContent,
+  housing: Housing | null = null,
 ): PersonalAccount {
   const { dayOfMonth, weekday } = toCalendar(day)
-  const { rentCents, weeklyExpensesCents } = content
+  const { weeklyExpensesCents } = content
+  const rent =
+    housing === null
+      ? { label: LABELS.rent, amount: content.rentCents }
+      : housing
   const payday = weekday === payWeekday
   let cash = account.cash
   const moved: PersonalMovement[] = []
@@ -63,8 +70,8 @@ export function livePersonalDay(
   if (payday) move(LABELS.salary, pay)
   let unpaid = false
   if (dayOfMonth === 1) {
-    move(LABELS.rent, sub(ZERO, rentCents))
-    unpaid = rentCents > 0 && cash < 0
+    move(rent.label, sub(ZERO, rent.amount))
+    unpaid = rent.amount > 0 && cash < 0
   }
   if (payday) move(LABELS.weeklyExpenses, sub(ZERO, weeklyExpensesCents))
 

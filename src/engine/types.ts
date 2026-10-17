@@ -13,6 +13,7 @@ import type {
   OvenTerms,
   ProductId,
   RestockRule,
+  RungId,
   SegmentId,
   StaffRoleId,
   StreetChange,
@@ -354,6 +355,35 @@ export interface GameState {
    * never ends this way: its own `status` says when it is over.
    */
   readonly ended: GameEnd | null
+  /**
+   * « Le rêve »: the rungs of the two ladders the player bought, and the
+   * day the owner became « Magnat ». Empty in a Défi.
+   */
+  readonly dream: DreamState
+}
+
+/** What the player climbed of « Le rêve » (#162). */
+export interface DreamState {
+  /** Every rung bought, oldest first; each rung once. */
+  readonly bought: readonly BoughtRung[]
+  /**
+   * The close at which the owner's net worth first reached the last title,
+   * « Magnat »; null until it does. The celebration shows the morning after.
+   */
+  readonly magnatOn: Day | null
+}
+
+/** A rung of « Le rêve » the player bought. */
+export interface BoughtRung {
+  /** Which, by its id in the content. */
+  readonly rung: RungId
+  /** The morning it was bought, before that day was played. */
+  readonly day: Day
+  /**
+   * What it cost: its price, and, for the truck that replaces the old one,
+   * the old one's book value on top, which the books carry and depreciate.
+   */
+  readonly cost: Cents
 }
 
 /** The end of a game. */

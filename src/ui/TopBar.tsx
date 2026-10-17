@@ -3,6 +3,7 @@ import pacing from '../content/pacing.json'
 import type { Avatar } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
 import { DEFIS, DIFFICULTIES, FOOD_TRUCK } from '../engine/day.ts'
+import { titleOf, truckReplacedOn } from '../engine/dream.ts'
 import type { Cents } from '../engine/money.ts'
 import { netWorth as netWorthOf, netWorthChange } from '../engine/netWorth.ts'
 import type { Day } from '../engine/types.ts'
@@ -12,10 +13,12 @@ import { CashGaugeView } from './CashGauge.tsx'
 import { monthlyFixedCosts } from './cashLevel.ts'
 import DefiPanel from './DefiPanel.tsx'
 import { chipLabel, energyFloorLine } from './defis.ts'
+import DreamPanel from './DreamPanel.tsx'
 import { EnergyGaugeView } from './EnergyGauge.tsx'
 import EventCard from './EventCard.tsx'
 import FinancesPanel from './FinancesPanel.tsx'
 import { formatGameDate } from './formatGameDate.ts'
+import MagnatScreen from './MagnatScreen.tsx'
 import ManagePanel from './ManagePanel.tsx'
 import { NetWorthGaugeView } from './NetWorthGauge.tsx'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
@@ -56,6 +59,8 @@ interface TopBarViewProps {
    * to move from.
    */
   netWorthChange: Cents | null
+  /** The title the net worth earns of « Le rêve »; null shows none. */
+  title?: string | null
   /** The owner's energy this morning. */
   energy: number
   /** The owner's avatar, which the energy's word agrees with. */
@@ -68,6 +73,8 @@ interface TopBarViewProps {
   onStaff: () => void
   /** Opens the « Vos finances » panel. */
   onFinances: () => void
+  /** Opens « Le rêve »; null hides its button, as in a Défi. */
+  onDream?: (() => void) | null
   /** The chip of the Défi played, « Défi · semaine 2 de 3 »; null if none. */
   defiLabel: string | null
   /**
@@ -88,6 +95,7 @@ export function TopBarView({
   fixedCosts,
   netWorth,
   netWorthChange: change,
+  title = null,
   energy,
   avatar,
   speed,
@@ -95,6 +103,7 @@ export function TopBarView({
   onManage,
   onStaff,
   onFinances,
+  onDream = null,
   defiLabel,
   defiEnergy,
   onDefi,
@@ -128,7 +137,7 @@ export function TopBarView({
       </div>
       <div className="top-bar__gauges">
         <CashGaugeView cash={cash} fixedCosts={fixedCosts} />
-        <NetWorthGaugeView netWorth={netWorth} change={change} />
+        <NetWorthGaugeView netWorth={netWorth} change={change} title={title} />
         <EnergyGaugeView energy={energy} avatar={avatar} />
       </div>
       <div className="top-bar__panels">
@@ -156,6 +165,16 @@ export function TopBarView({
         >
           Vos finances
         </button>
+        {onDream !== null && (
+          <button
+            type="button"
+            className="top-bar__panel"
+            aria-haspopup="dialog"
+            onClick={onDream}
+          >
+            Le rêve
+          </button>
+        )}
       </div>
       <div className="top-bar__speeds" role="group" aria-label="Vitesse du jeu">
         {pacing.speeds.map((option) => (
@@ -203,6 +222,7 @@ export default function TopBar() {
   const energy = useGame((state) => state.game.energy)
   const challenge = useGame((state) => state.game.challenge)
   const bakery = useGame((state) => state.game.bakery)
+  const dream = useGame((state) => state.game.dream)
   const speed = useGame((state) => state.speed)
   const setSpeed = useGame((state) => state.setSpeed)
   const togglePause = useGame((state) => state.togglePause)
@@ -226,9 +246,9 @@ export default function TopBar() {
     [journal, day],
   )
   const worth = useMemo(() => {
-    const game = { day, journal, financing, personal, weekHistory }
+    const game = { day, journal, financing, personal, dream, weekHistory }
     return { total: netWorthOf(game), change: netWorthChange(game) }
-  }, [day, journal, financing, personal, weekHistory])
+  }, [day, journal, financing, personal, dream, weekHistory])
   // A Défi's truck came on its first day, from which its loan counts.
   const firstDay = challenge?.startDay ?? 0
   const fixedCosts = useMemo(
@@ -240,8 +260,10 @@ export default function TopBar() {
         FOOD_TRUCK,
         DIFFICULTIES,
         bakery,
+        undefined,
+        truckReplacedOn(dream),
       ),
-    [day, difficulty, firstDay, bakery],
+    [day, difficulty, firstDay, bakery, dream],
   )
   const defi = challenge === null ? null : defiById(DEFIS, challenge.id)
   const defiLabel =
@@ -257,6 +279,7 @@ export default function TopBar() {
         fixedCosts={fixedCosts}
         netWorth={worth.total}
         netWorthChange={worth.change}
+        title={challenge === null ? (titleOf(worth.total)?.name ?? null) : null}
         energy={energy}
         avatar={avatar}
         speed={speed}
@@ -264,6 +287,7 @@ export default function TopBar() {
         onManage={() => openPanel('manage')}
         onStaff={() => openPanel('staff')}
         onFinances={() => openPanel('finances')}
+        onDream={challenge === null ? () => openPanel('dream') : null}
         defiLabel={defiLabel}
         defiEnergy={defiEnergy}
         onDefi={() => openPanel('defi')}
@@ -272,10 +296,12 @@ export default function TopBar() {
       {panel === 'manage' && <ManagePanel />}
       {panel === 'staff' && <StaffPanel />}
       {panel === 'finances' && <FinancesPanel />}
+      {panel === 'dream' && <DreamPanel />}
       {panel === 'defi' && <DefiPanel />}
       {panel === 'settings' && <SettingsPanel />}
       {panel === 'event' && <EventCard />}
       {panel === 'report' && <ReportPanel />}
+      {panel === 'magnat' && <MagnatScreen />}
     </>
   )
 }

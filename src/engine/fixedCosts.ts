@@ -20,7 +20,9 @@ import type { BakeryState, Day } from './types.ts'
  * came on `firstDay`, day 0 but in a Défi: the permit, parking and
  * commissary and the insurance, which every truck pays, then the truck's
  * own charge, the lease or that month's loan payment. A loan has no payment
- * the month it is taken, nor after the last one. Then what `bakery`, the
+ * the month it is taken, nor after the last one, and a truck replaced on
+ * `truckReplacedOn`, a rung of « Le rêve », no lease from then on. Then
+ * what `bakery`, the
  * bakery as of the last close, takes that 1st at the difficulty's prices,
  * when it still holds its premises then (see `bakeryMonthlyCosts`). The
  * truck's depreciation, and the oven's, take no cash.
@@ -33,10 +35,12 @@ export function monthlyFixedCosts(
   difficulties: DifficultyContent = DIFFICULTIES,
   bakery: BakeryState = closedBakery(),
   bakeryContent: BakeryContent = BAKERY,
+  truckReplacedOn: Day | null = null,
 ): Cents {
   const first = toCalendar(day).dayOfMonth === 1 ? day : endOfMonth(day) + 1
+  const leased = truckReplacedOn === null || truckReplacedOn > first
   return add(
-    truckCosts(day, difficulty, firstDay, content, difficulties),
+    truckCosts(day, difficulty, firstDay, content, difficulties, leased),
     bakeryMonthlyCosts(
       bakery,
       first,
@@ -52,6 +56,7 @@ function truckCosts(
   firstDay: Day,
   content: FoodTruckContent,
   difficulties: DifficultyContent,
+  leased: boolean,
 ): Cents {
   const { permitParkingAndCommissary, insurance } = content.monthlyCostsCents
   const everyTruck = add(permitParkingAndCommissary, insurance)
@@ -60,7 +65,7 @@ function truckCosts(
     case 'owned':
       return everyTruck
     case 'lease':
-      return add(everyTruck, truck.monthlyLeaseCents)
+      return leased ? add(everyTruck, truck.monthlyLeaseCents) : everyTruck
     case 'loan': {
       const months = monthsSinceStart(day) - monthsSinceStart(firstDay)
       const month = toCalendar(day).dayOfMonth === 1 ? months : months + 1
