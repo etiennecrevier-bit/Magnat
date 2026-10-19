@@ -656,7 +656,7 @@ describe('a delivery the bakery makes', () => {
       started([
         ...BAKING,
         { kind: 'daysOpen', weekdays: [1, 2, 3, 4, 5, 6, 7] },
-        { kind: 'bake', rule: { kind: 'buyDaily', quantity: 250 } },
+        { kind: 'bake', rule: { kind: 'buyDaily', quantity: capacity } },
       ]),
       'chezNormand',
     )
@@ -668,7 +668,7 @@ describe('a delivery the bakery makes', () => {
     expect(close.lastDay?.deliveries[0]?.baked).toBe(100)
     expect(made(MONDAY)).toEqual([100, capacity - 100])
     // A day with no delivery leaves the truck the whole capacity.
-    expect(made(MONDAY - 1)).toEqual([250])
+    expect(made(MONDAY - 1)).toEqual([capacity])
     expectBooksAgree(close, MONDAY)
   })
 
@@ -760,7 +760,11 @@ describe('a delivery the bakery makes', () => {
     )
     const morning = playedTo(state, MONDAY)
     const close = playedTo(morning, MONDAY + 1)
-    expect(close.lastDay?.deliveries).toMatchObject([{ baked: 300 }])
+    expect(close.lastDay?.deliveries).toMatchObject([
+      {
+        baked: Math.min(capacity, GROCERS.grocers.chezNormand.unitsPerWeek),
+      },
+    ])
     expect(close.lastDay?.energy).toBe(
       energyAtClose(
         morning.energy,

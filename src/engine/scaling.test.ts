@@ -336,9 +336,9 @@ describe('the tags of the financing cards (#159)', () => {
   )
 
   it.each([
-    ['facile', 2_000_000],
-    ['moyen', 2_200_000],
-    ['difficile', 1_700_000],
+    ['facile', 3_000_000],
+    ['moyen', 3_300_000],
+    ['difficile', 2_550_000],
   ] as const)(
     'shows what the shares sell for at %s: %i',
     (difficulty, price) => {

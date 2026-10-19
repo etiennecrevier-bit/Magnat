@@ -22,7 +22,7 @@ import {
   type DefiRun,
 } from './defis.ts'
 import { PERCENTILES } from './owners.ts'
-import { HAND_WRITTEN, formatCount } from './report.ts'
+import { formatCount, type SectionMarkers } from './report.ts'
 import { formatPriceChange, STRATEGIES, type Strategy } from './strategies.ts'
 
 // Writes what `npm run balance -- --defis` plays: the Défis' percentile
@@ -45,6 +45,12 @@ export const DEFIS_START =
 
 /** The last line of the Défis section. */
 export const DEFIS_END = '<!-- End of the Défis section. -->'
+
+/** Where the Défis section starts and ends. */
+export const DEFIS_MARKERS: SectionMarkers = {
+  start: DEFIS_START,
+  end: DEFIS_END,
+}
 
 /** The command that writes `run`, for the files to name. */
 export function defisCommand({ games, search }: DefisBalanceRun): string {
@@ -172,45 +178,6 @@ export function formatDefisSection(run: DefisBalanceRun): string {
 function startingCroissants(): number {
   const rule = FOOD_TRUCK.startingDecisions.restock.croissant
   return rule.kind === 'buyDaily' ? rule.quantity : 0
-}
-
-/**
- * The Défis section of `text`, from `DEFIS_START` to `DEFIS_END`; null if
- * it has none.
- */
-export function defisSection(text: string | null): string | null {
-  const lines = text?.split('\n') ?? []
-  const start = lines.indexOf(DEFIS_START)
-  const end = lines.indexOf(DEFIS_END, start)
-  if (start === -1 || end === -1) return null
-  return lines.slice(start, end + 1).join('\n')
-}
-
-/**
- * `text` with `section` in place of its Défis section; or, if it has none,
- * before its hand-written part, or at its end. `text` itself when `section`
- * is null; `section` alone when `text` is null.
- */
-export function withDefisSection(
-  text: string | null,
-  section: string | null,
-): string {
-  if (section === null) return text ?? ''
-  if (text === null) return `${section}\n`
-  const lines = text.split('\n')
-  const start = lines.indexOf(DEFIS_START)
-  const end = lines.indexOf(DEFIS_END, start)
-  if (start !== -1 && end !== -1) {
-    return [...lines.slice(0, start), section, ...lines.slice(end + 1)].join(
-      '\n',
-    )
-  }
-  const handWritten = lines.indexOf(HAND_WRITTEN)
-  if (handWritten !== -1) {
-    const before = lines.slice(0, handWritten).join('\n').trimEnd()
-    return [before, '', section, '', ...lines.slice(handWritten)].join('\n')
-  }
-  return `${text.trimEnd()}\n\n${section}\n`
 }
 
 function targetRow(played: DefiRun, defi: Defi): string {

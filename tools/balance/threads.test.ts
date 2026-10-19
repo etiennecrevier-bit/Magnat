@@ -5,6 +5,7 @@ import { runOwners } from './owners.ts'
 import { runBalance, type DifficultyRun } from './play.ts'
 import type { Strategy } from './strategies.ts'
 import { runDefi } from './defis.ts'
+import { runGrowth } from './growth.ts'
 import {
   jobLabel,
   jobOptions,
@@ -16,8 +17,8 @@ import {
 } from './threads.ts'
 
 // Playing each job on its own worker thread: that it plays what
-// runBalance(), runOwners() or runDefi() plays, a few at once, and that one
-// failure stops every other thread.
+// runBalance(), runOwners(), runDefi() or runGrowth() plays, a few at once,
+// and that one failure stops every other thread.
 
 const BASE: Strategy = {
   priceChange: 0,
@@ -164,7 +165,7 @@ describe('playAll with a limit', () => {
 })
 
 describe('jobLabel', () => {
-  it('names the difficulty, the Défi, or the difficulty and the strategy', () => {
+  it('names the difficulty, the Défi, or the difficulty and the strategy or contract plan', () => {
     expect(jobLabel(job('moyen'))).toBe('moyen')
     expect(
       jobLabel({ kind: 'defis', defi: 'moisSansConge', games: 1, search: 1 }),
@@ -178,6 +179,15 @@ describe('jobLabel', () => {
         months: 1,
       }),
     ).toBe('facile busy')
+    expect(
+      jobLabel({
+        kind: 'growth',
+        difficulty: 'difficile',
+        contracts: 'careful',
+        games: 1,
+        months: 1,
+      }),
+    ).toBe('difficile contracts careful')
   })
 })
 
@@ -344,6 +354,22 @@ describe('playInWorker', () => {
     const { run, stop } = playInWorker(job)
     try {
       expect(await run).toEqual(runDefi(job))
+    } finally {
+      await stop()
+    }
+  }, 30_000)
+
+  it('plays a growth job on its thread as runGrowth plays it on this one', async () => {
+    const job = {
+      kind: 'growth',
+      difficulty: 'moyen',
+      contracts: 'one',
+      games: 1,
+      months: 2,
+    } as const
+    const { run, stop } = playInWorker(job)
+    try {
+      expect(await run).toEqual(runGrowth(job))
     } finally {
       await stop()
     }

@@ -14,8 +14,10 @@ import {
   OVENS,
   PRICE_SETS,
   TRUCK_STRATEGIES,
+  SHIPPED,
   bakeryChanges,
   breakEvenPerOpenDay,
+  gamePayback,
   monthEnds,
   monthlyBakerWage,
   monthlyBakeryCosts,
@@ -23,11 +25,13 @@ import {
   openDaysPerMonth,
   paybackMonth,
   playBakeryGame,
+  priceSetsFor,
   runBakery,
   savingPerCroissant,
   truckChanges,
   truckStrategy,
   withPrices,
+  type BakeryGame,
 } from './bakery.ts'
 
 const [LOW, MID, HIGH] = PRICE_SETS
@@ -159,6 +163,57 @@ describe('paybackMonth', () => {
   })
 })
 
+describe('gamePayback', () => {
+  /** A game of three months at `cash`, ended on `endedDay`. */
+  const played = (
+    cash: number[],
+    endedDay: number | null = null,
+  ): BakeryGame => ({
+    cashAtMonthEnds: amounts(cash),
+    daysPlayed: endedDay === null ? 92 : endedDay + 1,
+    endedDay,
+    openDays: 0,
+    croissantsSold: 0,
+    croissantsMade: 0,
+    energyAtOpenCloses: 0,
+  })
+
+  it('is the payback month when both played every month', () => {
+    expect(gamePayback(played([0, 3, 4]), played([1, 2, 3]))).toBe(2)
+  })
+
+  it('is null when the bakery game went bankrupt, though ahead before and frozen ahead after', () => {
+    // Ahead from the second month, then bankrupt at its close: the third
+    // month repeats it, still ahead of the twin.
+    expect(paybackMonth(amounts([0, 3, 3]), amounts([1, 2, 2]))).toBe(2)
+    expect(gamePayback(played([0, 3, 3], 60), played([1, 2, 2]))).toBeNull()
+  })
+
+  it('is null when the twin went bankrupt, frozen behind', () => {
+    expect(gamePayback(played([0, 3, 4]), played([1, 2, -5], 60))).toBeNull()
+  })
+})
+
+describe('priceSetsFor', () => {
+  it('plays the grid, and the shipped prices only when they are off it', () => {
+    const offGrid = {
+      ingredientCostCents: cents(60),
+      monthlyRentCents: cents(260_000),
+    }
+    const onGrid = withPrices(MID?.prices ?? BAKERY_PRICES)
+    expect(priceSetsFor('moyen', onGrid)).toEqual(PRICE_SETS)
+    const off = {
+      ...onGrid,
+      bakery: { ...onGrid.bakery, difficile: offGrid },
+    }
+    expect(priceSetsFor('moyen', off)).toEqual(PRICE_SETS)
+    expect(priceSetsFor('difficile', off)).toEqual([
+      ...PRICE_SETS,
+      { name: SHIPPED, prices: offGrid },
+    ])
+  })
+})
+
 describe('the books of the bakery', () => {
   const mid = MID?.prices ?? DIFFICULTIES.bakery.moyen
   const high = HIGH?.prices ?? DIFFICULTIES.bakery.moyen
@@ -167,9 +222,12 @@ describe('the books of the bakery', () => {
     expect(savingPerCroissant(mid)).toBe(110 - 55)
   })
 
-  it("pays the baker a week's wage each week: 22 $ × 30 h, in an average month", () => {
-    expect(STAFF.roles.boulanger.hourlyWageCents.start).toBe(2_200)
-    expect(monthlyBakerWage()).toBeCloseTo((2_200 * 30 * 365) / 12 / 7, 9)
+  it("pays the baker a week's wage each week: their starting wage × their hours, in an average month", () => {
+    const { hourlyWageCents, hoursPerWeek } = STAFF.roles.boulanger
+    expect(monthlyBakerWage()).toBeCloseTo(
+      (hourlyWageCents.start * hoursPerWeek * 365) / 12 / 7,
+      9,
+    )
   })
 
   it("costs the rent and the lease, or the month of depreciation, and the baker's wages", () => {
@@ -187,7 +245,10 @@ describe('the books of the bakery', () => {
   it('breaks even where the savings meet the costs', () => {
     expect(openDaysPerMonth(7)).toBeCloseTo(365 / 12, 9)
     const perDay = breakEvenPerOpenDay(mid, 'louer', 6)
-    expect(perDay).toBeCloseTo(409.2, 1)
+    expect(perDay).toBeCloseTo(
+      monthlyBakeryCosts(mid, 'louer') / (55 * openDaysPerMonth(6)),
+      9,
+    )
     expect(monthlyResult(mid, 'louer', perDay, 6)).toBeCloseTo(0, 6)
     expect(monthlyResult(mid, 'louer', 80, 6)).toBeLessThan(0)
     expect(breakEvenPerOpenDay(high, 'louer', 6)).toBeGreaterThan(perDay)
@@ -275,6 +336,8 @@ describe('playBakeryGame', () => {
       9,
     )
     expect(state.ended).toEqual({ reason: 'bankruptcy', day: 213 })
+    expect(game.endedDay).toBe(213)
+    expect(game.daysPlayed).toBe(214)
     const played = simulate(7, 400, 'difficile', [greedy])
     expect(played.days).toBe(214)
     const { daysOpen } = state.decisions
@@ -358,7 +421,9 @@ describe('runBakery', () => {
     expect(run.twins).toHaveLength(1)
     expect(run.twins[0]?.croissantsMade).toBe(0)
     expect(run.cells.map(({ set, oven }) => `${set} ${oven}`)).toEqual(
-      PRICE_SETS.flatMap(({ name }) => OVENS.map((oven) => `${name} ${oven}`)),
+      priceSetsFor('moyen').flatMap(({ name }) =>
+        OVENS.map((oven) => `${name} ${oven}`),
+      ),
     )
     for (const cell of run.cells) {
       expect(cell.games).toHaveLength(1)

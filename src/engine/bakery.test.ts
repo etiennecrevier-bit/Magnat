@@ -153,7 +153,7 @@ describe('the bakery content', () => {
         usefulLifeMonths: 120,
         monthlyLeaseCents: 60_000,
       },
-      capacityPerDay: 300,
+      capacityPerDay: 800,
       movingCostCents: 150_000,
       noticeMonths: 1,
       bakingEnergyCost: 8,

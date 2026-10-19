@@ -6,16 +6,20 @@ import { cents } from '../../src/engine/money.ts'
 import type { DefiGame, DefiRun } from './defis.ts'
 import {
   DEFIS_END,
+  DEFIS_MARKERS,
   DEFIS_START,
-  defisSection,
   formatDefiPercentileJson,
   formatDefisSection,
   formatStrategy,
   formatValue,
-  withDefisSection,
   type DefisBalanceRun,
 } from './defisReport.ts'
-import { HAND_WRITTEN, withHandWritten } from './report.ts'
+import {
+  HAND_WRITTEN,
+  sectionOf,
+  withHandWritten,
+  withSection,
+} from './report.ts'
 import type { Strategy } from './strategies.ts'
 
 // The Défis' percentile table and their section of the phase-3 report,
@@ -179,7 +183,7 @@ describe('formatDefisSection', () => {
   })
 })
 
-describe('defisSection and withDefisSection', () => {
+describe('sectionOf and withSection, with the Défis section', () => {
   const section = [DEFIS_START, '', '## Défis', '', 'New.', '', DEFIS_END].join(
     '\n',
   )
@@ -196,33 +200,33 @@ describe('defisSection and withDefisSection', () => {
       '',
       ...tail,
     ].join('\n')
-    expect(withDefisSection(before, section)).toBe(
+    expect(withSection(before, section, DEFIS_MARKERS)).toBe(
       [...head, '', section, '', ...tail].join('\n'),
     )
   })
 
   it('goes before the hand-written part when there is none yet', () => {
-    expect(withDefisSection([...head, '', ...tail].join('\n'), section)).toBe(
-      [...head, '', section, '', ...tail].join('\n'),
-    )
+    expect(
+      withSection([...head, '', ...tail].join('\n'), section, DEFIS_MARKERS),
+    ).toBe([...head, '', section, '', ...tail].join('\n'))
   })
 
   it('goes at the end of a report with neither', () => {
-    expect(withDefisSection(`${head.join('\n')}\n`, section)).toBe(
+    expect(withSection(`${head.join('\n')}\n`, section, DEFIS_MARKERS)).toBe(
       `${head.join('\n')}\n\n${section}\n`,
     )
   })
 
   it('stands alone with no report, and leaves a report alone with no section', () => {
-    expect(withDefisSection(null, section)).toBe(`${section}\n`)
-    expect(withDefisSection('Report.\n', null)).toBe('Report.\n')
+    expect(withSection(null, section, DEFIS_MARKERS)).toBe(`${section}\n`)
+    expect(withSection('Report.\n', null, DEFIS_MARKERS)).toBe('Report.\n')
   })
 
   it('reads the section back, or null', () => {
     const report = [...head, '', section, '', ...tail].join('\n')
-    expect(defisSection(report)).toBe(section)
-    expect(defisSection(head.join('\n'))).toBeNull()
-    expect(defisSection(null)).toBeNull()
+    expect(sectionOf(report, DEFIS_MARKERS)).toBe(section)
+    expect(sectionOf(head.join('\n'), DEFIS_MARKERS)).toBeNull()
+    expect(sectionOf(null, DEFIS_MARKERS)).toBeNull()
   })
 
   it('survives a new --percentiles report, with the hand-written part', () => {
@@ -231,7 +235,7 @@ describe('defisSection and withDefisSection', () => {
     expect(
       withHandWritten(
         previous,
-        withDefisSection(report, defisSection(previous)),
+        withSection(report, sectionOf(previous, DEFIS_MARKERS), DEFIS_MARKERS),
       ),
     ).toBe(
       [

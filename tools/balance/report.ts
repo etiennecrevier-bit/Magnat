@@ -175,6 +175,55 @@ export function withHandWritten(
   return [report.trimEnd(), '', ...lines.slice(start)].join('\n')
 }
 
+/** The first and last lines of a section a run writes into a report. */
+export interface SectionMarkers {
+  readonly start: string
+  readonly end: string
+}
+
+/**
+ * The section of `text` from the line `markers.start` to the line
+ * `markers.end`; null if it has none.
+ */
+export function sectionOf(
+  text: string | null,
+  markers: SectionMarkers,
+): string | null {
+  const lines = text?.split('\n') ?? []
+  const start = lines.indexOf(markers.start)
+  const end = lines.indexOf(markers.end, start)
+  if (start === -1 || end === -1) return null
+  return lines.slice(start, end + 1).join('\n')
+}
+
+/**
+ * `text` with `section` in place of its section between `markers`; or, if
+ * it has none, before its hand-written part, or at its end. `text` itself
+ * when `section` is null; `section` alone when `text` is null.
+ */
+export function withSection(
+  text: string | null,
+  section: string | null,
+  markers: SectionMarkers,
+): string {
+  if (section === null) return text ?? ''
+  if (text === null) return `${section}\n`
+  const lines = text.split('\n')
+  const start = lines.indexOf(markers.start)
+  const end = lines.indexOf(markers.end, start)
+  if (start !== -1 && end !== -1) {
+    return [...lines.slice(0, start), section, ...lines.slice(end + 1)].join(
+      '\n',
+    )
+  }
+  const handWritten = lines.indexOf(HAND_WRITTEN)
+  if (handWritten !== -1) {
+    const before = lines.slice(0, handWritten).join('\n').trimEnd()
+    return [before, '', section, '', ...lines.slice(handWritten)].join('\n')
+  }
+  return `${text.trimEnd()}\n\n${section}\n`
+}
+
 /** `1,234` or `1,234.5`: a count, or the median of two. */
 export function formatCount(count: number): string {
   const [whole = '', fraction] = String(count).split('.')
