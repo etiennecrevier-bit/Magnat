@@ -161,11 +161,11 @@ describe('StaffPanelView', () => {
 })
 
 describe('StaffPanel', () => {
-  it('is a modal dialog labelled by its title, for the app store', () => {
+  it('is a modal dialog in the dock’s frame, labelled by its title « Équipe », for the app store', () => {
     gameStore.getState().startGame(amelieAtWork())
     const html = renderToStaticMarkup(<StaffPanel />)
     expect(html).toMatch(
-      /^<dialog class="panel staff" aria-labelledby="staff-title"><div class="panel__content">.*<\/dialog>$/,
+      /^<dialog class="panel dock-frame dock-panel staff" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\1" class="dock-frame__title">Équipe<\/h2>.*<div class="panel__content">.*<\/dialog>$/,
     )
     expect(html).toContain('<h4>Amélie Gagnon</h4>')
   })

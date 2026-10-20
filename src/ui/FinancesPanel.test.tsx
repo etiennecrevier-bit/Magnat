@@ -121,10 +121,10 @@ describe('FinancesPanelView', () => {
 })
 
 describe('FinancesPanel', () => {
-  it("shows the app store's personal account in a modal dialog", () => {
+  it("shows the app store's personal account, as a tab of « Finances »", () => {
     const html = renderToStaticMarkup(<FinancesPanel />)
     expect(html).toMatch(
-      /^<dialog class="panel finances" aria-labelledby="finances-title"><div class="panel__content">.*<\/dialog>$/,
+      /^<div class="finances"><div class="panel__content">.*<\/div><\/div>$/,
     )
     const { game } = gameStore.getState()
     expect(html).toContain(

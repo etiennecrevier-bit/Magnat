@@ -1,39 +1,43 @@
+/* The owner's « Valeur nette » at the top of « Finances ». Text colours keep
+   at least 4.5:1 against the cream #fff7e8. */
 .net-worth-gauge {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0 0.5rem;
-  margin: 0;
+  margin: 0 0 0.75rem;
+  font-size: 1.125rem;
 }
 
 .net-worth-gauge__label {
-  color: #cbd2d9;
+  color: #6b625a;
+  font-weight: 700;
 }
 
 .net-worth-gauge__amount {
-  font-weight: 700;
+  font-family: Fredoka, system-ui, sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .net-worth-gauge__change {
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 
-/* The title of « Le rêve », on a line of its own under the amount, in the
-   gold of the speed pressed. */
+/* The title of « Le rêve », on a line of its own under the amount. */
 .net-worth-gauge__title {
   flex-basis: 100%;
-  color: #f0b429;
+  color: #8a5300;
   font-size: 0.875rem;
   font-weight: 700;
 }
 
-/* Text colours keep at least 4.5:1 against the top bar's #1f2933. */
 .net-worth-gauge__change--up {
-  color: #7bd389;
+  color: #2a6f47;
 }
 
 .net-worth-gauge__change--down {
-  color: #ff9b9b;
+  color: #a61b1b;
 }

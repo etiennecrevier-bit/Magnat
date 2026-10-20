@@ -71,3 +71,16 @@ export function formatSignedMoney(amount: Cents): string {
   const sign = amount < 0 ? MINUS_SIGN : '+'
   return `${sign}${formatBriefMagnitude(amount)}`
 }
+
+/**
+ * Money to the nearest dollar, halves away from zero, as the cash chip
+ * shows it: `8 797 $`, `-1 200 $`.
+ */
+export function formatWholeMoney(amount: Cents): string {
+  const magnitude = Math.abs(amount)
+  const centsPart = magnitude % CENTS_PER_DOLLAR
+  const dollars = (magnitude - centsPart) / CENTS_PER_DOLLAR
+  const rounded = centsPart * 2 >= CENTS_PER_DOLLAR ? dollars + 1 : dollars
+  const text = `${formatCount(rounded)}${NO_BREAK_SPACE}$`
+  return amount < 0 && rounded > 0 ? `-${text}` : text
+}

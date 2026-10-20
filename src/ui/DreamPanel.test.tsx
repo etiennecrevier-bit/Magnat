@@ -98,9 +98,9 @@ describe('DreamPanelView', () => {
 })
 
 describe('DreamPanel', () => {
-  it('shows the app store’s game in a modal dialog', () => {
+  it('shows the app store’s game in a modal dialog in the dock’s frame, titled « Améliorations »', () => {
     expect(renderToStaticMarkup(<DreamPanel />)).toMatch(
-      /^<dialog class="panel dream" aria-labelledby="dream-title"><div class="panel__content">.*<\/dialog>$/,
+      /^<dialog class="panel dock-frame dock-panel dream" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\1" class="dock-frame__title">Améliorations<\/h2>.*<div class="panel__content">.*<\/dialog>$/,
     )
   })
 

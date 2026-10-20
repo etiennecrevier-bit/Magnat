@@ -1,23 +1,32 @@
 import type { CityLink } from '../world/cityPicker.ts'
-import { settingsStore, type SettingsStore } from './settings.ts'
 import { gameStore, type GameStore } from './store.ts'
 
 // What a click on a building of the city opens (#165). The world reports
-// the link; this opens what the top bar and the screens open, so the city
-// is only another way to the panels.
+// the link; this opens what the dock opens, so the city is only another
+// way to the panels.
 
 /**
- * Opens what `link` names: « Aller à… » for a place, outside a Défi, as the
- * top bar shows it; « Gérer le camion » at « Fournil » for the bakery; the
- * « Contrats » screen for a grocer, unfolding the screens if they are
- * folded. A panel already open stays, as with the top bar's buttons.
+ * Opens the « Contrats » with the grocers: the tab of « Ville », or, in a
+ * Défi, where « Ville » is hidden, the tab of « Finances », even when that
+ * drawer is open on another tab. A panel already open stays.
+ */
+export function openContracts(store: GameStore = gameStore): void {
+  const { openPanel, openDrawer, game } = store.getState()
+  if (game.challenge === null) openPanel('trip', 'contracts')
+  else openDrawer('finances', 'contracts')
+}
+
+/**
+ * Opens what `link` names: « Ville » for a place, outside a Défi, as the
+ * dock shows it; « Camion » at « Fournil » for the bakery; the « Contrats »
+ * for a grocer (see `openContracts`). A panel already open stays, as with
+ * the dock's buttons.
  */
 export function openCityLink(
   link: CityLink,
   store: GameStore = gameStore,
-  settings: Pick<SettingsStore, 'getState'> = settingsStore,
 ): void {
-  const { openPanel, showScreen, game } = store.getState()
+  const { openPanel, game } = store.getState()
   switch (link) {
     case 'trip':
       if (game.challenge === null) openPanel('trip')
@@ -26,8 +35,7 @@ export function openCityLink(
       openPanel('manage', 'bakery')
       return
     case 'contracts':
-      showScreen('contracts')
-      settings.getState().setScreensFolded(false)
+      openContracts(store)
       return
   }
 }

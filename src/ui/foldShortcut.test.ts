@@ -117,15 +117,18 @@ describe('handleFoldKey', () => {
 
 describe('losesFocusOnFold', () => {
   it.each([
-    ['the screen buttons and « Replier »', '.screen-nav'],
-    ['the strip', '.screens-strip'],
-    ['the screen', '.screens__screen'],
-  ])('moves the focus away from %s, which the fold takes away', (_, inside) => {
-    expect(losesFocusOnFold(element('BUTTON', [inside]))).toBe(true)
-  })
+    ['« Hier » and its corner button', '.yesterday'],
+    ['the « Hier » pill', '.yesterday-pill'],
+  ])(
+    'moves the focus away from %s, which hiding or showing takes away',
+    (_, inside) => {
+      expect(losesFocusOnFold(element('BUTTON', [inside]))).toBe(true)
+    },
+  )
 
-  it('leaves it on a message, the top bar or the page', () => {
+  it('leaves it on a message, the top bar, the dock or the page', () => {
     expect(losesFocusOnFold(element('BUTTON', ['.messages']))).toBe(false)
+    expect(losesFocusOnFold(element('BUTTON', ['.dock']))).toBe(false)
     expect(losesFocusOnFold(element('BUTTON', ['.top-bar']))).toBe(false)
     expect(losesFocusOnFold(element('BODY', []))).toBe(false)
     expect(losesFocusOnFold(null)).toBe(false)

@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react'
 import type { Day, PersonalAccount } from '../engine/types.ts'
 import { formatDayAndMonth, formatGameMonth } from './formatGameDate.ts'
 import { formatMoney } from './formatMoney.ts'
@@ -88,36 +87,20 @@ export function FinancesPanelView({
   )
 }
 
-/**
- * The panel wired to the app store, in a modal dialog: the page behind it
- * is out of reach, and Fermer or Escape closes it.
- */
+/** « Vos finances » with the app store's game, as a tab of « Finances ». */
 export default function FinancesPanel() {
   const account = useGame((state) => state.game.personal)
   const day = useGame((state) => state.game.day)
   const lastPlayed = useGame((state) => state.game.lastDay?.day ?? null)
-  const closePanel = useGame((state) => state.closePanel)
-  const dialogRef = useRef<HTMLDialogElement>(null)
-
-  useEffect(() => {
-    const dialog = dialogRef.current
-    // StrictMode runs this twice; the second time, the dialog is open.
-    if (dialog !== null && !dialog.open) dialog.showModal()
-  }, [])
-
+  // Its own « Fermer » hides in the drawer's frame, whose « ✕ » closes it.
   return (
-    <dialog
-      ref={dialogRef}
-      className="panel finances"
-      aria-labelledby={TITLE_ID}
-      onClose={closePanel}
-    >
+    <div className="finances">
       <FinancesPanelView
         account={account}
         day={day}
         lastPlayed={lastPlayed}
-        onClose={() => dialogRef.current?.close()}
+        onClose={() => {}}
       />
-    </dialog>
+    </div>
   )
 }

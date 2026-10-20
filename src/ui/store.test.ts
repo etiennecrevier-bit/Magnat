@@ -417,13 +417,13 @@ describe('the event card', () => {
   it('waits for a panel already open to close, then opens', () => {
     const store = createGameStore(createInitialState(1), ESSAI_EVERY_DAY)
     store.getState().setSpeed(10)
-    store.getState().openPanel('finances')
+    store.getState().openPanel('staff')
 
     store.getState().advance(1)
 
     expect(store.getState()).toMatchObject({
       game: { day: 1, events: { pending: { event: 'essai' } } },
-      panel: 'finances',
+      panel: 'staff',
       speed: PAUSED,
       resumeSpeed: 10,
     })
@@ -452,7 +452,7 @@ describe('the event card', () => {
 })
 
 describe('openPanel and closePanel', () => {
-  it.each(['manage', 'finances', 'settings'] as const)(
+  it.each(['manage', 'staff', 'settings'] as const)(
     'pause the game while the %s panel is open, then resume at its speed',
     (panel) => {
       const store = createGameStore()
@@ -476,11 +476,11 @@ describe('openPanel and closePanel', () => {
   it('keep the first panel open when another is asked for', () => {
     const store = createGameStore()
     store.getState().setSpeed(10)
-    store.getState().openPanel('finances')
+    store.getState().openPanel('staff')
     store.getState().openPanel('manage')
     store.getState().openPanel('settings')
     expect(store.getState()).toMatchObject({
-      panel: 'finances',
+      panel: 'staff',
       resumeSpeed: 10,
     })
   })
@@ -587,14 +587,156 @@ describe('a panel opened at a section', () => {
   })
 })
 
-describe('showScreen', () => {
-  it('shows a screen, which stays as a new game starts', () => {
+describe('the drawers', () => {
+  it('start closed, each on its first tab, with no report unread', () => {
+    expect(createGameStore().getState()).toMatchObject({
+      drawer: null,
+      drawerTabs: { finances: 'today', journal: 'events' },
+      unreadReports: 0,
+    })
+  })
+
+  it.each(['finances', 'journal'] as const)(
+    'open %s without pausing the game, then close it',
+    (drawer) => {
+      const store = createGameStore()
+      store.getState().setSpeed(3)
+      store.getState().openDrawer(drawer)
+      expect(store.getState()).toMatchObject({
+        drawer,
+        speed: 3,
+        resumeSpeed: null,
+        panel: null,
+      })
+      store.getState().closeDrawer()
+      expect(store.getState()).toMatchObject({ drawer: null, speed: 3 })
+    },
+  )
+
+  it('keep the tab each showed, and open on the one asked for', () => {
     const store = createGameStore()
-    expect(store.getState().screen).toBe('today')
-    store.getState().showScreen('contracts')
-    expect(store.getState().screen).toBe('contracts')
+    store.getState().openDrawer('finances')
+    store.getState().setDrawerTab('finances', 'statements')
+    store.getState().openDrawer('journal')
+    expect(store.getState()).toMatchObject({
+      drawer: 'journal',
+      drawerTabs: { finances: 'statements', journal: 'events' },
+    })
+    store.getState().openDrawer('finances')
+    expect(store.getState().drawerTabs.finances).toBe('statements')
+    store.getState().openDrawer('finances', 'contracts')
+    expect(store.getState()).toMatchObject({
+      drawer: 'finances',
+      drawerTabs: { finances: 'contracts' },
+    })
+  })
+
+  it('do not open while a panel is open', () => {
+    const store = createGameStore()
+    store.getState().openPanel('staff')
+    store.getState().openDrawer('finances', 'statements')
+    expect(store.getState()).toMatchObject({
+      panel: 'staff',
+      drawer: null,
+      drawerTabs: { finances: 'today' },
+    })
+  })
+
+  it('close as the player opens a panel, which pauses', () => {
+    const store = createGameStore()
+    store.getState().openDrawer('journal')
+    store.getState().openPanel('manage')
+    expect(store.getState()).toMatchObject({
+      panel: 'manage',
+      drawer: null,
+      speed: PAUSED,
+    })
+  })
+
+  it('stay under a panel that opens on its own, such as the event card', () => {
+    const store = createGameStore(createInitialState(1), essaiFrom(1))
+    store.getState().openDrawer('finances')
+    store.getState().advance(5)
+    expect(store.getState()).toMatchObject({
+      panel: 'event',
+      drawer: 'finances',
+      speed: PAUSED,
+    })
+  })
+
+  it('close and go back to their first tabs as a new game starts', () => {
+    const store = createGameStore()
+    store.getState().openDrawer('finances', 'statements')
     store.getState().startGame(createInitialState(2))
-    expect(store.getState().screen).toBe('contracts')
+    expect(store.getState()).toMatchObject({
+      drawer: null,
+      drawerTabs: { finances: 'today', journal: 'events' },
+    })
+  })
+})
+
+describe('the reports unread', () => {
+  it('count each report that only slides in, until « Journal » opens', () => {
+    const store = createGameStore(playedTo(34), NO_EVENTS, REPORT_AT_FIRST)
+    store.getState().advance(1)
+    expect(store.getState()).toMatchObject({ slideIn: 28, unreadReports: 1 })
+    store.getState().advance(7)
+    expect(store.getState()).toMatchObject({ slideIn: 35, unreadReports: 2 })
+    store.getState().openDrawer('finances')
+    expect(store.getState().unreadReports).toBe(2)
+    store.getState().openDrawer('journal')
+    expect(store.getState().unreadReports).toBe(0)
+  })
+
+  it('are read once the full report opens from the card', () => {
+    const store = createGameStore(playedTo(34), NO_EVENTS, REPORT_AT_FIRST)
+    store.getState().advance(1)
+    store.getState().openPanel('report')
+    expect(store.getState()).toMatchObject({
+      panel: 'report',
+      unreadReports: 0,
+    })
+  })
+
+  it('are read once the full report opens on its own', () => {
+    const store = createGameStore(
+      createInitialState(1),
+      NO_EVENTS,
+      REPORT_AT_FIRST,
+    )
+    store.setState({ unreadReports: 3 })
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      panel: 'report',
+      unreadReports: 0,
+    })
+  })
+
+  it('are read once a full report waiting for a panel opens', () => {
+    const store = createGameStore(
+      createInitialState(1),
+      NO_EVENTS,
+      REPORT_AT_FIRST,
+    )
+    store.setState({ unreadReports: 2 })
+    store.getState().openPanel('staff')
+    store.getState().advance(10)
+    expect(store.getState()).toMatchObject({
+      reportWaiting: true,
+      unreadReports: 2,
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: 'report',
+      unreadReports: 0,
+    })
+  })
+
+  it('start at none in a new game', () => {
+    const store = createGameStore(playedTo(34), NO_EVENTS, REPORT_AT_FIRST)
+    store.getState().advance(1)
+    store.getState().startGame(createInitialState(2))
+    expect(store.getState().unreadReports).toBe(0)
   })
 })
 
@@ -824,13 +966,13 @@ describe('the weekly report', () => {
       REPORT_AT_FIRST,
     )
     store.getState().setSpeed(10)
-    store.getState().openPanel('finances')
+    store.getState().openPanel('staff')
 
     store.getState().advance(10)
 
     expect(store.getState()).toMatchObject({
       game: { day: 7, events: { pending: { event: 'essai' } } },
-      panel: 'finances',
+      panel: 'staff',
       reportWaiting: true,
       speed: PAUSED,
       resumeSpeed: 10,
@@ -897,7 +1039,7 @@ describe('the weekly report', () => {
       essaiFrom(7),
       REPORT_AT_FIRST,
     )
-    store.getState().openPanel('finances')
+    store.getState().openPanel('staff')
     store.getState().advance(10)
     expect(store.getState().reportWaiting).toBe(true)
     store.getState().startGame(playedTo(7))
@@ -1129,11 +1271,11 @@ describe('the monthly report', () => {
 
   it('waits for a panel open when its 1st comes, then shows before the event card', () => {
     const store = createGameStore(playedTo(29), essaiFrom(31), MONTHLY)
-    store.getState().openPanel('finances')
+    store.getState().openPanel('staff')
     store.getState().advance(10)
     expect(store.getState()).toMatchObject({
       game: { day: 31 },
-      panel: 'finances',
+      panel: 'staff',
       reportWaiting: true,
       reportShown: 'month',
     })
@@ -1477,11 +1619,11 @@ describe('a bankruptcy (#160)', () => {
     // Every panel pauses the game, so only a test gets here.
     const store = createGameStore(NEAR_THE_END, NO_EVENTS)
     store.getState().setSpeed(3)
-    store.getState().openPanel('finances')
+    store.getState().openPanel('staff')
     store.getState().advance(20)
     expect(store.getState()).toMatchObject({
       game: { day: 214, ended: END },
-      panel: 'finances',
+      panel: 'staff',
       speed: PAUSED,
       resumeSpeed: 3,
     })

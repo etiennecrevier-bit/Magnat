@@ -1,82 +1,34 @@
-/* « Replier », at the right of the screen's title, which wraps beside it.
-   Every screen opens on its title, taller with its margin than the button. */
-.screens__fold {
-  float: right;
-  margin: -0.25rem 0 0 0.5rem;
+/* The notice and the messages, top centre 12 px under the top bar, over
+   the street; at most three messages come at once (messageTriggers.ts).
+   TopBar.tsx keeps --top-bar-room at where the bar ends, however many rows
+   it wraps onto, so a message never covers its buttons; nor do they reach
+   the dock, scrolling instead. The region lets clicks through where it has
+   nothing. */
+.shell__notices {
+  position: fixed;
+  top: calc(var(--top-bar-room, 5.75rem) + 12px);
+  left: 50%;
+  z-index: 1;
+  display: grid;
+  gap: 0.5rem;
+  width: min(30rem, calc(100% - 2rem));
+  max-height: calc(
+    100dvh - var(--top-bar-room, 5.75rem) - var(--dock-room, 10rem) - 24px
+  );
+  overflow-y: auto;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
-/* Folded, the card hugs the strip and leaves the street the room. */
-main.screens--folded {
-  padding: 0.5rem;
+.shell__notices > * {
+  pointer-events: auto;
 }
 
-.world ~ main.screens--folded {
-  width: fit-content;
-}
-
-/* The messages and the notice above the strip wrap to its width rather than
-   widen the card. */
-.screens--folded > .messages,
-.screens--folded > .notice {
-  contain: inline-size;
-}
-
-/* On a phone it spans the window, as unfolded (WorldCanvas.css). */
-@media (max-width: 559px) {
-  .world ~ main.screens--folded {
-    width: auto;
-  }
-}
-
-/* The strip is one button: a click anywhere on it unfolds the screens. */
-.screens-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.75rem;
-  width: 100%;
-  min-height: 44px;
-  padding: 0.25rem 0.5rem;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.screens-strip:hover {
-  background: rgb(43 38 34 / 8%);
-}
-
-.screens-strip:focus-visible {
-  outline: 3px solid #2186eb;
-  outline-offset: 2px;
-}
-
-/* The open screen's badge, an ink pill. */
-.screens-strip__screen {
-  padding: 0.125rem 0.625rem;
-  border-radius: 999px;
-  background: #2b2622;
-  color: #fff7e8;
-  font-size: 0.875rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-/* A label never parts from its number. */
-.screens-strip__number {
-  white-space: nowrap;
-}
-
-.screens-strip__number strong {
-  font-variant-numeric: tabular-nums;
-}
-
-.screens-strip__unfold {
-  margin-left: auto;
-  font-weight: 600;
-  white-space: nowrap;
+.shell__notices .notice {
+  margin: 0;
+  border: 2px solid #2b2622;
+  border-left: 6px solid #c27a00;
+  border-radius: 12px;
+  background: #fffbea;
+  color: #2b2622;
 }

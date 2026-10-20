@@ -167,7 +167,7 @@ describe('WeekSlideIn', () => {
   it('keeps its region empty while no card slides in, or a panel is open', () => {
     gameStore.setState({ game: GAME })
     expect(renderToStaticMarkup(<WeekSlideIn />)).toBe(EMPTY)
-    gameStore.setState({ slideIn: 0, panel: 'finances' })
+    gameStore.setState({ slideIn: 0, panel: 'staff' })
     expect(renderToStaticMarkup(<WeekSlideIn />)).toBe(EMPTY)
   })
 })

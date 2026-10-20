@@ -11,6 +11,7 @@ import {
   type RungStatus,
   type TitleRow,
 } from './dreamBoard.ts'
+import { DockPanel } from './DockFrame.tsx'
 import { useFieldDialog } from './fieldDialog.ts'
 import { formatMoney } from './formatMoney.ts'
 import { useGame } from './store.ts'
@@ -249,8 +250,9 @@ function RungCard({
 }
 
 /**
- * The panel wired to the app store, in a modal dialog (see
- * `useFieldDialog`), the purchase to confirm kept while it is open. A
+ * « Améliorations », the panel wired to the app store, in the dock's frame,
+ * a modal dialog (see `useFieldDialog`), the purchase to confirm kept while
+ * it is open. A
  * purchase made shows at once: it does not wait for the next morning.
  */
 export default function DreamPanel() {
@@ -262,12 +264,13 @@ export default function DreamPanel() {
   const { dialogRef, onChange, close, onCancel } = useFieldDialog(decide)
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="panel dream"
-      aria-labelledby={TITLE_ID}
+    <DockPanel
+      dialogRef={dialogRef}
+      className="dream"
+      title="Améliorations"
       onCancel={onCancel}
       onClose={closePanel}
+      onDismiss={close}
     >
       <DreamPanelView
         board={board}
@@ -276,6 +279,6 @@ export default function DreamPanel() {
         onChange={onChange}
         onClose={close}
       />
-    </dialog>
+    </DockPanel>
   )
 }

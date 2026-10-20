@@ -1,5 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { DecisionChange } from '../engine/decisions.ts'
+import ContractsScreen from './ContractsScreen.tsx'
+import { DockPanel } from './DockFrame.tsx'
+import { CITY_TABS, type CityTab } from './dockFrame.ts'
 import { useFieldDialog } from './fieldDialog.ts'
 import { useGame } from './store.ts'
 import { tripBoard, type PlaceRow, type TripBoard } from './tripBoard.ts'
@@ -105,25 +108,39 @@ export function PlaceCard({
 }
 
 /**
- * The panel wired to the app store, in a modal dialog (see
- * `useFieldDialog`). A trip shows at once: it is for the day under way.
+ * « Ville », the panel wired to the app store, in the dock's frame, a modal
+ * dialog (see `useFieldDialog`): « Aller à… », where a trip shows at once,
+ * as it is for the day under way, and the « Contrats » with the grocers,
+ * which it opens on when the store asks for that section.
  */
 export default function TripPanel() {
   const game = useGame((state) => state.game)
   const decide = useGame((state) => state.decide)
   const closePanel = useGame((state) => state.closePanel)
+  const section = useGame((state) => state.panelSection)
   const board = useMemo(() => tripBoard(game), [game])
+  const [tab, setTab] = useState<CityTab>(
+    section === 'contracts' ? 'contracts' : 'trip',
+  )
   const { dialogRef, onChange, close, onCancel } = useFieldDialog(decide)
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="panel trip"
-      aria-labelledby={TITLE_ID}
+    <DockPanel
+      dialogRef={dialogRef}
+      className="trip"
+      title="Ville"
+      tabs={CITY_TABS}
+      tab={tab}
+      onTab={setTab}
       onCancel={onCancel}
       onClose={closePanel}
+      onDismiss={close}
     >
-      <TripPanelView board={board} onChange={onChange} onClose={close} />
-    </dialog>
+      {tab === 'trip' ? (
+        <TripPanelView board={board} onChange={onChange} onClose={close} />
+      ) : (
+        <ContractsScreen />
+      )}
+    </DockPanel>
   )
 }

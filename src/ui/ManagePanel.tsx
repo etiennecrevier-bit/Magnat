@@ -20,6 +20,7 @@ import {
   stepPrice,
 } from './decisionInput.ts'
 import { lockReason } from './defis.ts'
+import { DockPanel } from './DockFrame.tsx'
 import { useFieldDialog } from './fieldDialog.ts'
 import { formatAmount } from './formatMoney.ts'
 import { NumberField } from './NumberField.tsx'
@@ -417,11 +418,11 @@ function lockedKinds(game: GameState): DecisionKind[] {
 }
 
 /**
- * The panel wired to the app store, in a modal dialog (see
- * `useFieldDialog`): the page behind it is out of reach and Escape closes
- * it. Fermer keeps what was typed, after any invalid text is fixed; Escape
- * drops what is still being typed. The changes already made stay either
- * way.
+ * « Camion », the panel wired to the app store, in the dock's frame, a
+ * modal dialog (see `useFieldDialog`): the page behind it is out of reach
+ * and Escape closes it. « ✕ » keeps what was typed, after any invalid text
+ * is fixed; Escape drops what is still being typed. The changes already
+ * made stay either way.
  */
 export default function ManagePanel() {
   const decisions = useGame((state) => latestDecisions(state.game))
@@ -439,7 +440,7 @@ export default function ManagePanel() {
   const { dialogRef, onChange, close, onCancel } = useFieldDialog(decide)
 
   // Opened from the bakery in the city, the panel shows « Fournil » at
-  // once; the focus stays on Fermer, as the dialog gave it.
+  // once; the focus stays on « ✕ », as the dialog gave it.
   useEffect(() => {
     if (section !== 'bakery') return
     dialogRef.current
@@ -448,12 +449,13 @@ export default function ManagePanel() {
   }, [section, dialogRef])
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="panel manage"
-      aria-labelledby={TITLE_ID}
+    <DockPanel
+      dialogRef={dialogRef}
+      className="manage"
+      title="Camion"
       onCancel={onCancel}
       onClose={closePanel}
+      onDismiss={close}
     >
       <ManagePanelView
         decisions={decisions}
@@ -464,6 +466,6 @@ export default function ManagePanel() {
         onChange={onChange}
         onClose={close}
       />
-    </dialog>
+    </DockPanel>
   )
 }

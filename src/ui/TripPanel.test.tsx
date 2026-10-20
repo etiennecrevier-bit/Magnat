@@ -139,11 +139,16 @@ describe('TripPanelView', () => {
 })
 
 describe('TripPanel', () => {
-  it('shows the app store in a modal dialog, and sends the owner at once', () => {
+  it('shows the app store in « Ville », a modal dialog in the dock’s frame, on « Aller à… », and sends the owner at once', () => {
     gameStore.getState().openPanel('trip')
-    expect(renderToStaticMarkup(<TripPanel />)).toMatch(
-      /^<dialog class="panel trip" aria-labelledby="trip-title"><div class="panel__content">/,
+    const html = renderToStaticMarkup(<TripPanel />)
+    expect(html).toMatch(
+      /^<dialog class="panel dock-frame dock-panel trip" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\1" class="dock-frame__title">Ville<\/h2>/,
     )
+    expect(html).toMatch(
+      /<button id="([^"]+)-tab-trip" type="button" role="tab" class="tab on" aria-selected="true" aria-controls="\1" tabindex="0">Aller à…<\/button><button id="\1-tab-contracts" type="button" role="tab" class="tab" aria-selected="false" aria-controls="\1" tabindex="-1">Contrats<\/button>/,
+    )
+    expect(html).toContain('<div class="panel__content">')
     gameStore.getState().decide({ kind: 'goTo', place: 'meunerie' })
     const { game } = gameStore.getState()
     expect(game.town.trip).toBe('meunerie')
@@ -151,5 +156,13 @@ describe('TripPanel', () => {
     expect(renderToStaticMarkup(<TripPanel />)).toContain(
       `aria-label="Annuler${S}: La meunerie"`,
     )
+  })
+
+  it('opens on « Contrats » when the store asks for that section', () => {
+    gameStore.getState().openPanel('trip', 'contracts')
+    const html = renderToStaticMarkup(<TripPanel />)
+    expect(html).toMatch(/class="tab on" aria-selected="true"[^>]*>Contrats</)
+    expect(html).toContain('<section class="contracts">')
+    expect(html).not.toContain('<div class="panel__content">')
   })
 })

@@ -1,10 +1,10 @@
-/* The week in brief, at the bottom right above the La Presse-Citron band,
-   on the panels' cream card. The region holding it takes no room and lets
-   clicks through while it is empty. */
+/* The week in brief, at the bottom right above « Hier » (Yesterday.css sets
+   --report-room), on the panels' cream card. The region holding it takes no
+   room and lets clicks through while it is empty. */
 .week-slide-in {
   position: fixed;
   right: 1rem;
-  bottom: calc(var(--ticker-height, 2.75rem) + 1rem);
+  bottom: var(--report-room, calc(var(--ticker-height, 2.75rem) + 1rem));
   z-index: 2;
   width: min(22rem, calc(100% - 2rem));
   pointer-events: none;

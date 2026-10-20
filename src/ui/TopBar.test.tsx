@@ -5,8 +5,7 @@ import { defiById } from '../engine/challenge.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { DEFIS, FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision } from '../engine/decisions.ts'
-import { applyEffect } from '../engine/effects.ts'
-import { cents, type Cents } from '../engine/money.ts'
+import { cents } from '../engine/money.ts'
 import { titleOf } from '../engine/dream.ts'
 import { netWorth } from '../engine/netWorth.ts'
 import { defaultProfile } from '../engine/profile.ts'
@@ -14,7 +13,10 @@ import type { GameState } from '../engine/types.ts'
 import { closedBakery } from '../engine/bakery.ts'
 import { balance, postEntry } from '../finance/journal.ts'
 import { LOW_BELOW_MONTHS, monthlyFixedCosts } from './cashLevel.ts'
-import { formatMoney } from './formatMoney.ts'
+import type { TopAlert } from './alerts.ts'
+import { sparklinePoints } from './cashChip.ts'
+import { cashAtCloses } from './cashHistory.ts'
+import { createMessageStack } from './messageStack.ts'
 import { createSettingsStore, SETTINGS_KEY } from './settings.ts'
 import { gameStore, newChallenge, type GameStoreState } from './store.ts'
 import TopBar, { TopBarView } from './TopBar.tsx'
@@ -45,8 +47,8 @@ function render(
   energy = 100,
   defiLabel: string | null = null,
   defiEnergy: string | null = null,
-  netWorth = cents(2_500_000),
-  netWorthChange: Cents | null = null,
+  title: string | null = null,
+  alerts: readonly TopAlert[] = [],
 ) {
   return renderToStaticMarkup(
     <TopBarView
@@ -54,15 +56,12 @@ function render(
       day={day}
       cash={cash}
       fixedCosts={cents(175_000)}
-      netWorth={netWorth}
-      netWorthChange={netWorthChange}
+      title={title}
       energy={energy}
       avatar="homme"
       speed={speed}
       onSpeedChange={() => {}}
-      onManage={() => {}}
-      onStaff={() => {}}
-      onFinances={() => {}}
+      alerts={alerts}
       defiLabel={defiLabel}
       defiEnergy={defiEnergy}
       onDefi={() => {}}
@@ -115,22 +114,46 @@ describe('TopBarView', () => {
     )
   })
 
-  it('shows the business name above the date', () => {
+  it('shows the business name above the date, on the card at the left', () => {
     expect(render(0, 1, cents(0), 'Chez Mimi')).toMatch(
-      /^<header class="top-bar"><div class="top-bar__title"><p class="top-bar__name">Chez Mimi<\/p><p class="top-bar__date">Lundi 1er mai, an 1<\/p><\/div>/,
+      /^<header class="top-bar"><div class="top-bar__left"><div class="top-bar__title"><p class="top-bar__name">Chez Mimi<\/p><p class="top-bar__date">Lundi 1er mai, an 1<\/p><\/div>/,
     )
   })
 
-  it('shows the cash gauge, the net worth, then the energy gauge, between the date and the buttons', () => {
+  it("shows the owner's title of « Le rêve » under the date", () => {
+    expect(
+      render(0, 1, cents(0), 'Chez Mimi', 100, null, null, 'Débrouillard'),
+    ).toContain(
+      '<p class="top-bar__date">Lundi 1er mai, an 1</p><p class="top-bar__owner">Débrouillard</p></div>',
+    )
+    expect(render(0, 1)).not.toContain('top-bar__owner')
+  })
+
+  it('shows the card, the cash chip, then the energy pill at the left, and no net worth', () => {
     const html = render(0, 1, cents(-12_345), "Le P'tit Camion", 30)
     expect(html).toMatch(
-      /^<header class="top-bar"><div class="top-bar__title">.*<\/div><div class="top-bar__gauges"><p class="cash-gauge cash-gauge--negative">.*<\/p><p class="net-worth-gauge">.*<\/p><p class="energy-gauge energy-gauge--tired">.*<\/p><\/div><div class="top-bar__panels"><button/,
+      /^<header class="top-bar"><div class="top-bar__left"><div class="top-bar__title">.*<\/div><button type="button" class="cash-chip cash-chip--negative".*<\/button><div id="[^"]+" role="tooltip".*<\/div><div class="top-bar__energy"><svg class="icon".*<\/svg><p class="energy-gauge energy-gauge--tired">.*<\/p><\/div><\/div><div class="top-bar__right">/,
     )
-    expect(html).toContain(`-123,45${S}$`)
+    expect(html).toContain(`<span class="cash-chip__amount">-123${S}$</span>`)
+    expect(html).toContain(`<dd>-123,45${S}$</dd>`)
     expect(html).toContain('Fatigué')
+    expect(html).not.toContain('Valeur nette')
   })
 
-  it('shows the net worth, with an arrow for its change this week', () => {
+  it('has no panel buttons: the dock opens the panels', () => {
+    const html = render(0, 1)
+    for (const gone of [
+      'Gérer le camion',
+      'Qui fait quoi',
+      'Vos finances',
+      'Aller à',
+      'Le rêve',
+    ]) {
+      expect(html).not.toContain(gone)
+    }
+  })
+
+  it('shows the alerts as chips with an icon and words, between the speeds and the gear', () => {
     const html = render(
       0,
       1,
@@ -139,18 +162,16 @@ describe('TopBarView', () => {
       100,
       null,
       null,
-      cents(3_141_592),
-      cents(-50_000),
+      null,
+      [
+        { id: 'missed', icon: 'alerte', label: 'Livraison manquée' },
+        { id: 'messages', icon: 'cahier', label: '2 messages' },
+      ],
     )
-    expect(html).toContain(
-      `<span class="net-worth-gauge__label">Valeur nette</span> <span class="net-worth-gauge__amount">31${S}415,92${S}$</span> <span class="net-worth-gauge__change net-worth-gauge__change--down" role="img" aria-label="\u2212500${S}$ cette semaine">▼</span>`,
+    expect(html).toMatch(
+      /<\/div><ul class="top-bar__alerts" aria-label="Alertes"><li><button type="button" class="top-bar__alert top-bar__alert--missed"><svg class="icon"[^>]*>.*?<\/svg>Livraison manquée<\/button><\/li><li><button type="button" class="top-bar__alert top-bar__alert--messages"><svg class="icon"[^>]*>.*?<\/svg>2 messages<\/button><\/li><\/ul><button type="button" class="top-bar__settings"/,
     )
-  })
-
-  it('has buttons that open the Gérer le camion, Qui fait quoi and Vos finances dialogs, before the speeds', () => {
-    expect(render(0, 1)).toContain(
-      '<div class="top-bar__panels"><button type="button" class="top-bar__panel" aria-haspopup="dialog">Gérer le camion</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Qui fait quoi</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Vos finances</button></div><div class="top-bar__speeds"',
-    )
+    expect(render(0, 1)).not.toContain('top-bar__alerts')
   })
 
   it('shows the Défi chip under the date, which opens its dialog', () => {
@@ -186,7 +207,7 @@ describe('TopBarView', () => {
 
   it('ends with the gear, which opens the « Réglages » dialog', () => {
     expect(render(0, 1)).toMatch(
-      /<\/div><button type="button" class="top-bar__settings" aria-label="Réglages" aria-haspopup="dialog" title="Réglages">\u2699\ufe0e<\/button><\/header>$/,
+      /<\/div><button type="button" class="top-bar__settings" aria-label="Réglages" aria-haspopup="dialog" title="Réglages"><svg class="icon"[^>]*>.*<\/svg><\/button><\/div><\/header>$/,
     )
   })
 
@@ -234,17 +255,12 @@ describe('the switch between the street and the city', () => {
         day={0}
         cash={cents(1_000_000)}
         fixedCosts={cents(175_000)}
-        netWorth={cents(2_500_000)}
-        netWorthChange={null}
         energy={100}
         avatar="homme"
         speed={1}
         onSpeedChange={() => {}}
         view="street"
         onViewChange={() => {}}
-        onManage={() => {}}
-        onStaff={() => {}}
-        onFinances={() => {}}
         defiLabel={null}
         defiEnergy={null}
         onDefi={() => {}}
@@ -273,35 +289,40 @@ describe('the switch between the street and the city', () => {
 })
 
 describe('TopBar', () => {
-  it("shows the owner's net worth from the app store, with no arrow before a Sunday is played, and the title it earns", () => {
-    const worth = netWorth(gameStore.getState().game)
-    const title = titleOf(worth)?.name
+  it("shows the title the owner's net worth earns, from the app store, under the date", () => {
+    const title = titleOf(netWorth(gameStore.getState().game))?.name
     expect(title).toBeDefined()
-    const html = renderToStaticMarkup(<TopBar />)
-    expect(html).toContain(
-      `<p class="net-worth-gauge"><span class="net-worth-gauge__label">Valeur nette</span> <span class="net-worth-gauge__amount">${formatMoney(worth)}</span><span class="net-worth-gauge__title">${title}</span></p>`,
+    expect(renderToStaticMarkup(<TopBar />)).toContain(
+      `<p class="top-bar__owner">${title}</p>`,
     )
   })
 
-  it("shows the net worth's change since the last Sunday's close", () => {
-    // The morning of Monday, day 7, after the first Sunday: no change yet.
-    gameStore.getState().startGame(playedTo('moyen', 42, 0, 7))
-    expect(renderToStaticMarkup(<TopBar />)).not.toContain(
-      'net-worth-gauge__change',
-    )
-    // Then 60 $ come into the owner's pocket that morning.
-    gameStore
-      .getState()
-      .startGame(
-        applyEffect(
-          playedTo('moyen', 42, 0, 7),
-          { kind: 'personal', label: 'Cadeau', amountCents: cents(6_000) },
-          FOOD_TRUCK,
-          'test',
-        ),
-      )
+  it('draws the encaisse at the closes of the last 30 days played', () => {
+    gameStore.getState().startGame(playedTo('moyen', 42, 0, 40))
+    const { game } = gameStore.getState()
+    const closes = cashAtCloses(game.journal, 0, game.day - 1, 30)
+    expect(closes).toHaveLength(30)
     expect(renderToStaticMarkup(<TopBar />)).toContain(
-      `<span class="net-worth-gauge__change net-worth-gauge__change--up" role="img" aria-label="+60${S}$ cette semaine">▲</span>`,
+      `<polyline points="${sparklinePoints(closes)}"`,
+    )
+  })
+
+  it('shows a chip while a delivery was missed this week, and one for the messages waiting', () => {
+    const stack = createMessageStack()
+    expect(renderToStaticMarkup(<TopBar stack={stack} />)).not.toContain(
+      'top-bar__alerts',
+    )
+    const { game } = gameStore.getState()
+    gameStore.getState().startGame({
+      ...game,
+      day: 2,
+      contracts: {
+        ...game.contracts,
+        missed: [{ day: 0, grocer: 'marcheBioLogique' }],
+      },
+    })
+    expect(renderToStaticMarkup(<TopBar stack={stack} />)).toContain(
+      'Livraison manquée</button>',
     )
   })
 
@@ -309,8 +330,8 @@ describe('TopBar', () => {
     const html = renderToStaticMarkup(<TopBar />)
     expect(html).toContain('<p class="top-bar__name">Le P&#x27;tit Camion</p>')
     expect(html).toContain('Lundi 1er mai, an 1')
-    expect(html).toContain('cash-gauge--healthy')
-    expect(html).toContain(`10${S}000,00${S}$`)
+    expect(html).toContain('cash-chip--healthy')
+    expect(html).toContain(`10${S}000${S}$`)
     expect(html).toContain('Saine')
     // The default avatar is a woman's, so the word agrees with her.
     expect(html).toContain('energy-gauge--rested')
@@ -333,12 +354,7 @@ describe('TopBar', () => {
     expect(html).toContain(
       '<button type="button" class="top-bar__defi" aria-haspopup="dialog">Défi · semaine 2 de 3</button>',
     )
-    expect(html).not.toContain('<dialog')
-
-    gameStore.getState().openPanel('defi')
-    expect(renderToStaticMarkup(<TopBar />)).toMatch(
-      /^<header class="top-bar">.*<\/header><dialog class="panel defi-panel" aria-labelledby="defi-title">.*<\/dialog>$/,
-    )
+    expect(html).not.toContain('top-bar__owner')
   })
 
   it("shows the owner's energy against the floor of « Les deux semaines sans congé » in its chip", () => {
@@ -348,44 +364,6 @@ describe('TopBar', () => {
     expect(renderToStaticMarkup(<TopBar />)).toContain(
       `aria-haspopup="dialog">Défi · semaine 1 de 2 <span class="top-bar__defi-energy">Énergie${S}: 100 (plancher${S}: ${floor.amount})</span></button>`,
     )
-  })
-
-  it('shows the Gérer le camion panel only while it is open, paused', () => {
-    gameStore.getState().setSpeed(3)
-    expect(renderToStaticMarkup(<TopBar />)).not.toContain('<dialog')
-
-    gameStore.getState().openPanel('manage')
-    const html = renderToStaticMarkup(<TopBar />)
-    expect(html).toMatch(
-      /^<header class="top-bar">.*<\/header><dialog class="panel manage" aria-labelledby="manage-title">.*<\/dialog>$/,
-    )
-    expect(pressedSpeed(html)).toEqual({
-      label: 'Pause',
-      pressed: 'true',
-    })
-
-    gameStore.getState().closePanel()
-    const closed = renderToStaticMarkup(<TopBar />)
-    expect(closed).not.toContain('<dialog')
-    expect(closed).toContain('aria-label="Vitesse ×3" aria-pressed="true"')
-  })
-
-  it('shows « Qui fait quoi » only while it is open, paused', () => {
-    gameStore.getState().setSpeed(3)
-    gameStore.getState().openPanel('staff')
-    const html = renderToStaticMarkup(<TopBar />)
-    expect(html).toMatch(
-      /^<header class="top-bar">.*<\/header><dialog class="panel staff" aria-labelledby="staff-title">.*<\/dialog>$/,
-    )
-    expect(pressedSpeed(html)).toEqual({
-      label: 'Pause',
-      pressed: 'true',
-    })
-
-    gameStore.getState().closePanel()
-    const closed = renderToStaticMarkup(<TopBar />)
-    expect(closed).not.toContain('<dialog')
-    expect(closed).toContain('aria-label="Vitesse ×3" aria-pressed="true"')
   })
 
   it("reads the encaisse against the bakery's rent and lease too", () => {
@@ -426,107 +404,19 @@ describe('TopBar', () => {
       }),
     }
     gameStore.getState().startGame(game)
-    expect(renderToStaticMarkup(<TopBar />)).toContain('cash-gauge--low')
+    expect(renderToStaticMarkup(<TopBar />)).toContain('cash-chip--low')
     gameStore.getState().startGame({ ...game, bakery: closedBakery() })
-    expect(renderToStaticMarkup(<TopBar />)).toContain('cash-gauge--healthy')
-  })
-
-  it('shows « Réglages » only while it is open, paused, then resumes at the speed before', () => {
-    gameStore.getState().setSpeed(3)
-    expect(renderToStaticMarkup(<TopBar />)).not.toContain('<dialog')
-
-    gameStore.getState().openPanel('settings')
-    const html = renderToStaticMarkup(<TopBar />)
-    expect(html).toMatch(
-      /^<header class="top-bar">.*<\/header><dialog class="panel settings-panel" aria-labelledby="settings-title">.*<\/dialog>$/,
-    )
-    expect(pressedSpeed(html)).toEqual({
-      label: 'Pause',
-      pressed: 'true',
-    })
-
-    gameStore.getState().closePanel()
-    const closed = renderToStaticMarkup(<TopBar />)
-    expect(closed).not.toContain('<dialog')
-    expect(closed).toContain('aria-label="Vitesse ×3" aria-pressed="true"')
-  })
-
-  it('has « Aller à… » then « Le rêve » after « Vos finances », and opens « Le rêve », paused', () => {
-    gameStore.getState().setSpeed(3)
-    const bar = renderToStaticMarkup(<TopBar />)
-    expect(bar).toContain(
-      '<button type="button" class="top-bar__panel" aria-haspopup="dialog">Vos finances</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Aller à…</button><button type="button" class="top-bar__panel" aria-haspopup="dialog">Le rêve</button></div>',
-    )
-    gameStore.getState().openPanel('dream')
-    const html = renderToStaticMarkup(<TopBar />)
-    expect(html).toMatch(
-      /^<header class="top-bar">.*<\/header><dialog class="panel dream" aria-labelledby="dream-title">.*<\/dialog>$/,
-    )
-    expect(pressedSpeed(html)).toEqual({
-      label: 'Pause',
-      pressed: 'true',
-    })
-    gameStore.getState().closePanel()
-    expect(renderToStaticMarkup(<TopBar />)).not.toContain('<dialog')
-  })
-
-  it('hides « Le rêve », « Aller à… » and the title in a Défi', () => {
-    gameStore.getState().startGame(newChallenge('?seed=7', 'travauxSaintDenis'))
-    const html = renderToStaticMarkup(<TopBar />)
-    expect(html).not.toContain('Le rêve')
-    expect(html).not.toContain('Aller à')
-    expect(html).not.toContain('net-worth-gauge__title')
-  })
-
-  it('opens « Aller à… », paused', () => {
-    gameStore.getState().setSpeed(3)
-    gameStore.getState().openPanel('trip')
-    const html = renderToStaticMarkup(<TopBar />)
-    expect(html).toMatch(
-      /^<header class="top-bar">.*<\/header><dialog class="panel trip" aria-labelledby="trip-title">.*<\/dialog>$/,
-    )
-    expect(pressedSpeed(html)).toEqual({
-      label: 'Pause',
-      pressed: 'true',
-    })
-    gameStore.getState().closePanel()
-    expect(renderToStaticMarkup(<TopBar />)).not.toContain('<dialog')
+    expect(renderToStaticMarkup(<TopBar />)).toContain('cash-chip--healthy')
   })
 
   it('shows « En route vers… » under the date on a day with a trip, and nothing without', () => {
     expect(renderToStaticMarkup(<TopBar />)).not.toContain('top-bar__en-route')
     gameStore.getState().decide({ kind: 'goTo', place: 'meunerie' })
     expect(renderToStaticMarkup(<TopBar />)).toMatch(
-      /<p class="top-bar__date">[^<]*<\/p><p class="top-bar__en-route">En route vers la meunerie<\/p><\/div>/,
+      /<p class="top-bar__date">[^<]*<\/p><p class="top-bar__owner">[^<]*<\/p><p class="top-bar__en-route">En route vers la meunerie<\/p><\/div>/,
     )
     gameStore.getState().decide({ kind: 'goTo', place: null })
     expect(renderToStaticMarkup(<TopBar />)).not.toContain('top-bar__en-route')
-  })
-
-  it('shows « Magnat » when the store opens it', () => {
-    gameStore.setState({ panel: 'magnat', resumeSpeed: 1, speed: 0 })
-    expect(renderToStaticMarkup(<TopBar />)).toMatch(
-      /<dialog class="panel magnat" aria-labelledby="magnat-title">.*<h2 id="magnat-title" tabindex="-1">Magnat<\/h2>.*<\/dialog>$/,
-    )
-  })
-
-  it('shows the Vos finances panel only while it is open, paused', () => {
-    gameStore.getState().setSpeed(10)
-    gameStore.getState().openPanel('finances')
-    const html = renderToStaticMarkup(<TopBar />)
-    expect(html).toMatch(
-      /^<header class="top-bar">.*<\/header><dialog class="panel finances" aria-labelledby="finances-title">.*<\/dialog>$/,
-    )
-    expect(html).not.toContain('manage-title')
-    expect(pressedSpeed(html)).toEqual({
-      label: 'Pause',
-      pressed: 'true',
-    })
-
-    gameStore.getState().closePanel()
-    const closed = renderToStaticMarkup(<TopBar />)
-    expect(closed).not.toContain('<dialog')
-    expect(closed).toContain('aria-label="Vitesse ×10" aria-pressed="true"')
   })
 
   // The 1st of the month takes the permit and the insurance, and also the
@@ -539,14 +429,14 @@ describe('TopBar', () => {
       weeklyPay: 100_000,
       day: 61,
       date: 'Samedi 1er juillet, an 1',
-      cash: `2${S}875,99${S}$`,
+      cash: `2${S}876${S}$`,
     },
     {
       difficulty: 'moyen',
       weeklyPay: 150_000,
       day: 123,
       date: 'Vendredi 1er septembre, an 1',
-      cash: `1${S}937,69${S}$`,
+      cash: `1${S}938${S}$`,
     },
   ] as const)(
     'warns that cash is low at $difficulty on the morning of $date, which ends below zero',
@@ -557,39 +447,9 @@ describe('TopBar', () => {
       gameStore.getState().startGame(game)
       const html = renderToStaticMarkup(<TopBar />)
       expect(html).toContain(date)
-      expect(html).toContain(`<span class="cash-gauge__amount">${cash}</span>`)
-      expect(html).toContain('cash-gauge--low')
+      expect(html).toContain(`<span class="cash-chip__amount">${cash}</span>`)
+      expect(html).toContain('cash-chip--low')
       expect(html).toContain('Faible')
     },
   )
-
-  it('shows the Bilan de la semaine on the first Monday, paused', () => {
-    gameStore.getState().startGame(createInitialState(1))
-    gameStore.getState().advance(10)
-    const html = renderToStaticMarkup(<TopBar />)
-    expect(html).toMatch(
-      /^<header class="top-bar">.*<\/header><dialog class="panel weekly-report-panel" aria-labelledby="weekly-report-title">.*<\/dialog>$/,
-    )
-    expect(html).toContain('Lundi 8 mai, an 1')
-    expect(pressedSpeed(html)).toEqual({
-      label: 'Pause',
-      pressed: 'true',
-    })
-  })
-
-  it('shows the event card while an event waits, paused', () => {
-    const game = createInitialState(1)
-    gameStore.getState().startGame({
-      ...game,
-      events: { ...game.events, pending: { event: 'essai', followUp: false } },
-    })
-    const html = renderToStaticMarkup(<TopBar />)
-    expect(html).toMatch(
-      /^<header class="top-bar">.*<\/header><dialog class="panel event-card" aria-labelledby="event-title">.*<\/dialog>$/,
-    )
-    expect(pressedSpeed(html)).toEqual({
-      label: 'Pause',
-      pressed: 'true',
-    })
-  })
 })

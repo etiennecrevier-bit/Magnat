@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { keepRoomFor, type ObserverLike } from './tickerRoom.ts'
+import { keepRoomFor, keepRoomUnder, type ObserverLike } from './tickerRoom.ts'
 
-/** A bar of `height`, which can be resized, and a page that records. */
-function setUp(height: number) {
+/**
+ * A bar of `height` whose top is `top` px down the window, which can be
+ * resized, and a page that records; `keep` is what is under test.
+ */
+function setUp(height: number, keep = keepRoomFor, top = 0) {
   const bar = {
     height,
     getBoundingClientRect() {
-      return { height: this.height }
+      return { height: this.height, bottom: top + this.height }
     },
   }
   const style = new Map<string, string>()
@@ -34,7 +37,7 @@ function setUp(height: number) {
       },
     }
   }
-  const stop = keepRoomFor(bar as unknown as Element, page, observe)
+  const stop = keep(bar as unknown as Element, page, observe)
   return {
     bar,
     style,
@@ -64,5 +67,27 @@ describe('keepRoomFor', () => {
     stop()
     expect(disconnected()).toBe(true)
     expect(style.has('--ticker-height')).toBe(false)
+  })
+})
+
+describe('keepRoomUnder', () => {
+  it('gives the page where the top bar ends at once', () => {
+    const { bar, style, observed } = setUp(64, keepRoomUnder, 14)
+    expect(style.get('--top-bar-room')).toBe('78px')
+    expect(observed).toEqual([bar])
+  })
+
+  it('follows the bar as its cards wrap onto more rows on a phone', () => {
+    const { bar, style, resize } = setUp(64, keepRoomUnder, 8)
+    bar.height = 255
+    resize()
+    expect(style.get('--top-bar-room')).toBe('263px')
+  })
+
+  it('stops watching and takes the room back when the bar goes', () => {
+    const { style, stop, disconnected } = setUp(64, keepRoomUnder, 14)
+    stop()
+    expect(disconnected()).toBe(true)
+    expect(style.has('--top-bar-room')).toBe(false)
   })
 })

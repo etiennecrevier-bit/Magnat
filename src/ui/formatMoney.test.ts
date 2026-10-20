@@ -3,6 +3,7 @@ import { cents } from '../engine/money.ts'
 import {
   formatAmount,
   formatBriefMoney,
+  formatWholeMoney,
   formatCount,
   formatMoney,
   formatSignedMoney,
@@ -107,4 +108,23 @@ describe('formatCount', () => {
   ])('writes $count as $text', ({ count, text }) => {
     expect(formatCount(count)).toBe(text)
   })
+})
+
+describe('formatWholeMoney', () => {
+  it.each([
+    { amount: 879_749, text: `8${S}797${S}$` },
+    { amount: 879_750, text: `8${S}798${S}$` },
+    { amount: 0, text: `0${S}$` },
+    { amount: 49, text: `0${S}$` },
+    { amount: 50, text: `1${S}$` },
+    { amount: -49, text: `0${S}$` },
+    { amount: -12_345, text: `-123${S}$` },
+    { amount: -12_350, text: `-124${S}$` },
+    { amount: 123_456_700, text: `1${S}234${S}567${S}$` },
+  ])(
+    'writes $amount cents as $text, to the nearest dollar',
+    ({ amount, text }) => {
+      expect(formatWholeMoney(cents(amount))).toBe(text)
+    },
+  )
 })

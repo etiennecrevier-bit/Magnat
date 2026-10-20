@@ -1,4 +1,3 @@
-import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
@@ -7,18 +6,22 @@ import { applyDecision } from '../engine/decisions.ts'
 import { cents } from '../engine/money.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
-import GameScreens, { GameScreensView, type Screen } from './GameScreens.tsx'
-import ScreensStrip from './ScreensStrip.tsx'
+import GameScreens from './GameScreens.tsx'
 import {
   createSettingsStore,
   DEFAULT_SETTINGS,
   SETTINGS_KEY,
   type SettingsStorage,
 } from './settings.ts'
-import { gameStore, type GameStoreState } from './store.ts'
+import {
+  gameStore,
+  newChallenge,
+  PAUSED,
+  type GameStoreState,
+} from './store.ts'
 
-// A static render reads a Zustand store's initial state, so the screens
-// read the app store's current state through this stand-in.
+// A static render reads a Zustand store's initial state, so the shell reads
+// the app store's current state through this stand-in.
 vi.mock('./store.ts', async (importOriginal) => {
   const store = await importOriginal<typeof import('./store.ts')>()
   return {
@@ -32,26 +35,6 @@ afterEach(() => {
   gameStore.setState(gameStore.getInitialState(), true)
 })
 
-function render(screen: Screen, autosaveFailed = false, folded = false) {
-  return renderToStaticMarkup(
-    <GameScreensView
-      screen={screen}
-      onScreenChange={() => {}}
-      autosaveFailed={autosaveFailed}
-      folded={folded}
-      onFoldChange={() => {}}
-    />,
-  )
-}
-
-/** Every element in `node` and its children, in order, `node` included. */
-function elements(node: ReactNode): ReactElement[] {
-  if (Array.isArray(node)) return (node as ReactNode[]).flatMap(elements)
-  if (!isValidElement(node)) return []
-  const { children } = node.props as { children?: ReactNode }
-  return [node, ...elements(children)]
-}
-
 /** A storage holding `items`, as the browser's after a reload. */
 function memory(items: Record<string, string> = {}): SettingsStorage {
   return {
@@ -62,214 +45,228 @@ function memory(items: Record<string, string> = {}): SettingsStorage {
   }
 }
 
-/** `text` as a pattern that matches it and nothing else. */
-function literal(text: string) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-const FOLD_BUTTON =
-  '<button type="button" class="button screens__fold" aria-expanded="true" aria-keyshortcuts="R" title="Replier le panneau (touche R)">Replier</button>'
-
-const STRIP =
-  '<button type="button" class="screens-strip" aria-expanded="false" aria-keyshortcuts="R" title="Déplier le panneau (touche R)">'
-
 const MESSAGES =
   '<section class="messages" role="log" aria-label="Messages"></section>'
 
 const AUTOSAVE_FAILED =
   '<p class="notice" role="status">La sauvegarde automatique a échoué. Exportez la partie dans les Réglages pour ne pas la perdre.</p>'
 
-/** Each screen button's text and pressed state, in order. */
-function screenButtons(html: string) {
-  const nav = /<nav[^>]*>.*<\/nav>/.exec(html)?.[0] ?? ''
-  return [...nav.matchAll(/aria-pressed="(true|false)">([^<]*)</g)].map(
-    ([, pressed, label]) => ({ label, pressed }),
+function render(settings = createSettingsStore(null), autosaveFailed = false) {
+  return renderToStaticMarkup(
+    <GameScreens
+      onMenu={() => {}}
+      settings={settings}
+      autosaveFailed={autosaveFailed}
+    />,
   )
 }
 
-describe('GameScreensView', () => {
-  it("shows the Aujourd'hui panel under a labelled screen menu", () => {
-    const html = render('today')
+/** The words under the dock's buttons, in order. */
+function dock(html: string): string[] {
+  return [...html.matchAll(/<span class="dock__label">([^<]*)<\/span>/g)].map(
+    ([, label]) => label!,
+  )
+}
+
+/** The speed the store runs at, which the drawers and panels leave or stop. */
+const speed = () => gameStore.getState().speed
+
+describe('GameScreens', () => {
+  it('has the messages top centre, the week’s card, « Hier », the dock, the drawers closed and the ticker, and no screens', () => {
+    const html = render()
     expect(html).toMatch(
       new RegExp(
-        `^<main>${MESSAGES}<nav class="screen-nav" aria-label="Écrans">`,
+        `^<div class="shell__notices">${MESSAGES}</div>` +
+          '<div class="week-slide-in" role="status"></div>' +
+          '<div class="yesterday-spot"><section class="yesterday" aria-label="Hier">.*?</section></div>' +
+          '<nav class="dock" aria-label="Panneaux">.*?</nav>' +
+          '<section class="dock-frame dock-drawer finances-drawer" role="dialog" aria-modal="false" aria-labelledby="[^"]+" hidden="">.*?</section>' +
+          '<section class="dock-frame dock-drawer journal-drawer" role="dialog" aria-modal="false" aria-labelledby="[^"]+" hidden="">.*?</section>' +
+          '(<aside class="ticker" aria-label="La Presse-Citron">.*</aside>)?$',
       ),
     )
-    expect(screenButtons(html)).toEqual([
-      { label: 'Aujourd&#x27;hui', pressed: 'true' },
-      { label: 'États financiers', pressed: 'false' },
-      { label: 'Journal des événements', pressed: 'false' },
-      { label: 'Bilans', pressed: 'false' },
-      { label: 'Contrats', pressed: 'false' },
-    ])
-    expect(html).toContain('<h1>Aujourd&#x27;hui</h1>')
-    expect(html).not.toContain('<h1>États financiers</h1>')
-    expect(html).not.toContain('<h1>Journal des événements</h1>')
-  })
-
-  it('shows the États financiers screen', () => {
-    const html = render('statements')
-    expect(screenButtons(html)).toEqual([
-      { label: 'Aujourd&#x27;hui', pressed: 'false' },
-      { label: 'États financiers', pressed: 'true' },
-      { label: 'Journal des événements', pressed: 'false' },
-      { label: 'Bilans', pressed: 'false' },
-      { label: 'Contrats', pressed: 'false' },
-    ])
-    expect(html).toContain('<h1>États financiers</h1>')
-    expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
-  })
-
-  it('shows the Journal des événements screen', () => {
-    const html = render('events')
-    expect(screenButtons(html)).toEqual([
-      { label: 'Aujourd&#x27;hui', pressed: 'false' },
-      { label: 'États financiers', pressed: 'false' },
-      { label: 'Journal des événements', pressed: 'true' },
-      { label: 'Bilans', pressed: 'false' },
-      { label: 'Contrats', pressed: 'false' },
-    ])
-    expect(html).toContain(
-      '<section class="event-log"><h1>Journal des événements</h1><p>Aucun événement depuis un an.</p></section>',
-    )
-    expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
-  })
-
-  it('shows the Bilans screen, empty before the first week closes', () => {
-    const html = render('reports')
-    expect(screenButtons(html)).toEqual([
-      { label: 'Aujourd&#x27;hui', pressed: 'false' },
-      { label: 'États financiers', pressed: 'false' },
-      { label: 'Journal des événements', pressed: 'false' },
-      { label: 'Bilans', pressed: 'true' },
-      { label: 'Contrats', pressed: 'false' },
-    ])
-    expect(html).toContain(
-      '<section class="week-reports"><h1>Bilans</h1><p>Aucun bilan pour l&#x27;instant.</p></section>',
-    )
-    expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
-  })
-
-  it('shows the Contrats screen, empty before the first contract', () => {
-    const html = render('contracts')
-    expect(screenButtons(html)).toEqual([
-      { label: 'Aujourd&#x27;hui', pressed: 'false' },
-      { label: 'États financiers', pressed: 'false' },
-      { label: 'Journal des événements', pressed: 'false' },
-      { label: 'Bilans', pressed: 'false' },
-      { label: 'Contrats', pressed: 'true' },
-    ])
-    expect(html).toContain(
-      '<section class="contracts"><h1>Contrats</h1><p>Aucun contrat pour l&#x27;instant.</p></section>',
-    )
-    expect(html).not.toContain('<h1>Aujourd&#x27;hui</h1>')
-  })
-
-  it('has only the screen buttons in its menu, the export being in « Réglages »', () => {
-    expect(render('today')).toMatch(
-      /<nav class="screen-nav" aria-label="Écrans"><div class="toggle-group">(<button [^>]*>[^<]*<\/button>){5}<\/div><\/nav>/,
-    )
-    expect(render('today')).not.toContain('Exporter')
-  })
-
-  it.each<[Screen, string]>([
-    ['today', 'today'],
-    ['statements', 'statements'],
-    ['events', 'event-log'],
-    ['reports', 'week-reports'],
-    ['contracts', 'contracts'],
-  ])(
-    'puts « Replier » before the %s screen, its tooltip naming the key, in a part that is not hidden',
-    (screen, section) => {
-      expect(render(screen)).toContain(
-        `</nav><div class="screens__screen">${FOLD_BUTTON}<section class="${section}"><h1>`,
-      )
-    },
-  )
-
-  it.each<[Screen, string]>([
-    ['today', 'Aujourd&#x27;hui'],
-    ['statements', 'États financiers'],
-    ['events', 'Journal des événements'],
-    ['reports', 'Bilans'],
-    ['contracts', 'Contrats'],
-  ])(
-    'folded on %s, shows the strip with its badge in place of the menu, and hides the screen',
-    (screen, badge) => {
-      const html = render(screen, false, true)
-      expect(html).toMatch(
-        new RegExp(
-          `^<main class="screens--folded">${MESSAGES}${literal(STRIP)}`,
-        ),
-      )
-      expect(html).toContain(
-        `<span class="screens-strip__screen">${badge}</span>`,
-      )
-      expect(html).not.toContain('<nav')
-      expect(html).not.toContain('Replier')
-      // Still on the page, so the screen keeps what the player picked in
-      // it, such as a statement and its period, for when it unfolds.
-      expect(html).toMatch(
-        /<\/button><div class="screens__screen" hidden=""><section class="[^"]+"><h1>[^<]+<\/h1>.*<\/div><\/main>$/,
-      )
-    },
-  )
-
-  it('keeps the autosave notice and the messages above the strip', () => {
-    expect(render('today', true, true)).toMatch(
-      new RegExp(
-        `^<main class="screens--folded">${AUTOSAVE_FAILED}${MESSAGES}${literal(STRIP)}`,
-      ),
-    )
-  })
-
-  it('folds when « Replier » is pressed, and unfolds when the strip is', () => {
-    const props = {
-      screen: 'today' as const,
-      onScreenChange: () => {},
-      autosaveFailed: false,
-      onFoldChange: vi.fn<(folded: boolean) => void>(),
+    for (const gone of ['<main', 'screen-nav', 'Replier', 'screens-strip']) {
+      expect(html).not.toContain(gone)
     }
-    const unfolded = elements(GameScreensView({ ...props, folded: false }))
-    const replier = unfolded.find(
-      (element) =>
-        element.type === 'button' &&
-        (element.props as { children?: unknown }).children === 'Replier',
-    )
-    ;(replier?.props as { onClick: () => void }).onClick()
-    expect(unfolded.some((element) => element.type === ScreensStrip)).toBe(
-      false,
-    )
+  })
 
-    const folded = elements(GameScreensView({ ...props, folded: true }))
-    const strip = folded.find((element) => element.type === ScreensStrip)
-    ;(strip?.props as { onUnfold: () => void }).onUnfold()
-    expect(props.onFoldChange.mock.calls).toEqual([[true], [false]])
+  it('has nothing in a drawer until it was opened once', () => {
+    expect(render()).toMatch(
+      /<div id="[^"]+" class="dock-frame__body" role="tabpanel" aria-labelledby="[^"]+-tab-today"><\/div><\/section>/,
+    )
   })
 
   it('tells the player to export when the autosave fails', () => {
-    expect(render('today', true)).toMatch(
-      new RegExp(`^<main>${AUTOSAVE_FAILED}${MESSAGES}<nav`),
-    )
-    expect(render('today', false)).not.toContain('La sauvegarde automatique')
-  })
-})
-
-describe('GameScreens', () => {
-  it("opens on Aujourd'hui, then the week's card and the ticker", () => {
-    const html = renderToStaticMarkup(<GameScreens onMenu={() => {}} />)
-    expect(html.startsWith(render('today'))).toBe(true)
-    // The card's region is empty until a week slides in, and the ticker
-    // shows only once there are headlines (see headlines.ts).
-    expect(html.slice(render('today').length)).toMatch(
-      /^<div class="week-slide-in" role="status"><\/div>(<aside class="ticker" aria-label="La Presse-Citron">.*<\/aside>)?$/,
+    expect(render(createSettingsStore(null), true)).toMatch(
+      new RegExp(
+        `^<div class="shell__notices">${AUTOSAVE_FAILED}${MESSAGES}</div>`,
+      ),
     )
   })
 
-  it('shows the screen the store names, as a click on a grocer in the city sets it', () => {
-    gameStore.getState().showScreen('contracts')
-    const html = renderToStaticMarkup(<GameScreens onMenu={() => {}} />)
-    expect(html.startsWith(render('contracts'))).toBe(true)
+  it('shows the dock’s seven buttons, and five in a Défi', () => {
+    expect(dock(render())).toEqual([
+      'Camion',
+      'Équipe',
+      'Ville',
+      'Finances',
+      'Améliorations',
+      'Journal',
+      'Réglages',
+    ])
+    gameStore.getState().startGame(newChallenge('?seed=7', 'travauxSaintDenis'))
+    expect(dock(render())).toEqual([
+      'Camion',
+      'Équipe',
+      'Finances',
+      'Journal',
+      'Réglages',
+    ])
+  })
+
+  it('shows « Hier » hidden down to its pill after a reload when the player hid it', () => {
+    const storage = memory()
+    createSettingsStore(storage).getState().setScreensFolded(true)
+    const html = render(createSettingsStore(storage))
+    expect(html).toContain(
+      '<div class="yesterday-spot"><button type="button" class="yesterday-pill" aria-expanded="false" aria-keyshortcuts="R"',
+    )
+    expect(html).not.toContain('<section class="yesterday"')
+  })
+
+  it('shows « Hier » when the player showed it again, or never hid it', () => {
+    const storage = memory({
+      [SETTINGS_KEY]: JSON.stringify({
+        ...DEFAULT_SETTINGS,
+        screensFolded: true,
+      }),
+    })
+    createSettingsStore(storage).getState().setScreensFolded(false)
+    for (const settings of [
+      createSettingsStore(storage),
+      createSettingsStore(memory()),
+    ]) {
+      expect(render(settings)).toContain(
+        '<div class="yesterday-spot"><section class="yesterday" aria-label="Hier">',
+      )
+    }
+  })
+
+  it('shows « Finances » open, its « Aujourd’hui » on, without pausing the game', () => {
+    gameStore.getState().setSpeed(3)
+    gameStore.getState().openDrawer('finances')
+    const html = render()
+    expect(html).toMatch(
+      /<section class="dock-frame dock-drawer finances-drawer" role="dialog" aria-modal="false" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\1" class="dock-frame__title">Finances<\/h2>/,
+    )
+    expect(html).toContain(
+      '<span class="net-worth-gauge__label">Valeur nette</span>',
+    )
+    expect(html).toContain('<section class="today"><h1>Aujourd&#x27;hui</h1>')
+    expect(html).toContain(
+      '<button type="button" id="dock-finances" class="dock__button dock__button--open" aria-haspopup="dialog" aria-expanded="true"',
+    )
+    expect(speed()).toBe(3)
+  })
+
+  it.each([
+    ['personal', 'class="finances"'],
+    ['statements', '<section class="statements"><h1>États financiers</h1>'],
+  ] as const)('shows the « %s » tab of « Finances »', (tab, shows) => {
+    gameStore.getState().openDrawer('finances', tab)
+    expect(render()).toContain(shows)
+  })
+
+  it('shows « Contrats » in « Finances » only in a Défi', () => {
+    gameStore.getState().openDrawer('finances', 'contracts')
+    const html = render()
+    expect(html).not.toContain('<section class="contracts">')
+    expect(html).not.toContain('>Contrats</button>')
+    gameStore.getState().startGame(newChallenge('?seed=7', 'travauxSaintDenis'))
+    gameStore.getState().openDrawer('finances', 'contracts')
+    expect(render()).toContain('<section class="contracts"><h1>Contrats</h1>')
+  })
+
+  it.each([
+    ['events', '<section class="event-log"><h1>Journal des événements</h1>'],
+    ['reports', '<section class="week-reports"><h1>Bilans</h1>'],
+  ] as const)(
+    'shows the « %s » tab of « Journal », without pausing',
+    (tab, shows) => {
+      gameStore.getState().openDrawer('journal', tab)
+      const html = render()
+      expect(html).toMatch(
+        /<section class="dock-frame dock-drawer journal-drawer" role="dialog" aria-modal="false" aria-labelledby="[^"]+"><div class="dock-frame__header">/,
+      )
+      expect(html).toContain(shows)
+      expect(speed()).toBe(1)
+    },
+  )
+
+  it.each([
+    ['manage', 'manage', 'Camion'],
+    ['staff', 'staff', 'Équipe'],
+    ['trip', 'trip', 'Ville'],
+    ['dream', 'dream', 'Améliorations'],
+    ['settings', 'settings-panel', 'Réglages'],
+  ] as const)(
+    'shows the %s panel in the dock’s frame while it is open, paused',
+    (panel, className, title) => {
+      gameStore.getState().setSpeed(3)
+      expect(render()).not.toContain('<dialog')
+      gameStore.getState().openPanel(panel)
+      const html = render()
+      expect(html).toMatch(
+        new RegExp(
+          `<dialog class="panel dock-frame dock-panel ${className}" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\\1" class="dock-frame__title">${title}</h2>.*</dialog>$`,
+        ),
+      )
+      expect(speed()).toBe(PAUSED)
+      gameStore.getState().closePanel()
+      expect(render()).not.toContain('<dialog')
+      expect(speed()).toBe(3)
+    },
+  )
+
+  it('shows the Défi’s panel centred, as before', () => {
+    gameStore.getState().startGame(newChallenge('?seed=7', 'travauxSaintDenis'))
+    gameStore.getState().openPanel('defi')
+    expect(render()).toMatch(
+      /<dialog class="panel defi-panel" aria-labelledby="defi-title">.*<\/dialog>$/,
+    )
+  })
+
+  it('shows the Bilan de la semaine on the first Monday, paused, over a drawer', () => {
+    gameStore.getState().startGame(createInitialState(1))
+    gameStore.getState().openDrawer('journal')
+    gameStore.getState().advance(10)
+    const html = render()
+    expect(html).toMatch(
+      /<dialog class="panel weekly-report-panel" aria-labelledby="weekly-report-title">.*<\/dialog>$/,
+    )
+    expect(html).toMatch(
+      /<section class="dock-frame dock-drawer journal-drawer"[^>]*aria-labelledby="[^"]+">/,
+    )
+    expect(speed()).toBe(PAUSED)
+  })
+
+  it('shows the event card while an event waits, paused', () => {
+    const game = createInitialState(1)
+    gameStore.getState().startGame({
+      ...game,
+      events: { ...game.events, pending: { event: 'essai', followUp: false } },
+    })
+    expect(render()).toMatch(
+      /<dialog class="panel event-card" aria-labelledby="event-title">.*<\/dialog>$/,
+    )
+    expect(speed()).toBe(PAUSED)
+  })
+
+  it('shows « Magnat » when the store opens it', () => {
+    gameStore.setState({ panel: 'magnat', resumeSpeed: 1, speed: 0 })
+    expect(render()).toMatch(
+      /<dialog class="panel magnat" aria-labelledby="magnat-title">.*<h2 id="magnat-title" tabindex="-1">Magnat<\/h2>.*<\/dialog>$/,
+    )
   })
 
   it('shows the « Faillite » over them once the game went bankrupt (#160)', () => {
@@ -284,46 +281,10 @@ describe('GameScreens', () => {
     while (game.ended === null) game = tick(game)
     gameStore.getState().startGame(game)
     expect(gameStore.getState().panel).toBe('bankruptcy')
-    const html = renderToStaticMarkup(<GameScreens onMenu={() => {}} />)
+    const html = render()
     expect(html).toMatch(
       /<dialog class="panel bankruptcy-end" aria-labelledby="bankruptcy-title">.*<\/dialog>$/,
     )
     expect(html).not.toContain('defi-end')
-  })
-
-  it('passes on a failed autosave', () => {
-    expect(
-      renderToStaticMarkup(<GameScreens autosaveFailed onMenu={() => {}} />),
-    ).toContain(AUTOSAVE_FAILED)
-  })
-
-  it('opens folded after a reload when the player folded the screens', () => {
-    const storage = memory()
-    createSettingsStore(storage).getState().setScreensFolded(true)
-    const reloaded = createSettingsStore(storage)
-    const html = renderToStaticMarkup(
-      <GameScreens onMenu={() => {}} settings={reloaded} />,
-    )
-    expect(html.startsWith(render('today', false, true))).toBe(true)
-  })
-
-  it('opens unfolded when the player unfolded them, or never folded them', () => {
-    const storage = memory({
-      [SETTINGS_KEY]: JSON.stringify({
-        ...DEFAULT_SETTINGS,
-        screensFolded: true,
-      }),
-    })
-    createSettingsStore(storage).getState().setScreensFolded(false)
-    for (const settings of [
-      createSettingsStore(storage),
-      createSettingsStore(memory()),
-    ]) {
-      expect(
-        renderToStaticMarkup(
-          <GameScreens onMenu={() => {}} settings={settings} />,
-        ).startsWith(render('today')),
-      ).toBe(true)
-    }
   })
 })

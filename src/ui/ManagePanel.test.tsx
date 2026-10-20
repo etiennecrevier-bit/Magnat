@@ -534,9 +534,9 @@ describe('ManagePanel', () => {
     expect(input(html, 'manage-pay-weekly')).not.toContain('disabled')
   })
 
-  it('is a modal dialog labelled by its title', () => {
+  it('is a modal dialog in the dock’s frame, labelled by its title « Camion »', () => {
     expect(renderToStaticMarkup(<ManagePanel />)).toMatch(
-      /^<dialog class="panel manage" aria-labelledby="manage-title"><div class="panel__content">.*<\/dialog>$/,
+      /^<dialog class="panel dock-frame dock-panel manage" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\1" class="dock-frame__title">Camion<\/h2>.*<div class="panel__content">.*<\/dialog>$/,
     )
   })
 
