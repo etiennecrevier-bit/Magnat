@@ -47,10 +47,10 @@ export interface CityView {
   readonly trip: CityTrip | null
   /** Whether the bakery runs, through its notice too. */
   readonly bakery: boolean
-  /** Whether a baker works at the bakery as it runs. */
-  readonly baker: boolean
-  /** Whether a deliverer works for the business. */
-  readonly deliverer: boolean
+  /** The bakers working at the bakery as it runs; none while it does not. */
+  readonly bakers: number
+  /** The deliverers working for the business. */
+  readonly deliverers: number
   /** Where the van parks: at the bakery when it runs, or at the truck. */
   readonly vanAt: 'bakery' | 'truck' | null
   /** Today's deliveries; null on a day without, or when nobody can drive. */
@@ -75,8 +75,8 @@ export function cityView(
   grocers: GrocerContent = GROCERS,
 ): CityView {
   const work = todayWork(game, grocers)
-  const has = (role: StaffRoleId) =>
-    game.decisions.staff.some((hire) => hire.role === role)
+  const count = (role: StaffRoleId) =>
+    game.decisions.staff.filter((hire) => hire.role === role).length
   const place = todaysTrip(game)
   const bakery = runsOn(game.bakery, game.decisions.bakery, game.day)
   const van: CityVan | null =
@@ -88,11 +88,10 @@ export function cityView(
           driver: work.delivers,
         }
       : null
-  const deliverer = has('livreur')
+  const deliverers = count('livreur')
   return {
     open: work.opens,
-    atTruck: game.decisions.staff.filter(({ role }) => role === 'camion')
-      .length,
+    atTruck: count('camion'),
     trip:
       place === null
         ? null
@@ -102,9 +101,10 @@ export function cityView(
             time: tripTime(place, game.dream),
           },
     bakery,
-    baker: bakery && has('boulanger'),
-    deliverer,
-    vanAt: deliverer || van !== null ? (bakery ? 'bakery' : 'truck') : null,
+    bakers: bakery ? count('boulanger') : 0,
+    deliverers,
+    vanAt:
+      deliverers > 0 || van !== null ? (bakery ? 'bakery' : 'truck') : null,
     van,
     contracts: game.contracts.running.map(({ grocer }) => grocer),
     trips: game.challenge === null,

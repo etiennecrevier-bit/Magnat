@@ -5,6 +5,7 @@ import {
   loadEventContent,
   loadGrocerContent,
   loadPlacesContent,
+  loadStaffContent,
   type GrocerId,
 } from './schema.ts'
 
@@ -667,11 +668,40 @@ describe('the city in assets.json', () => {
   })
 
   it('parks the van at the start of each of its ways out', () => {
-    const { from, standAt, window } = city.deliveries
+    const { from, window } = city.deliveries
     expect(from.bakery.length).toBeGreaterThan(0)
     expect(from.truck.length).toBeGreaterThan(0)
-    expect(standAt.bakery).toBeDefined()
     expect(window.from).toBeLessThan(window.to)
+  })
+
+  it('stands every baker and deliverer apart at the bakery, however the employees split', () => {
+    const { maxEmployees } = loadStaffContent()
+    const { width, height } = city.figure
+    const { deliverers } = city.deliveries
+    const row = (
+      first: readonly number[],
+      step: readonly number[],
+      n: number,
+    ) =>
+      Array.from({ length: n }, (_, i) => [
+        first[0]! + step[0]! * i,
+        first[1]! + step[1]! * i,
+      ])
+    for (let bakers = 0; bakers <= maxEmployees; bakers += 1) {
+      const spots = [
+        ...row(city.bakers.first, city.bakers.step, bakers),
+        ...row(deliverers.first.bakery, deliverers.step, maxEmployees - bakers),
+      ]
+      spots.forEach(([x, y], i) =>
+        spots.slice(i + 1).forEach(([u, v]) => {
+          // Two figures overlap when they are less than a figure apart both
+          // across and up.
+          const apart =
+            Math.abs(x! - u!) >= width || Math.abs(y! - v!) >= height
+          expect(apart, `${bakers} bakers: ${i}`).toBe(true)
+        }),
+      )
+    }
   })
 
   it('writes the signs in French', () => {

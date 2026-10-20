@@ -458,7 +458,7 @@
     }
   ],
   "city": {
-    "_note": "The city (#165): the block of the Plateau seen at an angle, in 2:1 isometric, lit by the street's `light` and drawn in its `palette`. Positions and sizes are logical pixels of the `designSize` design, which the world fits to the window as it fits the street. A box (the ground, the park, the buildings and the truck) is `x`, `y`, `width` and `height` on screen; `depth` is how wide its lit wall is across, from its left corner to its front corner, the one nearest the viewer, and its shaded wall takes the rest of `width`; its walls stand `height` − `width` / 2 tall, so the ground and the streets, flat, are half as tall as wide. A piece on a wall (`on`: the box listed before it whose lit wall it is painted on) is the top of its left edge at `x`, `y`, `width` across and `height` tall, and runs down the wall by half its width, as the wall does; it is drawn with its box. In the layers under `light.shadowLayer`, the pieces are drawn in the order listed; in those over it, the boxes are drawn from the farthest to the nearest, the people walking among them. `image` replaces a placeholder as on the street, stretched to the piece's size. `shows` keeps a piece to some times: `truckOpen` or `truckClosed`, the minute the truck serves or not, on a closed day or while the owner is away with nobody at the truck; `bakeryRuns` or `bakeryForRent`, the days the bakery runs, through its notice, or not; `{ \"contract\": <grocer> }` while that grocer's contract runs. `opens` is what a click on it opens: `{ \"trip\": <place> }` « Aller à… », `fournil` the « Fournil » of « Gérer le camion », `contracts` the « Contrats » screen; nothing opens a trip in a Défi. `place` is the place in town it is, one building each, and `grocer` the grocer whose shop it is, one each. `text` is a sign's or a building's board. `routes` are each place's way from `truck.counter` to its door; `deliveries` the van's way out from where it starts (`from`: the bakery when it runs, or else the truck) and back, its stop at each grocer, when it drives as shares of the day replayed, and its size; `truck.window` where the owner, then each employee at the truck, serves in the hatch; `truck.line` where the line stands, `max` at most, each customer for `minutes` of the day after they came. `figure` sizes and colours the tiny people, `path` the dashes of the day's trip, and `label` the « En route vers… » over its door, `rise` above it. The `light.shadowLayer` holds no piece.",
+    "_note": "The city (#165): the block of the Plateau seen at an angle, in 2:1 isometric, lit by the street's `light` and drawn in its `palette`. Positions and sizes are logical pixels of the `designSize` design, which the world fits to the window as it fits the street. A box (the ground, the park, the buildings and the truck) is `x`, `y`, `width` and `height` on screen; `depth` is how wide its lit wall is across, from its left corner to its front corner, the one nearest the viewer, and its shaded wall takes the rest of `width`; its walls stand `height` − `width` / 2 tall, so the ground and the streets, flat, are half as tall as wide. A piece on a wall (`on`: the box listed before it whose lit wall it is painted on) is the top of its left edge at `x`, `y`, `width` across and `height` tall, and runs down the wall by half its width, as the wall does; it is drawn with its box. In the layers under `light.shadowLayer`, the pieces are drawn in the order listed; in those over it, the boxes are drawn from the farthest to the nearest, the people walking among them. `image` replaces a placeholder as on the street, stretched to the piece's size. `shows` keeps a piece to some times: `truckOpen` or `truckClosed`, the minute the truck serves or not, on a closed day or while the owner is away with nobody at the truck; `bakeryRuns` or `bakeryForRent`, the days the bakery runs, through its notice, or not; `{ \"contract\": <grocer> }` while that grocer's contract runs. `opens` is what a click on it opens: `{ \"trip\": <place> }` « Aller à… », `fournil` the « Fournil » of « Gérer le camion », `contracts` the « Contrats » screen; nothing opens a trip in a Défi. `place` is the place in town it is, one building each, and `grocer` the grocer whose shop it is, one each. `text` is a sign's or a building's board. `routes` are each place's way from `truck.counter` to its door; `deliveries` the van's way out from where it starts (`from`: the bakery when it runs, or else the truck) and back, its stop at each grocer, when it drives as shares of the day replayed, and its size; `truck.window` where the owner, then each employee at the truck, serves in the hatch; `truck.line` where the line stands, `max` at most, each customer for `minutes` of the day after they came; `bakers` where the bakers stand while the bakery runs, and `deliveries.deliverers` where the deliverers stand by the van parked, each one a `step` after the one before. `figure` sizes and colours the tiny people, `path` the dashes of the day's trip, and `label` the « En route vers… » over its door, `rise` above it. The `light.shadowLayer` holds no piece.",
     "designSize": { "width": 1440, "height": 900 },
     "layers": ["ground", "shadows", "block"],
     "pieces": [
@@ -940,7 +940,10 @@
           [1126, 610]
         ]
       },
-      "standAt": { "bakery": [1074.7, 559.7], "truck": [1042.4, 632.8] },
+      "deliverers": {
+        "first": { "bakery": [1103.2, 573.9], "truck": [1042.4, 632.8] },
+        "step": [13.3, 6.65]
+      },
       "stops": {
         "chezNormand": [1103.2, 598.6],
         "marcheBioLogique": [1183, 638.5],
@@ -955,7 +958,7 @@
         "stripe": "moneyGreen"
       }
     },
-    "baker": [1069, 554.9],
+    "bakers": { "first": [1065.2, 553], "step": [13.3, 6.65] },
     "figure": {
       "height": 22,
       "width": 9,

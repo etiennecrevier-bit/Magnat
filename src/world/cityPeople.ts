@@ -14,8 +14,8 @@ import { dashesOf, pointAlong, reversed } from './route.ts'
 
 // The people of the city and the van, moved each frame (see `actorsAt`):
 // the owner and the employees serving in the truck's hatch, the owner
-// walking to the day's place along its dashed way, the line, the baker at
-// the bakery's door, the deliverer by the van, and the van on its round.
+// walking to the day's place along its dashed way, the line, the bakers at
+// the bakery's door, the deliverers by the van, and the van on its round.
 // Each one walking is drawn among the boxes by where they stand (see
 // `depthAmong`), so a building in front hides them.
 
@@ -100,8 +100,29 @@ export function createCityPeople(
     first[0] + step[0] * i,
     first[1] + step[1] * i,
   ])
-  const baker = walker('baker', staff(2))
-  const deliverer = walker('deliverer', staff(3))
+  // The bakers and the deliverers, one figure each, made as they are hired.
+  const bakers: Walker[] = []
+  const deliverers: Walker[] = []
+  const hire = (row: Walker[], id: string, look: number, count: number) => {
+    while (row.length < count) {
+      row.push(walker(`${id}:${row.length}`, staff(look + row.length)))
+    }
+  }
+  /** Stands `count` of `row` from `first`, each a `step` on; hides the rest. */
+  const stand = (
+    row: readonly Walker[],
+    count: number,
+    first: CityPoint | null,
+    step: CityPoint,
+  ) =>
+    row.forEach((one, i) =>
+      place(
+        one,
+        first === null || i >= count
+          ? null
+          : [first[0] + step[0] * i, first[1] + step[1] * i],
+      ),
+    )
   const van = block.addChild(drawVan(city.deliveries.van, style))
   van.visible = false
   const vanShadow = shadows.contactShadow(
@@ -175,6 +196,8 @@ export function createCityPeople(
       crewBusts.forEach((bust, i) => {
         bust.visible = i < next.atTruck
       })
+      hire(bakers, 'baker', 2, next.bakers)
+      hire(deliverers, 'deliverer', 3, next.deliverers)
       drawTrip(next.trip)
       const from = next.vanAt === null ? [] : city.deliveries.from[next.vanAt]
       round =
@@ -202,16 +225,16 @@ export function createCityPeople(
       line.forEach((customer, i) =>
         place(customer, i < inLine ? (spots[i] ?? null) : null),
       )
-      place(baker, view.baker ? city.baker : null)
+      stand(bakers, view.bakers, city.bakers.first, city.bakers.step)
       const driving = actors.van !== null && round.length > 0
       const vanAt = view.vanAt
-      place(
-        deliverer,
-        view.deliverer &&
-          vanAt !== null &&
-          !(driving && view.van?.driver === 'employee')
-          ? city.deliveries.standAt[vanAt]
-          : null,
+      // A deliverer drives the van on its round; the others wait for it.
+      const byVan = city.deliveries.deliverers
+      stand(
+        deliverers,
+        view.deliverers - (driving && view.van?.driver === 'employee' ? 1 : 0),
+        vanAt === null ? null : byVan.first[vanAt],
+        byVan.step,
       )
       const at: Vec | null =
         vanAt === null || round.length === 0

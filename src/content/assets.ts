@@ -445,8 +445,14 @@ const citySchema = z.strictObject({
       bakery: z.array(pointSchema).min(1),
       truck: z.array(pointSchema).min(1),
     }),
-    /** Where the deliverer stands by the van parked there. */
-    standAt: z.strictObject({ bakery: pointSchema, truck: pointSchema }),
+    /**
+     * Where the deliverers stand by the van parked at the bakery or the
+     * truck: the first at `first`, each next one a `step` on.
+     */
+    deliverers: z.strictObject({
+      first: z.strictObject({ bakery: pointSchema, truck: pointSchema }),
+      step: pointSchema,
+    }),
     /** Where it stops for each grocer. */
     stops: z.record(grocerIdSchema, pointSchema),
     /** When it drives, as shares of the day replayed. */
@@ -460,8 +466,11 @@ const citySchema = z.strictObject({
       stripe: colorNameSchema,
     }),
   }),
-  /** Where the baker stands while the bakery runs. */
-  baker: pointSchema,
+  /**
+   * Where the bakers stand while the bakery runs: the first at `first`,
+   * each next one a `step` on.
+   */
+  bakers: z.strictObject({ first: pointSchema, step: pointSchema }),
   /** The tiny people: the owner, the employees and the customers. */
   figure: z.strictObject({
     height: size,

@@ -2,7 +2,9 @@ import { Container, Sprite, Texture, type Filter, type Ticker } from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AssetManifest } from '../content/assets.ts'
 import { createInitialState, startChallenge, tick } from '../engine/clock.ts'
+import { startContract } from '../engine/contracts.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
+import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import { wentTo } from '../engine/places.ts'
 import type { Day, GameState } from '../engine/types.ts'
@@ -341,6 +343,67 @@ describe('startCity', () => {
     expect(app.renderer.backBuffer.useBackBuffer).toBe(false)
     expect(loaders.asked.at(-1)).toMatchObject({ blur: 0 })
     expect(find(app, 'grain').visible).toBe(false)
+  })
+
+  describe('the employees', () => {
+    /** Who of `role` is drawn and stands where, in the order hired. */
+    const standing = (app: ReturnType<typeof createFakeApp>, role: string) =>
+      find(app, 'layer:block')
+        .children.filter((n) => n.label.startsWith(`${role}:`) && n.visible)
+        .map((n) => [n.x, n.y])
+
+    /** The bakery open, and two employees hired in `role` on day 0. */
+    const twoHired = (role: 'boulanger' | 'livreur') =>
+      [
+        { kind: 'hire', role, candidate: 'amelie' },
+        { kind: 'hire', role, candidate: 'kevin' },
+        { kind: 'openBakery', oven: 'louer' },
+      ] satisfies DecisionChange[]
+
+    const hiring = (changes: DecisionChange[]) =>
+      changes.reduce(
+        (game, change) => applyDecision(game, change),
+        createInitialState(42),
+      )
+
+    it('draws each baker at the bakery, one a step after the other', async () => {
+      const app = createFakeApp()
+      const game = playedTo(hiring(twoHired('boulanger')), 1)
+      await start(app, createGameStore(game, NO_EVENTS))
+      app.frame()
+      const { first, step } = city.bakers
+      expect(standing(app, 'baker')).toEqual([
+        first,
+        [first[0] + step[0], first[1] + step[1]],
+      ])
+    })
+
+    it('draws each deliverer by the van, and leaves one waiting while the other drives it', async () => {
+      const app = createFakeApp()
+      // A Monday with a delivery due, the contract signed the Tuesday before.
+      const tuesday = playedTo(hiring(twoHired('livreur')), 1)
+      const monday = playedTo(
+        {
+          ...tuesday,
+          contracts: startContract(tuesday.contracts, 1, 'chezNormand'),
+        },
+        7,
+      )
+      await start(app, createGameStore(monday, NO_EVENTS))
+      const { first, step } = city.deliveries.deliverers
+      const { window } = city.deliveries
+
+      app.frame()
+      expect(standing(app, 'deliverer')).toEqual([
+        first.bakery,
+        [first.bakery[0] + step[0], first.bakery[1] + step[1]],
+      ])
+      app.frame(((window.from + window.to) / 2) * MS_PER_DAY)
+      expect(find(app, 'van').visible).toBe(true)
+      expect(standing(app, 'deliverer')).toEqual([first.bakery])
+      app.frame((window.to - window.from) * MS_PER_DAY)
+      expect(standing(app, 'deliverer')).toHaveLength(2)
+    })
   })
 
   it('takes down what it set up when its start fails halfway, as on an app no longer there', async () => {

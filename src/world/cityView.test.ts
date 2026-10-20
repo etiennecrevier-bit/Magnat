@@ -79,8 +79,8 @@ describe('cityView', () => {
       atTruck: 0,
       trip: null,
       bakery: false,
-      baker: false,
-      deliverer: false,
+      bakers: 0,
+      deliverers: 0,
       vanAt: null,
       van: null,
       contracts: [],
@@ -110,7 +110,7 @@ describe('cityView', () => {
     expect(cityView(tuesday).trip?.label).toBe(enRouteLine(tuesday))
   })
 
-  it('counts the employees at the truck, and shows a baker and a deliverer where they work', () => {
+  it('counts the employees at the truck, the bakers and the deliverers where they work', () => {
     const staffed = playedTo(
       decided(hired('camion', 'livreur', 'boulanger'), {
         kind: 'openBakery',
@@ -121,17 +121,39 @@ describe('cityView', () => {
     expect(cityView(staffed)).toMatchObject({
       atTruck: 1,
       bakery: true,
-      baker: true,
-      deliverer: true,
+      bakers: 1,
+      deliverers: 1,
       vanAt: 'bakery',
       van: null,
     })
     // Without the bakery, the baker has nowhere to work and the van parks
     // at the truck.
     expect(cityView(playedTo(hired('livreur', 'boulanger'), 1))).toMatchObject({
-      baker: false,
-      deliverer: true,
+      bakers: 0,
+      deliverers: 1,
       vanAt: 'truck',
+    })
+  })
+
+  it('counts each of several employees hired in the same role', () => {
+    const twice = (role: 'livreur' | 'boulanger') =>
+      playedTo(
+        decided(
+          START,
+          { kind: 'hire', role, candidate: 'amelie' },
+          { kind: 'hire', role, candidate: 'kevin' },
+          { kind: 'openBakery', oven: 'louer' },
+        ),
+        1,
+      )
+    expect(cityView(twice('boulanger'))).toMatchObject({
+      bakers: 2,
+      deliverers: 0,
+    })
+    expect(cityView(twice('livreur'))).toMatchObject({
+      bakers: 0,
+      deliverers: 2,
+      vanAt: 'bakery',
     })
   })
 
