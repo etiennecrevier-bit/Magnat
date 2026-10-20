@@ -8,7 +8,7 @@ import FinancesCompany from './FinancesCompany.tsx'
 import FinancesPanel from './FinancesPanel.tsx'
 import { gameStore, useGame } from './store.ts'
 import WeekReports from './WeekReports.tsx'
-import './FinancesDrawer.css'
+import './Drawers.css'
 
 /** Whether a drawer was ever open, so its tab stays on the page from then. */
 function useOpened(open: boolean): boolean {

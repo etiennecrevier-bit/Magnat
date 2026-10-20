@@ -1,0 +1,34 @@
+/* « Finances » and « Journal » slide in from the left (docs/design/
+   reference/ui_concepts.py, `C_DRAWER`), 520 px wide, from under the top
+   bar down to just above the dock, so the dock, « Hier » and the ticker
+   stay in reach and the street shows at their right. They take the frame
+   of DockFrame.css, whose phone rule makes them full screen below 700 px. */
+@media (min-width: 700px) {
+  .dock-frame.finances-drawer,
+  .dock-frame.journal-drawer {
+    inset: var(--frame-top) auto var(--frame-bottom) 16px;
+    width: min(520px, calc(100% - 2rem));
+    max-height: none;
+    transform: none;
+    animation: drawer-in 220ms ease-out;
+  }
+}
+
+/* From `hidden` to shown, which no transition can follow, so a keyframe
+   runs each time one opens. */
+@keyframes drawer-in {
+  from {
+    transform: translateX(calc(-100% - 16px));
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-frame.finances-drawer,
+  .dock-frame.journal-drawer {
+    animation: none;
+  }
+}

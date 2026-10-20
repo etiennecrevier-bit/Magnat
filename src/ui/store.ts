@@ -207,8 +207,8 @@ export interface GameStoreState {
   cityPick: CityPick | null
   /**
    * How many reports came only as the card sliding in since the player
-   * last read one, in the full report or in « Journal »: the count on the
-   * dock's « Journal ».
+   * last opened one, in the full report or in « Bilans » of « Journal »:
+   * the count on the dock's « Journal ».
    */
   unreadReports: number
   /**
@@ -299,10 +299,13 @@ export interface GameStoreState {
   /**
    * Opens `drawer`, on `tab` if given, else on the tab it showed last,
    * without pausing; with the drawer already open, it only moves to `tab`.
-   * Does nothing while a panel is open. Opening « Journal » counts the
-   * reports as read.
+   * Does nothing while a panel is open. « Journal » opened with reports
+   * unread and no tab given opens on « Bilans », where they are; it leaves
+   * them unread until one opens (`readReports`).
    */
   openDrawer: <D extends Drawer>(drawer: D, tab?: DrawerTabs[D]) => void
+  /** Counts the reports as read, as one opens in « Bilans ». */
+  readReports: () => void
   /** Shows `tab` in `drawer`, open or not. */
   setDrawerTab: <D extends Drawer>(drawer: D, tab: DrawerTabs[D]) => void
   /** Opens the accordion `section` of « Entreprise », or closes it. */
@@ -693,12 +696,17 @@ export function createGameStore(
     openDrawer: (drawer, tab) => {
       const { resumeSpeed, drawerTabs, unreadReports } = get()
       if (resumeSpeed !== null) return
+      const shown =
+        tab ??
+        (drawer === 'journal' && unreadReports > 0 ? 'reports' : undefined)
       set({
         drawer,
         drawerTabs:
-          tab === undefined ? drawerTabs : { ...drawerTabs, [drawer]: tab },
-        unreadReports: drawer === 'journal' ? 0 : unreadReports,
+          shown === undefined ? drawerTabs : { ...drawerTabs, [drawer]: shown },
       })
+    },
+    readReports: () => {
+      if (get().unreadReports !== 0) set({ unreadReports: 0 })
     },
     setDrawerTab: (drawer, tab) =>
       set({ drawerTabs: { ...get().drawerTabs, [drawer]: tab } }),

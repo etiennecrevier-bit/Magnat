@@ -2,34 +2,50 @@ import { useMemo } from 'react'
 import { scalingOf } from '../engine/events.ts'
 import { recentEvents, type EventLogEntry } from './eventLog.ts'
 import { formatShortGameDate } from './formatGameDate.ts'
+import JournalRow from './JournalRow.tsx'
+import { useOpenRows } from './journalRows.ts'
 import { useGame } from './store.ts'
 import './EventLog.css'
 
 /**
- * « Journal des événements »: the events of the last 12 months, newest
- * first, each with the choice made and what came of it.
+ * « Événements »: the events of the last 12 months, newest first, each a
+ * line with its date, its title and the choice made, which opens to what
+ * came of it.
  */
 export function EventLogView({
   entries,
+  openKeys = new Set(),
+  onToggle = () => {},
 }: {
   entries: readonly EventLogEntry[]
+  /** The keys of the entries open. */
+  openKeys?: ReadonlySet<string>
+  onToggle?: (key: string) => void
 }) {
   return (
     <section className="event-log">
-      <h1>Journal des événements</h1>
       {entries.length === 0 ? (
         <p>Aucun événement depuis un an.</p>
       ) : (
-        <ol className="event-log__entries">
-          {entries.map((entry, index) => (
-            <li key={index} className="event-log__entry">
-              <h2>{entry.title}</h2>
-              <p className="event-log__date">
-                {formatShortGameDate(entry.day)}
-              </p>
-              <p>Choix&nbsp;: {entry.choice}</p>
-              <p>{entry.result}</p>
-            </li>
+        <ol className="journal-rows">
+          {entries.map((entry) => (
+            <JournalRow
+              key={entry.key}
+              id={`event-log-${entry.key}`}
+              open={openKeys.has(entry.key)}
+              onToggle={() => onToggle(entry.key)}
+              line={
+                <>
+                  <span className="journal-row__muted">
+                    {formatShortGameDate(entry.day)}
+                  </span>{' '}
+                  <span className="journal-row__title">{entry.title}</span>{' '}
+                  <span className="journal-row__muted">{entry.choice}</span>
+                </>
+              }
+            >
+              <p className="event-log__result">{entry.result}</p>
+            </JournalRow>
           ))}
         </ol>
       )}
@@ -37,7 +53,7 @@ export function EventLogView({
   )
 }
 
-/** The journal of the app store's game, with the amounts it plays. */
+/** The events of the app store's game, with the amounts it plays. */
 export default function EventLog() {
   const history = useGame((state) => state.game.events.history)
   const day = useGame((state) => state.game.day)
@@ -47,5 +63,8 @@ export default function EventLog() {
     () => recentEvents(history, day, difficulty, scalingOf({ challenge })),
     [history, day, difficulty, challenge],
   )
-  return <EventLogView entries={entries} />
+  const [openKeys, toggle] = useOpenRows()
+  return (
+    <EventLogView entries={entries} openKeys={openKeys} onToggle={toggle} />
+  )
 }

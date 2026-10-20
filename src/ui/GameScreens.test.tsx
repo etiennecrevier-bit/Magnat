@@ -277,8 +277,14 @@ describe('GameScreens', () => {
   })
 
   it.each([
-    ['events', '<section class="event-log"><h1>Journal des événements</h1>'],
-    ['reports', '<section class="week-reports"><h1>Bilans</h1>'],
+    [
+      'events',
+      '<section class="event-log"><p>Aucun événement depuis un an.</p>',
+    ],
+    [
+      'reports',
+      '<section class="week-reports"><p>Aucun bilan pour l&#x27;instant.</p>',
+    ],
   ] as const)(
     'shows the « %s » tab of « Journal », without pausing',
     (tab, shows) => {

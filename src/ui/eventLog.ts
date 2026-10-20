@@ -5,8 +5,10 @@ import { cardText } from '../engine/scaling.ts'
 import type { Day, EventRecord } from '../engine/types.ts'
 import { formatCardText } from './eventTags.ts'
 
-/** An event that came up, as « Journal des événements » lists it. */
+/** An event that came up, as « Événements » lists it. */
 export interface EventLogEntry {
+  /** Its day and event, the same when a newer event comes before it. */
+  readonly key: string
   /** The morning it came up and was chosen. */
   readonly day: Day
   /** The event's title. */
@@ -41,6 +43,7 @@ export function recentEvents(
       continue
     }
     entries.push({
+      key: `${record.day}-${record.event}`,
       day: record.day,
       title: event.title,
       choice: formatCardText(

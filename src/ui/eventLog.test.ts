@@ -27,18 +27,31 @@ describe('recentEvents', () => {
     ]
     expect(recentEvents(history, 400, 'moyen', EVENTS)).toEqual([
       {
+        key: '400-essai',
         day: 400,
         title: "La carte d'essai",
         choice: 'Relancer le client',
         result: 'Le client demande un mois de plus, puis disparaît.',
       },
       {
+        key: '61-essai',
         day: 61,
         title: "La carte d'essai",
         choice: 'Ne rien faire',
         result: 'Rien ne se passe. Thérèse est rassurée.',
       },
     ])
+  })
+
+  it('keys each event by its day and event, the same once a newer comes', () => {
+    const history = [
+      record(3, 'rienFaire'),
+      record(4, 'payer', 0, 'influenceuse'),
+    ]
+    const before = recentEvents(history.slice(0, 1), 10, 'moyen', EVENTS)
+    const after = recentEvents(history, 10, 'moyen', EVENTS)
+    expect(before.map(({ key }) => key)).toEqual(['3-essai'])
+    expect(after.map(({ key }) => key)).toEqual(['4-influenceuse', '3-essai'])
   })
 
   it('leaves out what the content no longer holds', () => {
