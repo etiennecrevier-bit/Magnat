@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="60" height="209" viewBox="895 438 60 209">
+<defs>
+<linearGradient id="vl-cyl" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0" stop-color="#e6dcc7"></stop><stop offset="0.35" stop-color="#d8d0c2"></stop><stop offset="1" stop-color="#868888"></stop>
+</linearGradient>
+</defs>
+<path d="M 896.7 472.5 L 896.7 632.5 A 28.3 14.1 0 0 0 953.3 632.5 L 953.3 472.5 Z" fill="url(#vl-cyl)"></path>
+<path d="M 896.7 605.8 A 28.3 14.1 0 0 0 953.3 605.8" fill="none" stroke="#34404f" stroke-opacity="0.22" stroke-width="1.5"></path>
+<path d="M 896.7 579.2 A 28.3 14.1 0 0 0 953.3 579.2" fill="none" stroke="#34404f" stroke-opacity="0.22" stroke-width="1.5"></path>
+<path d="M 896.7 552.5 A 28.3 14.1 0 0 0 953.3 552.5" fill="none" stroke="#34404f" stroke-opacity="0.22" stroke-width="1.5"></path>
+<path d="M 896.7 525.8 A 28.3 14.1 0 0 0 953.3 525.8" fill="none" stroke="#34404f" stroke-opacity="0.22" stroke-width="1.5"></path>
+<path d="M 896.7 499.2 A 28.3 14.1 0 0 0 953.3 499.2" fill="none" stroke="#34404f" stroke-opacity="0.22" stroke-width="1.5"></path>
+<ellipse cx="925.0" cy="472.5" rx="28.3" ry="14.1" fill="#e4dac6"></ellipse>
+<path d="M 896.7 472.5 Q 925.0 438.5 953.3 472.5 A 28.3 14.1 0 0 1 896.7 472.5 Z" fill="#bc633f"></path>
+<path d="M 925.0 455.5 Q 942.0 462.5 953.3 472.5 A 28.3 14.1 0 0 1 925.0 486.6 Z" fill="#34404f" opacity="0.3"></path>
+<path d="M 901.7 482.5 L 901.7 624.5" stroke="#ffffff" stroke-width="2.5" opacity="0.45"></path>
+</svg>

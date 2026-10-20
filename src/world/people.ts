@@ -757,22 +757,34 @@ export interface AvatarArt {
 
 /**
  * Draws an employee who serves at the truck (#208), feet at 0, 0, as a
- * customer is drawn: in the staff's mustard shirt, as the city draws them,
- * with a cream apron like the owner's, carrying nothing. Turned to `facing`
- * by mirroring, lit on the side that shows on the screen's left.
+ * customer is drawn: in the staff's mustard shirt, with a cream apron like
+ * the owner's, carrying nothing. Turned to `facing` by mirroring, lit on
+ * the side that shows on the screen's left. The city draws the owner
+ * walking so, as `owner`: in their shirt, and with the hair of their
+ * `avatar`, its bun at the back of the head for `femme`.
  */
 export function drawEmployee(
   look: CrowdSettings['employee'],
   style: PeopleStyle,
   trousers: string,
+  owner?: { readonly shirt: string; readonly avatar: Avatar },
 ): Container {
   const u = look.height / REFERENCE
   const root = new Container({ label: 'employee' })
   const sun: Side = look.facing === 1 ? 'left' : 'right'
-  const shirt = style.palette.mustard
+  const shirt = owner?.shirt ?? style.palette.mustard
   const apron = new Graphics({ label: 'apron' })
     .roundRect(-11 * u, -72 * u, 22 * u, 40 * u, 4 * u)
     .fill(style.palette.cream)
+  // drawAvatar's bun, at the head's scale, behind the way they face.
+  const behind =
+    owner?.avatar === 'femme'
+      ? [
+          new Graphics({ label: 'bun' })
+            .circle(-15.2 * u, -111.2 * u, 8 * u)
+            .fill(look.hair),
+        ]
+      : []
   drawPerson(
     root,
     {
@@ -786,7 +798,7 @@ export function drawEmployee(
     },
     style,
     sun,
-    { behind: [], over: [apron], held: {} },
+    { behind, over: [apron], held: {} },
   )
   root.scale.x = look.facing
   return root

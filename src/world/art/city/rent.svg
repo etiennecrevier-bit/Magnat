@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="208" height="176" viewBox="343 283 208 176">
+<defs>
+<linearGradient id="vl-faceV" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#fff1cf" stop-opacity="0.26"></stop><stop offset="0.5" stop-color="#fff1cf" stop-opacity="0"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0.30"></stop>
+</linearGradient>
+<linearGradient id="vl-glass" x1="0" y1="0" x2="0.35" y2="1">
+<stop offset="0" stop-color="#e6f3f5"></stop><stop offset="0.45" stop-color="#a8cad7"></stop><stop offset="1" stop-color="#6a8ea2"></stop>
+</linearGradient>
+<linearGradient id="vl-glassDark" x1="0" y1="0" x2="0.35" y2="1">
+<stop offset="0" stop-color="#a9c2cc"></stop><stop offset="1" stop-color="#4d6676"></stop>
+</linearGradient>
+<pattern id="vl-bricksL" width="14" height="8" patternUnits="userSpaceOnUse" patternTransform="skewY(26.565)">
+<path d="M0 3.6H14M0 7.6H14M3.5 0V3.6M10.5 4V7.6" stroke="#2b2622" stroke-opacity="0.16" stroke-width="0.9" fill="none"></path>
+</pattern>
+<pattern id="vl-bricksR" width="14" height="8" patternUnits="userSpaceOnUse" patternTransform="skewY(-26.565)">
+<path d="M0 3.6H14M0 7.6H14M3.5 0V3.6M10.5 4V7.6" stroke="#2b2622" stroke-opacity="0.20" stroke-width="0.9" fill="none"></path>
+</pattern>
+<pattern id="vl-gravel" width="18" height="12" patternUnits="userSpaceOnUse">
+<circle cx="2" cy="3" r="0.9" fill="#34404f" fill-opacity="0.25"></circle>
+<circle cx="9" cy="8" r="1.1" fill="#34404f" fill-opacity="0.2"></circle>
+<circle cx="14" cy="2" r="0.8" fill="#ffffff" fill-opacity="0.35"></circle>
+<circle cx="6" cy="10" r="0.7" fill="#ffffff" fill-opacity="0.3"></circle>
+</pattern>
+</defs>
+<g data-name="rent">
+<polygon points="345.0,397.5 465.0,457.5 465.0,387.5 345.0,327.5" fill="#d9b48f"></polygon>
+<polygon points="465.0,457.5 550.0,415.0 550.0,345.0 465.0,387.5" fill="#978675"></polygon>
+<polygon points="345.0,397.5 465.0,457.5 465.0,387.5 345.0,327.5" fill="url(#vl-bricksL)"></polygon>
+<polygon points="465.0,457.5 550.0,415.0 550.0,345.0 465.0,387.5" fill="url(#vl-bricksR)"></polygon>
+<polygon points="345.0,397.5 465.0,457.5 465.0,387.5 345.0,327.5" fill="url(#vl-faceV)"></polygon>
+<polygon points="465.0,457.5 550.0,415.0 550.0,345.0 465.0,387.5" fill="url(#vl-faceV)" opacity="0.7"></polygon>
+<polygon points="349.2,400.6 369.0,410.5 369.0,378.5 349.2,368.6" fill="#d7ccb8"></polygon>
+<polygon points="351.6,400.8 366.6,408.3 366.6,380.3 351.6,372.8" fill="#5a3a2a"></polygon>
+<polygon points="351.6,400.8 356.1,403.1 356.1,375.1 351.6,372.8" fill="#34404f" opacity="0.35"></polygon>
+<polygon points="379.8,384.9 398.4,394.2 398.4,390.2 379.8,380.9" fill="#e9dcc4"></polygon>
+<polygon points="381.6,405.8 396.6,413.3 396.6,393.3 381.6,385.8" fill="#f3e6c8"></polygon>
+<polygon points="383.4,404.7 394.8,410.4 394.8,394.4 383.4,388.7" fill="url(#vl-glass)"></polygon>
+<polygon points="383.4,392.7 394.8,398.4 394.8,394.4 383.4,388.7" fill="#34404f" opacity="0.35"></polygon>
+<polygon points="389.1,391.6 392.9,393.4 386.9,406.4 383.1,404.6" fill="#ffffff" opacity="0.28"></polygon>
+<polygon points="409.8,399.9 428.4,409.2 428.4,405.2 409.8,395.9" fill="#e9dcc4"></polygon>
+<polygon points="411.6,420.8 426.6,428.3 426.6,408.3 411.6,400.8" fill="#f3e6c8"></polygon>
+<polygon points="413.4,419.7 424.8,425.4 424.8,409.4 413.4,403.7" fill="url(#vl-glass)"></polygon>
+<polygon points="413.4,407.7 424.8,413.4 424.8,409.4 413.4,403.7" fill="#34404f" opacity="0.35"></polygon>
+<polygon points="419.1,406.6 422.9,408.4 416.9,421.4 413.1,419.6" fill="#ffffff" opacity="0.28"></polygon>
+<polygon points="439.8,414.9 458.4,424.2 458.4,420.2 439.8,410.9" fill="#e9dcc4"></polygon>
+<polygon points="441.6,435.8 456.6,443.3 456.6,423.3 441.6,415.8" fill="#f3e6c8"></polygon>
+<polygon points="443.4,434.7 454.8,440.4 454.8,424.4 443.4,418.7" fill="url(#vl-glass)"></polygon>
+<polygon points="443.4,422.7 454.8,428.4 454.8,424.4 443.4,418.7" fill="#34404f" opacity="0.35"></polygon>
+<polygon points="449.1,421.6 452.9,423.4 446.9,436.4 443.1,434.6" fill="#ffffff" opacity="0.28"></polygon>
+<polygon points="470.0,425.0 486.7,416.7 486.7,412.7 470.0,421.0" fill="#98968f"></polygon>
+<polygon points="471.2,444.4 485.4,437.3 485.4,417.3 471.2,424.4" fill="#9d9b92"></polygon>
+<polygon points="472.9,441.5 483.7,436.1 483.7,420.1 472.9,425.5" fill="url(#vl-glassDark)"></polygon>
+<polygon points="472.9,429.5 483.7,424.1 483.7,420.1 472.9,425.5" fill="#34404f" opacity="0.35"></polygon>
+<polygon points="498.3,410.9 515.0,402.5 515.0,398.5 498.3,406.9" fill="#98968f"></polygon>
+<polygon points="499.6,430.2 513.7,423.1 513.7,403.1 499.6,410.2" fill="#9d9b92"></polygon>
+<polygon points="501.3,427.4 512.0,422.0 512.0,406.0 501.3,411.4" fill="url(#vl-glassDark)"></polygon>
+<polygon points="501.3,415.4 512.0,410.0 512.0,406.0 501.3,411.4" fill="#34404f" opacity="0.35"></polygon>
+<polygon points="526.6,396.7 543.3,388.3 543.3,384.3 526.6,392.7" fill="#98968f"></polygon>
+<polygon points="527.9,416.1 542.1,409.0 542.1,389.0 527.9,396.1" fill="#9d9b92"></polygon>
+<polygon points="529.6,413.2 540.4,407.8 540.4,391.8 529.6,397.2" fill="url(#vl-glassDark)"></polygon>
+<polygon points="529.6,401.2 540.4,395.8 540.4,391.8 529.6,397.2" fill="#34404f" opacity="0.35"></polygon>
+<polygon points="345.0,343.5 465.0,403.5 465.0,395.5 345.0,335.5" fill="#34404f" opacity="0.22"></polygon>
+<polygon points="465.0,403.5 550.0,361.0 550.0,353.0 465.0,395.5" fill="#34404f" opacity="0.18"></polygon>
+<polygon points="343.8,334.9 465.0,395.5 465.0,385.5 343.8,324.9" fill="#8a6f55"></polygon>
+<polygon points="465.0,395.5 550.9,352.6 550.9,342.6 465.0,385.5" fill="#635a52"></polygon>
+<polygon points="343.8,326.9 465.0,387.5 465.0,385.5 343.8,324.9" fill="#b39c80"></polygon>
+<polygon points="430.0,283.0 550.0,343.0 465.0,385.5 345.0,325.5" fill="#a79074"></polygon>
+<polygon points="430.0,291.0 538.0,345.0 465.0,381.5 357.0,327.5" fill="#bdb4a7"></polygon>
+<polygon points="430.0,291.0 538.0,345.0 529.2,349.4 421.2,295.4" fill="#34404f" opacity="0.25"></polygon>
+<polygon points="430.0,291.0 440.8,296.4 367.8,332.9 357.0,327.5" fill="#34404f" opacity="0.2"></polygon>
+<polygon points="430.0,291.0 538.0,345.0 465.0,381.5 357.0,327.5" fill="url(#vl-gravel)"></polygon>
+<polygon points="399.2,330.4 413.2,337.4 413.2,331.4 399.2,324.4" fill="#9a9087"></polygon>
+<polygon points="413.2,337.4 427.2,330.4 427.2,324.4 413.2,331.4" fill="#6f6e6f"></polygon>
+<polygon points="413.2,317.4 427.2,324.4 413.2,331.4 399.2,324.4" fill="#b8ad9d"></polygon>
+<polygon points="413.2,337.4 427.2,330.4 431.4,331.5 417.4,338.5" fill="#34404f" opacity="0.25"></polygon>
+<polygon points="482.5,336.8 488.5,333.8 488.5,321.8 482.5,324.8" fill="#968c81"></polygon>
+<polygon points="488.5,333.8 494.5,336.8 494.5,324.8 488.5,321.8" fill="#686768"></polygon>
+<polygon points="482.5,324.8 488.5,321.8 494.5,324.8 488.5,327.8" fill="#b3a896"></polygon>
+<line x1="345.0" y1="325.5" x2="465.0" y2="385.5" stroke="#fff1cf" stroke-width="1.5" opacity="0.8"></line>
+<line x1="465.0" y1="457.5" x2="465.0" y2="387.5" stroke="#fff1cf" stroke-width="1.2" opacity="0.45"></line>
+<polygon points="345.0,397.5 465.0,457.5 465.0,450.5 345.0,390.5" fill="#34404f" opacity="0.18"></polygon>
+</g>
+</svg>

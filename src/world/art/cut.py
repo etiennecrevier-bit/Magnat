@@ -22,7 +22,7 @@ It checks that rue.py still draws the target, that every line the world shows
 is in a piece or left out on purpose, and that the street's pieces, in order,
 are the target's lines before the people, so nothing is lost or reordered.
 Nothing in the build, the tests or the lint runs it; it is kept to cut the art
-again.
+again. The city's art is cut_city.py's (#209).
 """
 
 import ast
@@ -134,10 +134,10 @@ def run_rue(reference):
     return scope, drawn, statements
 
 
-def scoped(line, ids):
+def scoped(line, ids, prefix="rl"):
     """The line as the target writes it, its ids prefixed `rl-`."""
     for i in sorted(ids, key=len, reverse=True):
-        line = line.replace(f"url(#{i})", f"url(#rl-{i})")
+        line = line.replace(f"url(#{i})", f"url(#{prefix}-{i})")
     return line
 
 
@@ -212,13 +212,13 @@ def arc_points(x0, y0, rx, ry, phi, large, sweep, x1, y1):
 
 def path_points(d):
     """The points and control points of a path of M, L, C, Q and A (and
-    their relative l, m), and Z; arcs by their ends and extremes."""
-    unknown = set(re.findall(r"[A-Za-z]", d)) - set("MLCQAlmzZ")
+    their relative l, m, c, q), and Z; arcs by their ends and extremes."""
+    unknown = set(re.findall(r"[A-Za-z]", d)) - set("MLCQAlmcqzZ")
     if unknown:
         raise SystemExit(f"path command {sorted(unknown)} not handled: {d}")
     points = []
     x = y = 0.0
-    for command, args in re.findall(r"([MLCQAZlmz])([^MLCQAZlmz]*)", d):
+    for command, args in re.findall(r"([MLCQAZlmqcz])([^MLCQAZlmqcz]*)", d):
         values = [float(v) for v in re.findall(NUMBER, args)]
         if command == "A":
             for i in range(0, len(values), 7):
@@ -227,6 +227,14 @@ def path_points(d):
                 x, y = x1, y1
             continue
         pairs = list(zip(values[0::2], values[1::2]))
+        if command in "qc":
+            # Each curve's points are from where it starts.
+            n = 2 if command == "q" else 3
+            for i in range(0, len(pairs), n):
+                curve = pairs[i : i + n]
+                points += [(x + px, y + py) for px, py in curve]
+                x, y = x + curve[-1][0], y + curve[-1][1]
+            continue
         for px, py in pairs:
             if command in "lm":
                 x, y = x + px, y + py

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="53" height="35" viewBox="542 342 53 35">
+<defs>
+<linearGradient id="vl-faceV" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#fff1cf" stop-opacity="0.26"></stop><stop offset="0.5" stop-color="#fff1cf" stop-opacity="0"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0.30"></stop>
+</linearGradient>
+</defs>
+<polygon points="551.0,342.5 557.3,345.6 548.3,357.6 542.0,354.5" fill="#b3261e"></polygon>
+<polygon points="557.3,345.6 563.6,348.8 554.6,360.8 548.3,357.6" fill="#fff7e8"></polygon>
+<polygon points="563.6,348.8 569.9,351.9 560.9,363.9 554.6,360.8" fill="#b3261e"></polygon>
+<polygon points="569.9,351.9 576.1,355.1 567.1,367.1 560.9,363.9" fill="#fff7e8"></polygon>
+<polygon points="576.1,355.1 582.4,358.2 573.4,370.2 567.1,367.1" fill="#b3261e"></polygon>
+<polygon points="582.4,358.2 588.7,361.4 579.7,373.4 573.4,370.2" fill="#fff7e8"></polygon>
+<polygon points="588.7,361.4 595.0,364.5 586.0,376.5 579.7,373.4" fill="#b3261e"></polygon>
+<polygon points="551.0,342.5 595.0,364.5 586.0,376.5 542.0,354.5" fill="url(#vl-faceV)"></polygon>
+</svg>

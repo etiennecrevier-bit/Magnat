@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="242" height="97" viewBox="1115 142 242 97">
+<defs>
+<filter id="vl-soft2" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2"></feGaussianBlur></filter>
+</defs>
+<ellipse cx="1236" cy="211.5" rx="114.99999999999999" ry="20.7" fill="#d9e6ec" filter="url(#vl-soft2)"></ellipse>
+<circle cx="1161.0" cy="202.3" r="32.199999999999996" fill="#fbfdfd"></circle>
+<circle cx="1207.0" cy="186.2" r="43.699999999999996" fill="#fbfdfd"></circle>
+<circle cx="1264.5" cy="193.1" r="36.8" fill="#fbfdfd"></circle>
+<circle cx="1310.5" cy="206.9" r="25.299999999999997" fill="#fbfdfd"></circle>
+<ellipse cx="1230" cy="213.8" rx="108.1" ry="14.95" fill="#e3edf1"></ellipse>
+</svg>

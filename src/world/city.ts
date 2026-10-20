@@ -1,7 +1,9 @@
 import type { Ticker } from 'pixi.js'
-import type { AssetManifest } from '../content/assets.ts'
+import type { AssetManifest, CityManifest } from '../content/assets.ts'
 import pacing from '../content/pacing.json'
+import { GROCERS } from '../engine/contracts.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
+import { PLACES } from '../engine/places.ts'
 import type { GameState } from '../engine/types.ts'
 import {
   settingsStore,
@@ -17,7 +19,7 @@ import { buildCityScene, type CityHit } from './cityScene.ts'
 import { actorsAt, cityView, lineAt, type CityView } from './cityView.ts'
 import { CROWD } from './crowdSettings.ts'
 import type { Point } from './customerCard.ts'
-import { fitScene } from './layout.ts'
+import { fitCity } from './layout.ts'
 import { ASSETS } from './manifest.ts'
 import type { WorldApp } from './mountWorld.ts'
 import { createDayClock, replayOf, type Replay } from './replay.ts'
@@ -43,8 +45,9 @@ export interface CityOptions {
 /**
  * Draws the city on `app` (#165), as `startStreet` draws the street: loads
  * the title font and the city's art, builds the scene, fits it to the
- * screen and shows the game in the store, again each time the game changes.
- * Over it go the atmosphere, then the trip's words. It only reads the store.
+ * screen beside « Ville » (see `fitCity`) and shows the game in the store,
+ * again each time the game changes. Over it go the atmosphere, then the
+ * trip's words. It only reads the store.
  *
  * The day replays on the street's clock: a day lasts `msPerDayAtNormalSpeed`
  * at ×1, from the opening to the close, and starts again on a new day, so
@@ -54,8 +57,9 @@ export interface CityOptions {
  *
  * It holds `picker` while it runs: a press on a building that opens
  * something reports its link to `onOpen`, which the page opens, and the
- * pointer shows over it. A trip's link only while trips can be made, as
- * the top bar shows « Aller à… ».
+ * pointer shows over it, with the building's name over its top (see
+ * `nameOf`). A trip's link only while trips can be made, as the top bar
+ * shows « Aller à… ».
  *
  * Returns the function that takes the city down, which does nothing the
  * second time. A font or an image that fails to load warns and falls back,
@@ -95,22 +99,19 @@ export async function startCity(
     const { walkIns } = FOOD_TRUCK
 
     let fitted = { width: -1, height: -1, scale: 1, x: 0, y: 0 }
+    // Where the pointer is on the page, while it is over the world.
+    let pointer: Point | null = null
     const fit = () => {
       const { width, height } = app.screen
       if (width === fitted.width && height === fitted.height) return
-      const design = city.designSize
-      const { scale, x, y } = fitScene(
-        width,
-        height,
-        design.width,
-        design.height,
-      )
+      const { scale, x, y } = fitCity(width, height, city)
       fitted = { width, height, scale, x, y }
       for (const layer of [scene.root, people.labels]) {
         layer.scale.set(scale)
         layer.position.set(x, y)
       }
       atmosphere.fit(width, height)
+      hover(pointer)
     }
     const showEffects = (effects: VisualEffects) => {
       scene.setEffects(effects)
@@ -129,6 +130,7 @@ export async function startCity(
       clock.follow(game)
       scene.update(view)
       people.show(view, game.profile.avatar)
+      hover(pointer)
     }
 
     const onFrame = (ticker: Ticker) => {
@@ -153,22 +155,36 @@ export async function startCity(
       scene.shadows.redraw(fitted.scale * (app.renderer?.resolution ?? 1))
     }
 
-    /** The link of the building drawn at `point` on the page, if it opens. */
-    const linkAt = (point: Point): CityLink | null => {
+    /**
+     * The building drawn at `point` on the page and its link, if it opens
+     * something now.
+     */
+    const openingAt = (
+      point: Point,
+    ): { hit: CityHit; link: CityLink } | null => {
       if (onOpen() === null) return null
       const hit = scene.linkAt([
         (point.x - fitted.x) / fitted.scale,
         (point.y - fitted.y) / fitted.scale,
       ])
-      return hit === null ? null : linkOf(hit, view)
+      const link = hit === null ? null : linkOf(hit, view)
+      return hit === null || link === null ? null : { hit, link }
+    }
+    /** Names the building under the pointer at `point`, if it opens. */
+    const hover = (point: Point | null) => {
+      pointer = point
+      const at = point === null ? null : openingAt(point)
+      const name = at === null ? null : nameOf(at.hit, view, city)
+      people.name(name, at?.hit.top ?? null)
     }
     undo(
       picker.connect({
         openAt: (point) => {
-          const link = linkAt(point)
-          if (link !== null) onOpen()?.(link)
+          const link = openingAt(point)?.link
+          if (link !== undefined) onOpen()?.(link)
         },
-        isOver: (point) => linkAt(point) !== null,
+        isOver: (point) => openingAt(point) !== null,
+        hoverAt: hover,
       }),
     )
 
@@ -195,6 +211,31 @@ export async function startCity(
     app.ticker.add(onFrame)
     undo(() => app.ticker.remove(onFrame))
   })
+}
+
+/**
+ * The name over a building that opens something: its grocer's for a shop,
+ * else its place's (or that of the place it opens a trip to), or the words
+ * of the bakery's sign while it is for rent.
+ */
+export function nameOf(
+  { grocer, place, opens }: CityHit,
+  view: Pick<CityView, 'bakery'>,
+  city: Pick<CityManifest, 'pieces'>,
+): string | null {
+  if (grocer !== undefined) return GROCERS.grocers[grocer].name
+  const at =
+    place ??
+    (typeof opens === 'object'
+      ? opens.trip
+      : opens === 'fournil'
+        ? opens
+        : null)
+  if (at === 'fournil' && !view.bakery) {
+    const sign = city.pieces.find((piece) => piece.shows === 'bakeryForRent')
+    if (sign?.text !== undefined) return sign.text
+  }
+  return PLACES.places.find((known) => known.id === at)?.name ?? null
 }
 
 /**

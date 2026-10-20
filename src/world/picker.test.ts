@@ -448,10 +448,14 @@ describe('listenForPicks', () => {
     const dom = fakeDom()
     const { page, fire } = fakePage()
     const city = createCityPicker()
-    const buildings = { openAt: vi.fn(), isOver: vi.fn(() => true) }
+    const buildings = {
+      openAt: vi.fn(),
+      isOver: vi.fn(() => true),
+      hoverAt: vi.fn(),
+    }
     city.connect(buildings)
     const onPointing = vi.fn()
-    listenForPicks(
+    const stop = listenForPicks(
       page,
       dom.world,
       worldPicks(createPicker(), city),
@@ -460,8 +464,16 @@ describe('listenForPicks', () => {
     fire('pointerdown', press(dom.canvas, { clientX: 70, clientY: 80 }))
     fire('pointerdown', press(dom.panelButton))
     expect(buildings.openAt.mock.calls).toEqual([[{ x: 70, y: 80 }]])
-    fire('pointermove', press(dom.canvas))
+    fire('pointermove', press(dom.canvas, { clientX: 70, clientY: 80 }))
     expect(onPointing).toHaveBeenLastCalledWith(true)
+    // The city hears the pointer over the world, and that it left it: over
+    // a panel, or once the page stops listening.
+    expect(buildings.hoverAt).toHaveBeenLastCalledWith({ x: 70, y: 80 })
+    fire('pointermove', press(dom.panelButton))
+    expect(buildings.hoverAt).toHaveBeenLastCalledWith(null)
+    fire('pointermove', press(dom.canvas, { clientX: 70, clientY: 80 }))
+    stop()
+    expect(buildings.hoverAt).toHaveBeenLastCalledWith(null)
   })
 
   it('picks where the player presses the street', () => {

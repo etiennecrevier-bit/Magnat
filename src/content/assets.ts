@@ -38,6 +38,7 @@ export const colorNameSchema = z.enum([
   'coneOrange',
   'heatSky',
   'lamplight',
+  'white',
 ])
 
 export type ColorName = z.infer<typeof colorNameSchema>
@@ -321,10 +322,16 @@ const pointSchema = z.tuple([z.number(), z.number()])
 
 export type CityPoint = z.output<typeof pointSchema>
 
-/** What a piece of the city is, which picks its placeholder. */
+/**
+ * What a piece of the city is, which picks its placeholder. A `backdrop` is
+ * a flat image (the sky, a cloud, the island with its streets and park), and
+ * `shadows` every shadow cast on the ground in one image; `scenery` is a
+ * tree, a lamp, a cone or a car, ranked among the buildings.
+ */
 export const cityPieceKindSchema = z.enum([
-  'ground',
-  'park',
+  'backdrop',
+  'shadows',
+  'scenery',
   'triplex',
   'building',
   'mill',
@@ -333,6 +340,7 @@ export const cityPieceKindSchema = z.enum([
   'bakery',
   'truck',
   'hatch',
+  'awning',
   'shutter',
   'sign',
   'windows',
@@ -347,14 +355,18 @@ export type CityPieceKind = z.infer<typeof cityPieceKindSchema>
  */
 export const WALL_KINDS: readonly CityPieceKind[] = [
   'hatch',
+  'awning',
   'shutter',
   'sign',
   'windows',
   'contractSign',
 ]
 
-/** The pieces that write their `text`; a sign must have one. */
-const CITY_WRITTEN: readonly CityPieceKind[] = ['sign', 'building', 'mill']
+/**
+ * The flat pieces, drawn in the order listed under the shadow layer: they
+ * need no depth, and a click finds nothing on them.
+ */
+export const FLAT_KINDS: readonly CityPieceKind[] = ['backdrop', 'shadows']
 
 /**
  * When a piece of the city shows: while the truck serves or is closed, a
@@ -378,6 +390,14 @@ const cityOpensSchema = z.union([
 ])
 
 export type CityOpens = z.output<typeof cityOpensSchema>
+
+/** A rectangle of the design: its top-left corner and its size. */
+const rectSchema = z.strictObject({
+  x: z.number(),
+  y: z.number(),
+  width: size,
+  height: size,
+})
 
 const cityPieceSchema = z.strictObject({
   id: z.string().min(1),
@@ -403,14 +423,20 @@ const cityPieceSchema = z.strictObject({
   depth: size.optional(),
   /** The placeholder's main colour, also shown when the image fails. */
   color: colorNameSchema,
-  /** A second colour: a grocer's awning, the truck's stripe. */
+  /** A second colour: the truck's stripe, the words of a sign. */
   trim: colorNameSchema.optional(),
-  /** A file path under src/world/art/, such as `city/caisse.png`. */
+  /** A file path under src/world/art/, such as `city/bank.svg`. */
   image: z
     .string()
     .regex(IMAGE_PATH, 'expected a file path under src/world/art/')
     .optional(),
-  /** What a sign or a building's board says, in French. */
+  /**
+   * Where the image is drawn, in the design: drawn as it is, not along a
+   * wall. Without it, the image is stretched to the piece's box, or along
+   * its wall.
+   */
+  art: rectSchema.optional(),
+  /** What a sign says, in French. */
   text: z
     .string()
     .regex(/^\S(.*\S)?$/, 'expected text without spaces at its ends')
@@ -435,6 +461,36 @@ const citySchema = z.strictObject({
   designSize: z.strictObject({
     width: z.int().positive(),
     height: z.int().positive(),
+  }),
+  /**
+   * How the city is framed in the window: « Ville » keeps to its left
+   * (src/ui/TripPanel.css), so `island`, the part of the design that must
+   * show, is fitted into the room right of the panel, `gap` from it and
+   * from the window's right edge, between the top bar's `top` and the
+   * dock's `bottom`. In a window narrower than `narrow` the panel comes
+   * down from the top, and the whole design is fitted as the street is.
+   */
+  frame: z.strictObject({
+    island: z.strictObject({
+      x: z.number(),
+      y: z.number(),
+      width: size,
+      height: size,
+    }),
+    /**
+     * The panel: `left` from the window's edge, at most `width` wide and
+     * at most `share` of the window less `inset`.
+     */
+    panel: z.strictObject({
+      left: z.number().nonnegative(),
+      width: size,
+      share,
+      inset: z.number().nonnegative(),
+    }),
+    gap: z.number().nonnegative(),
+    top: z.number().nonnegative(),
+    bottom: z.number().nonnegative(),
+    narrow: size,
   }),
   /**
    * Layer ids, back to front. They hold the light's shadow layer, which no
@@ -505,19 +561,13 @@ const citySchema = z.strictObject({
    * each next one a `step` on.
    */
   bakers: z.strictObject({ first: pointSchema, step: pointSchema }),
-  /** The tiny people: the owner, the employees and the customers. */
+  /**
+   * The people of the city: the street's, drawn `scale` times as big. The
+   * looks of the customers in line come from `seed`.
+   */
   figure: z.strictObject({
-    height: size,
-    width: size,
-    /** The owner's shirt and apron, as on the street. */
-    shirt: colorNameSchema,
-    apron: colorNameSchema,
-    /** The employees' shirt. */
-    staffShirt: colorNameSchema,
-    /** The customers' coats, one after the other in line. */
-    coats: z.array(colorNameSchema).min(1),
-    skins: z.array(hexColor).min(1),
-    hair: hexColor,
+    scale: share,
+    seed: z.int().nonnegative(),
   }),
   /** The dashed way of the day's trip, on the ground. */
   path: z.strictObject({
@@ -525,18 +575,27 @@ const citySchema = z.strictObject({
     gap: size,
     width: size,
     color: colorNameSchema,
+    /** The dot at its end, at the door: how wide from its middle. */
+    dot: size,
+    /** The ring on the ground under the owner walking it. */
+    ring: z.strictObject({ width: size, depth: size, stroke: size }),
   }),
-  /** « En route vers la Caisse », over its door. */
+  /**
+   * « En route vers la Caisse », over its door, and a building's name over
+   * it while the pointer is on it.
+   */
   label: z.strictObject({
     fontSize: size,
     paddingX: z.number().nonnegative(),
     paddingY: z.number().nonnegative(),
-    /** How far over the door the label's foot is. */
+    /** How far over the door the trip's label's foot is. */
     rise: z.number().nonnegative(),
+    /** How far over a building's top its name's foot is. */
+    above: z.number().nonnegative(),
     color: colorNameSchema,
     background: colorNameSchema,
   }),
-  /** The words a building's board and a sign are written in. */
+  /** The words of a sign, unless the sign gives its own colour. */
   sign: z.strictObject({ fontSize: size, color: colorNameSchema }),
 })
 
@@ -579,7 +638,14 @@ function checkCity(
       issue('layer', 'the shadow layer holds no piece')
     }
     const onWall = WALL_KINDS.includes(piece.kind)
-    if (onWall) {
+    const flat = FLAT_KINDS.includes(piece.kind)
+    if (flat) {
+      if (piece.on !== undefined)
+        issue('on', `${piece.kind} pieces stand alone`)
+      if (city.layers.indexOf(piece.layer) > city.layers.indexOf(shadowLayer)) {
+        issue('layer', `${piece.kind} pieces go under the shadow layer`)
+      }
+    } else if (onWall) {
       const host = piece.on === undefined ? undefined : boxes.get(piece.on)
       if (host === undefined) {
         issue('on', `${piece.kind} pieces go on a box listed before them`)
@@ -600,15 +666,14 @@ function checkCity(
       }
       boxes.set(piece.id, piece)
     }
-    const written = CITY_WRITTEN.includes(piece.kind)
     if (piece.kind === 'sign' && piece.text === undefined) {
       issue('text', 'sign pieces need a text')
     }
-    if (!written && piece.text !== undefined) {
+    if (piece.kind !== 'sign' && piece.text !== undefined) {
       issue('text', `${piece.kind} pieces write no text`)
     }
     if (piece.place !== undefined) {
-      if (onWall) issue('place', 'a place is a box')
+      if (onWall || flat) issue('place', 'a place is a box')
       places.set(piece.place, (places.get(piece.place) ?? 0) + 1)
     }
     if (piece.grocer !== undefined) {
@@ -620,6 +685,9 @@ function checkCity(
     }
     if (piece.opens !== undefined && onWall) {
       issue('opens', 'a click opens a box, not what is on its wall')
+    }
+    if (piece.opens !== undefined && (flat || piece.kind === 'scenery')) {
+      issue('opens', `a click opens nothing on ${piece.kind} pieces`)
     }
   })
 
