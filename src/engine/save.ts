@@ -9,6 +9,7 @@ import {
   medalSchema,
   ovenTermsSchema,
   placeIdSchema,
+  postcardIdSchema,
   productIdSchema,
   rungIdSchema,
   segmentIdSchema,
@@ -651,6 +652,8 @@ const saveSchema = z.strictObject({
   town: townSchema,
   // Absent in a game without a tutorial, so a save from before one loads.
   tutorial: tutorialSchema.optional(),
+  // Absent until Réal's first postcard; `checkPostcards()` checks them.
+  postcardsShown: z.array(postcardIdSchema).optional(),
 })
 
 // The week under way, and an older save's financing, may come from the
@@ -685,7 +688,7 @@ type Dreamless = Omit<Townless, 'saveVersion' | 'dream'> & {
 
 /** A version 18 save: no trip in town. */
 const townlessSchema = saveSchema
-  .omit({ town: true, tutorial: true })
+  .omit({ town: true, tutorial: true, postcardsShown: true })
   .extend({ saveVersion: z.literal(TOWNLESS_VERSION) })
 
 /** A version 17 save: nothing of « Le rêve » either. */
@@ -797,6 +800,8 @@ export function serialize(state: GameState): string {
     town: state.town,
     // JSON.stringify leaves it out of a game without a tutorial.
     tutorial: state.tutorial,
+    // And this one out of a game Réal has sent no postcard yet.
+    postcardsShown: state.postcardsShown,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -857,7 +862,8 @@ export function serialize(state: GameState): string {
  * net worth, if any, passes `checkNetWorth()`; the end of
  * the game, if it ended, passes `checkEnded()` against `financing`; the
  * trips in town pass `checkTown()` against `places`; and the tutorial, if
- * any, passes `checkTutorial()` against `tutorial`. A save without a
+ * any, passes `checkTutorial()` against `tutorial`; and Réal's postcards,
+ * if any, come once each and not in a Défi. A save without a
  * tutorial loads as a game without one, and a last day without its «
  * trop cher » by product loads with none.
  *
@@ -942,6 +948,7 @@ export function deserialize(
   checkEnded(save, financing)
   checkTown(save, places)
   checkTutorial(save, tutorial)
+  checkPostcards(save)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -971,6 +978,9 @@ export function deserialize(
     dream: save.dream,
     town: save.town,
     ...(save.tutorial === undefined ? {} : { tutorial: save.tutorial }),
+    ...(save.postcardsShown === undefined
+      ? {}
+      : { postcardsShown: save.postcardsShown }),
   }
 }
 
@@ -3002,6 +3012,22 @@ function checkTutorial(save: Save, content: TutorialContent): void {
     invalid(
       `the tutorial's step ${due.id} of day ${due.day} is not done on its day ${today}`,
     )
+  }
+}
+
+/**
+ * Réal's postcards (#239): each once a game, and none in a Défi, which gets
+ * none.
+ */
+function checkPostcards({ postcardsShown, challenge }: Save): void {
+  if (postcardsShown === undefined) return
+  if (challenge !== null && postcardsShown.length > 0) {
+    invalid(`the Défi ${challenge.id} has postcards`)
+  }
+  const seen = new Set<string>()
+  for (const id of postcardsShown) {
+    if (seen.has(id)) invalid(`the postcard ${id} came twice`)
+    seen.add(id)
   }
 }
 

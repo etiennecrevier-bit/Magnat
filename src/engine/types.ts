@@ -12,6 +12,7 @@ import type {
   Medal,
   OvenTerms,
   PlaceId,
+  PostcardId,
   ProductId,
   RestockRule,
   RungId,
@@ -375,6 +376,13 @@ export interface GameState {
    * other, a Défi included.
    */
   readonly tutorial?: TutorialState
+  /**
+   * The postcards Réal sent from Florida (#239), in the order they came,
+   * each once a game. The UI sends them and keeps them here, a memory of
+   * what the player saw that no rule reads; absent until the first, and
+   * in a Défi, which gets none.
+   */
+  readonly postcardsShown?: readonly PostcardId[]
 }
 
 /**

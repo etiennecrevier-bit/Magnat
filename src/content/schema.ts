@@ -2846,9 +2846,86 @@ const tutorialCoachSchema = z.strictObject({
 export type TutorialStep = z.output<typeof tutorialStepSchema>
 
 /**
+ * The postcards Réal sends from Florida once the tutorial is over or
+ * skipped (#239), one for each thing the game opens to the player, each
+ * once a game: a grocer's first offer, the bakery, a first hire, a first
+ * affordable rung of « Améliorations », the encaisse's first close below
+ * zero, the first « Bilan du mois » and the city.
+ */
+export const postcardIdSchema = z.enum([
+  'contrat',
+  'fournil',
+  'embauche',
+  'amelioration',
+  'rouge',
+  'bilanMois',
+  'ville',
+])
+
+export type PostcardId = z.infer<typeof postcardIdSchema>
+
+/**
+ * The dock's buttons a postcard may point at, by their id in the UI's
+ * dock (src/ui/dock.ts), which content cannot import; a UI test keeps the
+ * two lists the same.
+ */
+export const postcardTargetSchema = z.enum([
+  'camion',
+  'equipe',
+  'ville',
+  'finances',
+  'ameliorations',
+  'journal',
+  'reglages',
+])
+
+export type PostcardTarget = z.infer<typeof postcardTargetSchema>
+
+/**
+ * Réal's postcards: who signs them, the button that puts one away, and
+ * each one's sentence and the dock's button it points at. Their order is
+ * the order they come in when several are due the same morning.
+ */
+const postcardsSchema = z
+  .strictObject({
+    from: z.string().min(1),
+    thanks: z.string().min(1),
+    items: z.array(
+      z.strictObject({
+        id: postcardIdSchema,
+        text: z.string().min(1),
+        target: postcardTargetSchema,
+      }),
+    ),
+  })
+  .superRefine(({ items }, ctx) => {
+    const seen = new Set<PostcardId>()
+    items.forEach(({ id }, i) => {
+      if (seen.has(id)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `the postcard ${id} appears twice`,
+          path: ['items', i, 'id'],
+        })
+      }
+      seen.add(id)
+    })
+    for (const id of postcardIdSchema.options) {
+      if (seen.has(id)) continue
+      ctx.addIssue({
+        code: 'custom',
+        message: `the postcard ${id} is missing`,
+        path: ['items'],
+      })
+    }
+  })
+
+export type Postcards = z.output<typeof postcardsSchema>
+
+/**
  * The tutorial game (#236): its seed, what it changes in the starting
- * decisions, the days it protects, the cards it brings on its days, and
- * its steps in order.
+ * decisions, the days it protects, the cards it brings on its days, its
+ * steps in order, and the postcards Réal sends once it is over (#239).
  */
 export const tutorialContentSchema = z
   .strictObject({
@@ -2871,6 +2948,7 @@ export const tutorialContentSchema = z
     ),
     steps: z.array(tutorialStepSchema).min(1),
     coach: tutorialCoachSchema,
+    postcards: postcardsSchema,
   })
   .superRefine(({ days, steps, scriptedEvents }, ctx) => {
     const issue = (message: string, path: (string | number)[]) =>
@@ -2966,7 +3044,8 @@ function tutorialContentFor(events: EventContent) {
  * order of their days, from 1 to `days`, with one at least each day, and
  * each card it brings falls on one of its days but the first, one a day at
  * most, and is
- * a card of `events` only the tutorial brings. Pass `raw` only to check
+ * a card of `events` only the tutorial brings; and each postcard appears
+ * once. Pass `raw` only to check
  * other data; by default it reads `tutorial.json`, against `events.json`.
  */
 export function loadTutorialContent(

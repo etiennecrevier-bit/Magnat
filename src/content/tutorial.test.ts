@@ -197,3 +197,99 @@ describe('loadTutorialContent rejects', () => {
     rejects(raw, 'decisions.pricesCents', 'decisions.restock', 'daysOpen')
   })
 })
+
+describe('tutorial.json, Réal’s postcards (#239)', () => {
+  const { postcards } = loadTutorialContent()
+  // CLAUDE.md's accounting terms, which the tutorial never names.
+  const ACCOUNTING = [
+    'état des résultats',
+    'bilan',
+    'état des flux de trésorerie',
+    'encaisse',
+    'comptes clients',
+    'comptes fournisseurs',
+    'stocks',
+  ]
+
+  it('signs from Fort Lauderdale and holds the seven postcards, in the order they come', () => {
+    expect(postcards.from).toBe('Réal, Fort Lauderdale')
+    expect(postcards.thanks).toBe('Merci!')
+    expect(postcards.items.map(({ id, target }) => [id, target])).toEqual([
+      ['contrat', 'ville'],
+      ['rouge', 'finances'],
+      ['bilanMois', 'journal'],
+      ['amelioration', 'ameliorations'],
+      ['ville', 'ville'],
+      ['embauche', 'equipe'],
+      ['fournil', 'camion'],
+    ])
+  })
+
+  it('names no accounting term and never says why', () => {
+    for (const { id, text } of postcards.items) {
+      for (const word of [...ACCOUNTING, 'parce que']) {
+        // Word-bounded, so « Bilan du mois » is caught but not « bilanMois ».
+        expect(text, `${id}: ${word}`).not.toMatch(
+          new RegExp(`(^|[^\\p{L}])${word}($|[^\\p{L}])`, 'iu'),
+        )
+      }
+    }
+  })
+
+  it('keeps each postcard to sentences of 15 words at most', () => {
+    for (const { text } of postcards.items) {
+      for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+        expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(15)
+      }
+    }
+  })
+})
+
+describe('loadTutorialContent rejects a postcard', () => {
+  function withItems(edit: (items: Json[]) => void): Json {
+    const raw = shipped()
+    const postcards = raw.postcards as Json
+    edit(postcards.items as Json[])
+    return raw
+  }
+
+  it('that appears twice, and so leaves another missing', () => {
+    rejects(
+      withItems((items) => {
+        items[1]!.id = 'contrat'
+      }),
+      'the postcard contrat appears twice',
+      'the postcard rouge is missing',
+    )
+  })
+
+  it('of an id the game does not know', () => {
+    rejects(
+      withItems((items) => {
+        items[0]!.id = 'loterie'
+      }),
+      'postcards.items[0].id',
+    )
+  })
+
+  it('that points at no button of the dock', () => {
+    rejects(
+      withItems((items) => {
+        items[0]!.target = 'contrats'
+      }),
+      'postcards.items[0].target',
+    )
+  })
+
+  it('with no text, or a file with no postcards', () => {
+    rejects(
+      withItems((items) => {
+        items[0]!.text = ''
+      }),
+      'postcards.items[0].text',
+    )
+    const raw = shipped()
+    delete raw.postcards
+    rejects(raw, 'postcards')
+  })
+})

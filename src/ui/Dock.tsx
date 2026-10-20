@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useStore } from 'zustand'
 import { balance } from '../finance/journal.ts'
 import {
   activateDockItem,
@@ -8,8 +9,10 @@ import {
   isDockItemOpen,
   type DockBadges,
   type DockItem,
+  type DockItemId,
 } from './dock.ts'
 import { Icon } from './icons.tsx'
+import { messageStack, type MessageStack } from './messageStack.ts'
 import { gameStore, useGame } from './store.ts'
 import Tooltip from './Tooltip.tsx'
 import './Dock.css'
@@ -19,16 +22,25 @@ interface DockViewProps {
   /** Whether what each button opens is open. */
   readonly isOpen: (item: DockItem) => boolean
   readonly badges: DockBadges
+  /** The buttons a postcard of Réal's points at, which pulse; none by default. */
+  readonly pulses?: readonly DockItemId[]
   readonly onActivate: (item: DockItem) => void
 }
 
 /**
  * The dock, bottom centre over the street: a square button with an icon and
  * a word under it for each panel and drawer, the open one in ink, a divider
- * before « Journal », and a red count on a button when something waits
- * there. Each button's tooltip names its key.
+ * before « Journal », a red count on a button when something waits
+ * there, and a soft pulse on one a postcard points at. Each button's
+ * tooltip names its key.
  */
-export function DockView({ items, isOpen, badges, onActivate }: DockViewProps) {
+export function DockView({
+  items,
+  isOpen,
+  badges,
+  pulses = [],
+  onActivate,
+}: DockViewProps) {
   return (
     <nav className="dock" aria-label="Panneaux">
       <ul className="dock__items">
@@ -55,9 +67,13 @@ export function DockView({ items, isOpen, badges, onActivate }: DockViewProps) {
                     type="button"
                     id={dockButtonId(item.id)}
                     data-tuto={`dock.${item.id}`}
-                    className={
-                      open ? 'dock__button dock__button--open' : 'dock__button'
-                    }
+                    className={[
+                      'dock__button',
+                      ...(open ? ['dock__button--open'] : []),
+                      ...(pulses.includes(item.id)
+                        ? ['dock__button--pulse']
+                        : []),
+                    ].join(' ')}
                     aria-haspopup="dialog"
                     aria-expanded={open}
                     aria-keyshortcuts={item.key ?? undefined}
@@ -88,8 +104,16 @@ export function DockView({ items, isOpen, badges, onActivate }: DockViewProps) {
 // The encaisse is account 1000 (src/finance/accounts.ts).
 const CASH = '1000'
 
-/** The dock wired to the app store. */
-export default function Dock() {
+/**
+ * The dock wired to the app store, its buttons pulsing as the postcards in
+ * `stack` ask (see `startMessageStack`, which stops each pulse).
+ */
+export default function Dock({
+  stack = messageStack,
+}: {
+  stack?: MessageStack
+}) {
+  const pulses = useStore(stack, (state) => state.pulsing)
   const challenge = useGame((state) => state.game.challenge)
   const panel = useGame((state) => state.panel)
   const drawer = useGame((state) => state.drawer)
@@ -114,6 +138,7 @@ export default function Dock() {
       items={items}
       isOpen={(item) => isDockItemOpen(item, { panel, drawer })}
       badges={badges}
+      pulses={pulses}
       onActivate={(item) => activateDockItem(gameStore, item)}
     />
   )

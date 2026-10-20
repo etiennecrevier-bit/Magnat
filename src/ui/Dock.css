@@ -125,6 +125,37 @@ body {
   line-height: 1;
 }
 
+/* A button one of Réal's postcards points at (#239): a soft amber glow
+   that swells and fades until the player opens it. Still, under reduced
+   motion, the glow stays on. */
+.dock__button--pulse .dock__tile {
+  animation: dock-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes dock-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 5px 0 #2b2622,
+      0 0 0 0 rgb(240 138 62 / 0%);
+  }
+
+  50% {
+    box-shadow:
+      0 5px 0 #2b2622,
+      0 0 0 6px rgb(240 138 62 / 55%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock__button--pulse .dock__tile {
+    animation: none;
+    box-shadow:
+      0 5px 0 #2b2622,
+      0 0 0 4px rgb(240 138 62 / 55%);
+  }
+}
+
 /* On a phone the dock is a bar of icons the width of the window, just
    above the band; the words stay for screen readers. The seven buttons
    share the width, each at least 44 px wide down to a 320 px window, the

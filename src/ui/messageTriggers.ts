@@ -2,6 +2,8 @@ import type {
   EnergyContent,
   GrocerContent,
   GrocerId,
+  PostcardId,
+  PostcardTarget,
 } from '../content/schema.ts'
 import {
   loadMessages,
@@ -23,19 +25,32 @@ export const MESSAGES: Messages = loadMessages()
 // runs from a Monday to a Sunday.
 const DAYS_PER_WEEK = 7
 
-/** The most messages kept: a new one pushes the oldest out. */
+/**
+ * The most messages kept, Réal's postcards aside: a new one pushes the
+ * oldest out.
+ */
 export const MAX_MESSAGES = 3
 
-/** A message the player receives. */
+/** A message the player receives: one the game calls for, or a postcard. */
 export interface Message {
   /** Unique among the messages received since the game screens opened. */
   readonly id: number
-  readonly kind: MessageKind
+  readonly kind: MessageKind | 'postcard'
   /** Who it is from, as the card shows it. */
   readonly from: string
   readonly text: string
   /** The day it is about. */
   readonly day: Day
+  /**
+   * The day it came, when later than `day`: a postcard about a morning a
+   * multi-day advance went through comes as the advance ends.
+   */
+  readonly arrivedOn?: Day
+  /** A postcard's id and the dock's button it points at; absent otherwise. */
+  readonly postcard?: {
+    readonly id: PostcardId
+    readonly target: PostcardTarget
+  }
 }
 
 /** Something that calls for a message. */
@@ -231,20 +246,37 @@ export function pickLine(
 
 /**
  * The messages kept once `message` comes in on top of `messages`, newest
- * first: at most `MAX_MESSAGES`.
+ * first: at most `MAX_MESSAGES` the game called for, and every postcard,
+ * which stays until the player puts it away, so none is lost unseen.
  */
 export function received(
   messages: readonly Message[],
   message: Message,
 ): Message[] {
-  return [message, ...messages].slice(0, MAX_MESSAGES)
+  let others = 0
+  return [message, ...messages].filter(({ kind }) => {
+    if (kind === 'postcard') return true
+    others += 1
+    return others <= MAX_MESSAGES
+  })
+}
+
+/** Hands out message ids, from `from` (0) up. */
+export function messageIds(from = 0): () => number {
+  let next = from
+  return () => {
+    const id = next
+    next += 1
+    return id
+  }
 }
 
 /**
  * Hands `onMessage` a message each time the game in `store` calls for one
  * (see `triggersBetween`), from the sender the game names or else the
  * content's, with a line of its kind picked with `random`, never the last
- * one of that kind shown. Returns a function that stops it.
+ * one of that kind shown, and an id from `nextId`, which other senders
+ * may share. Returns a function that stops it.
  */
 export function startMessages(
   store: GameStore,
@@ -252,9 +284,9 @@ export function startMessages(
   random: () => number = Math.random,
   messages: Messages = MESSAGES,
   energy: EnergyContent = ENERGY,
+  nextId: () => number = messageIds(),
 ): () => void {
   let memory = NO_MEMORY
-  let nextId = 0
   const lastLine: Partial<Record<MessageKind, string>> = {}
   return store.subscribe((state, previous) => {
     if (state.game === previous.game) return
@@ -268,8 +300,7 @@ export function startMessages(
       const { lines } = messages[kind]
       const text = pickLine(lines, random, lastLine[kind] ?? null)
       lastLine[kind] = text
-      onMessage({ id: nextId, kind, from, text, day })
-      nextId += 1
+      onMessage({ id: nextId(), kind, from, text, day })
     }
   })
 }

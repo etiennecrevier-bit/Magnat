@@ -52,3 +52,70 @@
 .message__close {
   grid-area: close;
 }
+
+/* Réal's postcard (#239): a lighter cream card, his portrait at the left,
+   « Merci! » at the right, and the palm-tree stamp stuck over its top
+   right corner, clear of the button. */
+.message--postcard {
+  position: relative;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'portrait from close'
+    'portrait text close';
+  margin-top: 6px;
+  padding-right: 1.25rem;
+  border-left-width: 2px;
+  background: #fff7e8;
+}
+
+.message__portrait {
+  grid-area: portrait;
+  align-self: center;
+  width: 44px;
+  height: 44px;
+  border: 2px solid #2b2622;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.message__silhouette {
+  background: #e3d6bf;
+  fill: #fff7e8;
+}
+
+.message__stamp {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  line-height: 0;
+  transform: rotate(6deg);
+  pointer-events: none;
+}
+
+.message--postcard .message__close {
+  align-self: end;
+  margin-top: 1.25rem;
+}
+
+/* On a phone the sentence takes the card's width, under Réal's face and
+   name, and « Merci! » goes under it. */
+@media (max-width: 699px) {
+  .message--postcard {
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      'portrait from'
+      'text text'
+      'close close';
+    gap: 0.25rem 0.75rem;
+  }
+
+  .message--postcard .message__portrait {
+    width: 32px;
+    height: 32px;
+  }
+
+  .message--postcard .message__close {
+    justify-self: end;
+    margin-top: 0.25rem;
+  }
+}

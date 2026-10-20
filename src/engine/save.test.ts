@@ -5147,3 +5147,71 @@ describe('a tutorial (#236)', () => {
     )
   })
 })
+
+describe('Réal’s postcards (#239)', () => {
+  const SHOWN: GameState = {
+    ...FORTNIGHT,
+    postcardsShown: ['ville', 'embauche'],
+  }
+
+  it('gives back the postcards shown, in order', () => {
+    expect(JSON.parse(serialize(SHOWN)).postcardsShown).toEqual([
+      'ville',
+      'embauche',
+    ])
+    expect(reloaded(SHOWN)).toStrictEqual(SHOWN)
+  })
+
+  it('writes none for a game Réal has sent none, which loads without them', () => {
+    expect(JSON.parse(SAVED)).not.toHaveProperty('postcardsShown')
+    expect(deserialize(SAVED)).not.toHaveProperty('postcardsShown')
+  })
+
+  it('keeps them as days are played and decisions made', () => {
+    expect(tick(SHOWN).postcardsShown).toEqual(['ville', 'embauche'])
+    expect(playDay(SHOWN).postcardsShown).toEqual(['ville', 'embauche'])
+    expect(
+      applyDecision(SHOWN, {
+        kind: 'price',
+        product: 'cafe',
+        price: cents(LIMITS.priceCents.min),
+      }).postcardsShown,
+    ).toEqual(['ville', 'embauche'])
+  })
+
+  it('rejects a postcard shown twice', () => {
+    expectInvalid(
+      JSON.stringify({
+        ...(JSON.parse(SAVED) as Json),
+        postcardsShown: ['ville', 'ville'],
+      }),
+      ['the postcard ville came twice'],
+    )
+  })
+
+  it('rejects a postcard the game does not know', () => {
+    expectInvalid(
+      JSON.stringify({
+        ...(JSON.parse(SAVED) as Json),
+        postcardsShown: ['loterie'],
+      }),
+      ['postcardsShown'],
+    )
+  })
+
+  it('rejects postcards in a Défi', () => {
+    const defi = JSON.parse(
+      serialize(startChallenge('payeDans60Jours', SEED)),
+    ) as Json
+    expectInvalid(JSON.stringify({ ...defi, postcardsShown: ['rouge'] }), [
+      'has postcards',
+    ])
+  })
+
+  it('rejects postcards in a version 18 save', () => {
+    const save = JSON.parse(v18(FORTNIGHT)) as Json
+    expectInvalid(JSON.stringify({ ...save, postcardsShown: ['ville'] }), [
+      'postcardsShown',
+    ])
+  })
+})

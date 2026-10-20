@@ -1,5 +1,5 @@
 {
-  "_note": "The tutorial game (#236): seven protected days with Réal, the same seed at every difficulty. The croissants start low, 40 a day, so day 1 sells out around noon and « Hier » shows it on day 2; the café starts at 3,75 $, above what the habitués find fair, so some find it too expensive on day 2 and Réal points at it on day 3. The truck opens all seven days, since the game's day 0 is a Monday, which the content's starting decisions close. Each step says which gesture completes it, and what the UI's bubble shows (#238): Réal's `text`, its `touchText` where the screen cannot hover, the `button` of a step that waits for one, the `anchors` it points at, by their `data-tuto`, the first one the player can reach winning (none centres the bubble), the `tipAnchors` whose tooltip opening completes it, and the `fallback` it shows instead when the fact it points at did not happen. `coach` holds the bubble's other texts.",
+  "_note": "The tutorial game (#236): seven protected days with Réal, the same seed at every difficulty. The croissants start low, 40 a day, so day 1 sells out around noon and « Hier » shows it on day 2; the café starts at 3,75 $, above what the habitués find fair, so some find it too expensive on day 2 and Réal points at it on day 3. The truck opens all seven days, since the game's day 0 is a Monday, which the content's starting decisions close. Each step says which gesture completes it, and what the UI's bubble shows (#238): Réal's `text`, its `touchText` where the screen cannot hover, the `button` of a step that waits for one, the `anchors` it points at, by their `data-tuto`, the first one the player can reach winning (none centres the bubble), the `tipAnchors` whose tooltip opening completes it, and the `fallback` it shows instead when the fact it points at did not happen. `coach` holds the bubble's other texts. `postcards` holds Réal's postcards from Florida once the tutorial is over or skipped (#239), each once a game, in the order they come when several are due the same morning; each `target` is the dock's button it points at.",
   "seed": 20261020,
   "decisions": {
     "pricesCents": {
@@ -162,5 +162,46 @@
       "anyway": "Refaire quand même"
     },
     "resumeAfterPauseMs": 1500
+  },
+  "postcards": {
+    "from": "Réal, Fort Lauderdale",
+    "thanks": "Merci!",
+    "items": [
+      {
+        "id": "contrat",
+        "text": "Salut! Une épicerie veut tes croissants. Regarde ça dans Ville.",
+        "target": "ville"
+      },
+      {
+        "id": "rouge",
+        "text": "Ta caisse est dans le rouge. Regarde Finances.",
+        "target": "finances"
+      },
+      {
+        "id": "bilanMois",
+        "text": "Ton premier mois est fait. Regarde dans le Journal.",
+        "target": "journal"
+      },
+      {
+        "id": "amelioration",
+        "text": "T'as de quoi te gâter un peu. Regarde Améliorations.",
+        "target": "ameliorations"
+      },
+      {
+        "id": "ville",
+        "text": "La ville est à toi. Clique sur Ville.",
+        "target": "ville"
+      },
+      {
+        "id": "embauche",
+        "text": "Tu peux engager quelqu'un. Va voir dans Équipe.",
+        "target": "equipe"
+      },
+      {
+        "id": "fournil",
+        "text": "Le local du fournil est à louer. Fais-toi une idée dans Le camion.",
+        "target": "camion"
+      }
+    ]
   }
 }

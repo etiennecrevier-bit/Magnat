@@ -71,6 +71,7 @@ Every function that takes a state returns a new one and never mutates it. The fi
 | `dream` | `DreamState` | « Le rêve »: the rungs of the two ladders the player bought, and the close at which the owner became « Magnat » ("Le rêve" below). Empty in a Défi. |
 | `town` | `TownState` | The owner's trip in town on day `day`, if any, and the mill's discount waiting for the next restock ("Trips in town" below). No discount in a Défi, whose trips only a card books. |
 | `tutorial` | `TutorialState` (optional) | The tutorial's progress, in a game `startTutorial()` started ("The tutorial" below); absent in any other game, a Défi included. |
+| `postcardsShown` | `readonly PostcardId[]` (optional) | Réal's postcards the UI showed, in order, each once ("The tutorial" below); absent until the first, and always in a Défi. No rule reads it. |
 
 A decision never changes the day under way. The UI shows `day` as today and plays it once its real time is over, so the player's changes land in `pendingDecisions`, and `tick()` makes them the next day's `decisions`. `latestDecisions(state)` in `src/engine/decisions.ts` gives what the player last left: `pendingDecisions`, or else `decisions`.
 
@@ -766,6 +767,8 @@ The tutorial (#236) is a game of seven protected, scripted days, from `src/conte
 - `playDay()` ends no game.
 
 Everything else plays as in any game, the books, the sales and the lost sales included. On the morning of `endsDay`, `tick()` sets `done` and nothing else, so that morning goes through the usual chain. `tutorialFacts()` tells the UI whether the last day had a croissant shortage and customers who found the café too expensive (`DaySummary.pricedOut`).
+
+Once the tutorial is done or skipped, or from day 0 in a game without one, Réal sends postcards from Florida (#239): one sentence, from `postcards` in `tutorial.json`, the first time something opens to the player, pointing at the dock's button where it is. `src/ui/postcards.ts` decides when, reading what the panels already read, and the UI keeps the ids shown in `postcardsShown`, which the save holds and `checkPostcards()` checks (each once, none in a Défi). The engine only carries the field through its spreads.
 
 ## How journal entries are created
 
