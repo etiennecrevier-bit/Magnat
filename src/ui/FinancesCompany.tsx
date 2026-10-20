@@ -32,8 +32,8 @@ interface AccordionProps {
 }
 
 /**
- * An accordion: a heading whose button opens or closes it, « Détail
- * complet » at its right, then what it holds, drawn only while open.
+ * An accordion: a heading whose button opens or closes it, « Détail » at
+ * its right, then what it holds, drawn only while open.
  */
 function Accordion({
   title,
@@ -58,7 +58,7 @@ function Accordion({
             {open ? '▾' : '▸'}
           </span>
           <span id={titleId}>{title}</span>
-          <span className="finance-accordion__hint">Détail complet</span>
+          <span className="finance-accordion__hint">Détail</span>
         </button>
       </h3>
       <div

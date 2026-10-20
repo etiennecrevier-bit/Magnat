@@ -147,7 +147,7 @@ describe('SettingsPanelView', () => {
     const html = render({ cadence: 'month', everyWeek: true })
     expect(html).toContain(
       '<input type="checkbox" role="switch" checked=""/>Ouvrir le bilan chaque mois</label>' +
-        '<p class="settings-panel__hint">Les 4 premières semaines d&#x27;une partie, le bilan vient quand même chaque semaine.</p></fieldset>',
+        '<p class="settings-panel__hint">Le bilan reste hebdomadaire les 4 premières semaines.</p></fieldset>',
     )
     expect(render()).not.toContain('premières semaines')
   })

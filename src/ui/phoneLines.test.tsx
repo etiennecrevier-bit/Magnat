@@ -5,7 +5,8 @@ import { FinancesCompanyView } from './FinancesCompany.tsx'
 import { companyBoard } from './financesBoard.ts'
 import { SettingsPanelView } from './SettingsPanel.tsx'
 import { FIRST_FINANCE_SECTIONS } from './store.ts'
-import { placeLine, tripBoard } from './tripBoard.ts'
+import type { TripRefusal } from '../engine/places.ts'
+import { placeLine, refusalLine, tripBoard } from './tripBoard.ts'
 
 // On a phone, a control shows at most one line under or beside it, the
 // rest in its tooltip (#202 rule 3, #233). Vitest lays nothing out, so each
@@ -58,14 +59,28 @@ describe('one line on a phone (#233)', () => {
       .rows.map((row) => placeLine(row).fact?.text)
       .filter((text) => text !== undefined)
     expect(lines).toEqual(
-      expect.arrayContaining([
-        'Votre encaisse suffit, sans prêt',
-        "Rien à déposer pour l'instant",
-      ]),
+      expect.arrayContaining(['Votre encaisse suffit', 'Rien à déposer']),
     )
     const tooWide = lines.filter(
       (text) => width(text, GLYPH.statusLine) > ROOM.placeLine,
     )
+    expect(tooWide).toEqual([])
+  })
+
+  it('fits every reason a trip is refused beside « Y aller »', () => {
+    const refusals: TripRefusal[] = [
+      'defi',
+      'ended',
+      'played',
+      'booked',
+      'nothingToFile',
+      'came',
+      'mayNotLend',
+      'noNeed',
+    ]
+    const tooWide = refusals
+      .map((refusal) => refusalLine(GAME, refusal))
+      .filter((text) => width(text, GLYPH.statusLine) > ROOM.placeLine)
     expect(tooWide).toEqual([])
   })
 
