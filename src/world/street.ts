@@ -44,7 +44,10 @@ export interface StreetLoaders {
 /** Pixi's loaders, which the city shares. */
 export const PIXI_LOADERS: StreetLoaders = {
   loadFont: (asset) => Assets.load(asset),
-  loadTexture: (url) => Assets.load<Texture>(url),
+  loadTexture: (url, resolution) =>
+    Assets.load<Texture>(
+      resolution === undefined ? url : { src: url, data: { resolution } },
+    ),
 }
 
 /** How the street's customers look and move, and their luck: a test's own. */
@@ -91,7 +94,7 @@ export async function startStreet(
 ): Promise<() => void> {
   const [, textures] = await Promise.all([
     loadTitleFont(loaders.loadFont),
-    loadArt(manifest.pieces, loaders.loadTexture),
+    loadArt(manifest.pieces, loaders.loadTexture, manifest.artResolution),
   ])
   return setUpOrUndo((undo) => {
     const scene = buildScene(

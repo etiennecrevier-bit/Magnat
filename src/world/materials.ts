@@ -1,23 +1,15 @@
 import { BufferImageSource, Texture } from 'pixi.js'
 import type { Light } from '../content/assets.ts'
 import { facadeStops } from './light.ts'
-import {
-  brickPixels,
-  rampPixels,
-  speckledPixels,
-  spotPixels,
-  tilePixels,
-  type Pixels,
-} from './noise.ts'
+import { brickPixels, rampPixels, spotPixels, type Pixels } from './noise.ts'
 
 /**
  * The textures the placeholders are drawn with, made once when the street
  * starts and shared by every piece: never again on a frame.
  */
 export interface Materials {
+  /** The city's bricks. */
   readonly brick: Texture
-  readonly tile: Texture
-  readonly speckle: Texture
   /** Slate, solid at the top and clear at the foot: a ledge's shadow. */
   readonly ledge: Texture
   /** A soft slate spot: a contact shadow, once stretched. */
@@ -62,22 +54,6 @@ export function createMaterials(light: Light): Materials {
         toneOf(material.brick.tone),
       ),
       'brick',
-    ),
-    tile: make(
-      tilePixels(
-        material.tile,
-        material.lineOpacity,
-        toneOf(material.tile.tone),
-      ),
-      'tile',
-    ),
-    speckle: make(
-      speckledPixels(
-        material.speckle,
-        material.lineOpacity,
-        toneOf(material.speckle.tone),
-      ),
-      'speckle',
     ),
     ledge: make(
       rampPixels([

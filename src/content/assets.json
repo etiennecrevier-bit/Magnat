@@ -1,6 +1,7 @@
 {
-  "_note": "The world's pieces, drawn back to front in the order of `layers`, then in the order listed here. Positions and sizes are logical pixels of the 1440 × 900 design, which the world scales to the window. A piece with an `image` (a file path under src/world/art/) shows that image stretched to its size; without one, or when the image fails to load, the world draws a placeholder shape in its `color`, lit as `light` says. `shows` keeps a piece to some days: `open` or `closed` ones; those a change to the street from an event card is in effect, `{ \"event\": <the card's id> }`, except the changes its choices listed in an optional `except` made, such as the move away from the cones; those a product cannot be sold, `{ \"unavailable\": <the product> }`; or open ones it can be sold, `{ \"sells\": <the product> }`, such as the steam over the espresso machine. `text` is what a sign or a board says, in French: the road sign, the rival truck, the banner and the « Hors service » card each need one, and no other piece takes one. `fans` sets who fans themselves while it `shows`, as in a heat wave: each customer who comes then holds a fan of `color` with `chance`, which swings `swing` radians each way and back once every `periodMs` real milliseconds. `fill` makes the croissants follow the stock: `capacity` units fill the rack, shown in `steps` shelves. The `light.shadowLayer` holds no piece: the world draws the shadows on the ground there, under what stands on it.",
+  "_note": "The world's pieces, drawn back to front in the order of `layers`, then in the order listed here. Positions and sizes are logical pixels of the 1440 × 900 design, which the world scales to the window. A piece with an `image` (a file path under src/world/art/) shows that image stretched to its size; without one, or when the image fails to load, the world draws a placeholder shape in its `color`, lit as `light` says. An SVG image is drawn once, when it loads, at `artResolution` pixels per logical pixel of its own size. The street's scenery (`backdrop` pieces, #198) is art cut from the design reference, each piece at the reference's place: the five triplexes, with a mirrored copy of the first and copies of the fifth past the design's edges for wide windows; the sidewalk, the curb and the road in tiles one design wide; the sky's gradient stretched, its top colour above the design. A backdrop whose image fails to load is a flat shape in its `color`. `shows` keeps a piece to some days: `open` or `closed` ones; those a change to the street from an event card is in effect, `{ \"event\": <the card's id> }`, except the changes its choices listed in an optional `except` made, such as the move away from the cones; those a product cannot be sold, `{ \"unavailable\": <the product> }`; or open ones it can be sold, `{ \"sells\": <the product> }`, such as the steam over the espresso machine. `text` is what a sign or a board says, in French: the road sign, the rival truck, the banner and the « Hors service » card each need one, and no other piece takes one. `fans` sets who fans themselves while it `shows`, as in a heat wave: each customer who comes then holds a fan of `color` with `chance`, which swings `swing` radians each way and back once every `periodMs` real milliseconds. `fill` makes the croissants follow the stock: `capacity` units fill the rack, shown in `steps` shelves. The `light.shadowLayer` holds no piece: the world draws the shadows on the ground there, under what stands on it.",
   "designSize": { "width": 1440, "height": 900 },
+  "artResolution": 2,
   "palette": {
     "ink": "#2B2622",
     "cream": "#FFF7E8",
@@ -28,7 +29,7 @@
   "steamPuff": { "periodMs": 1600, "rise": 26 },
   "signText": { "fontSize": 30, "color": "cream", "paddingX": 18 },
   "light": {
-    "_note": "One sun from the upper left, in the morning: every shadow falls to the lower right (#89). Colours mix in 8-bit sRGB, each channel rounding half to even. A top face is its colour mixed with `topFace.light` of `sun`, with a rim mixed with `topFace.rim.light` of `sun`, `topFace.rim.width` deep, along its front edge. A lit side is its colour, a gradient from `litSide.topLight` of `sun` at the top to `litSide.footSlate` of `slate` at the foot. A shade side is its colour mixed with `shadeSide.slate` of `slate`. Cast shadows are `slate` shapes drawn in one layer, blurred by `castShadow.blur` pixels, then shown at `castShadow.opacity`, so overlaps never double; each reaches right by `reach` and down by `drop` of its caster's height. Contact shadows are soft ellipses `contactShadow.depth` as deep as they are wide, at their kind's opacity. Ledges throw `ledgeShadow.opacity` of slate on the wall under them, fading to nothing over their depth in pixels. Material lines (bricks, tiles, the asphalt's speckle, the leaves) show at `material.lineOpacity`, in `sun` or `slate`. Over the world only, never over the panels: the painted unevenness (smooth noise, `cells` blotches across) in soft light, the grain (noise `size` pixels square, tiled) in overlay, each around mid-grey by `amplitude` of the full range and seeded by `seed`; the vignette in `vignette.color` (a palette colour), 0 inside `clear` of the radius and `opacity` at the corners; and a warm glow of `sun` from the upper left corner, `opacity` there and gone by `reach` of the diagonal. The simple visual effects drop the unevenness, the grain and the blur.",
+    "_note": "One sun from the upper left, in the morning: every shadow falls to the lower right (#89). Colours mix in 8-bit sRGB, each channel rounding half to even. A top face is its colour mixed with `topFace.light` of `sun`, with a rim mixed with `topFace.rim.light` of `sun`, `topFace.rim.width` deep, along its front edge. A lit side is its colour, a gradient from `litSide.topLight` of `sun` at the top to `litSide.footSlate` of `slate` at the foot. A shade side is its colour mixed with `shadeSide.slate` of `slate`. Cast shadows are `slate` shapes drawn in one layer, blurred by `castShadow.blur` pixels, then shown at `castShadow.opacity`, so overlaps never double; each reaches right by `reach` and down by `drop` of its caster's height. Contact shadows are soft ellipses `contactShadow.depth` as deep as they are wide, at their kind's opacity. Ledges throw `ledgeShadow.opacity` of slate on the wall under them, fading to nothing over their depth in pixels. The city's bricks show their joints at `material.lineOpacity`, in `sun` or `slate`. Over the world only, never over the panels: the painted unevenness (smooth noise, `cells` blotches across) in soft light, the grain (noise `size` pixels square, tiled) in overlay, each around mid-grey by `amplitude` of the full range and seeded by `seed`; the vignette in `vignette.color` (a palette colour), 0 inside `clear` of the radius and `opacity` at the corners; and a warm glow of `sun` from the upper left corner, `opacity` there and gone by `reach` of the diagonal. The simple visual effects drop the unevenness, the grain and the blur.",
     "sun": "#FFF1CF",
     "slate": "#34404F",
     "topFace": { "light": 0.22, "rim": { "light": 0.5, "width": 2 } },
@@ -40,20 +41,12 @@
       "opacity": {
         "person": 0.5,
         "wheel": 0.55,
-        "tree": 0.45,
-        "lampPost": 0.5,
         "prop": 0.5
       }
     },
     "ledgeShadow": {
       "opacity": 0.55,
-      "depth": {
-        "cornice": 30,
-        "balcony": 26,
-        "sill": 20,
-        "awning": 28,
-        "curb": 14
-      }
+      "depth": { "sill": 20, "awning": 28 }
     },
     "material": {
       "lineOpacity": { "min": 0.12, "max": 0.2 },
@@ -63,15 +56,7 @@
         "line": 2,
         "tone": "slate",
         "seed": 89
-      },
-      "tile": {
-        "width": 96,
-        "height": 25,
-        "line": 2,
-        "tone": "slate",
-        "seed": 90
-      },
-      "speckle": { "size": 64, "count": 90, "tone": "sun", "seed": 91 }
+      }
     },
     "unevenness": {
       "blend": "soft-light",
@@ -100,7 +85,7 @@
   },
   "layers": [
     "sky",
-    "rooftops",
+    "far",
     "buildings",
     "sidewalk",
     "street",
@@ -110,6 +95,17 @@
   ],
   "pieces": [
     {
+      "id": "sky",
+      "kind": "backdrop",
+      "layer": "sky",
+      "x": -1440,
+      "y": -2700,
+      "width": 4320,
+      "height": 3600,
+      "color": "sky",
+      "image": "street/sky.svg"
+    },
+    {
       "id": "heat-sky",
       "kind": "heatSky",
       "layer": "sky",
@@ -118,127 +114,295 @@
       "width": 4320,
       "height": 3340,
       "color": "heatSky",
-      "shows": { "event": "canicule" }
+      "shows": {
+        "event": "canicule"
+      }
     },
     {
       "id": "cloud-1",
-      "kind": "cloud",
+      "kind": "backdrop",
       "layer": "sky",
-      "x": 120,
-      "y": 70,
-      "width": 220,
-      "height": 80,
-      "color": "cream"
+      "x": 130,
+      "y": 96,
+      "width": 212,
+      "height": 90,
+      "color": "cream",
+      "image": "street/cloud-1.svg"
     },
     {
       "id": "cloud-2",
-      "kind": "cloud",
+      "kind": "backdrop",
       "layer": "sky",
-      "x": 560,
-      "y": 36,
-      "width": 280,
-      "height": 92,
-      "color": "cream"
+      "x": 985,
+      "y": 50,
+      "width": 262,
+      "height": 112,
+      "color": "cream",
+      "image": "street/cloud-2.svg"
     },
     {
       "id": "cloud-3",
-      "kind": "cloud",
+      "kind": "backdrop",
       "layer": "sky",
-      "x": 1090,
-      "y": 96,
-      "width": 240,
-      "height": 80,
-      "color": "cream"
+      "x": 630,
+      "y": 58,
+      "width": 152,
+      "height": 65,
+      "color": "cream",
+      "image": "street/cloud-3.svg"
     },
     {
-      "id": "rooftops",
-      "kind": "rooftops",
-      "layer": "rooftops",
-      "x": -1440,
-      "y": 110,
-      "width": 4320,
-      "height": 530,
-      "color": "haze"
+      "id": "far",
+      "kind": "backdrop",
+      "layer": "far",
+      "x": 520,
+      "y": 128,
+      "width": 520,
+      "height": 172,
+      "color": "haze",
+      "image": "street/far.svg"
+    },
+    {
+      "id": "triplex-5-left",
+      "kind": "backdrop",
+      "layer": "buildings",
+      "x": -539,
+      "y": 214,
+      "width": 228,
+      "height": 432,
+      "color": "brickRed",
+      "image": "street/triplex-5.svg"
+    },
+    {
+      "id": "triplex-1-mirrored",
+      "kind": "backdrop",
+      "layer": "buildings",
+      "x": -319,
+      "y": 224,
+      "width": 318,
+      "height": 422,
+      "color": "brickRed",
+      "image": "street/triplex-1-mirrored.svg"
     },
     {
       "id": "triplex-1",
-      "kind": "triplex",
+      "kind": "backdrop",
       "layer": "buildings",
-      "x": 0,
-      "y": 230,
-      "width": 288,
-      "height": 410,
-      "color": "brickRed"
+      "x": -9,
+      "y": 224,
+      "width": 318,
+      "height": 422,
+      "color": "brickRed",
+      "image": "street/triplex-1.svg"
     },
     {
       "id": "triplex-2",
-      "kind": "triplex",
+      "kind": "backdrop",
       "layer": "buildings",
-      "x": 288,
-      "y": 230,
-      "width": 288,
-      "height": 410,
-      "color": "brickLight"
+      "x": 297,
+      "y": 184,
+      "width": 312,
+      "height": 462,
+      "color": "brickDark",
+      "image": "street/triplex-2.svg"
     },
     {
       "id": "triplex-3",
-      "kind": "triplex",
+      "kind": "backdrop",
       "layer": "buildings",
-      "x": 576,
-      "y": 230,
-      "width": 288,
-      "height": 410,
-      "color": "brickDark"
+      "x": 601,
+      "y": 244,
+      "width": 338,
+      "height": 402,
+      "color": "brickLight",
+      "image": "street/triplex-3.svg"
     },
     {
       "id": "triplex-4",
-      "kind": "triplex",
+      "kind": "backdrop",
       "layer": "buildings",
-      "x": 864,
-      "y": 230,
-      "width": 288,
-      "height": 410,
-      "color": "brickRed"
+      "x": 931,
+      "y": 174,
+      "width": 308,
+      "height": 472,
+      "color": "brickDark",
+      "image": "street/triplex-4.svg"
     },
     {
       "id": "triplex-5",
-      "kind": "triplex",
+      "kind": "backdrop",
       "layer": "buildings",
-      "x": 1152,
-      "y": 230,
-      "width": 288,
-      "height": 410,
-      "color": "brickLight"
+      "x": 1231,
+      "y": 214,
+      "width": 228,
+      "height": 432,
+      "color": "brickRed",
+      "image": "street/triplex-5.svg"
+    },
+    {
+      "id": "triplex-5-right-1",
+      "kind": "backdrop",
+      "layer": "buildings",
+      "x": 1451,
+      "y": 214,
+      "width": 228,
+      "height": 432,
+      "color": "brickRed",
+      "image": "street/triplex-5.svg"
+    },
+    {
+      "id": "triplex-5-right-2",
+      "kind": "backdrop",
+      "layer": "buildings",
+      "x": 1671,
+      "y": 214,
+      "width": 228,
+      "height": 432,
+      "color": "brickRed",
+      "image": "street/triplex-5.svg"
+    },
+    {
+      "id": "depanneur",
+      "kind": "backdrop",
+      "layer": "buildings",
+      "x": 960,
+      "y": 462,
+      "width": 254,
+      "height": 146,
+      "color": "playerBlue",
+      "image": "street/depanneur.svg"
+    },
+    {
+      "id": "sidewalk-left",
+      "kind": "backdrop",
+      "layer": "sidewalk",
+      "x": -1440,
+      "y": 646,
+      "width": 1440,
+      "height": 56,
+      "color": "sidewalk",
+      "image": "street/sidewalk.svg"
     },
     {
       "id": "sidewalk",
-      "kind": "sidewalk",
+      "kind": "backdrop",
       "layer": "sidewalk",
-      "x": -1440,
-      "y": 640,
-      "width": 4320,
-      "height": 60,
-      "color": "sidewalk"
+      "x": 0,
+      "y": 646,
+      "width": 1440,
+      "height": 56,
+      "color": "sidewalk",
+      "image": "street/sidewalk.svg"
     },
     {
-      "id": "tree",
-      "kind": "tree",
-      "layer": "furniture",
-      "x": 300,
-      "y": 420,
-      "width": 180,
-      "height": 262,
-      "color": "foliage"
+      "id": "sidewalk-right",
+      "kind": "backdrop",
+      "layer": "sidewalk",
+      "x": 1440,
+      "y": 646,
+      "width": 1440,
+      "height": 56,
+      "color": "sidewalk",
+      "image": "street/sidewalk.svg"
+    },
+    {
+      "id": "curb-left",
+      "kind": "backdrop",
+      "layer": "sidewalk",
+      "x": -1440,
+      "y": 700,
+      "width": 1440,
+      "height": 16,
+      "color": "sidewalk",
+      "image": "street/curb.svg"
+    },
+    {
+      "id": "curb",
+      "kind": "backdrop",
+      "layer": "sidewalk",
+      "x": 0,
+      "y": 700,
+      "width": 1440,
+      "height": 16,
+      "color": "sidewalk",
+      "image": "street/curb.svg"
+    },
+    {
+      "id": "curb-right",
+      "kind": "backdrop",
+      "layer": "sidewalk",
+      "x": 1440,
+      "y": 700,
+      "width": 1440,
+      "height": 16,
+      "color": "sidewalk",
+      "image": "street/curb.svg"
+    },
+    {
+      "id": "road-left",
+      "kind": "backdrop",
+      "layer": "street",
+      "x": -1440,
+      "y": 716,
+      "width": 1440,
+      "height": 184,
+      "color": "asphalt",
+      "image": "street/road.svg"
+    },
+    {
+      "id": "road",
+      "kind": "backdrop",
+      "layer": "street",
+      "x": 0,
+      "y": 716,
+      "width": 1440,
+      "height": 184,
+      "color": "asphalt",
+      "image": "street/road.svg"
+    },
+    {
+      "id": "road-right",
+      "kind": "backdrop",
+      "layer": "street",
+      "x": 1440,
+      "y": 716,
+      "width": 1440,
+      "height": 184,
+      "color": "asphalt",
+      "image": "street/road.svg"
     },
     {
       "id": "lamp-post",
-      "kind": "lampPost",
+      "kind": "backdrop",
       "layer": "furniture",
-      "x": 690,
-      "y": 380,
-      "width": 44,
-      "height": 302,
-      "color": "ink"
+      "x": 286,
+      "y": 434,
+      "width": 68,
+      "height": 231,
+      "color": "ink",
+      "image": "street/lamp-post.svg"
+    },
+    {
+      "id": "tree-1",
+      "kind": "backdrop",
+      "layer": "furniture",
+      "x": -10,
+      "y": 319,
+      "width": 268,
+      "height": 348,
+      "color": "foliage",
+      "image": "street/tree-1.svg"
+    },
+    {
+      "id": "tree-2",
+      "kind": "backdrop",
+      "layer": "furniture",
+      "x": 1150,
+      "y": 308,
+      "width": 274,
+      "height": 359,
+      "color": "foliage",
+      "image": "street/tree-2.svg"
     },
     {
       "id": "rival-truck",
@@ -250,7 +414,9 @@
       "height": 380,
       "color": "foliage",
       "text": "La Patate Pressée",
-      "shows": { "event": "concurrence" }
+      "shows": {
+        "event": "concurrence"
+      }
     },
     {
       "id": "bunting",
@@ -261,19 +427,23 @@
       "width": 4320,
       "height": 70,
       "color": "dangerRed",
-      "shows": { "event": "festival" }
+      "shows": {
+        "event": "festival"
+      }
     },
     {
       "id": "festival-banner",
       "kind": "banner",
       "layer": "furniture",
-      "x": 880,
-      "y": 282,
-      "width": 400,
-      "height": 60,
+      "x": 600,
+      "y": 190,
+      "width": 340,
+      "height": 52,
       "color": "cream",
       "text": "Festival du Pas Pire",
-      "shows": { "event": "festival" }
+      "shows": {
+        "event": "festival"
+      }
     },
     {
       "id": "cones-left",
@@ -284,7 +454,10 @@
       "width": 400,
       "height": 48,
       "color": "coneOrange",
-      "shows": { "event": "conesOrange", "except": ["changerDeCoin"] }
+      "shows": {
+        "event": "conesOrange",
+        "except": ["changerDeCoin"]
+      }
     },
     {
       "id": "cones-right",
@@ -295,7 +468,10 @@
       "width": 320,
       "height": 48,
       "color": "coneOrange",
-      "shows": { "event": "conesOrange", "except": ["changerDeCoin"] }
+      "shows": {
+        "event": "conesOrange",
+        "except": ["changerDeCoin"]
+      }
     },
     {
       "id": "road-sign",
@@ -307,27 +483,10 @@
       "height": 110,
       "color": "coneOrange",
       "text": "Rue barrée",
-      "shows": { "event": "conesOrange", "except": ["changerDeCoin"] }
-    },
-    {
-      "id": "street",
-      "kind": "street",
-      "layer": "street",
-      "x": -1440,
-      "y": 700,
-      "width": 4320,
-      "height": 200,
-      "color": "asphalt"
-    },
-    {
-      "id": "lane-markings",
-      "kind": "laneMarkings",
-      "layer": "street",
-      "x": -1440,
-      "y": 856,
-      "width": 4320,
-      "height": 8,
-      "color": "cream"
+      "shows": {
+        "event": "conesOrange",
+        "except": ["changerDeCoin"]
+      }
     },
     {
       "id": "truck",

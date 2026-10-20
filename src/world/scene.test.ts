@@ -4,7 +4,6 @@ import {
   Sprite,
   Text,
   Texture,
-  TilingSprite,
   type Filter,
 } from 'pixi.js'
 import { describe, expect, it, vi } from 'vitest'
@@ -13,6 +12,7 @@ import type { StreetChange } from '../content/schema.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
 import type { StreetModifier } from '../engine/types.ts'
 import { ART_URLS, loadArt } from './art.ts'
+import { fitScene } from './layout.ts'
 import { tonesOf } from './light.ts'
 import { ASSETS } from './manifest.ts'
 import { SKY_COLOR } from './mountWorld.ts'
@@ -28,13 +28,14 @@ const OPEN: TruckView = {
 }
 const CLOSED: TruckView = { ...OPEN, open: false, croissants: 0 }
 
-/** The shipped manifest with `images` given to the pieces they name. */
+/** The shipped manifest with only `images`, given to the pieces they name. */
 function withImages(images: Record<string, string>): AssetManifest {
   return {
     ...ASSETS,
-    pieces: ASSETS.pieces.map((piece) =>
-      piece.id in images ? { ...piece, image: images[piece.id] } : piece,
-    ),
+    pieces: ASSETS.pieces.map((piece) => ({
+      ...piece,
+      image: images[piece.id],
+    })),
   }
 }
 
@@ -138,7 +139,10 @@ describe('buildScene', () => {
     const manifest = withImages({ truck: 'dummy.png' })
     const loadTexture = vi.fn(async () => texture)
 
-    const scene = build(manifest, await loadArt(manifest.pieces, loadTexture))
+    const scene = build(
+      manifest,
+      await loadArt(manifest.pieces, loadTexture, manifest.artResolution),
+    )
 
     expect(loadTexture).toHaveBeenCalledExactlyOnceWith(
       ART_URLS.get('dummy.png'),
@@ -178,67 +182,25 @@ describe('the light on the placeholders', () => {
   it('lights each surface in the tones of its colour', () => {
     const scene = build(ASSETS)
     const { palette, light } = ASSETS
-    // The street is a top face: asphalt mixed with the sun, as the rule
-    // sheet gives it.
-    expect(colours(art(scene, 'street'), 'fill')).toContain(hex('#80796E'))
     const truck = tonesOf(palette.mustard, light)
     expect(colours(art(scene, 'truck'), 'fill')).toEqual(
       expect.arrayContaining([truck.top, truck.lit, truck.shade].map(hex)),
     )
-    const leaves = tonesOf(palette.foliage, light)
-    expect(colours(art(scene, 'tree'), 'fill')).toEqual(
-      expect.arrayContaining([leaves.top, leaves.lit, leaves.shade].map(hex)),
+    // The counter's steel top is a face looking up, mixed with the sun.
+    expect(colours(art(scene, 'counter'), 'fill')).toContain(
+      hex(tonesOf(palette.steel, light).top),
     )
   })
 
-  it('grades each facade from light at the top to slate at the foot, and lays bricks on it', () => {
-    const scene = build(ASSETS)
-    const facade = (id: string) =>
-      art(scene, id).getChildByLabel('facade') as Sprite
-    const bricks = (id: string) =>
-      art(scene, id).getChildByLabel('bricks') as TilingSprite
-    const triplexes = ASSETS.pieces.filter((p) => p.kind === 'triplex')
-    for (const piece of triplexes) {
-      expect(facade(piece.id).width).toBeCloseTo(piece.width)
-      expect(facade(piece.id).height).toBeCloseTo(piece.height)
-      expect(facade(piece.id).texture.label).toBe(
-        `facade:${ASSETS.palette[piece.color]}`,
-      )
-      expect(bricks(piece.id)).toBeInstanceOf(TilingSprite)
-    }
-    // Each texture is made once and shared: one per facade colour, one for
-    // all the bricks.
-    expect(facade('triplex-1').texture).toBe(facade('triplex-4').texture)
-    expect(facade('triplex-1').texture).not.toBe(facade('triplex-2').texture)
-    expect(
-      new Set(triplexes.map((piece) => bricks(piece.id).texture)).size,
-    ).toBe(1)
-  })
-
-  it('tiles the sidewalk and speckles the street', () => {
-    const scene = build(ASSETS)
-    expect(art(scene, 'sidewalk').getChildByLabel('tiles')).toBeInstanceOf(
-      TilingSprite,
-    )
-    expect(art(scene, 'street').getChildByLabel('speckle')).toBeInstanceOf(
-      TilingSprite,
-    )
-  })
-
-  it('throws short shadows under cornices, balconies, sills and the awning', () => {
+  it("throws short shadows under the counter's top and the awning", () => {
     const scene = build(ASSETS)
     const { opacity, depth } = ASSETS.light.ledgeShadow
     const ledges = (id: string, kind: string) =>
       art(scene, id).children.filter((c) => c.label === `ledgeShadow:${kind}`)
-    expect(ledges('triplex-1', 'cornice')).toHaveLength(1)
-    expect(ledges('triplex-1', 'balcony')).toHaveLength(2)
-    // A hood over each of the six windows, and a sill under each.
-    expect(ledges('triplex-1', 'sill')).toHaveLength(12)
+    expect(ledges('counter', 'sill')).toHaveLength(1)
     expect(ledges('awning', 'awning')).toHaveLength(1)
     for (const [id, kind] of [
-      ['triplex-1', 'cornice'],
-      ['triplex-1', 'balcony'],
-      ['triplex-1', 'sill'],
+      ['counter', 'sill'],
       ['awning', 'awning'],
     ] as const) {
       for (const shadow of ledges(id, kind)) {
@@ -256,8 +218,6 @@ describe('the shadows on the ground', () => {
   })
 
   it.each([
-    ['tree', 'tree', 1],
-    ['lamp-post', 'lampPost', 1],
     ['truck', 'wheel', 2],
     ['rival-truck', 'wheel', 2],
   ] as const)(
@@ -289,13 +249,12 @@ describe('the shadows on the ground', () => {
   )
 
   it('leaves the shading and the shadows of a piece with an image to its art', async () => {
-    const manifest = withImages({ tree: 'dummy.png', truck: 'dummy.png' })
+    const manifest = withImages({ truck: 'dummy.png' })
     const textures = new Map([['dummy.png', new Texture()]])
     const scene = build(manifest, textures)
-    expect(art(scene, 'tree')).toBeInstanceOf(Sprite)
-    expect(shadowsOf(scene, 'tree')).toEqual([])
+    expect(art(scene, 'truck')).toBeInstanceOf(Sprite)
     expect(shadowsOf(scene, 'truck')).toEqual([])
-    expect(shadowsOf(scene, 'lamp-post').length).toBeGreaterThan(0)
+    expect(shadowsOf(scene, 'rival-truck').length).toBeGreaterThan(0)
   })
 
   it('blurs the cast shadows and fades them as one, without the blur when simple', () => {
@@ -369,12 +328,12 @@ describe('the shadows on the ground', () => {
 
   it('frees the textures it made when it is taken down', () => {
     const scene = build(ASSETS)
-    const bricks = (
-      art(scene, 'triplex-1').getChildByLabel('bricks') as TilingSprite
+    const ledge = (
+      art(scene, 'awning').getChildByLabel('ledgeShadow:awning') as Sprite
     ).texture
     scene.destroy()
     expect(scene.root.destroyed).toBe(true)
-    expect(bricks.destroyed).toBe(true)
+    expect(ledge.destroyed).toBe(true)
   })
 })
 
@@ -654,7 +613,7 @@ describe('Scene.update: the events on the street', () => {
   it("keeps the street's other shadows whatever happens", () => {
     const scene = build(ASSETS)
     scene.update(OPEN)
-    for (const id of ['tree', 'lamp-post', 'truck']) {
+    for (const id of ['truck']) {
       for (const shadow of shadowsOf(scene, id)) {
         expect(shadow.visible, id).toBe(true)
       }
@@ -717,7 +676,11 @@ describe('Scene.update: the events on the street', () => {
   it('warms the sky of a heat wave behind the clouds', () => {
     const scene = build(ASSETS)
     const sky = scene.root.getChildByLabel('layer:sky')!
-    expect(sky.children[0]?.label).toBe('heat-sky')
+    expect(sky.children.map((piece) => piece.label).slice(0, 3)).toEqual([
+      'sky',
+      'heat-sky',
+      'cloud-1',
+    ])
     expect(colours(art(scene, 'heat-sky'), 'fill')).toContain(
       hex(ASSETS.palette.heatSky),
     )
@@ -746,5 +709,196 @@ describe('Scene.update: the events on the street', () => {
     expect(node(scene, 'awning').visible).toBe(false)
     expect(node(scene, 'steam').visible).toBe(false)
     expect(node(scene, 'croissants').children[0]?.visible).toBe(false)
+  })
+})
+
+// The street's art, cut from the design reference (src/world/art/street/,
+// #198): the files as text, by their path under src/world/art/.
+const SVGS: Record<string, string> = Object.fromEntries(
+  Object.entries(
+    import.meta.glob<string>('./art/**/*.svg', {
+      eager: true,
+      query: '?raw',
+      import: 'default',
+    }),
+  ).map(([file, text]) => [file.slice('./art/'.length), text]),
+)
+
+/** An SVG's own size and its viewBox. */
+function svgBox(text: string) {
+  const head = /<svg\b[^>]*>/.exec(text)![0]
+  const attr = (name: string) =>
+    new RegExp(`\\s${name}="([^"]+)"`).exec(head)![1]!
+  const [x, y, width, height] = attr('viewBox').split(/\s+/).map(Number)
+  return {
+    width: Number(attr('width')),
+    height: Number(attr('height')),
+    view: { x: x!, y: y!, width: width!, height: height! },
+  }
+}
+
+/** The street's pieces drawn by an image, with the image's file. */
+const ART = ASSETS.pieces.flatMap((piece) =>
+  piece.image === undefined ? [] : [{ piece, image: piece.image }],
+)
+
+/** Where `id` is drawn, back to front: its layer, then its place in it. */
+function drawOrder(id: string): number {
+  const piece = ASSETS.pieces.find((p) => p.id === id)!
+  const layer = ASSETS.pieces.filter((p) => p.layer === piece.layer)
+  return ASSETS.layers.indexOf(piece.layer) * 1000 + layer.indexOf(piece)
+}
+
+describe("the street's art", () => {
+  it('finds a file for every image the manifest names', () => {
+    expect(ART.length).toBeGreaterThan(0)
+    for (const { piece, image } of ART) {
+      expect(ART_URLS.has(image), `${piece.id}: ${image}`).toBe(true)
+    }
+  })
+
+  it("draws the pieces in the target's order, the heat wave's sky behind the clouds", () => {
+    const order = [
+      'sky',
+      'heat-sky',
+      'cloud-1',
+      'cloud-2',
+      'cloud-3',
+      'far',
+      'triplex-5-left',
+      'triplex-1-mirrored',
+      'triplex-1',
+      'triplex-2',
+      'triplex-3',
+      'triplex-4',
+      'triplex-5',
+      'triplex-5-right-1',
+      'triplex-5-right-2',
+      'depanneur',
+      'sidewalk-left',
+      'sidewalk',
+      'sidewalk-right',
+      'curb-left',
+      'curb',
+      'curb-right',
+      'road-left',
+      'road',
+      'road-right',
+      'lamp-post',
+      'tree-1',
+      'tree-2',
+    ]
+    const drawn = order.map(drawOrder)
+    expect(drawn).toEqual([...drawn].sort((a, b) => a - b))
+    // Every piece drawn by an image is in that list.
+    expect(ART.map(({ piece }) => piece.id).sort()).toEqual(
+      order.filter((id) => id !== 'heat-sky').sort(),
+    )
+    // The art stays behind the truck and what the events put on the street.
+    const last = Math.max(...drawn)
+    for (const piece of ASSETS.pieces.filter((p) => p.image === undefined)) {
+      if (piece.id === 'heat-sky') continue
+      expect(drawOrder(piece.id), piece.id).toBeGreaterThan(last)
+    }
+  })
+
+  it("stands each piece at the target's place, at its own proportions", () => {
+    const { width: designWidth } = ASSETS.designSize
+    for (const { piece, image } of ART) {
+      const { view } = svgBox(SVGS[image]!)
+      const named = image === `street/${piece.id}.svg`
+      if (image === 'street/sky.svg') {
+        // The gradient stretches across, its top colour above the design.
+        expect(view).toEqual({
+          x: 0,
+          y: piece.y,
+          width: designWidth,
+          height: piece.height,
+        })
+        continue
+      }
+      // Never stretched: the piece is the size of what the file draws.
+      expect([piece.width, piece.height], piece.id).toEqual([
+        view.width,
+        view.height,
+      ])
+      if (named) {
+        // A piece named like its file is where the target draws it.
+        expect([piece.x, piece.y], piece.id).toEqual([view.x, view.y])
+      } else {
+        expect(piece.y, piece.id).toBe(view.y)
+      }
+    }
+    // The ground tiles one design wide, back to back.
+    for (const name of ['sidewalk', 'curb', 'road']) {
+      const tiles = ASSETS.pieces.filter(
+        (p) => p.image === `street/${name}.svg`,
+      )
+      expect(tiles.map((p) => p.x)).toEqual([-designWidth, 0, designWidth])
+    }
+  })
+
+  it('draws each image at the art resolution within 4096 pixels a side', () => {
+    for (const [file, text] of Object.entries(SVGS)) {
+      const { width, height } = svgBox(text)
+      expect(width * ASSETS.artResolution, file).toBeLessThanOrEqual(4096)
+      expect(height * ASSETS.artResolution, file).toBeLessThanOrEqual(4096)
+    }
+  })
+
+  it.each([
+    [1440, 900],
+    [1920, 1080],
+    [2560, 1080],
+    [390, 844],
+  ])('leaves no gap in a %i × %i window', (viewWidth, viewHeight) => {
+    const { width, height } = ASSETS.designSize
+    const fit = fitScene(viewWidth, viewHeight, width, height)
+    const shown = {
+      left: -fit.x / fit.scale,
+      right: (viewWidth - fit.x) / fit.scale,
+      top: -fit.y / fit.scale,
+    }
+    // Whether `pieces`, side by side, run unbroken from left to right.
+    const across = (pieces: readonly { x: number; width: number }[]) => {
+      let reach = shown.left
+      for (const p of [...pieces].sort((a, b) => a.x - b.x)) {
+        if (p.x > reach) return false
+        reach = Math.max(reach, p.x + p.width)
+      }
+      return reach >= shown.right
+    }
+    const art = (file: string) =>
+      ART.filter(({ image }) => image.startsWith(`street/${file}`)).map(
+        ({ piece }) => piece,
+      )
+    for (const row of ['triplex', 'sidewalk', 'curb', 'road', 'sky']) {
+      expect(across(art(row)), row).toBe(true)
+    }
+    const [sky] = art('sky')
+    expect(sky!.y).toBeLessThanOrEqual(shown.top)
+  })
+
+  it('draws a flat shape in its colour where an image fails to load', () => {
+    const scene = build(ASSETS)
+    const sky = ASSETS.pieces.find((p) => p.id === 'sky')!
+    const drawn = art(scene, 'sky')
+    expect(drawn.label).toBe('placeholder')
+    expect(colours(drawn, 'fill')).toEqual([hex(ASSETS.palette[sky.color])])
+    expect(drawn.getBounds()).toMatchObject({
+      width: sky.width,
+      height: sky.height,
+    })
+    expect(shadowsOf(scene, 'tree-1')).toEqual([])
+  })
+
+  it('draws a piece by its image once it loads', () => {
+    const texture = new Texture()
+    const scene = build(ASSETS, new Map([['street/triplex-5.svg', texture]]))
+    for (const id of ['triplex-5', 'triplex-5-left', 'triplex-5-right-2']) {
+      const drawn = art(scene, id) as Sprite
+      expect(drawn.texture, id).toBe(texture)
+    }
+    expect(art(scene, 'triplex-4').label).toBe('placeholder')
   })
 })

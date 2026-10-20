@@ -1,16 +1,19 @@
-import { Texture, loadTextures } from 'pixi.js'
+import { Texture, loadSvg, loadTextures } from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AssetManifest } from '../content/assets.ts'
 import { ART_URLS, loadArt } from './art.ts'
 import { ASSETS } from './manifest.ts'
 
-/** The shipped manifest with `images` given to the pieces they name. */
+const RESOLUTION = ASSETS.artResolution
+
+/** The shipped manifest with only `images`, given to the pieces they name. */
 function withImages(images: Record<string, string>): AssetManifest {
   return {
     ...ASSETS,
-    pieces: ASSETS.pieces.map((piece) =>
-      piece.id in images ? { ...piece, image: images[piece.id] } : piece,
-    ),
+    pieces: ASSETS.pieces.map((piece) => ({
+      ...piece,
+      image: images[piece.id],
+    })),
   }
 }
 
@@ -20,9 +23,10 @@ describe('ART_URLS', () => {
     expect(url).toBe('/src/world/art/dummy.png')
   })
 
-  it('gives URLs Pixi loads as textures', () => {
-    for (const url of ART_URLS.values()) {
-      expect(loadTextures.test?.(url), url).toBe(true)
+  it('gives URLs Pixi loads as textures, SVG ones through its SVG loader', () => {
+    for (const [image, url] of ART_URLS) {
+      const parser = image.endsWith('.svg') ? loadSvg : loadTextures
+      expect(parser.test?.(url), url).toBe(true)
     }
   })
 })
@@ -32,10 +36,33 @@ describe('loadArt', () => {
     vi.restoreAllMocks()
   })
 
-  it('loads nothing for the shipped manifest, which is all placeholders', async () => {
+  it("loads each of the shipped street's images once, the SVGs at the art's resolution", async () => {
     const loadTexture = vi.fn(async () => Texture.EMPTY)
-    expect(await loadArt(ASSETS.pieces, loadTexture)).toEqual(new Map())
-    expect(loadTexture).not.toHaveBeenCalled()
+    const images = new Set(ASSETS.pieces.flatMap((p) => p.image ?? []))
+    expect(images.size).toBeGreaterThan(0)
+
+    const textures = await loadArt(ASSETS.pieces, loadTexture, RESOLUTION)
+
+    expect([...textures.keys()].sort()).toEqual([...images].sort())
+    expect(loadTexture).toHaveBeenCalledTimes(images.size)
+    for (const image of images) {
+      expect(loadTexture).toHaveBeenCalledWith(ART_URLS.get(image), RESOLUTION)
+    }
+  })
+
+  it('loads other images at their own pixels', async () => {
+    const loadTexture = vi.fn(async () => Texture.EMPTY)
+    const manifest = withImages({ truck: 'dummy.png', sky: 'street/sky.svg' })
+
+    await loadArt(manifest.pieces, loadTexture, RESOLUTION)
+
+    expect(loadTexture.mock.calls).toEqual(
+      expect.arrayContaining([
+        [ART_URLS.get('dummy.png')],
+        [ART_URLS.get('street/sky.svg'), RESOLUTION],
+      ]),
+    )
+    expect(loadTexture).toHaveBeenCalledTimes(2)
   })
 
   it('loads each image named in the manifest once, from its URL', async () => {
@@ -43,7 +70,7 @@ describe('loadArt', () => {
     const loadTexture = vi.fn(async () => texture)
     const manifest = withImages({ truck: 'dummy.png', counter: 'dummy.png' })
 
-    const textures = await loadArt(manifest.pieces, loadTexture)
+    const textures = await loadArt(manifest.pieces, loadTexture, RESOLUTION)
 
     expect(loadTexture).toHaveBeenCalledExactlyOnceWith(
       ART_URLS.get('dummy.png'),
@@ -58,6 +85,7 @@ describe('loadArt', () => {
     const textures = await loadArt(
       withImages({ truck: 'truck/body.png' }).pieces,
       loadTexture,
+      RESOLUTION,
     )
 
     expect(textures.size).toBe(0)
@@ -75,6 +103,7 @@ describe('loadArt', () => {
     const textures = await loadArt(
       withImages({ truck: 'dummy.png' }).pieces,
       loadTexture,
+      RESOLUTION,
     )
 
     expect(textures.size).toBe(0)
@@ -89,6 +118,7 @@ describe('loadArt', () => {
     await loadArt(
       withImages({ truck: 'truck.webp' }).pieces,
       loadTexture,
+      RESOLUTION,
       new Map([['truck.webp', '/assets/truck-1a2b3c.webp']]),
     )
     expect(loadTexture).toHaveBeenCalledExactlyOnceWith(

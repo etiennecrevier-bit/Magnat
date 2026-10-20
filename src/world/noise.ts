@@ -249,37 +249,6 @@ export function brickPixels(
   return jointPixels(brick, 2, 2, true, lineOpacity, color)
 }
 
-/** Sidewalk slabs: four across, two rows down. */
-export function tilePixels(
-  tile: Light['material']['tile'],
-  lineOpacity: Light['material']['lineOpacity'],
-  color: string,
-): Pixels {
-  return jointPixels(tile, 4, 2, false, lineOpacity, color)
-}
-
-/** The asphalt's speckle: `count` specks in a clear tile, one or two pixels. */
-export function speckledPixels(
-  speckle: Light['material']['speckle'],
-  lineOpacity: Light['material']['lineOpacity'],
-  color: string,
-): Pixels {
-  const random = seeded(speckle.seed)
-  const rgb = hexToRgb(color)
-  const { size } = speckle
-  const pixels = blank(size, size)
-  for (let i = 0; i < speckle.count; i += 1) {
-    const x = Math.floor(random() * size)
-    const y = Math.floor(random() * size)
-    const big = random() < 0.3
-    const alpha =
-      lineOpacity.min + random() * (lineOpacity.max - lineOpacity.min)
-    put(pixels, x, y, rgb, alpha)
-    if (big) put(pixels, (x + 1) % size, y, rgb, alpha)
-  }
-  return pixels
-}
-
 /**
  * A column of pixels `height` tall going through `stops` evenly, top to
  * foot, each a colour and its alpha: a gradient to stretch.
