@@ -254,6 +254,54 @@ const pieceSchema = z.strictObject({
 
 export type Piece = z.output<typeof pieceSchema>
 
+// The street's hotspots (#208): things in the street the player clicks to
+// open their panel, as the dock does.
+
+/**
+ * What a spot opens: the dock's button `dock` (the ids of src/ui/dock.ts,
+ * which content does not import), on « Le camion »'s `tab` if given.
+ */
+const spotOpensSchema = z.union([
+  z.strictObject({
+    dock: z.literal('camion'),
+    tab: z.enum(['menu', 'stocks', 'schedule']).optional(),
+  }),
+  z.strictObject({ dock: z.enum(['equipe', 'ville']) }),
+])
+
+export type SpotOpens = z.output<typeof spotOpensSchema>
+
+/** The words of a spot's label, in French, without spaces at their ends. */
+const spotText = z
+  .string()
+  .regex(/^\S(.*\S)?$/, 'expected text without spaces at its ends')
+
+const spotSchema = z
+  .strictObject({
+    id: z.string().min(1),
+    /** The box the player clicks, in logical pixels of the design. */
+    x: z.number(),
+    y: z.number(),
+    width: size,
+    height: size,
+    opens: spotOpensSchema,
+    /** The label's first word, such as « Menu ». */
+    label: spotText,
+    /** What follows it, muted, such as « prix du jour ». */
+    detail: spotText,
+    /** Puts the label under the box, not over it. */
+    labelBelow: z.boolean().optional(),
+    /** The piece the spot shows and hides with, by its id. */
+    piece: z.string().min(1).optional(),
+    /** Shows the spot only on some days, as a piece's `shows` does. */
+    shows: showsSchema.optional(),
+  })
+  .refine((spot) => spot.piece === undefined || spot.shows === undefined, {
+    message: 'a spot follows its piece or its own shows, not both',
+  })
+
+export type Spot = z.output<typeof spotSchema>
+
 // The city (#165): the block of the Plateau seen at an angle, in 2:1
 // isometric. The sun is the street's, from the upper left: of a building's
 // two walls, the one facing the lower left is lit and the one facing the
@@ -655,6 +703,19 @@ export const assetManifestSchema = z
     /** Layer ids, back to front. */
     layers: z.array(z.string().min(1)).min(1),
     pieces: z.array(pieceSchema),
+    /** The things in the street the player clicks, later ones on top. */
+    spots: z.array(spotSchema),
+    /**
+     * The note that the street can be clicked, shown in the player's first
+     * game for its first `days` days, centred on `x` with its foot at `y`
+     * in the design.
+     */
+    streetLegend: z.strictObject({
+      x: z.number(),
+      y: z.number(),
+      days: z.int().positive(),
+      text: spotText,
+    }),
     /** The city, drawn with the same palette and light. */
     city: citySchema,
   })
@@ -741,6 +802,25 @@ export const assetManifestSchema = z
           code: 'custom',
           message: `${piece.kind} pieces write no text`,
           path: ['pieces', index, 'text'],
+        })
+      }
+    })
+
+    const spotIds = new Set<string>()
+    manifest.spots.forEach((spot, index) => {
+      if (spotIds.has(spot.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `duplicate spot id: ${spot.id}`,
+          path: ['spots', index, 'id'],
+        })
+      }
+      spotIds.add(spot.id)
+      if (spot.piece !== undefined && !ids.has(spot.piece)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `unknown piece: ${spot.piece}`,
+          path: ['spots', index, 'piece'],
         })
       }
     })

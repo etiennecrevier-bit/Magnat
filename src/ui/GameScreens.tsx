@@ -23,6 +23,7 @@ import SettingsPanel from './SettingsPanel.tsx'
 import { settingsStore, type SettingsStore } from './settings.ts'
 import StaffPanel from './StaffPanel.tsx'
 import { gameStore, useGame } from './store.ts'
+import { watchStreetLegend } from './streetLegend.ts'
 import Ticker from './Ticker.tsx'
 import TripPanel from './TripPanel.tsx'
 import WeekSlideIn from './WeekSlideIn.tsx'
@@ -68,8 +69,9 @@ function OpenPanel() {
  * over them, and once a game went bankrupt, its « Faillite », each with a
  * « Retour au menu » that calls `onMenu`. Every medal the game wins is kept
  * in `settings`, a Défi won and then loaded included, and so is whether «
- * Hier » is hidden, which R also toggles. The dock's keys open its panels
- * and drawers. A game started in their place, such as one imported, gets
+ * Hier » is hidden, which R also toggles, and whether the street's legend
+ * still shows, in the first game only. The dock's keys open its panels and
+ * drawers. A game started in their place, such as one imported, gets
  * new drawers, messages and ticker, so nothing of the last game stays.
  */
 export default function GameScreens({
@@ -92,6 +94,8 @@ export default function GameScreens({
   )
 
   useEffect(() => startMessageStack(gameStore), [gamesStarted])
+
+  useEffect(() => watchStreetLegend(gameStore, settings), [settings])
 
   // When what had the focus goes away as « Hier » hides or shows, the
   // button that takes its place gets it.

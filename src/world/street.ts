@@ -4,7 +4,7 @@ import {
   type Ticker,
   type UnresolvedAsset,
 } from 'pixi.js'
-import type { AssetManifest } from '../content/assets.ts'
+import type { AssetManifest, Spot } from '../content/assets.ts'
 import pacing from '../content/pacing.json'
 import { ENERGY, FOOD_TRUCK } from '../engine/day.ts'
 import {
@@ -17,7 +17,7 @@ import { loadArt, type LoadTexture } from './art.ts'
 import { createAtmosphere } from './atmosphere.ts'
 import type { Span } from './crowd.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
-import { placeCard } from './customerCard.ts'
+import { placeCard, type Point } from './customerCard.ts'
 import { startCustomers } from './customers.ts'
 import { TITLE_FONT_ASSET } from './fonts.ts'
 import { fitScene } from './layout.ts'
@@ -27,6 +27,15 @@ import type { WorldApp } from './mountWorld.ts'
 import { PICKER, type Picker } from './picker.ts'
 import { buildScene, type MeasureWidth } from './scene.ts'
 import { filtersFor, type MakeFilters } from './shadows.ts'
+import {
+  designPoint,
+  legendShows,
+  pagePoint,
+  spotAt,
+  spotMark,
+  spotsShown,
+  type StreetLink,
+} from './streetSpots.ts'
 import { setUpOrUndo } from './teardown.ts'
 import { truckView } from './truckView.ts'
 
@@ -56,7 +65,11 @@ export interface StreetCrowd {
   readonly random: () => number
 }
 
-const STREET_CROWD: StreetCrowd = { settings: CROWD, random: Math.random }
+/** The crowd the street draws in the game: its settings, and real luck. */
+export const STREET_CROWD: StreetCrowd = {
+  settings: CROWD,
+  random: Math.random,
+}
 
 /** The settings the street reads: the visual effects the player picked. */
 export type StreetSettings = Pick<SettingsStore, 'getState' | 'subscribe'>
@@ -78,6 +91,13 @@ export type StreetSettings = Pick<SettingsStore, 'getState' | 'subscribe'>
  * It holds `picker` while it runs: the player picks a customer there, and
  * their card follows them on the page each frame, paused or not.
  *
+ * Its spots (see `spotsShown`) open what they name: a press on one reports
+ * its link to what `onOpen` returns at that press, unless a customer stands
+ * there, who is picked instead. Each frame, the spot under the pointer is
+ * marked on the page, with no customer over it, and so is the legend while
+ * it shows (see `legendShows`). While `onOpen` returns null, as before a
+ * game starts, the spots open and mark nothing, and the legend hides.
+ *
  * A font or an image that fails to load warns and falls back to the system
  * font or the piece's placeholder, so the street still shows. A start that
  * fails once loaded, as on an app no longer there, takes down what it set
@@ -91,6 +111,7 @@ export async function startStreet(
   people: StreetCrowd = STREET_CROWD,
   picker: Picker = PICKER,
   settings: StreetSettings = settingsStore,
+  onOpen: () => ((link: StreetLink) => void) | null = () => null,
 ): Promise<() => void> {
   const [, textures] = await Promise.all([
     loadTitleFont(loaders.loadFont),
@@ -123,7 +144,7 @@ export async function startStreet(
     scene.root.addChild(customers.root)
 
     // The screen follows the window; each frame refits the scene if it moved.
-    let fitted = { width: -1, height: -1, scale: 1 }
+    let fitted = { width: -1, height: -1, scale: 1, x: 0, y: 0 }
     // The part of the design on screen, where customers come and go.
     let span: Span = { left: 0, right: manifest.designSize.width }
     const fit = () => {
@@ -136,7 +157,7 @@ export async function startStreet(
         design.width,
         design.height,
       )
-      fitted = { width, height, scale }
+      fitted = { width, height, scale, x, y }
       for (const layer of [scene.root, customers.labels]) {
         layer.scale.set(scale)
         layer.position.set(x, y)
@@ -169,12 +190,47 @@ export async function startStreet(
             },
       )
     }
+    // The spots shown today, and where the pointer is on the page.
+    let spots: readonly Spot[] = []
+    let pointer: Point | null = null
+    /** The spot at `point` on the page that a press opens, if any. */
+    const openingAt = (point: Point) =>
+      onOpen() === null ? null : spotAt(spots, designPoint(point, fitted))
+    const showMarks = () => {
+      const opens = onOpen() !== null
+      const spot =
+        pointer === null || customers.isOver(pointer)
+          ? null
+          : openingAt(pointer)
+      const { streetLegend: legend } = manifest
+      const { game } = store.getState()
+      const shows =
+        opens &&
+        legendShows(game, settings.getState().streetLegend, legend.days)
+      connection.mark({
+        spot: spot === null ? null : spotMark(spot, fitted),
+        legend: shows
+          ? { text: legend.text, at: pagePoint(legend, fitted) }
+          : null,
+      })
+    }
+
     const connection = picker.connect({
       pickAt: (point) => {
-        customers.pickAt(point)
+        const open = onOpen()
+        const spot = customers.isOver(point) ? null : openingAt(point)
+        if (open !== null && spot !== null) {
+          customers.unpick()
+          // Its panel covers the street: the pointer is no longer over it.
+          pointer = null
+          open(spot.opens)
+        } else {
+          customers.pickAt(point)
+        }
         showCard()
+        showMarks()
       },
-      isOver: (point) => customers.isOver(point),
+      isOver: (point) => customers.isOver(point) || openingAt(point) !== null,
       pickNext: () => {
         const found = customers.pickNext(span)
         showCard()
@@ -183,6 +239,10 @@ export async function startStreet(
       unpick: () => {
         customers.unpick()
         showCard()
+      },
+      hover: (point) => {
+        pointer = point
+        showMarks()
       },
     })
     undo(connection.disconnect)
@@ -195,15 +255,19 @@ export async function startStreet(
       // screen's.
       scene.shadows.redraw(fitted.scale * (app.renderer?.resolution ?? 1))
       showCard()
+      showMarks()
     }
 
     const show = (game: GameState) => {
-      scene.update(truckView(game))
+      const view = truckView(game)
+      scene.update(view)
+      spots = spotsShown(manifest, view, game.challenge !== null)
       customers.onGame(game)
     }
     show(store.getState().game)
     showEffects(settings.getState().visualEffects)
     fit()
+    showMarks()
     const layers = [scene.root, atmosphere.root, customers.labels]
     undo(() => {
       for (const layer of layers) layer.removeFromParent()

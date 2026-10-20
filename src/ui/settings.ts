@@ -29,6 +29,14 @@ export type ReportCadence = 'week' | 'month'
 
 export const REPORT_CADENCES: readonly ReportCadence[] = ['week', 'month']
 
+/**
+ * Where the street's legend, « Cliquez sur la rue » (#208), stands: it shows
+ * in the player's first game only. `unseen` before any game; the seed of that
+ * game while it may still show; `done` once it is over or that game started
+ * another or went past its days.
+ */
+export type StreetLegend = 'unseen' | 'done' | { readonly seed: number }
+
 /** What the player sets. */
 export interface Settings {
   readonly visualEffects: VisualEffects
@@ -46,6 +54,8 @@ export interface Settings {
    * room. Set from the screens themselves, not in « Réglages ».
    */
   readonly screensFolded: boolean
+  /** Whether the street's legend shows, kept between games, not saved. */
+  readonly streetLegend: StreetLegend
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -54,6 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reportCadence: 'week',
   bestMedals: {},
   screensFolded: false,
+  streetLegend: 'unseen',
 }
 
 /** The localStorage key the settings are kept under. */
@@ -73,6 +84,7 @@ export interface SettingsState extends Settings {
   setOpenReportEveryWeek: (openReportEveryWeek: boolean) => void
   setReportCadence: (reportCadence: ReportCadence) => void
   setScreensFolded: (screensFolded: boolean) => void
+  setStreetLegend: (streetLegend: StreetLegend) => void
   setWorldView: (worldView: WorldView) => void
   /**
    * Keeps `medal` as the best won in the Défi `defiId` unless a better one,
@@ -111,6 +123,7 @@ export function readSettings(storage: SettingsStorage | null): Settings {
     reportCadence,
     bestMedals,
     screensFolded,
+    streetLegend,
   } = stored as Record<string, unknown>
   return {
     visualEffects: VISUAL_EFFECTS.includes(visualEffects as VisualEffects)
@@ -128,7 +141,20 @@ export function readSettings(storage: SettingsStorage | null): Settings {
       typeof screensFolded === 'boolean'
         ? screensFolded
         : DEFAULT_SETTINGS.screensFolded,
+    streetLegend: readStreetLegend(streetLegend),
   }
+}
+
+/** The legend's state `stored` holds; unseen unless it holds one. */
+function readStreetLegend(stored: unknown): StreetLegend {
+  if (stored === 'unseen' || stored === 'done') return stored
+  if (typeof stored !== 'object' || stored === null) {
+    return DEFAULT_SETTINGS.streetLegend
+  }
+  const { seed } = stored as { seed?: unknown }
+  return typeof seed === 'number' && Number.isFinite(seed)
+    ? { seed }
+    : DEFAULT_SETTINGS.streetLegend
 }
 
 /** The medals of `stored` that are medals; none unless it is an object. */
@@ -198,6 +224,7 @@ export function createSettingsStore(
         openReportEveryWeek,
         reportCadence,
         screensFolded,
+        streetLegend,
       } = get()
       writeSettings(storage, {
         visualEffects,
@@ -205,6 +232,7 @@ export function createSettingsStore(
         reportCadence,
         bestMedals,
         screensFolded,
+        streetLegend,
       })
     }
     return {
@@ -215,6 +243,7 @@ export function createSettingsStore(
         change({ openReportEveryWeek }),
       setReportCadence: (reportCadence) => change({ reportCadence }),
       setScreensFolded: (screensFolded) => change({ screensFolded }),
+      setStreetLegend: (streetLegend) => change({ streetLegend }),
       setWorldView: (worldView) => set({ worldView }),
       recordMedal: (defiId, medal) => {
         const { bestMedals } = get()

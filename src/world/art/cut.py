@@ -2,13 +2,15 @@
 
 Usage: python3 cut.py <reference dir>
 
-The reference dir holds rue.py, light.py and street-target.svg, from
-docs/design/reference/ (#197). This script runs rue.py's drawing one top-level
-statement at a time, without writing its page, and files each statement's
-lines under the piece they draw. Each piece becomes one SVG, in street/ or
+The reference dir holds rue.py, light.py, street-target.svg and
+ui_concepts.py, from docs/design/reference/ (#197). This script runs rue.py's
+drawing one top-level statement at a time, without writing its page, and
+files each statement's lines under the piece they draw. Each piece becomes one SVG, in street/ or
 truck/ here: the target's own lines, the definitions they use, and a viewBox
 on their box in the 1440 x 900 design, so the manifest places it at that box.
 The truck's lines are drawn in the target's group, moved to the truck's place.
+The « MENU » chalkboard (#208) comes from concept B in ui_concepts.py instead,
+in its own box.
 
 Left out: the grain, the mottle, the vignette and the warm glow (atmosphere.ts
 draws them over the whole world); the people and the owner, whom the world
@@ -336,18 +338,46 @@ def moved(box):
     return [x0 + T[0], y0 + T[1], x1 + T[0], y1 + T[1]]
 
 
-def font_style():
+def font_style(thicken=True):
     """Fredoka for « DÉPANNEUR »: an image cannot reach the page's fonts.
 
     The target asks for weight 700, which the game does not ship; its 600
-    stands in, a thin ink stroke thickening it.
+    stands in, a thin ink stroke thickening it unless `thicken` is false.
     """
     data = base64.b64encode(FONT.read_bytes()).decode("ascii")
+    stroke = f"text{{stroke:{INK};stroke-width:0.5px}}" if thicken else ""
     return (
         "<style>@font-face{font-family:Fredoka;font-weight:700;"
         f"src:url(data:font/woff2;base64,{data}) format('woff2')}}"
-        f"text{{stroke:{INK};stroke-width:0.5px}}</style>\n"
+        f"{stroke}</style>\n"
     )
+
+
+def chalkboard(reference):
+    """The « MENU » chalkboard of concept B (#208), from ui_concepts.py.
+
+    The reference draws it in its own box, at its left and top on the page;
+    its lines move there, so its viewBox is its box in the design, as the
+    other pieces' are. It keeps its ground shadow. Its chalk is cream on the
+    board, so the font is not thickened in ink. Returns its box and its SVG.
+    """
+    source = (reference / "ui_concepts.py").read_text()
+    found = re.search(r'^CHALK = f"""(<svg .*?</svg>)"""', source, re.S | re.M)
+    if found is None:
+        raise SystemExit("ui_concepts.py no longer draws CHALK")
+    head, *lines = found.group(1).split("\n")
+    box = re.search(
+        r'width="(\d+)" height="(\d+)" viewBox="0 0 \1 \2" '
+        r'style="position:absolute;left:(\d+)px;top:(\d+)px"',
+        head,
+    )
+    if box is None or lines[-1] != "</svg>":
+        raise SystemExit("CHALK is no longer one <svg> placed on the page")
+    width, height, left, top = (int(n) for n in box.groups())
+    view = (left, top, width, height)
+    moved_lines = [f'<g transform="translate({left},{top})">'] + lines[:-1] + ["</g>"]
+    text = svg(moved_lines, {}, view, (width, height), font_style(thicken=False))
+    return view, text
 
 
 def mirrored_triplex(scope, ids):
@@ -476,6 +506,8 @@ def main(reference):
         raise SystemExit("a croissant is off the rack")
     view = (x0, y0, x1 - x0, y1 - y0)
     written["truck/croissants"] = (view, svg(in_truck(shelves), defs, view, view[2:]))
+
+    written["street/chalkboard"] = chalkboard(reference)
 
     for name, (view, text) in written.items():
         path = HERE / f"{name}.svg"

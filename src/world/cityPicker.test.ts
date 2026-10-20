@@ -49,6 +49,7 @@ describe('worldPicks', () => {
       isOver: vi.fn(() => false),
       pickNext: () => false,
       unpick: vi.fn(),
+      hover: vi.fn(),
     }
     street.connect(customers)
     const buildings = target(true)
@@ -61,5 +62,9 @@ describe('worldPicks', () => {
     expect(picks.over(POINT)).toBe(true)
     picks.close()
     expect(customers.unpick).toHaveBeenCalledTimes(1)
+    // Only the street marks the spot under the pointer.
+    picks.hover(POINT)
+    picks.hover(null)
+    expect(customers.hover.mock.calls).toEqual([[POINT], [null]])
   })
 })

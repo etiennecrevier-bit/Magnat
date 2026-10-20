@@ -4,6 +4,7 @@ import {
   type CustomerCard,
   type Point,
 } from './customerCard.ts'
+import { sameMark, type SpotMark } from './streetSpots.ts'
 
 // The bridge between the page, where the player presses and types, and the
 // street, which knows where its customers are drawn. Either side can come
@@ -22,6 +23,8 @@ export interface PickTarget {
   pickNext: () => boolean
   /** Closes the card. */
   unpick: () => void
+  /** The pointer is at `point` on the street, or left it: null. */
+  hover: (point: Point | null) => void
 }
 
 /** The card the player opened, and where it sits on the page. */
@@ -29,6 +32,23 @@ export interface OpenCard {
   readonly card: CustomerCard
   readonly place: CardPlace
 }
+
+/** The street's legend on the page: its words, and its foot's centre. */
+export interface LegendMark {
+  readonly text: string
+  readonly at: Point
+}
+
+/** What the street marks on the page, over the world (#208). */
+export interface StreetMarks {
+  /** The spot the pointer is over, outlined with its label; null for none. */
+  readonly spot: SpotMark | null
+  /** The legend « Cliquez sur la rue »; null while it does not show. */
+  readonly legend: LegendMark | null
+}
+
+/** No spot outlined and no legend: the view's marks whenever there are none. */
+export const NO_MARKS: StreetMarks = { spot: null, legend: null }
 
 /** What the page shows of the picker. */
 export interface PickerView {
@@ -44,12 +64,16 @@ export interface PickerView {
    * street, or nothing.
    */
   readonly said: string
+  /** What the street marks on the page. */
+  readonly marks: StreetMarks
 }
 
 /** A street's hold on the picker, from `connect`. */
 export interface PickerConnection {
   /** Shows `open`, or no card. Ignored while another street holds the picker. */
   show: (open: OpenCard | null) => void
+  /** Shows `marks`. Ignored while another street holds the picker. */
+  mark: (marks: StreetMarks) => void
   /** Lets go of the picker; the second time does nothing. */
   disconnect: () => void
 }
@@ -66,6 +90,8 @@ export interface Picker {
   next: () => void
   /** Closes the card. */
   close: () => void
+  /** The pointer is at `point` on the street, or left it: null. */
+  hover: (point: Point | null) => void
   /**
    * Hands the picker to `street`. The latest street to connect holds it;
    * when it lets go, the one before it, if still connected, holds it again,
@@ -80,24 +106,29 @@ export const NOBODY_THERE = "Personne dans la rue pour l'instant."
 export function createPicker(): Picker {
   const streets: { readonly target: PickTarget }[] = []
   const holder = () => streets.at(-1)
-  let view: PickerView = { live: false, open: null, said: '' }
+  let view: PickerView = { live: false, open: null, said: '', marks: NO_MARKS }
   const listeners = new Set<() => void>()
   const set = (next: PickerView) => {
     if (
       next.live === view.live &&
       next.open === view.open &&
-      next.said === view.said
+      next.said === view.said &&
+      sameMarks(next.marks, view.marks)
     ) {
       return
     }
     view = next
     for (const listener of [...listeners]) listener()
   }
-  /** No card and nothing said, with a street holding the picker or not. */
+  /**
+   * No card and nothing said, with a street holding the picker or not. The
+   * marks stay; a street that comes or goes clears them.
+   */
   const closed = (): PickerView => ({
     live: streets.length > 0,
     open: null,
     said: '',
+    marks: view.marks,
   })
 
   return {
@@ -119,19 +150,25 @@ export function createPicker(): Picker {
       holder()?.target.unpick()
       set(closed())
     },
+    hover: (point) => holder()?.target.hover(point),
     connect: (target) => {
       const link = { target }
       streets.push(link)
-      set(closed())
+      set({ ...closed(), marks: NO_MARKS })
       return {
         show: (open) => {
           if (holder() === link) set(shown(view, open))
+        },
+        mark: (marks) => {
+          if (holder() !== link) return
+          const none = marks.spot === null && marks.legend === null
+          set({ ...view, marks: none ? NO_MARKS : marks })
         },
         disconnect: () => {
           const at = streets.indexOf(link)
           if (at < 0) return
           streets.splice(at, 1)
-          if (at === streets.length) set(closed())
+          if (at === streets.length) set({ ...closed(), marks: NO_MARKS })
         },
       }
     },
@@ -146,6 +183,15 @@ function shown(view: PickerView, open: OpenCard | null): PickerView {
     return samePlace(before.place, open.place) ? view : { ...view, open }
   }
   return { ...view, open, said: saying(open.card) }
+}
+
+function sameMarks(a: StreetMarks, b: StreetMarks): boolean {
+  return sameMark(a.spot, b.spot) && sameLegend(a.legend, b.legend)
+}
+
+function sameLegend(a: LegendMark | null, b: LegendMark | null): boolean {
+  if (a === null || b === null) return a === b
+  return a.text === b.text && a.at.x === b.at.x && a.at.y === b.at.y
 }
 
 function samePlace(a: CardPlace, b: CardPlace): boolean {
@@ -185,6 +231,8 @@ export interface PointerLike {
   readonly clientX: number
   readonly clientY: number
   readonly target: unknown
+  /** Where the pointer went, on a `pointerout`: null when it left the window. */
+  readonly relatedTarget?: unknown
 }
 
 /** The parts of a key event the picker reads, so tests can fake one. */
@@ -216,12 +264,12 @@ export function isCloseKey(event: KeyLike): boolean {
 /** The page the picker listens to: the window, or a test's fake. */
 export interface PickPage {
   addEventListener(
-    type: 'pointerdown' | 'pointermove',
+    type: 'pointerdown' | 'pointermove' | 'pointerout',
     listener: (event: PointerLike) => void,
   ): void
   addEventListener(type: 'keydown', listener: (event: KeyLike) => void): void
   removeEventListener(
-    type: 'pointerdown' | 'pointermove',
+    type: 'pointerdown' | 'pointermove' | 'pointerout',
     listener: (event: PointerLike) => void,
   ): void
   removeEventListener(type: 'keydown', listener: (event: KeyLike) => void): void
@@ -233,14 +281,16 @@ export interface PickPage {
  * on the world picks the customer there, or closes the card when no one is;
  * a press anywhere else on the page closes it; a press on the world's own
  * controls does neither. Escape closes it (see `isCloseKey`). Moving over a
- * customer, or a building that opens something, calls `onPointing(true)`,
- * and anywhere else `onPointing(false)`. Returns the function that stops
- * listening.
+ * customer, a spot of the street or a building that opens something,
+ * calls `onPointing(true)`, and anywhere else `onPointing(false)`. The
+ * street hears where the pointer is on it, and null once it is elsewhere on
+ * the page, leaves the window or the listening stops. Returns the function
+ * that stops listening.
  */
 export function listenForPicks(
   page: PickPage,
   world: unknown,
-  picker: Pick<Picker, 'at' | 'over' | 'close'>,
+  picker: Pick<Picker, 'at' | 'over' | 'close' | 'hover'>,
   onPointing: (pointing: boolean) => void,
 ): () => void {
   const pointAt = (event: PointerLike) => ({
@@ -254,21 +304,30 @@ export function listenForPicks(
     else if (landing === 'page') picker.close()
   }
   const move = (event: PointerLike) => {
-    onPointing(
-      whereLands(event.target, world) === 'street' &&
-        picker.over(pointAt(event)),
-    )
+    const onStreet = whereLands(event.target, world) === 'street'
+    picker.hover(onStreet ? pointAt(event) : null)
+    onPointing(onStreet && picker.over(pointAt(event)))
+  }
+  const leave = (event: PointerLike) => {
+    if (event.relatedTarget !== null && event.relatedTarget !== undefined) {
+      return
+    }
+    picker.hover(null)
+    onPointing(false)
   }
   const key = (event: KeyLike) => {
     if (isCloseKey(event)) picker.close()
   }
   page.addEventListener('pointerdown', press)
   page.addEventListener('pointermove', move)
+  page.addEventListener('pointerout', leave)
   page.addEventListener('keydown', key)
   return () => {
     page.removeEventListener('pointerdown', press)
     page.removeEventListener('pointermove', move)
+    page.removeEventListener('pointerout', leave)
     page.removeEventListener('keydown', key)
+    picker.hover(null)
     onPointing(false)
   }
 }

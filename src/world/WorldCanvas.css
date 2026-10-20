@@ -143,3 +143,69 @@ html:has(.world--pointing) {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* The street's marks (#208): over the world, under the panels and the top
+   bar, which come after it. Presses go through to the page under it, which
+   the street counts as its own. */
+.world-marks {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* The spot under the pointer: a dashed cream outline round it, as in the
+   design reference's concept B, and its label over it or under it. */
+.street-spot {
+  position: absolute;
+  box-sizing: border-box;
+  border: 3px dashed #fff7e8;
+  border-radius: 14px;
+}
+
+.street-spot__label {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: -3px;
+  display: flex;
+  align-items: center;
+  height: 34px;
+  margin: 0;
+  padding: 0 14px;
+  border: 2px solid #2b2622;
+  border-radius: 999px;
+  background: #fff7e8;
+  color: #2b2622;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.street-spot__label--below {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+/* The reference's muted ink. */
+.street-spot__detail {
+  color: #6b625a;
+  white-space: pre;
+}
+
+/* The legend near the truck, its foot's centre at its place. */
+.street-legend {
+  position: absolute;
+  margin: 0;
+  padding: 0.5rem 0.875rem;
+  border: 3px solid #2b2622;
+  border-radius: 14px;
+  background: #fff7e8;
+  box-shadow: 0 4px 0 #2b2622;
+  color: #2b2622;
+  font-family: Fredoka, sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+}

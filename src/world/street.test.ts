@@ -36,9 +36,11 @@ import { ASSETS, LINES } from './manifest.ts'
 import { SEGMENT_ACCESSORY } from './people.ts'
 import { SPOT_HALF_RADIUS } from './noise.ts'
 import { castGroupLabel, type ShadowFilters } from './shadows.ts'
-import { createPicker, NOBODY_THERE, type Picker } from './picker.ts'
+import { createPicker, NO_MARKS, NOBODY_THERE, type Picker } from './picker.ts'
 import { replayOf } from './replay.ts'
 import { startStreet, type StreetCrowd, type StreetLoaders } from './street.ts'
+import { spotAt, spotMark, spotsShown, type StreetLink } from './streetSpots.ts'
+import { truckView } from './truckView.ts'
 
 /** A Pixi app with a real stage, a screen the test resizes and a ticker it runs. */
 function createFakeApp(width = 1440, height = 900) {
@@ -1196,7 +1198,12 @@ describe('startStreet: picking a customer', () => {
 
     picker.at({ x: 5, y: 5 })
 
-    expect(picker.view()).toEqual({ live: true, open: null, said: '' })
+    expect(picker.view()).toEqual({
+      live: true,
+      open: null,
+      said: '',
+      marks: NO_MARKS,
+    })
     expect(isPicked(walker)).toBe(false)
   })
 
@@ -1282,7 +1289,12 @@ describe('startStreet: picking a customer', () => {
     }
 
     expect(places.size).toBeGreaterThan(1)
-    expect(picker.view()).toEqual({ live: true, open: null, said: '' })
+    expect(picker.view()).toEqual({
+      live: true,
+      open: null,
+      said: '',
+      marks: NO_MARKS,
+    })
     if (!walker.destroyed) {
       expect(isPicked(walker)).toBe(false)
       expect(walker.x < 0 || walker.x > ASSETS.designSize.width).toBe(true)
@@ -1345,6 +1357,7 @@ describe('startStreet: picking a customer', () => {
       live: true,
       open: null,
       said: NOBODY_THERE,
+      marks: NO_MARKS,
     })
   })
 
@@ -1355,10 +1368,202 @@ describe('startStreet: picking a customer', () => {
 
     stop()
 
-    expect(picker.view()).toEqual({ live: false, open: null, said: '' })
+    expect(picker.view()).toEqual({
+      live: false,
+      open: null,
+      said: '',
+      marks: NO_MARKS,
+    })
     expect(() => picker.at(point)).not.toThrow()
     expect(picker.over(point)).toBe(false)
     expect(picker.view().open).toBeNull()
+  })
+})
+
+/** The design point at the middle of the manifest spot `id`. */
+function middleOfSpot(id: string): Point {
+  const spot = ASSETS.spots.find((s) => s.id === id)
+  if (spot === undefined) throw new Error(`No spot ${id}`)
+  return { x: spot.x + spot.width / 2, y: spot.y + spot.height / 2 }
+}
+
+/**
+ * A street whose spots report their links to `opened` while `opening` is
+ * on, as in a game; on Wednesday, open, unless another store is given.
+ */
+async function spotStreet(store = wednesdayStore(true), width = 1440) {
+  const app = createFakeApp(width, 900)
+  const picker = createPicker()
+  const settings = createSettingsStore(null)
+  const opened: StreetLink[] = []
+  const state = { opening: true }
+  const stop = await startStreet(
+    app,
+    store,
+    createLoaders(),
+    ASSETS,
+    busyCrowd(),
+    picker,
+    settings,
+    () => (state.opening ? (link) => opened.push(link) : null),
+  )
+  return { app, store, picker, settings, opened, state, stop }
+}
+
+/** A customer whose figure's middle is over a spot, and that point. */
+function customerOverSpot(
+  app: ReturnType<typeof createFakeApp>,
+  store: GameStore,
+): { walker: Container; point: Point } {
+  const spots = spotsShown(ASSETS, truckView(store.getState().game), false)
+  return playUntil(app, store, () => {
+    for (const walker of walkers(app)) {
+      const point = centreOf(boxOf(figureOf(walker)))
+      if (spotAt(spots, point) !== null) return { walker, point }
+    }
+    return null
+  })
+}
+
+describe('startStreet: the spots (#208)', () => {
+  it('reports what each spot opens when pressed, and opens no card', async () => {
+    // No one has walked in before the first frame.
+    const { picker, opened } = await spotStreet()
+
+    for (const id of ['menu', 'stocks', 'owner', 'city']) {
+      picker.at(middleOfSpot(id))
+    }
+
+    expect(opened).toEqual([
+      { dock: 'camion', tab: 'menu' },
+      { dock: 'camion', tab: 'stocks' },
+      { dock: 'camion', tab: 'schedule' },
+      { dock: 'ville' },
+    ])
+    expect(picker.view().open).toBeNull()
+  })
+
+  it('points over a spot, and nowhere beside everyone', async () => {
+    const { picker } = await spotStreet()
+    expect(picker.over(middleOfSpot('menu'))).toBe(true)
+    expect(picker.over({ x: 5, y: 5 })).toBe(false)
+  })
+
+  it('finds its spots where the scene is drawn after the window resizes', async () => {
+    const { app, picker, opened } = await spotStreet(wednesdayStore(true), 1000)
+    app.frame()
+    const root = app.stage.children[0]!
+    const { x, y } = middleOfSpot('stocks')
+    const scale = root.scale.x
+    picker.at({ x: root.x + x * scale, y: root.y + y * scale })
+    // The design point itself is elsewhere on this page.
+    picker.at({ x, y })
+    expect(opened).toEqual([{ dock: 'camion', tab: 'stocks' }])
+  })
+
+  it('opens nothing, points nowhere and marks nothing while nothing opens links', async () => {
+    const { app, picker, opened, state, settings, store } = await spotStreet()
+    settings.getState().setStreetLegend({ seed: store.getState().game.seed })
+    state.opening = false
+    const menu = middleOfSpot('menu')
+
+    picker.hover(menu)
+    picker.at(menu)
+    app.frame()
+
+    expect(opened).toEqual([])
+    expect(picker.over(menu)).toBe(false)
+    expect(picker.view().marks).toEqual(NO_MARKS)
+  })
+
+  it('opens neither the chalkboard nor the owner on a closed day', async () => {
+    const { picker, opened } = await spotStreet(mondayStore())
+    picker.at(middleOfSpot('menu'))
+    picker.at(middleOfSpot('owner'))
+    picker.at(middleOfSpot('stocks'))
+    expect(opened).toEqual([{ dock: 'camion', tab: 'stocks' }])
+  })
+
+  it('picks a customer standing over a spot, and opens nothing', async () => {
+    const { app, store, picker, opened } = await spotStreet()
+    const { walker, point } = customerOverSpot(app, store)
+    store.getState().setSpeed(0)
+
+    picker.at(point)
+
+    expect(opened).toEqual([])
+    expect(isPicked(walker)).toBe(true)
+    expect(openCard(picker).card.segment).toBe(segmentOf(walker))
+  })
+
+  it('outlines the spot under the pointer, and nothing once it leaves', async () => {
+    const { app, picker } = await spotStreet()
+    const listener = vi.fn()
+    picker.subscribe(listener)
+
+    picker.hover(middleOfSpot('menu'))
+    const menu = ASSETS.spots.find(({ id }) => id === 'menu')!
+    const mark = spotMark(menu, { scale: 1, x: 0, y: 0 })
+    expect(picker.view().marks.spot).toEqual(mark)
+    // Each frame marks it again, which changes nothing.
+    app.frame()
+    app.frame()
+    expect(listener).toHaveBeenCalledOnce()
+
+    picker.hover({ x: 5, y: 5 })
+    expect(picker.view().marks.spot).toBeNull()
+    picker.hover(middleOfSpot('owner'))
+    expect(picker.view().marks.spot?.below).toBe(true)
+    picker.hover(null)
+    expect(picker.view().marks.spot).toBeNull()
+  })
+
+  it('outlines no spot where a customer stands over it', async () => {
+    const { app, store, picker } = await spotStreet()
+    const { point } = customerOverSpot(app, store)
+    store.getState().setSpeed(0)
+
+    picker.hover(point)
+    app.frame()
+
+    expect(picker.view().marks.spot).toBeNull()
+  })
+
+  it('stops outlining a spot once pressed, as its panel covers the street', async () => {
+    const { picker } = await spotStreet()
+    picker.hover(middleOfSpot('menu'))
+    picker.at(middleOfSpot('menu'))
+    expect(picker.view().marks.spot).toBeNull()
+  })
+
+  it('shows the legend in the first game for its first three days only', async () => {
+    const { app, store, picker, settings } = await spotStreet(mondayStore())
+    const { seed } = store.getState().game
+    app.frame()
+    // Before the UI takes this game as the first, it does not show.
+    expect(picker.view().marks.legend).toBeNull()
+
+    settings.getState().setStreetLegend({ seed })
+    const seen: (number | null)[] = []
+    for (let day = 0; day <= 3; day += 1) {
+      app.frame()
+      expect(store.getState().game.day).toBe(day)
+      seen.push(picker.view().marks.legend === null ? null : day)
+      store.getState().advance(1)
+    }
+    expect(seen).toEqual([0, 1, 2, null])
+
+    // Where it stands: its foot's centre, on the page.
+    const fresh = await spotStreet(mondayStore())
+    fresh.settings.getState().setStreetLegend({ seed })
+    fresh.app.frame()
+    expect(fresh.picker.view().marks.legend).toEqual({
+      text: 'Cliquez sur la rue',
+      at: { x: ASSETS.streetLegend.x, y: ASSETS.streetLegend.y },
+    })
+    fresh.settings.getState().setStreetLegend('done')
+    fresh.app.frame()
+    expect(fresh.picker.view().marks.legend).toBeNull()
   })
 })
 

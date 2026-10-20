@@ -57,14 +57,15 @@ export function createCityPicker(): CityPicker {
 export const CITY: CityPicker = createCityPicker()
 
 /**
- * What a press on the world goes to: the street's customers and the city's
- * buildings, each acting only while its scene holds its picker. Only the
- * street has a card to close.
+ * What a press on the world goes to: the street's customers and spots and
+ * the city's buildings, each acting only while its scene holds its picker.
+ * Only the street has a card to close, and marks the spot under the
+ * pointer.
  */
 export function worldPicks(
-  street: Pick<Picker, 'at' | 'over' | 'close'>,
+  street: Pick<Picker, 'at' | 'over' | 'close' | 'hover'>,
   city: Pick<CityPicker, 'at' | 'over'>,
-): Pick<Picker, 'at' | 'over' | 'close'> {
+): Pick<Picker, 'at' | 'over' | 'close' | 'hover'> {
   return {
     at: (point) => {
       street.at(point)
@@ -72,5 +73,6 @@ export function worldPicks(
     },
     over: (point) => street.over(point) || city.over(point),
     close: () => street.close(),
+    hover: (point) => street.hover(point),
   }
 }
