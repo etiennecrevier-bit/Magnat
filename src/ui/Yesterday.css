@@ -1,0 +1,142 @@
+/* « Hier », at the bottom right, level with the dock (Dock.css). Where the
+   window is too narrow for both side by side, it stands above the dock.
+   --report-room is how far above the window's bottom the week's card,
+   above « Hier », sits (WeekSlideIn.css). Text colours keep at least 4.5:1
+   against the cream #fff7e8. */
+:root {
+  --yesterday-bottom: var(--dock-bottom, 3.5rem);
+  --report-room: calc(var(--yesterday-bottom) + 118px);
+}
+
+.yesterday-spot {
+  position: fixed;
+  right: 16px;
+  bottom: var(--yesterday-bottom);
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.yesterday {
+  position: relative;
+  width: 13rem;
+  border: 3px solid #2b2622;
+  border-radius: 18px;
+  background: #fff7e8;
+  color: #2b2622;
+  box-shadow: 0 6px 0 #2b2622;
+}
+
+/* The whole card is one button that opens « Camion ». */
+.yesterday__open {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 14px 10px;
+  border: 0;
+  border-radius: 15px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.yesterday__open:hover {
+  background: #fbefd5;
+}
+
+.yesterday__open:focus-visible,
+.yesterday__fold:focus-visible,
+.yesterday-pill:focus-visible {
+  outline: 3px solid #2f6fb0;
+  outline-offset: 2px;
+}
+
+.yesterday__title {
+  font-family: Fredoka, system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.yesterday__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: #6b625a;
+}
+
+.yesterday__row strong {
+  color: #2b2622;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Lost sales above zero: amber, with ⚠︎, never the colour alone. */
+.yesterday__row--warn,
+.yesterday__row--warn strong {
+  color: #8a5300;
+}
+
+/* Its corner button, which hides it. */
+.yesterday__fold {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #2b2622;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.yesterday__fold:hover {
+  background: #fbefd5;
+}
+
+/* Hidden, a pill that shows it again. */
+.yesterday-pill {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 2px solid #2b2622;
+  border-radius: 999px;
+  background: #fff7e8;
+  color: #2b2622;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: 0 4px 0 #2b2622;
+  cursor: pointer;
+}
+
+/* The dock (about 680 px wide) and « Hier » (about 230 px from the right
+   edge) no longer fit side by side, so « Hier » rises above the dock. */
+@media (max-width: 1159px) {
+  :root {
+    --yesterday-bottom: var(--dock-room, 10rem);
+  }
+}
+
+/* On a phone « Hier » folds into the cash chip's tooltip (TopBar.tsx). */
+@media (max-width: 699px) {
+  .yesterday-spot {
+    display: none;
+  }
+
+  :root {
+    --report-room: var(--dock-room, 10rem);
+  }
+}

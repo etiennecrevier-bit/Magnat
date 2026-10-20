@@ -1,63 +1,70 @@
+/* The bar and the word of the top bar's energy pill. Text colours keep at
+   least 4.5:1 against the cream #fff7e8. */
 .energy-gauge {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0 0.5rem;
   margin: 0;
+  color: #2b2622;
+  font-size: 0.8125rem;
+  font-weight: 700;
 }
 
+/* The bolt beside it says what it is; the word stays for screen readers. */
 .energy-gauge__label {
-  color: #cbd2d9;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
+/* 64 x 8, as `ENERGY` in docs/design/reference/ui_concepts.py. */
 .energy-gauge__bar {
   display: inline-block;
-  width: 5rem;
-  height: 0.75rem;
+  width: 64px;
+  height: 8px;
   overflow: hidden;
-  border: 1px solid #cbd2d9;
-  border-radius: 999px;
-  background: #323f4b;
+  border-radius: 4px;
+  background: #e3d6bf;
 }
 
 .energy-gauge__fill {
   display: block;
   height: 100%;
+  border-radius: 4px;
 }
 
 .energy-gauge__state {
-  padding: 0 0.5rem;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  font-size: 0.875rem;
-  font-weight: 600;
   white-space: nowrap;
 }
 
-/* The same colours as the cash gauge: text keeps at least 4.5:1 against the
-   top bar's #1f2933. */
 .energy-gauge--rested .energy-gauge__fill {
-  background: #7bd389;
+  background: #2e7d4f;
 }
 
 .energy-gauge--rested .energy-gauge__state {
-  color: #7bd389;
+  color: #2a6f47;
 }
 
 .energy-gauge--tired .energy-gauge__fill {
-  background: #f7c948;
+  background: #c27a00;
 }
 
 .energy-gauge--tired .energy-gauge__state {
-  color: #f7c948;
+  color: #8a5300;
 }
 
 .energy-gauge--exhausted .energy-gauge__fill {
-  background: #ff9b9b;
+  background: #b3261e;
 }
 
 .energy-gauge--exhausted .energy-gauge__state {
-  border-color: #cf1124;
-  background: #cf1124;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: #b3261e;
   color: #ffffff;
 }

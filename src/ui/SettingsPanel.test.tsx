@@ -231,10 +231,10 @@ function memoryStorage(): SettingsStorage {
 }
 
 describe('SettingsPanel', () => {
-  it('opens as a modal dialog titled « Réglages »', () => {
+  it('opens as a modal dialog in the dock’s frame, titled « Réglages »', () => {
     gameStore.getState().openPanel('settings')
     expect(renderToStaticMarkup(<SettingsPanel />)).toMatch(
-      /^<dialog class="panel settings-panel" aria-labelledby="settings-title"><div class="panel__content">.*<\/div><\/dialog>$/,
+      /^<dialog class="panel dock-frame dock-panel settings-panel" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\1" class="dock-frame__title">Réglages<\/h2>.*<div class="panel__content">.*<\/div><\/dialog>$/,
     )
   })
 

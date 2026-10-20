@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useStore } from 'zustand'
 import { formatDayAndMonth } from './formatGameDate.ts'
-import { received, startMessages, type Message } from './messageTriggers.ts'
-import { gameStore } from './store.ts'
+import {
+  messageElementId,
+  messageStack,
+  type MessageStack,
+} from './messageStack.ts'
+import type { Message } from './messageTriggers.ts'
 import './Messages.css'
 
 interface MessagesViewProps {
@@ -19,7 +23,12 @@ export function MessagesView({ messages, onDismiss }: MessagesViewProps) {
   return (
     <section className="messages" role="log" aria-label="Messages">
       {messages.map(({ id, kind, from, text, day }) => (
-        <article key={id} className={`message message--${kind}`}>
+        <article
+          key={id}
+          id={messageElementId(id)}
+          className={`message message--${kind}`}
+          tabIndex={-1}
+        >
           <p className="message__from" id={`message-${id}`}>
             {from}{' '}
             <span className="message__day">{formatDayAndMonth(day)}</span>
@@ -39,24 +48,16 @@ export function MessagesView({ messages, onDismiss }: MessagesViewProps) {
   )
 }
 
-/** The messages the app store's game calls for, from now on. */
-export default function Messages() {
-  const [messages, setMessages] = useState<readonly Message[]>([])
-
-  useEffect(
-    () =>
-      startMessages(gameStore, (message) =>
-        setMessages((all) => received(all, message)),
-      ),
-    [],
-  )
-
-  return (
-    <MessagesView
-      messages={messages}
-      onDismiss={(id) =>
-        setMessages((all) => all.filter((message) => message.id !== id))
-      }
-    />
-  )
+/**
+ * The messages in `stack`, which the shell fills with those the app
+ * store's game calls for (see `startMessageStack`).
+ */
+export default function Messages({
+  stack = messageStack,
+}: {
+  stack?: MessageStack
+}) {
+  const messages = useStore(stack, (state) => state.messages)
+  const dismiss = useStore(stack, (state) => state.dismiss)
+  return <MessagesView messages={messages} onDismiss={dismiss} />
 }

@@ -2,10 +2,6 @@
 .messages {
   display: grid;
   gap: 0.5rem;
-  margin: 0 0 1rem;
-}
-
-.messages:empty {
   margin: 0;
 }
 
@@ -20,9 +16,17 @@
   align-items: start;
   gap: 0 0.75rem;
   padding: 0.5rem 0.75rem;
-  border-left: 4px solid #2b2622;
+  border: 2px solid #2b2622;
+  border-left-width: 6px;
+  border-radius: 12px;
   background: #fbe7c2;
   color: #2b2622;
+  box-shadow: 0 4px 0 #2b2622;
+}
+
+.message:focus-visible {
+  outline: 3px solid #2f6fb0;
+  outline-offset: 2px;
 }
 
 .message--landlord {

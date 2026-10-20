@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { useStore } from 'zustand'
 import pacing from '../content/pacing.json'
 import type { Avatar } from '../content/schema.ts'
@@ -6,35 +6,36 @@ import { defiById } from '../engine/challenge.ts'
 import { DEFIS, DIFFICULTIES, FOOD_TRUCK } from '../engine/day.ts'
 import { titleOf, truckReplacedOn } from '../engine/dream.ts'
 import type { Cents } from '../engine/money.ts'
-import { netWorth as netWorthOf, netWorthChange } from '../engine/netWorth.ts'
+import { netWorth as netWorthOf } from '../engine/netWorth.ts'
 import type { Day } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
-import { CashGaugeView } from './CashGauge.tsx'
+import {
+  followAlert,
+  missedThisWeek,
+  topAlerts,
+  type AlertId,
+  type TopAlert,
+} from './alerts.ts'
+import { CashChipView } from './CashGauge.tsx'
+import { cashAtCloses } from './cashHistory.ts'
 import { monthlyFixedCosts } from './cashLevel.ts'
-import DefiPanel from './DefiPanel.tsx'
 import { chipLabel, energyFloorLine } from './defis.ts'
-import DreamPanel from './DreamPanel.tsx'
 import { EnergyGaugeView } from './EnergyGauge.tsx'
-import EventCard from './EventCard.tsx'
-import FinancesPanel from './FinancesPanel.tsx'
 import { formatGameDate } from './formatGameDate.ts'
-import MagnatScreen from './MagnatScreen.tsx'
-import ManagePanel from './ManagePanel.tsx'
-import { NetWorthGaugeView } from './NetWorthGauge.tsx'
+import { Icon } from './icons.tsx'
+import { messageStack, type MessageStack } from './messageStack.ts'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
-import ReportPanel from './ReportPanel.tsx'
-import SettingsPanel from './SettingsPanel.tsx'
 import {
   settingsStore,
   WORLD_VIEWS,
   type SettingsStore,
   type WorldView,
 } from './settings.ts'
-import StaffPanel from './StaffPanel.tsx'
 import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
-import TripPanel from './TripPanel.tsx'
+import { todayNumbers, type TodayNumbers } from './todayNumbers.ts'
 import { enRouteLine } from './tripBoard.ts'
+import { useMediaQuery } from './useMediaQuery.ts'
 import './TopBar.css'
 
 function speedLabel(speed: number): string {
@@ -43,13 +44,22 @@ function speedLabel(speed: number): string {
   return `Vitesse ×${speed}`
 }
 
-// U+FE0E asks for the text form of ⏸ rather than a colour emoji.
-function speedText(speed: number): string {
-  return speed === PAUSED ? '⏸︎' : `×${speed}`
+// Pause as two bars, drawn, since not every font has ⏸.
+function speedText(speed: number): ReactNode {
+  if (speed !== PAUSED) return `×${speed}`
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect x="2" y="1" width="3.5" height="12" rx="1" fill="currentColor" />
+      <rect x="8.5" y="1" width="3.5" height="12" rx="1" fill="currentColor" />
+    </svg>
+  )
 }
-
-// The gear of « Réglages », in its text form too.
-const GEAR = '⚙︎'
 
 /** The views of the world, as the switch names them. */
 const VIEW_NAMES: Readonly<Record<WorldView, string>> = {
@@ -59,6 +69,12 @@ const VIEW_NAMES: Readonly<Record<WorldView, string>> = {
 
 const CASH = '1000' satisfies AccountCode
 
+/** How many closes the cash chip's sparkline draws. */
+export const CASH_HISTORY_DAYS = 30
+
+/** Under this width, a phone's, « Hier » folds into the cash chip's tooltip. */
+export const NARROW_QUERY = '(max-width: 699px)'
+
 interface TopBarViewProps {
   /** The business's name, from the player's profile. */
   businessName: string
@@ -67,13 +83,15 @@ interface TopBarViewProps {
   cash: Cents
   /** What the next 1st of the month takes from the encaisse. */
   fixedCosts: Cents
-  /** The owner's « Valeur nette » this morning. */
-  netWorth: Cents
+  /** The encaisse at each of the last closes, oldest first. */
+  cashHistory?: readonly Cents[]
   /**
-   * How it moved since the last Sunday's close; null before a week has one
-   * to move from.
+   * The last day's numbers in the cash chip's tooltip, as on a phone where
+   * « Hier » folds into it; left out, they do not show there.
    */
-  netWorthChange: Cents | null
+  yesterday?: TodayNumbers | null
+  /** Opens « Finances ». */
+  onCash?: () => void
   /** The title the net worth earns of « Le rêve »; null shows none. */
   title?: string | null
   /** The owner's energy this morning. */
@@ -86,16 +104,6 @@ interface TopBarViewProps {
   view?: WorldView
   /** Shows the other view; null hides the switch. */
   onViewChange?: ((view: WorldView) => void) | null
-  /** Opens the « Gérer le camion » panel. */
-  onManage: () => void
-  /** Opens the « Qui fait quoi » panel. */
-  onStaff: () => void
-  /** Opens the « Vos finances » panel. */
-  onFinances: () => void
-  /** Opens « Le rêve »; null hides its button, as in a Défi. */
-  onDream?: (() => void) | null
-  /** Opens « Aller à… »; null hides its button, as in a Défi. */
-  onTrip?: (() => void) | null
   /** « En route vers la Caisse » on a day with a trip; null shows none. */
   enRoute?: string | null
   /** The chip of the Défi played, « Défi · semaine 2 de 3 »; null if none. */
@@ -107,17 +115,27 @@ interface TopBarViewProps {
   defiEnergy: string | null
   /** Opens the Défi's panel. */
   onDefi: () => void
+  /** The chips at the right of the speeds: what waits for the player. */
+  alerts?: readonly TopAlert[]
+  onAlert?: (id: AlertId) => void
   /** Opens « Réglages ». */
   onSettings: () => void
 }
 
+/**
+ * The top bar, a few cards over the street. At the left: the business's
+ * name, the date and the owner's title of « Le rêve »; the cash chip; the
+ * energy. At the right: the street or the city, the speeds, the chips of
+ * what waits, then the gear of « Réglages ».
+ */
 export function TopBarView({
   businessName,
   day,
   cash,
   fixedCosts,
-  netWorth,
-  netWorthChange: change,
+  cashHistory = [],
+  yesterday,
+  onCash = () => {},
   title = null,
   energy,
   avatar,
@@ -125,151 +143,140 @@ export function TopBarView({
   onSpeedChange,
   view = 'street',
   onViewChange = null,
-  onManage,
-  onStaff,
-  onFinances,
-  onDream = null,
-  onTrip = null,
   enRoute = null,
   defiLabel,
   defiEnergy,
   onDefi,
+  alerts = [],
+  onAlert = () => {},
   onSettings,
 }: TopBarViewProps) {
   return (
     <header className="top-bar">
-      <div className="top-bar__title">
-        <p className="top-bar__name">{businessName}</p>
-        <p className="top-bar__date">{formatGameDate(day)}</p>
-        {enRoute !== null && <p className="top-bar__en-route">{enRoute}</p>}
-        {defiLabel !== null && (
-          <button
-            type="button"
-            className={
-              defiEnergy === null
-                ? 'top-bar__defi'
-                : 'top-bar__defi top-bar__defi--energy'
-            }
-            aria-haspopup="dialog"
-            onClick={onDefi}
-          >
-            {defiLabel}
-            {defiEnergy !== null && (
-              <>
-                {' '}
-                <span className="top-bar__defi-energy">{defiEnergy}</span>
-              </>
-            )}
-          </button>
-        )}
+      <div className="top-bar__left">
+        <div className="top-bar__title">
+          <p className="top-bar__name">{businessName}</p>
+          <p className="top-bar__date">{formatGameDate(day)}</p>
+          {title !== null && <p className="top-bar__owner">{title}</p>}
+          {enRoute !== null && <p className="top-bar__en-route">{enRoute}</p>}
+          {defiLabel !== null && (
+            <button
+              type="button"
+              className={
+                defiEnergy === null
+                  ? 'top-bar__defi'
+                  : 'top-bar__defi top-bar__defi--energy'
+              }
+              aria-haspopup="dialog"
+              onClick={onDefi}
+            >
+              {defiLabel}
+              {defiEnergy !== null && (
+                <>
+                  {' '}
+                  <span className="top-bar__defi-energy">{defiEnergy}</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+        <CashChipView
+          cash={cash}
+          fixedCosts={fixedCosts}
+          history={cashHistory}
+          yesterday={yesterday}
+          onOpen={onCash}
+        />
+        <div className="top-bar__energy">
+          <Icon name="energie" size={18} />
+          <EnergyGaugeView energy={energy} avatar={avatar} />
+        </div>
       </div>
-      <div className="top-bar__gauges">
-        <CashGaugeView cash={cash} fixedCosts={fixedCosts} />
-        <NetWorthGaugeView netWorth={netWorth} change={change} title={title} />
-        <EnergyGaugeView energy={energy} avatar={avatar} />
-      </div>
-      <div className="top-bar__panels">
-        <button
-          type="button"
-          className="top-bar__panel"
-          aria-haspopup="dialog"
-          onClick={onManage}
-        >
-          Gérer le camion
-        </button>
-        <button
-          type="button"
-          className="top-bar__panel"
-          aria-haspopup="dialog"
-          onClick={onStaff}
-        >
-          Qui fait quoi
-        </button>
-        <button
-          type="button"
-          className="top-bar__panel"
-          aria-haspopup="dialog"
-          onClick={onFinances}
-        >
-          Vos finances
-        </button>
-        {onTrip !== null && (
-          <button
-            type="button"
-            className="top-bar__panel"
-            aria-haspopup="dialog"
-            onClick={onTrip}
-          >
-            Aller à…
-          </button>
+      <div className="top-bar__right">
+        {onViewChange !== null && (
+          <div className="top-bar__views" role="group" aria-label="Vue">
+            {WORLD_VIEWS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className="top-bar__view"
+                aria-pressed={option === view}
+                onClick={() => onViewChange(option)}
+              >
+                {VIEW_NAMES[option]}
+              </button>
+            ))}
+          </div>
         )}
-        {onDream !== null && (
-          <button
-            type="button"
-            className="top-bar__panel"
-            aria-haspopup="dialog"
-            onClick={onDream}
-          >
-            Le rêve
-          </button>
-        )}
-      </div>
-      {onViewChange !== null && (
-        <div className="top-bar__views" role="group" aria-label="Vue">
-          {WORLD_VIEWS.map((option) => (
+        <div
+          className="top-bar__speeds"
+          role="group"
+          aria-label="Vitesse du jeu"
+        >
+          {pacing.speeds.map((option) => (
             <button
               key={option}
               type="button"
-              className="top-bar__view"
-              aria-pressed={option === view}
-              onClick={() => onViewChange(option)}
+              className={
+                option === PAUSED
+                  ? 'top-bar__speed top-bar__speed--pause'
+                  : 'top-bar__speed'
+              }
+              aria-label={speedLabel(option)}
+              aria-pressed={option === speed}
+              onClick={() => onSpeedChange(option)}
             >
-              {VIEW_NAMES[option]}
+              {speedText(option)}
             </button>
           ))}
         </div>
-      )}
-      <div className="top-bar__speeds" role="group" aria-label="Vitesse du jeu">
-        {pacing.speeds.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className="top-bar__speed"
-            aria-label={speedLabel(option)}
-            aria-pressed={option === speed}
-            onClick={() => onSpeedChange(option)}
-          >
-            {speedText(option)}
-          </button>
-        ))}
+        {alerts.length > 0 && (
+          <ul className="top-bar__alerts" aria-label="Alertes">
+            {alerts.map(({ id, icon, label }) => (
+              <li key={id}>
+                <button
+                  type="button"
+                  className={`top-bar__alert top-bar__alert--${id}`}
+                  onClick={() => onAlert(id)}
+                >
+                  <Icon name={icon} size={18} />
+                  {label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button
+          type="button"
+          className="top-bar__settings"
+          aria-label="Réglages"
+          aria-haspopup="dialog"
+          title="Réglages"
+          onClick={onSettings}
+        >
+          <Icon name="reglages" size={22} strokeWidth={2.2} />
+        </button>
       </div>
-      <button
-        type="button"
-        className="top-bar__settings"
-        aria-label="Réglages"
-        aria-haspopup="dialog"
-        title="Réglages"
-        onClick={onSettings}
-      >
-        {GEAR}
-      </button>
     </header>
   )
 }
 
 /**
- * The top bar wired to the app store, with the Space shortcut, and the
- * panel open: one it opened, « Réglages » from the gear at its right end
- * included, the event card or the weekly report. In a Défi, the chip under
- * the date opens the Défi's panel. The switch between « La rue » and « La
- * ville » keeps the player's pick in `settings`, which the world follows.
+ * The top bar wired to the app store, with the Space shortcut. In a Défi,
+ * the chip under the date opens the Défi's panel. The switch between « La
+ * rue » and « La ville » keeps the player's pick in `settings`, which the
+ * world follows. The chips at the right read the grocers' missed deliveries
+ * and the messages in `stack`.
  */
 export default function TopBar({
   settings = settingsStore,
+  stack = messageStack,
 }: {
   settings?: SettingsStore
+  stack?: MessageStack
 }) {
   const view = useStore(settings, (state) => state.worldView)
+  const messages = useStore(stack, (state) => state.messages.length)
   const businessName = useGame((state) => state.game.profile.businessName)
   const avatar = useGame((state) => state.game.profile.avatar)
   const difficulty = useGame((state) => state.game.profile.difficulty)
@@ -284,11 +291,14 @@ export default function TopBar({
   const dream = useGame((state) => state.game.dream)
   const town = useGame((state) => state.game.town)
   const events = useGame((state) => state.game.events)
+  const contracts = useGame((state) => state.game.contracts)
+  const lastDay = useGame((state) => state.game.lastDay)
   const speed = useGame((state) => state.speed)
   const setSpeed = useGame((state) => state.setSpeed)
   const togglePause = useGame((state) => state.togglePause)
-  const panel = useGame((state) => state.panel)
   const openPanel = useGame((state) => state.openPanel)
+  const openDrawer = useGame((state) => state.openDrawer)
+  const narrow = useMediaQuery(NARROW_QUERY)
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) =>
@@ -301,17 +311,23 @@ export default function TopBar({
     }
   }, [togglePause])
 
+  // A Défi's truck came on its first day, from which its loan counts.
+  const firstDay = challenge?.startDay ?? 0
+  const lastPlayed = lastDay?.day ?? null
   // The books only change when a day is played, not on every frame.
   const cash = useMemo(
     () => balance(journal, CASH, { toDay: day }),
     [journal, day],
   )
-  const worth = useMemo(() => {
+  const history = useMemo(
+    () => cashAtCloses(journal, firstDay, lastPlayed, CASH_HISTORY_DAYS),
+    [journal, firstDay, lastPlayed],
+  )
+  const title = useMemo(() => {
+    if (challenge !== null) return null
     const game = { day, journal, financing, personal, dream, weekHistory }
-    return { total: netWorthOf(game), change: netWorthChange(game) }
-  }, [day, journal, financing, personal, dream, weekHistory])
-  // A Défi's truck came on its first day, from which its loan counts.
-  const firstDay = challenge?.startDay ?? 0
+    return titleOf(netWorthOf(game))?.name ?? null
+  }, [challenge, day, journal, financing, personal, dream, weekHistory])
   const fixedCosts = useMemo(
     () =>
       monthlyFixedCosts(
@@ -330,44 +346,36 @@ export default function TopBar({
   const defiLabel =
     challenge === null || defi === null ? null : chipLabel(challenge, defi, day)
   const defiEnergy = defi === null ? null : energyFloorLine(energy, defi)
+  const alerts = topAlerts({
+    missed: missedThisWeek({ day, contracts }),
+    messages,
+  })
 
   return (
-    <>
-      <TopBarView
-        businessName={businessName}
-        day={day}
-        cash={cash}
-        fixedCosts={fixedCosts}
-        netWorth={worth.total}
-        netWorthChange={worth.change}
-        title={challenge === null ? (titleOf(worth.total)?.name ?? null) : null}
-        energy={energy}
-        avatar={avatar}
-        speed={speed}
-        onSpeedChange={setSpeed}
-        view={view}
-        onViewChange={(next) => settings.getState().setWorldView(next)}
-        onManage={() => openPanel('manage')}
-        onStaff={() => openPanel('staff')}
-        onFinances={() => openPanel('finances')}
-        onDream={challenge === null ? () => openPanel('dream') : null}
-        onTrip={challenge === null ? () => openPanel('trip') : null}
-        enRoute={enRouteLine({ day, events, town })}
-        defiLabel={defiLabel}
-        defiEnergy={defiEnergy}
-        onDefi={() => openPanel('defi')}
-        onSettings={() => openPanel('settings')}
-      />
-      {panel === 'manage' && <ManagePanel />}
-      {panel === 'staff' && <StaffPanel />}
-      {panel === 'finances' && <FinancesPanel />}
-      {panel === 'dream' && <DreamPanel />}
-      {panel === 'trip' && <TripPanel />}
-      {panel === 'defi' && <DefiPanel />}
-      {panel === 'settings' && <SettingsPanel />}
-      {panel === 'event' && <EventCard />}
-      {panel === 'report' && <ReportPanel />}
-      {panel === 'magnat' && <MagnatScreen />}
-    </>
+    <TopBarView
+      businessName={businessName}
+      day={day}
+      cash={cash}
+      fixedCosts={fixedCosts}
+      cashHistory={history}
+      yesterday={
+        narrow ? (lastDay === null ? null : todayNumbers(lastDay)) : undefined
+      }
+      onCash={() => openDrawer('finances')}
+      title={title}
+      energy={energy}
+      avatar={avatar}
+      speed={speed}
+      onSpeedChange={setSpeed}
+      view={view}
+      onViewChange={(next) => settings.getState().setWorldView(next)}
+      enRoute={enRouteLine({ day, events, town })}
+      defiLabel={defiLabel}
+      defiEnergy={defiEnergy}
+      onDefi={() => openPanel('defi')}
+      alerts={alerts}
+      onAlert={(id) => followAlert(id, stack)}
+      onSettings={() => openPanel('settings')}
+    />
   )
 }

@@ -66,7 +66,7 @@ describe('slideInReport', () => {
   it('shows the last week while it slides in and no panel is open', () => {
     const store = sliding()
     expect(slideInReport(store.getState())).toBe(DAY_7.lastWeek)
-    store.getState().openPanel('finances')
+    store.getState().openPanel('staff')
     expect(slideInReport(store.getState())).toBeNull()
     store.getState().closePanel()
     expect(slideInReport(store.getState())).toBe(DAY_7.lastWeek)

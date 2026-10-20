@@ -1,64 +1,97 @@
+/* The top bar of docs/design/reference/ui_concepts.py (`topbar()`): cards
+   over the street, 14 px from the top and 16 px from the sides, the
+   street showing and taking clicks between them. Like the dock, « Hier »
+   and the drawers, it stays under the street's customer card (z-index 2,
+   WorldCanvas.css). Text colours keep at least 4.5:1 against the cream
+   #fff7e8. */
 .top-bar {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  left: 16px;
   z-index: 1;
-  display: grid;
-  grid-template-columns: auto 1fr auto auto auto auto;
-  grid-template-areas: 'date gauges panels views speeds settings';
-  align-items: center;
-  gap: 0.5rem 1.5rem;
-  padding: 0.5rem 1rem;
-  background: #1f2933;
-  color: #f5f7fa;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  color: #2b2622;
+  pointer-events: none;
 }
 
-/* The business's name above the date. A long name wraps rather than
-   widening the column the media queries below size for the date. */
+.top-bar__left,
+.top-bar__right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.top-bar__right {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.top-bar__left > *,
+.top-bar__right > * {
+  pointer-events: auto;
+}
+
+/* The business's card: `.card` with a 14 px radius and a 4 px shadow. */
 .top-bar__title {
-  grid-area: date;
+  max-width: 18rem;
+  padding: 6px 14px;
+  border: 3px solid #2b2622;
+  border-radius: 14px;
+  background: #fff7e8;
+  box-shadow: 0 4px 0 #2b2622;
+}
+
+.top-bar__title p {
+  margin: 0;
 }
 
 .top-bar__name {
-  max-width: 16rem;
-  margin: 0;
-  color: #cbd2d9;
-  font-size: 0.875rem;
+  font-family: Fredoka, system-ui, sans-serif;
+  font-size: 17px;
   font-weight: 600;
+  line-height: 1.1;
   overflow-wrap: anywhere;
 }
 
+.top-bar__date,
+.top-bar__owner,
+.top-bar__en-route {
+  color: #6b625a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .top-bar__date {
-  margin: 0;
-  font-weight: 600;
   white-space: nowrap;
 }
 
-/* The day's trip under the date, « En route vers la Caisse ». */
-.top-bar__en-route {
-  max-width: 16rem;
-  margin: 0;
-  color: #cbd2d9;
-  font-size: 0.875rem;
+/* The owner's title of « Le rêve », under the date. */
+.top-bar__owner {
+  color: #2b2622;
 }
 
-/* The Défi's chip under the date: a pill in the gold of the speed pressed. */
+/* The Défi's chip under the date: an ink pill. */
 .top-bar__defi {
   min-height: 2rem;
   margin: 0.25rem 0 0;
   padding: 0 0.75rem;
-  border: 1px solid #f0b429;
+  border: 2px solid #2b2622;
   border-radius: 999px;
-  background: transparent;
-  color: #f0b429;
+  background: #2b2622;
+  color: #fff7e8;
   font: inherit;
-  font-size: 0.875rem;
-  font-weight: 700;
+  font-size: 0.8125rem;
+  font-weight: 800;
   white-space: nowrap;
   cursor: pointer;
 }
 
-/* A Défi with an energy floor shows the energy on a second line, so the
-   chip keeps about the width the media queries below size the date for. */
 .top-bar__defi--energy {
   padding: 0.25rem 1rem;
   border-radius: 1rem;
@@ -70,211 +103,163 @@
 }
 
 .top-bar__defi:hover {
-  background: #323f4b;
+  background: #4a423b;
 }
 
-.top-bar__defi:focus-visible {
-  outline: 3px solid #7cc4fa;
+.top-bar__defi:focus-visible,
+.top-bar__view:focus-visible,
+.top-bar__speed:focus-visible,
+.top-bar__alert:focus-visible,
+.top-bar__settings:focus-visible {
+  outline: 3px solid #2f6fb0;
   outline-offset: 2px;
 }
 
-/* The encaisse, the owner's net worth and their energy, side by side as long
-   as they fit. */
-.top-bar__gauges {
-  grid-area: gauges;
+/* The energy pill: the bolt, the bar and the word. */
+.top-bar__energy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 2px solid #2b2622;
+  border-radius: 999px;
+  background: #fff7e8;
+  color: #2e7d4f;
+}
+
+/* « La rue » and « La ville », then the speeds: cream groups with an ink
+   border, the one pressed in ink. */
+.top-bar__views,
+.top-bar__speeds {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 2px solid #2b2622;
+  border-radius: 12px;
+  background: #fff7e8;
+}
+
+.top-bar__view,
+.top-bar__speed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #2b2622;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.top-bar__view:hover,
+.top-bar__speed:hover {
+  background: #fbefd5;
+}
+
+.top-bar__view[aria-pressed='true'],
+.top-bar__speed[aria-pressed='true'] {
+  background: #2b2622;
+  color: #fff7e8;
+}
+
+/* Paused, the pause button is amber, as in the reference. */
+.top-bar__speed--pause[aria-pressed='true'] {
+  background: #8a5300;
+  color: #ffffff;
+}
+
+/* The chips of what waits: an icon and words on a cream pill. */
+.top-bar__alerts {
   display: flex;
   flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.top-bar__alert {
+  display: inline-flex;
   align-items: center;
-  gap: 0.25rem 1.5rem;
-}
-
-.top-bar__panels {
-  grid-area: panels;
-  display: flex;
-  gap: 0.5rem;
-}
-
-.top-bar__panel {
+  gap: 8px;
   min-height: 44px;
-  padding: 0 0.75rem;
-  border: 1px solid #cbd2d9;
-  border-radius: 6px;
-  background: #323f4b;
-  color: inherit;
+  padding: 0 14px;
+  border: 2px solid #2b2622;
+  border-radius: 999px;
+  background: #fff7e8;
+  color: #2b2622;
   font: inherit;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 800;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.top-bar__panel:hover {
-  background: #3e4c59;
+.top-bar__alert--missed {
+  background: #fbefd5;
 }
 
-.top-bar__panel:focus-visible {
-  outline: 3px solid #7cc4fa;
-  outline-offset: 2px;
+.top-bar__alert--missed .icon {
+  color: #8a5300;
 }
 
-/* « La rue » and « La ville », before the speeds, the size of a panel button
-   and pressed in the gold of a speed. */
-.top-bar__views {
-  grid-area: views;
-  justify-self: end;
-  display: flex;
-  gap: 0.25rem;
+.top-bar__alert:hover {
+  background: #f6e2b8;
 }
 
-.top-bar__view {
-  min-height: 44px;
-  padding: 0 0.75rem;
-  border: 1px solid #52606d;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.top-bar__view:hover {
-  background: #323f4b;
-}
-
-.top-bar__view[aria-pressed='true'] {
-  border-color: #f0b429;
-  background: #f0b429;
-  color: #1f2933;
-  font-weight: 700;
-}
-
-.top-bar__view:focus-visible {
-  outline: 3px solid #7cc4fa;
-  outline-offset: 2px;
-}
-
-.top-bar__speeds {
-  grid-area: speeds;
-  display: flex;
-  gap: 0.25rem;
-}
-
-.top-bar__speed {
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0 0.5rem;
-  border: 1px solid #52606d;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.top-bar__speed:hover {
-  background: #323f4b;
-}
-
-.top-bar__speed[aria-pressed='true'] {
-  border-color: #f0b429;
-  background: #f0b429;
-  color: #1f2933;
-  font-weight: 700;
-}
-
-.top-bar__speed:focus-visible {
-  outline: 3px solid #7cc4fa;
-  outline-offset: 2px;
-}
-
-/* The gear of « Réglages », at the right end, the size of a speed button. */
+/* The gear of « Réglages », at the right end. */
 .top-bar__settings {
-  grid-area: settings;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 44px;
   min-height: 44px;
   padding: 0;
-  border: 1px solid #52606d;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 1.375rem;
-  line-height: 1;
+  border: 2px solid #2b2622;
+  border-radius: 12px;
+  background: #fff7e8;
+  color: #2b2622;
   cursor: pointer;
 }
 
 .top-bar__settings:hover {
-  background: #323f4b;
+  background: #fbefd5;
 }
 
-.top-bar__settings:focus-visible {
-  outline: 3px solid #7cc4fa;
-  outline-offset: 2px;
-}
-
-/* Measured with the longest texts: the date (about 265 px), the cash gauge
-   with a large negative amount (about 332 px), the net worth with as large
-   an amount and the title of « Le rêve » under it (about 353 px, which
-   wraps to the cell), the energy gauge (about 260 px), the four panel
-   buttons (about 562 px, « Le rêve » 97 px of it with its gap), the switch
-   between the street and the city (about 151 px), the four speed buttons
-   (about 196 px) and the gear (44 px). All on one row need about 2280 px;
-   below that the energy gauge, then the net worth, wrap under the encaisse
-   in its cell. The row itself holds down to about 1710 px, where the cell
-   still fits the cash gauge, the widest that cannot wrap; 1730 px leaves a
-   margin. Below that the gauges get a row of their own under the date and
-   the buttons, the switch at its right end, under the speeds. */
-@media (max-width: 1729px) {
+/* On a phone the cards wrap, smaller, and the right side follows the left. */
+@media (max-width: 699px) {
   .top-bar {
-    grid-template-columns: 1fr auto auto auto;
-    grid-template-areas:
-      'date panels speeds settings'
-      'gauges gauges views views';
-  }
-}
-
-/* The date and all the buttons (about 1170 px) no longer fit on one row,
-   so the panel buttons move down under the gauges. */
-@media (max-width: 1169px) {
-  .top-bar {
-    grid-template-columns: 1fr auto auto;
-    grid-template-areas:
-      'date speeds settings'
-      'gauges views views'
-      'panels panels panels';
-  }
-}
-
-/* The date, the speed buttons and the gear (about 580 px) no longer fit on
-   one row. So, as on a phone, each part sits on its own row, the gear beside
-   the date, with the buttons sharing the full width; the panel buttons stack
-   when both no longer fit. */
-@media (max-width: 599px) {
-  .top-bar {
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      'date settings'
-      'gauges gauges'
-      'panels panels'
-      'speeds speeds'
-      'views views';
+    top: 8px;
+    right: 8px;
+    left: 8px;
+    gap: 6px;
   }
 
-  .top-bar__views {
-    justify-self: stretch;
+  .top-bar__left,
+  .top-bar__right {
+    gap: 6px;
   }
 
-  .top-bar__settings {
-    align-self: start;
+  .top-bar__right {
+    margin-left: 0;
+    justify-content: flex-start;
   }
 
-  .top-bar__panels {
-    flex-wrap: wrap;
+  .top-bar__title {
+    max-width: none;
+    padding: 4px 10px;
   }
 
-  .top-bar__panel,
   .top-bar__view,
   .top-bar__speed {
-    flex: 1;
+    padding: 0 8px;
   }
 }

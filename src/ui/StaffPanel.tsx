@@ -3,6 +3,7 @@ import type { CandidateId, StaffRoleId } from '../content/schema.ts'
 import type { DecisionChange } from '../engine/decisions.ts'
 import { cents } from '../engine/money.ts'
 import { wageChange } from './decisionInput.ts'
+import { DockPanel } from './DockFrame.tsx'
 import { useFieldDialog } from './fieldDialog.ts'
 import { formatAmount, formatMoney } from './formatMoney.ts'
 import { NumberField } from './NumberField.tsx'
@@ -260,9 +261,9 @@ function RoleOption({
 }
 
 /**
- * The panel wired to the app store, in a modal dialog (see
- * `useFieldDialog`), the role picked and the firing to confirm kept while
- * it is open.
+ * « Équipe », the panel wired to the app store, in the dock's frame, a
+ * modal dialog (see `useFieldDialog`), the role picked and the firing to
+ * confirm kept while it is open.
  */
 export default function StaffPanel() {
   const game = useGame((state) => state.game)
@@ -276,12 +277,13 @@ export default function StaffPanel() {
   const { dialogRef, onChange, close, onCancel } = useFieldDialog(decide)
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="panel staff"
-      aria-labelledby={TITLE_ID}
+    <DockPanel
+      dialogRef={dialogRef}
+      className="staff"
+      title="Équipe"
       onCancel={onCancel}
       onClose={closePanel}
+      onDismiss={close}
     >
       <StaffPanelView
         board={board}
@@ -292,6 +294,6 @@ export default function StaffPanel() {
         onChange={onChange}
         onClose={close}
       />
-    </dialog>
+    </DockPanel>
   )
 }

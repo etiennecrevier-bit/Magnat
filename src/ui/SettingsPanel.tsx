@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from 'zustand'
 import pacing from '../content/pacing.json'
+import { DockPanel } from './DockFrame.tsx'
+import { useModal } from './dockFrame.ts'
 import { downloadSave } from './saves.ts'
 import {
   REPORT_CADENCES,
@@ -200,9 +202,10 @@ export function SettingsPanelView({
 }
 
 /**
- * « Réglages » in a modal dialog, wired to `settings` and the app store: it
- * exports the game played, and plays the game a file imported holds in its
- * place, which closes the panel. Fermer or Escape closes it.
+ * « Réglages » in the dock's frame, a modal dialog, wired to `settings` and
+ * the app store: it exports the game played, and plays the game a file
+ * imported holds in its place, which closes the panel. « ✕ » or Escape
+ * closes it.
  */
 export default function SettingsPanel({
   settings = settingsStore,
@@ -223,12 +226,7 @@ export default function SettingsPanel({
   const [imports] = useState(() => createSaveImports())
   const [importError, setImportError] = useState<string | null>(null)
   const dialogRef = useRef<HTMLDialogElement>(null)
-
-  useEffect(() => {
-    const dialog = dialogRef.current
-    // StrictMode runs this twice; the second time, the dialog is open.
-    if (dialog !== null && !dialog.open) dialog.showModal()
-  }, [])
+  useModal(dialogRef)
 
   // Once the panel closes, a file still being read must not start its game.
   useEffect(() => () => imports.cancel(), [imports])
@@ -240,11 +238,12 @@ export default function SettingsPanel({
   })
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="panel settings-panel"
-      aria-labelledby={TITLE_ID}
+    <DockPanel
+      dialogRef={dialogRef}
+      className="settings-panel"
+      title="Réglages"
       onClose={closePanel}
+      onDismiss={() => dialogRef.current?.close()}
     >
       <SettingsPanelView
         visualEffects={visualEffects}
@@ -258,6 +257,6 @@ export default function SettingsPanel({
         importError={importError}
         onClose={() => dialogRef.current?.close()}
       />
-    </dialog>
+    </DockPanel>
   )
 }

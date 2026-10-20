@@ -30,10 +30,9 @@ export const PAUSED = 0
 export const NORMAL_SPEED = 1
 
 /**
- * The panels: « Gérer le camion », « Qui fait quoi », « Vos finances », «
- * Le rêve », « Aller à… », the Défi's and « Réglages », which the top bar
- * opens, the
- * event card, which opens on its own when an event comes up, the « Bilan »
+ * The panels: « Camion », « Équipe », « Ville », « Améliorations » and «
+ * Réglages », which the dock opens, the Défi's, which its chip in the top
+ * bar opens, the event card, which opens on its own when an event comes up, the « Bilan »
  * of the week or the month, which opens on its own on the morning it comes
  * or from the card that slides in, « Magnat », which opens on its own the
  * morning after the owner's net worth first reaches the last title, and
@@ -44,7 +43,6 @@ export const NORMAL_SPEED = 1
 export type Panel =
   | 'manage'
   | 'staff'
-  | 'finances'
   | 'dream'
   | 'trip'
   | 'defi'
@@ -59,16 +57,38 @@ export type Panel =
 type EndPanel = Extract<Panel, 'defiEnd' | 'bankruptcy'>
 
 /**
- * The part of a panel to show as it opens: « Fournil » in « Gérer le
- * camion », as a click on the bakery in the city opens it.
+ * The part of a panel to show as it opens: « Fournil » in « Camion », as a
+ * click on the bakery in the city opens it, or « Contrats » in « Ville », as
+ * a click on a grocer does.
  */
-export type PanelSection = 'bakery'
+export type PanelSection = 'bakery' | 'contracts'
 
 /**
- * The screens under the top bar: « Aujourd'hui », « États financiers »,
- * « Journal des événements », « Bilans » and « Contrats ».
+ * The drawers the dock opens over the street, which only read the game and
+ * so leave it running: « Finances » and « Journal ».
  */
-export type Screen = 'today' | 'statements' | 'events' | 'reports' | 'contracts'
+export type Drawer = 'finances' | 'journal'
+
+/**
+ * The tabs of « Finances »: « Aujourd'hui », « Vos finances », « États
+ * financiers », and, in a Défi, where « Ville » is hidden, « Contrats ».
+ */
+export type FinancesTab = 'today' | 'personal' | 'statements' | 'contracts'
+
+/** The tabs of « Journal »: « Événements » and « Bilans ». */
+export type JournalTab = 'events' | 'reports'
+
+/** The tab each drawer shows. */
+export interface DrawerTabs {
+  readonly finances: FinancesTab
+  readonly journal: JournalTab
+}
+
+/** The tab each drawer opens on in a game that has not picked one yet. */
+export const FIRST_DRAWER_TABS: DrawerTabs = {
+  finances: 'today',
+  journal: 'events',
+}
 
 /** How the store shows the « Bilan » of the week or the month. */
 export interface WeeklyReportOptions {
@@ -111,10 +131,19 @@ export interface GameStoreState {
   /** The part of the open panel it showed as it opened; null for its top. */
   panelSection: PanelSection | null
   /**
-   * The screen shown under the top bar, which stays as a new game starts,
-   * as it stays when the screens fold.
+   * The drawer open over the street; null while none is. Unlike a panel, it
+   * leaves the game running. A panel the player opens closes it; one that
+   * opens on its own, such as the event card, opens over it.
    */
-  screen: Screen
+  drawer: Drawer | null
+  /** The tab each drawer shows, kept while it is closed. */
+  drawerTabs: DrawerTabs
+  /**
+   * How many reports came only as the card sliding in since the player
+   * last read one, in the full report or in « Journal »: the count on the
+   * dock's « Journal ».
+   */
+  unreadReports: number
   /**
    * The game from just before the player's choice, while the event card
    * shows what it did; null otherwise.
@@ -192,14 +221,24 @@ export interface GameStoreState {
    * `PAUSED`, and pauses. Does nothing if a panel is already open, so that
    * panel and the speed it remembered stay. The event card, « Magnat » and
    * the end of a game only open on their own. The report takes the card
-   * sliding in away.
+   * sliding in away and counts the reports as read. It closes the drawer
+   * open, if any.
    */
   openPanel: (
     panel: Exclude<Panel, 'event' | 'magnat' | EndPanel>,
     section?: PanelSection,
   ) => void
-  /** Shows `screen` under the top bar. */
-  showScreen: (screen: Screen) => void
+  /**
+   * Opens `drawer`, on `tab` if given, else on the tab it showed last,
+   * without pausing; with the drawer already open, it only moves to `tab`.
+   * Does nothing while a panel is open. Opening « Journal » counts the
+   * reports as read.
+   */
+  openDrawer: <D extends Drawer>(drawer: D, tab?: DrawerTabs[D]) => void
+  /** Shows `tab` in `drawer`, open or not. */
+  setDrawerTab: <D extends Drawer>(drawer: D, tab: DrawerTabs[D]) => void
+  /** Closes the drawer open, if any. */
+  closeDrawer: () => void
   /**
    * Closes the panel and resumes at the speed it remembered. Once the game
    * is over, its end opens, or stays, in place, and the game stays paused.
@@ -227,8 +266,9 @@ export interface GameStoreState {
   /**
    * Plays `game` from now on, new or loaded, at normal speed: paused on the
    * event card if an event waits for the player's choice, and on its end if
-   * it is over, a Défi or a game that went bankrupt. Closes the panel open,
-   * if any, and counts the game in `gamesStarted`.
+   * it is over, a Défi or a game that went bankrupt. Closes the panel and
+   * the drawer open, if any, puts the drawers back on their first tabs and
+   * counts the game in `gamesStarted`.
    */
   startGame: (game: GameState) => void
 }
@@ -342,6 +382,9 @@ function playing(game: GameState) {
     monthReport: null,
     reportShown: 'week' as const,
     slideIn: null,
+    drawer: null,
+    drawerTabs: FIRST_DRAWER_TABS,
+    unreadReports: 0,
   }
 }
 
@@ -359,7 +402,6 @@ export function createGameStore(
   return createStore<GameStoreState>()((set, get) => ({
     ...playing(game),
     gamesStarted: 0,
-    screen: 'today',
     setSpeed: (speed) => {
       if (get().resumeSpeed !== null) return
       set(speed > PAUSED ? { speed, lastSpeed: speed } : { speed })
@@ -464,7 +506,12 @@ export function createGameStore(
         // follow it as closePanel() opens them.
         const after = opens
           ? { reportWaiting: true, slideIn: null }
-          : { slideIn: report?.firstDay ?? get().slideIn }
+          : report !== null
+            ? {
+                slideIn: report.firstDay,
+                unreadReports: get().unreadReports + 1,
+              }
+            : { slideIn: get().slideIn }
         set(
           resumeSpeed === null
             ? {
@@ -495,6 +542,7 @@ export function createGameStore(
                 resumeSpeed: speed,
                 speed: PAUSED,
                 slideIn: null,
+                unreadReports: 0,
               }
             : {
                 game: next,
@@ -505,7 +553,13 @@ export function createGameStore(
               },
         )
       } else if (report !== null) {
-        set({ game: next, weekReports, ...shown, slideIn: report.firstDay })
+        set({
+          game: next,
+          weekReports,
+          ...shown,
+          slideIn: report.firstDay,
+          unreadReports: get().unreadReports + 1,
+        })
       } else if (!eventComes || resumeSpeed !== null) {
         set({ game: next, weekReports })
       } else {
@@ -519,17 +573,32 @@ export function createGameStore(
       }
     },
     openPanel: (panel, section) => {
-      const { speed, resumeSpeed, slideIn } = get()
+      const { speed, resumeSpeed } = get()
       if (resumeSpeed !== null) return
       set({
         resumeSpeed: speed,
         speed: PAUSED,
         panel,
         panelSection: section ?? null,
-        slideIn: panel === 'report' ? null : slideIn,
+        drawer: null,
+        ...(panel === 'report' ? { slideIn: null, unreadReports: 0 } : {}),
       })
     },
-    showScreen: (screen) => set({ screen }),
+    openDrawer: (drawer, tab) => {
+      const { resumeSpeed, drawerTabs, unreadReports } = get()
+      if (resumeSpeed !== null) return
+      set({
+        drawer,
+        drawerTabs:
+          tab === undefined ? drawerTabs : { ...drawerTabs, [drawer]: tab },
+        unreadReports: drawer === 'journal' ? 0 : unreadReports,
+      })
+    },
+    setDrawerTab: (drawer, tab) =>
+      set({ drawerTabs: { ...get().drawerTabs, [drawer]: tab } }),
+    closeDrawer: () => {
+      if (get().drawer !== null) set({ drawer: null })
+    },
     closePanel: () => {
       const {
         resumeSpeed,
@@ -557,7 +626,12 @@ export function createGameStore(
         return
       }
       if (reportWaiting) {
-        set({ panel: 'report', panelSection: null, reportWaiting: false })
+        set({
+          panel: 'report',
+          panelSection: null,
+          reportWaiting: false,
+          unreadReports: 0,
+        })
         return
       }
       if (current.events.pending !== null) {
