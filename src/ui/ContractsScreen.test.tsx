@@ -103,7 +103,11 @@ describe('ContractsScreenView', () => {
 
   it('shows the grocer the city picked, with no contract, beside the others', () => {
     const board = contractsBoard(delivered())
-    const html = render(board, { grocer: 'depanneur2424', count: 1 })
+    const html = render(board, {
+      grocer: 'depanneur2424',
+      count: 1,
+      pending: true,
+    })
     expect(cards(html).map(({ className, text }) => [className, text])).toEqual(
       [
         ['contracts__card', expect.stringMatching(/^Épicerie Chez Normand\|/)],
@@ -123,6 +127,7 @@ describe('ContractsScreenView', () => {
     const html = render(contractsBoard(delivered()), {
       grocer: 'marcheBioLogique',
       count: 2,
+      pending: true,
     })
     expect(cards(html).map(({ className }) => className)).toEqual([
       'contracts__card',
@@ -133,7 +138,7 @@ describe('ContractsScreenView', () => {
   it('keeps « Aucun contrat pour l’instant. » under a picked grocer before the first contract', () => {
     const html = render(
       { grocers: [], owedTotal: cents(0) },
-      { grocer: 'chezNormand', count: 1 },
+      { grocer: 'chezNormand', count: 1, pending: true },
     )
     expect(cards(html)).toEqual([
       {
@@ -157,6 +162,15 @@ describe('ContractsScreen', () => {
     )
     expect(html).toContain(
       `Total à recevoir des épiceries${S}: <strong>4${S}387,50${S}$</strong>`,
+    )
+  })
+
+  it('keeps the card of a pick brought into view once, for a return to the tab', () => {
+    gameStore.getState().openPanel('trip')
+    gameStore.getState().pickGrocer('depanneur2424')
+    gameStore.getState().settleCityPick(1)
+    expect(renderToStaticMarkup(<ContractsScreen followsCity />)).toContain(
+      '<article id="contracts-depanneur2424" class="contracts__card contracts__card--picked"',
     )
   })
 

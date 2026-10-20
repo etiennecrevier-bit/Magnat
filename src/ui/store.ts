@@ -95,13 +95,15 @@ export const FIRST_TRUCK_TAB: TruckTab = 'menu'
 export type CityTab = 'trip' | 'contracts'
 
 /**
- * The grocer whose card « Contrats » brings into view, as a click on their
- * shop in the city asks, and how many clicks asked so far, so each one
- * brings it again.
+ * The grocer whose card « Contrats » shows, as a click on their shop in the
+ * city asks, how many clicks asked so far, and whether the last one still
+ * waits to bring the card into view: once, so a return to the tab later
+ * leaves the focus where it is.
  */
 export interface CityPick {
   readonly grocer: GrocerId
   readonly count: number
+  readonly pending: boolean
 }
 
 /** The tab each drawer shows. */
@@ -279,6 +281,11 @@ export interface GameStoreState {
    * the card brought into view once more.
    */
   pickGrocer: (grocer: GrocerId) => void
+  /**
+   * Notes that pick `count` brought its card into view: the card stays,
+   * and is not brought again until the next pick.
+   */
+  settleCityPick: (count: number) => void
   /** Closes the drawer open, if any. */
   closeDrawer: () => void
   /**
@@ -655,8 +662,17 @@ export function createGameStore(
     pickGrocer: (grocer) =>
       set({
         cityTab: 'contracts',
-        cityPick: { grocer, count: (get().cityPick?.count ?? 0) + 1 },
+        cityPick: {
+          grocer,
+          count: (get().cityPick?.count ?? 0) + 1,
+          pending: true,
+        },
       }),
+    settleCityPick: (count) => {
+      const { cityPick } = get()
+      if (cityPick?.count === count && cityPick.pending)
+        set({ cityPick: { ...cityPick, pending: false } })
+    },
     closeDrawer: () => {
       if (get().drawer !== null) set({ drawer: null })
     },

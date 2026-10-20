@@ -112,6 +112,7 @@ describe('StaffPanelView', () => {
       `Amélie Gagnon|Au camion|Au camion|Salaire horaire|$ de l&#x27;heure|Congédier`,
     )
     expect(html).toContain('<li class="chip">Au camion</li>')
+    expect(html.match(/<div class="staff__row" tabindex="0"/g)).toHaveLength(1)
     expect(html).toMatch(
       /<input id="staff-wage-amelie" class="field__input" type="text" inputMode="decimal" autoComplete="off" aria-invalid="false" aria-describedby="staff-wage-amelie-unit [^"]+" value="17,50"\/>/,
     )
@@ -182,6 +183,10 @@ describe('StaffPanelView', () => {
     expect(rows(html)[1]).toBe(
       `Amélie Gagnon|Au camion|Part demain|Au camion|17,50${S}$ de l&#x27;heure`,
     )
+    expect(html).toContain(
+      '<div class="staff__row" tabindex="0" aria-describedby=',
+    )
+    expect(html.match(/<div class="staff__row" tabindex="0"/g)).toHaveLength(2)
     const amelie = staffBoard(game).members[0]!
     expect(memberLine(amelie).fact).toEqual({
       tone: 'off',

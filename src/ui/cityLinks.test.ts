@@ -92,7 +92,7 @@ describe('openCityLink', () => {
     expect(store.getState()).toMatchObject({
       panel: 'trip',
       cityTab: 'contracts',
-      cityPick: { grocer: 'chezNormand', count: 1 },
+      cityPick: { grocer: 'chezNormand', count: 1, pending: true },
       speed: PAUSED,
     })
   })
@@ -139,12 +139,13 @@ describe('openCityLink with « Ville » open, the city behind it', () => {
     expect(store.getState()).toMatchObject({
       panel: 'trip',
       cityTab: 'contracts',
-      cityPick: { grocer: 'marcheBioLogique', count: 1 },
+      cityPick: { grocer: 'marcheBioLogique', count: 1, pending: true },
     })
     open({ grocer: 'marcheBioLogique' })
     expect(store.getState().cityPick).toEqual({
       grocer: 'marcheBioLogique',
       count: 2,
+      pending: true,
     })
   })
 

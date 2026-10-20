@@ -19,6 +19,9 @@ import './ContractsScreen.css'
 // Every space before a colon is a no-break space (U+00A0).
 const COLON = ' :'
 
+/** What the bare view does once a picked card is in view: nothing. */
+const IGNORE = () => {}
+
 /**
  * « Contrats »: a card for each grocer with a contract that runs or money
  * owed, and for the grocer `pick` names, then what the grocers owe in all,
@@ -28,9 +31,12 @@ const COLON = ' :'
 export function ContractsScreenView({
   board,
   pick = null,
+  onBrought = IGNORE,
 }: {
   board: ContractsBoard
   pick?: CityPick | null
+  /** Told the count of the pick once its card is in view. */
+  onBrought?: (count: number) => void
 }) {
   const grocers = withGrocer(board, pick?.grocer ?? null)
   return (
@@ -41,7 +47,8 @@ export function ContractsScreenView({
             <GrocerCard
               key={line.grocer}
               line={line}
-              pick={pick?.grocer === line.grocer ? pick.count : 0}
+              pick={pick?.grocer === line.grocer ? pick : null}
+              onBrought={onBrought}
             />
           ))}
         </ul>
@@ -65,12 +72,20 @@ function cardId(grocer: GrocerId): string {
 
 /**
  * A grocer: their name and this week's delivery as its status line, the
- * anchor of its tooltip. Brought into view, with its tooltip open, each
- * time `pick` counts up.
+ * anchor of its tooltip. Brought into view, with its tooltip open, while
+ * `pick` waits for it.
  */
-function GrocerCard({ line, pick }: { line: GrocerLine; pick: number }) {
+function GrocerCard({
+  line,
+  pick,
+  onBrought,
+}: {
+  line: GrocerLine
+  pick: CityPick | null
+  onBrought: (count: number) => void
+}) {
   const id = cardId(line.grocer)
-  const picked = pick > 0
+  const picked = pick !== null
   return (
     <li>
       <Tooltip content={grocerTip(line)}>
@@ -90,7 +105,14 @@ function GrocerCard({ line, pick }: { line: GrocerLine; pick: number }) {
               {line.name}
             </h3>
             <StatusLineView id={`${id}-status`} line={grocerLine(line)} />
-            {picked && <BringIntoView id={id} pick={pick} tip={tip} />}
+            {pick?.pending === true && (
+              <BringIntoView
+                id={id}
+                pick={pick.count}
+                tip={tip}
+                onBrought={onBrought}
+              />
+            )}
           </article>
         )}
       </Tooltip>
@@ -99,8 +121,9 @@ function GrocerCard({ line, pick }: { line: GrocerLine; pick: number }) {
 }
 
 /**
- * Brings the card `id` into view each time `pick` counts up: scrolled to,
- * focused and its tooltip opened, as a click on the city asks. Its tooltip
+ * Brings the card `id` into view for pick `pick`: scrolled to, focused and
+ * its tooltip opened, as a click on the city asks, then tells `onBrought`,
+ * so the tab shown again later does not take the focus back. Its tooltip
  * opens through `tip`, since a focus that follows a press does not open it.
  * It waits for the panel to open, as « Ville » opened by the click is not
  * yet, and to give the focus to its first control.
@@ -109,10 +132,12 @@ function BringIntoView({
   id,
   pick,
   tip,
+  onBrought,
 }: {
   id: string
   pick: number
   tip: TipActions
+  onBrought: (count: number) => void
 }) {
   const { open } = tip
   useEffect(() => {
@@ -122,16 +147,17 @@ function BringIntoView({
       card.scrollIntoView({ block: 'nearest' })
       card.focus({ preventScroll: true })
       open()
+      onBrought(pick)
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [id, pick, open])
+  }, [id, pick, open, onBrought])
   return null
 }
 
 /**
  * The « Contrats » screen wired to the app store. `followsCity`, in «
- * Ville », brings into view the grocer each click on their shop in the city
- * asks for (see `pickGrocer`).
+ * Ville », brings into view, once, the grocer each click on their shop in
+ * the city asks for (see `pickGrocer`).
  */
 export default function ContractsScreen({
   followsCity = false,
@@ -142,9 +168,10 @@ export default function ContractsScreen({
   const contracts = useGame((state) => state.game.contracts)
   const receivables = useGame((state) => state.game.receivables)
   const pick = useGame((state) => (followsCity ? state.cityPick : null))
+  const settle = useGame((state) => state.settleCityPick)
   const board = useMemo(
     () => contractsBoard({ day, contracts, receivables }),
     [day, contracts, receivables],
   )
-  return <ContractsScreenView board={board} pick={pick} />
+  return <ContractsScreenView board={board} pick={pick} onBrought={settle} />
 }

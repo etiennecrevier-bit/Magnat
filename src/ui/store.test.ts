@@ -634,22 +634,43 @@ describe('the tab of « Ville » and the grocer the city picked', () => {
     store.getState().pickGrocer('chezNormand')
     expect(store.getState()).toMatchObject({
       cityTab: 'contracts',
-      cityPick: { grocer: 'chezNormand', count: 1 },
+      cityPick: { grocer: 'chezNormand', count: 1, pending: true },
     })
     store.getState().setCityTab('trip')
     store.getState().pickGrocer('chezNormand')
     expect(store.getState()).toMatchObject({
       cityTab: 'contracts',
-      cityPick: { grocer: 'chezNormand', count: 2 },
+      cityPick: { grocer: 'chezNormand', count: 2, pending: true },
     })
     store.getState().pickGrocer('depanneur2424')
     expect(store.getState().cityPick).toEqual({
       grocer: 'depanneur2424',
       count: 3,
+      pending: true,
     })
     store.getState().closePanel()
     store.getState().openPanel('trip')
     expect(store.getState()).toMatchObject({ cityTab: 'trip', cityPick: null })
+  })
+  it('brings each pick into view once: settled, its card stays, until the next pick', () => {
+    const store = createGameStore()
+    store.getState().openPanel('trip')
+    store.getState().pickGrocer('depanneur2424')
+    store.getState().settleCityPick(1)
+    expect(store.getState().cityPick).toEqual({
+      grocer: 'depanneur2424',
+      count: 1,
+      pending: false,
+    })
+    store.getState().pickGrocer('depanneur2424')
+    store.getState().settleCityPick(1)
+    expect(store.getState().cityPick).toEqual({
+      grocer: 'depanneur2424',
+      count: 2,
+      pending: true,
+    })
+    store.getState().settleCityPick(2)
+    expect(store.getState().cityPick?.pending).toBe(false)
   })
 })
 

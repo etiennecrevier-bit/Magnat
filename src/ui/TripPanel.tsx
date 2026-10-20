@@ -56,7 +56,8 @@ export function TripPanelView({ board, onChange }: TripPanelViewProps) {
  * A place: its name, « Aujourd'hui » on the day's trip, the trip's time,
  * its status line, then « Y aller », disabled with the reason when the
  * owner cannot go, or « Annuler » for the day's trip, disabled with the
- * reason when a card booked it. The row is the anchor of its tooltip.
+ * reason when a card booked it. The row is the anchor of its tooltip, and
+ * takes the focus itself when its button cannot.
  */
 export function PlaceCard({
   row,
@@ -77,6 +78,7 @@ export function PlaceCard({
             className={
               chosen ? 'trip__place trip__place--chosen' : 'trip__place'
             }
+            tabIndex={refusal === null ? undefined : 0}
             {...anchor}
           >
             <div className="trip__about">

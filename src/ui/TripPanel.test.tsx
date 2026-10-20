@@ -94,7 +94,7 @@ describe('TripPanelView', () => {
   it('is a list of the places, one row each, with no title of its own', () => {
     const html = render()
     expect(html).toMatch(
-      /^<ul class="trip__places"><li><div class="trip__place" aria-describedby="[^"]+"/,
+      /^<ul class="trip__places"><li><div class="trip__place" tabindex="0" aria-describedby="[^"]+"/,
     )
     expect(rows(html)).toHaveLength(4)
   })
@@ -143,6 +143,13 @@ describe('TripPanelView', () => {
     expect(rows(html)[0]).toBe(
       `La Caisse populaire|Trajet${S}: 25${S}min · visite${S}: 30${S}min||Votre encaisse suffit, sans prêt|Y aller`,
     )
+  })
+
+  it('lets a row take the focus only when its button cannot, for its tooltip', () => {
+    const anchors = [
+      ...render().matchAll(/<div class="trip__place"([^>]*)>/g),
+    ].map(([, attributes]) => (attributes ?? '').includes('tabindex="0"'))
+    expect(anchors).toEqual([true, false, true, false])
   })
 
   it("marks the day's trip with « Aujourd'hui », which « Annuler » drops", () => {

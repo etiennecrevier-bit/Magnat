@@ -196,6 +196,10 @@ function OwnerRowView({ owner }: { owner: OwnerRow }) {
   )
 }
 
+/**
+ * An employee's row, the anchor of their tooltip. Someone leaving tomorrow
+ * has no control left, so their row takes the focus itself.
+ */
 function MemberRowView({
   member,
   hours,
@@ -224,7 +228,11 @@ function MemberRowView({
         {(anchor, tip) => {
           const described = describedBy(shown, anchor['aria-describedby'])
           return (
-            <div className="staff__row" {...anchor}>
+            <div
+              className="staff__row"
+              tabIndex={status === 'leavesTomorrow' ? 0 : undefined}
+              {...anchor}
+            >
               <Portrait url={portrait} />
               <div className="staff__who">
                 <h3 className="staff__name">{name}</h3>
