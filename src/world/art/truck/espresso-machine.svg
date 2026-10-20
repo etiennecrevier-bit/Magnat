@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="74" height="68" viewBox="576 520 74 68">
+<defs>
+<linearGradient id="rl-chrome" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0" stop-color="#dfe6ea"></stop><stop offset="0.45" stop-color="#8d9aa2"></stop><stop offset="1" stop-color="#55626a"></stop>
+</linearGradient>
+</defs>
+<g transform="translate(540,410)">
+<rect x="36" y="110" width="74" height="58" rx="6" fill="url(#rl-chrome)"></rect>
+<rect x="40" y="114" width="4" height="50" rx="2" fill="#ffffff" opacity="0.7"></rect>
+<rect x="56" y="168" width="10" height="10" fill="#2b2622"></rect><rect x="80" y="168" width="10" height="10" fill="#2b2622"></rect>
+</g>
+</svg>

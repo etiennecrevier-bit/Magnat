@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="68" viewBox="552 444 360 68">
+<defs>
+<linearGradient id="rl-faceV" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#fff1cf" stop-opacity="0.26"></stop><stop offset="0.5" stop-color="#fff1cf" stop-opacity="0"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0.30"></stop>
+</linearGradient>
+<linearGradient id="rl-dropDown" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#34404f" stop-opacity="0.55"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0"></stop>
+</linearGradient>
+</defs>
+<g transform="translate(540,410)">
+<rect x="18" y="62" width="344" height="40" fill="url(#rl-dropDown)"></rect>
+<polygon points="16.0,34.0 55.5,34.0 51.5,62.0 12.0,62.0" fill="#b3261e"></polygon>
+<circle cx="31.8" cy="62" r="19.75" fill="#b3261e"></circle>
+<polygon points="55.5,34.0 95.0,34.0 91.0,62.0 51.5,62.0" fill="#fff7e8"></polygon>
+<circle cx="71.2" cy="62" r="19.75" fill="#fff7e8"></circle>
+<polygon points="95.0,34.0 134.5,34.0 130.5,62.0 91.0,62.0" fill="#b3261e"></polygon>
+<circle cx="110.8" cy="62" r="19.75" fill="#b3261e"></circle>
+<polygon points="134.5,34.0 174.0,34.0 170.0,62.0 130.5,62.0" fill="#fff7e8"></polygon>
+<circle cx="150.2" cy="62" r="19.75" fill="#fff7e8"></circle>
+<polygon points="174.0,34.0 213.5,34.0 209.5,62.0 170.0,62.0" fill="#b3261e"></polygon>
+<circle cx="189.8" cy="62" r="19.75" fill="#b3261e"></circle>
+<polygon points="213.5,34.0 253.0,34.0 249.0,62.0 209.5,62.0" fill="#fff7e8"></polygon>
+<circle cx="229.2" cy="62" r="19.75" fill="#fff7e8"></circle>
+<polygon points="253.0,34.0 292.5,34.0 288.5,62.0 249.0,62.0" fill="#b3261e"></polygon>
+<circle cx="268.8" cy="62" r="19.75" fill="#b3261e"></circle>
+<polygon points="292.5,34.0 332.0,34.0 328.0,62.0 288.5,62.0" fill="#fff7e8"></polygon>
+<circle cx="308.2" cy="62" r="19.75" fill="#fff7e8"></circle>
+<polygon points="332.0,34.0 371.5,34.0 367.5,62.0 328.0,62.0" fill="#b3261e"></polygon>
+<circle cx="347.8" cy="62" r="19.75" fill="#b3261e"></circle>
+<rect x="12" y="34" width="356" height="30" fill="url(#rl-faceV)"></rect>
+<rect x="12" y="34" width="356" height="3" fill="#fff1cf" opacity="0.6"></rect>
+</g>
+</svg>

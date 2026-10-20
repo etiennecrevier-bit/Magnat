@@ -49,9 +49,12 @@ export interface CrowdSettings {
   readonly bubbleMs: number
   /** How long the avatar's arm reaches across the counter for a sale. */
   readonly reachMs: number
-  /** Where customers' feet stand in line, in front of the truck. */
+  /** Where customers' feet stand in line, on the sidewalk left of the truck. */
   readonly groundY: number
-  /** How much nearer the viewer customers walk when they pass the line. */
+  /**
+   * How much nearer the viewer customers walk when they pass the line: in
+   * the road, in front of the truck.
+   */
   readonly laneOffset: number
   /** How far from their spot in line customers step out of the lane. */
   readonly mergeDistance: number
@@ -154,14 +157,14 @@ export const CROWD: CrowdSettings = {
   lookMs: 1000,
   bubbleMs: 1600,
   reachMs: 500,
-  groundY: 772,
-  laneOffset: 34,
+  groundY: 690,
+  laneOffset: 44,
   mergeDistance: 40,
-  counterX: 860,
-  slotSpacing: 56,
+  counterX: 526,
+  slotSpacing: 66,
   edgeMargin: 60,
   bob: { height: 3, stride: 28 },
-  avatar: { x: 982, feetY: 694, height: 150, skin: '#C98E62', hair: '#3B2A20' },
+  avatar: { x: 730, feetY: 638, height: 122, skin: '#C98E62', hair: '#3B2A20' },
   fatigue: AVATAR_FATIGUE,
   fans: ASSETS.fans,
   tally: { x: 850, y: 176, width: 330, height: 96, fontSize: 30 },

@@ -394,6 +394,9 @@ describe('startStreet: the customers', () => {
     expect(minX).toBeGreaterThanOrEqual(left.x)
     expect(maxX).toBeLessThanOrEqual(bottom.x)
     expect(maxY).toBeLessThanOrEqual(bottom.y)
+    // The shirt comes down to the counter's top: no leg shows above it.
+    const shirt = piece(app, 'avatar:femme').getChildByLabel('shirt', true)!
+    expect(shirt.getBounds().maxY).toBeGreaterThanOrEqual(left.y)
   })
 
   it('brings customers on at x1, up to the cap and never more, across days', async () => {

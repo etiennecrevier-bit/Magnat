@@ -151,9 +151,9 @@ describe('buildScene', () => {
     expect(truck).toBeInstanceOf(Sprite)
     expect((truck as Sprite).texture).toBe(texture)
     expect(truck.label).toBe('image')
-    expect(node(scene, 'truck').position).toMatchObject({ x: 790, y: 430 })
-    expect(truck.scale.x * texture.width).toBeCloseTo(580)
-    expect(truck.scale.y * texture.height).toBeCloseTo(330)
+    expect(node(scene, 'truck').position).toMatchObject({ x: 540, y: 450 })
+    expect(truck.scale.x * texture.width).toBeCloseTo(478)
+    expect(truck.scale.y * texture.height).toBeCloseTo(266)
     for (const piece of ASSETS.pieces.filter((p) => p.id !== 'truck')) {
       expect(art(scene, piece.id).label, piece.id).toBe('placeholder')
     }
@@ -373,9 +373,10 @@ describe('Scene.update', () => {
       node(scene, 'croissants').getChildByLabel('mask') as Graphics
 
     it.each([
-      [70, 0.75],
+      [70, 1],
       [100, 1],
-      [1, 0.25],
+      [50, 2 / 3],
+      [1, 1 / 3],
     ])('shows %i croissants up to %f of its height', (units, fill) => {
       const scene = build(ASSETS)
       scene.update({ ...OPEN, croissants: units })
@@ -400,11 +401,11 @@ describe('Scene.update', () => {
       const manifest = withImages({ croissants: 'dummy.png' })
       const textures = new Map([['dummy.png', new Texture()]])
       const scene = build(manifest, textures)
-      scene.update(OPEN)
+      scene.update({ ...OPEN, croissants: 40 })
       expect(art(scene, 'croissants')).toBeInstanceOf(Sprite)
       expect(art(scene, 'croissants').mask).toBe(maskOf(scene))
       expect(maskOf(scene).getLocalBounds().minY).toBeCloseTo(
-        croissants.height * 0.25,
+        croissants.height / 3,
       )
     })
   })
@@ -457,6 +458,24 @@ describe('Scene.update', () => {
   })
 })
 
+describe("the truck's lettering", () => {
+  it('writes « CAFÉ · CROISSANTS » in Fredoka ink, as tall as its box and centred in it', () => {
+    const scene = build(ASSETS)
+    const piece = ASSETS.pieces.find((p) => p.id === 'lettering')!
+    const text = art(scene, 'lettering').getChildByLabel('text', true) as Text
+    expect(text.text).toBe('CAFÉ · CROISSANTS')
+    expect(text.style.fontFamily).toBe('Fredoka, sans-serif')
+    expect(text.style.fontWeight).toBe('600')
+    expect(text.style.fill).toBe(ASSETS.palette.ink)
+    expect(text.style.fontSize).toBe(piece.height)
+    expect(text.anchor).toMatchObject({ x: 0.5, y: 0.5 })
+    expect(text.position).toMatchObject({
+      x: piece.width / 2,
+      y: piece.height / 2,
+    })
+  })
+})
+
 describe('Scene.animate', () => {
   it('lifts a steam puff as it fades in and out, once a period', () => {
     const scene = build(ASSETS)
@@ -473,7 +492,7 @@ describe('Scene.animate', () => {
     scene.animate(periodMs / 4)
     expect(steam.y).toBeCloseTo(0)
     expect(steam.alpha).toBeCloseTo(0)
-    expect(node(scene, 'steam').position).toMatchObject({ x: 1024, y: 500 })
+    expect(node(scene, 'steam').position).toMatchObject({ x: 597, y: 490 })
   })
 })
 
@@ -712,8 +731,9 @@ describe('Scene.update: the events on the street', () => {
   })
 })
 
-// The street's art, cut from the design reference (src/world/art/street/,
-// #198): the files as text, by their path under src/world/art/.
+// The street's and the truck's art, cut from the design reference
+// (src/world/art/street/ and truck/, #198 and #199): the files as text, by
+// their path under src/world/art/.
 const SVGS: Record<string, string> = Object.fromEntries(
   Object.entries(
     import.meta.glob<string>('./art/**/*.svg', {
@@ -784,9 +804,17 @@ describe("the street's art", () => {
       'road-left',
       'road',
       'road-right',
+      'truck-shadow',
       'lamp-post',
       'tree-1',
       'tree-2',
+      'truck',
+      'espresso-machine',
+      'croissant-rack',
+      'croissants',
+      'counter',
+      'awning',
+      'truck-sign',
     ]
     const drawn = order.map(drawOrder)
     expect(drawn).toEqual([...drawn].sort((a, b) => a - b))
@@ -794,19 +822,83 @@ describe("the street's art", () => {
     expect(ART.map(({ piece }) => piece.id).sort()).toEqual(
       order.filter((id) => id !== 'heat-sky').sort(),
     )
-    // The art stays behind the truck and what the events put on the street.
-    const last = Math.max(...drawn)
+    // The scenery stays behind the truck and what the events put on the
+    // street.
+    const last = Math.max(
+      ...ART.filter(({ piece }) => piece.kind === 'backdrop').map(({ piece }) =>
+        drawOrder(piece.id),
+      ),
+    )
     for (const piece of ASSETS.pieces.filter((p) => p.image === undefined)) {
       if (piece.id === 'heat-sky') continue
       expect(drawOrder(piece.id), piece.id).toBeGreaterThan(last)
     }
+    // The truck's art and its pieces in code, in the reference's paint
+    // order: what is on the counter, the avatar (put in before the counter),
+    // the counter in front of them, the awning and the sign over it all.
+    expect(
+      ASSETS.pieces.filter((p) => p.layer === 'truck').map((p) => p.id),
+    ).toEqual([
+      'truck',
+      'espresso-machine',
+      'out-of-order',
+      'steam',
+      'hot-chocolate-pot',
+      'croissant-rack',
+      'croissants',
+      'counter',
+      'awning',
+      'awning-rolled',
+      'closed-sign',
+      'truck-sign',
+      'lettering',
+    ])
+  })
+
+  it("parks the truck at the reference's place, its wheels on the road", () => {
+    const at = (id: string) => ASSETS.pieces.find((p) => p.id === id)!
+    const truck = at('truck')
+    // The reference's truck, translated to 540, 410: its body from 0 to the
+    // headlight at 478, its roof at 40 and its wheels, 34 round their axle
+    // at 272, on the top of the road.
+    expect([truck.x, truck.y, truck.width, truck.height]).toEqual([
+      540, 450, 478, 266,
+    ])
+    expect(truck.y + truck.height).toBe(at('road').y)
+    // The counter's strip is cut from the truck's own lines, so it lines up
+    // with it pixel for pixel, inside it.
+    const counter = at('counter')
+    for (const [start, size] of [
+      ['x', 'width'],
+      ['y', 'height'],
+    ] as const) {
+      expect(Number.isInteger(counter[start] - truck[start])).toBe(true)
+      expect(counter[start]).toBeGreaterThanOrEqual(truck[start])
+      expect(counter[start] + counter[size]).toBeLessThanOrEqual(
+        truck[start] + truck[size],
+      )
+    }
+    // The croissants fill the rack's board, one shelf a step.
+    const rack = at('croissant-rack')
+    const croissants = at('croissants')
+    expect([croissants.x, croissants.y, croissants.width]).toEqual([
+      rack.x,
+      rack.y,
+      rack.width,
+    ])
+    expect(croissants.height).toBeLessThanOrEqual(rack.height)
+    // Its shadow falls on the road, under the people's.
+    const shadow = at('truck-shadow')
+    expect(shadow.layer).toBe('street')
+    expect(shadow.y).toBeLessThan(at('road').y)
+    expect(shadow.y + shadow.height).toBeGreaterThan(at('road').y)
   })
 
   it("stands each piece at the target's place, at its own proportions", () => {
     const { width: designWidth } = ASSETS.designSize
     for (const { piece, image } of ART) {
       const { view } = svgBox(SVGS[image]!)
-      const named = image === `street/${piece.id}.svg`
+      const named = image.endsWith(`/${piece.id}.svg`)
       if (image === 'street/sky.svg') {
         // The gradient stretches across, its top colour above the design.
         expect(view).toEqual({

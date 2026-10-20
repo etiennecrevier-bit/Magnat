@@ -67,6 +67,7 @@ export const pieceKindSchema = z.enum([
   'bunting',
   'banner',
   'outOfOrderCard',
+  'lettering',
 ])
 
 export type PieceKind = z.infer<typeof pieceKindSchema>
@@ -213,6 +214,7 @@ const WRITTEN: readonly PieceKind[] = [
   'rivalTruck',
   'banner',
   'outOfOrderCard',
+  'lettering',
 ]
 
 const pieceSchema = z.strictObject({
