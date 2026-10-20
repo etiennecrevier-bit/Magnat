@@ -1,28 +1,40 @@
-import { Container, Graphics, type StrokeStyle } from 'pixi.js'
+import { Container, Graphics, type StrokeStyle, type Texture } from 'pixi.js'
+import type { Light } from '../content/assets.ts'
 import type { AvatarFatigue } from '../content/avatarFatigue.ts'
 import type { Avatar, DayTypeId, SegmentId } from '../content/schema.ts'
-import type { CrowdSettings, Range } from './crowdSettings.ts'
-import { tonesOf } from './light.ts'
+import type { CrowdSettings, FigureLight, Range } from './crowdSettings.ts'
+import { mix, tonesOf } from './light.ts'
+import { textureOf } from './materials.ts'
+import { radialPixels, sideRampPixels } from './noise.ts'
 import type { DrawStyle } from './placeholders.ts'
 import type { Mood } from './replay.ts'
 
-// Placeholder people: a rounded torso and a round head with dark outlines,
-// drawn standing with their feet at 0, 0. The sun from the upper left
-// lights each part of a body on the screen's left and leaves its right in
-// shade (see light.ts). A customer's segment shows only through what they
+// The people, as `person()` draws them in the design reference's `rue.py`
+// (#197), standing with their feet at 0, 0: no dark outlines, lit by the
+// sun from the upper left (see light.ts). The parts toward the sun, on the
+// screen's left, take their own colour or a little sun; the far arm, hand
+// and leg take slate, and the torso and the head a gradient from sun to
+// slate across them. A customer's segment shows only through what they
 // carry or wear, never through their skin or their body; skin tones,
-// clothes and heights vary across everyone at random. Where the parts sit
-// inside a person is placeholder geometry, which real art replaces, so
-// those proportions stay here.
+// clothes, hair and heights vary across everyone at random. Where the
+// parts sit inside a person is the reference's geometry, kept here with
+// the drawing: one person is 116 tall there, so every length is a share of
+// that, and the owner's 130.
 
 /** What the office cues of a weekday add to a customer. */
 export type OfficeCue = 'lanyard' | 'laptopBag'
+
+/** What covers the top of someone's head. */
+export type Headwear = 'cap' | 'hair'
 
 /** A child who comes with a customer on a weekend: one visit for both. */
 export interface ChildLook {
   readonly skin: string
   readonly clothes: string
   readonly height: number
+  /** The colour of their hair, or of their cap. */
+  readonly hair: string
+  readonly headwear: Headwear
 }
 
 /** How one customer looks. */
@@ -32,6 +44,9 @@ export interface Look {
   readonly clothes: string
   /** From their feet to the top of their head. */
   readonly height: number
+  /** The colour of their hair, or of their cap. */
+  readonly hair: string
+  readonly headwear: Headwear
   readonly office: OfficeCue | null
   readonly child: ChildLook | null
   /** The colour of the fan they fan themselves with; null without one. */
@@ -52,13 +67,73 @@ export const SEGMENT_ACCESSORY: Readonly<Record<SegmentId, string>> = {
 }
 
 /** A side of a drawing, before it is turned. */
-type Side = 'left' | 'right'
+export type Side = 'left' | 'right'
 
 /** Which way a customer faces: 1 to the right, -1 to the left. */
 export type Facing = 1 | -1
 
 /** How far a child stands from the adult they come with, left of their feet. */
 export const CHILD_OFFSET = 0.32
+
+/**
+ * The gradients of the light on people, made once when the street starts
+ * and shared by everyone: stretched over a shape, each lights it from the
+ * sun's side.
+ */
+export interface PeopleShading {
+  readonly figure: FigureLight
+  /** Across a torso or a coat, from the `sun` side to the other. */
+  side: (sun: Side) => Texture
+  /** Over a head, its light toward the `sun` side's top. */
+  round: (sun: Side) => Texture
+  /** Frees them, when the street stops. */
+  destroy: () => void
+}
+
+/** What people are drawn with: the style and the light's gradients. */
+export interface PeopleStyle extends DrawStyle {
+  readonly shading: PeopleShading
+}
+
+/** Makes the gradients of `figure` in the tones of `light`. */
+export function createPeopleShading(
+  light: Light,
+  figure: FigureLight,
+): PeopleShading {
+  const toned = (stops: FigureLight['side']) =>
+    stops.map(({ offset, tone, alpha }) => ({
+      offset,
+      alpha,
+      color: light[tone],
+    }))
+  const side = toned(figure.side)
+  const round = toned(figure.round.stops)
+  const { centre, radius } = figure.round
+  const textures = {
+    side: {
+      left: textureOf(sideRampPixels(side, false), 'people:side:left'),
+      right: textureOf(sideRampPixels(side, true), 'people:side:right'),
+    },
+    round: {
+      left: textureOf(radialPixels(round, centre, radius), 'people:round:left'),
+      right: textureOf(
+        radialPixels(round, { x: 1 - centre.x, y: centre.y }, radius),
+        'people:round:right',
+      ),
+    },
+  }
+  return {
+    figure,
+    side: (sun) => textures.side[sun],
+    round: (sun) => textures.round[sun],
+    destroy: () => {
+      for (const kind of Object.values(textures)) {
+        kind.left.destroy(true)
+        kind.right.destroy(true)
+      }
+    },
+  }
+}
 
 /**
  * Picks how a customer of `segment` looks, from `looks`. On a weekday some
@@ -76,6 +151,7 @@ export function pickLook(
   const skin = pick(looks.skinTones, random)
   const clothes = pick(looks.clothes, random)
   const height = within(looks.height, random)
+  const { hair, headwear } = pickHair(looks.hair, random)
   let office: OfficeCue | null = null
   let child: ChildLook | null = null
   if (dayType === 'semaine' && random() < looks.officeChance) {
@@ -86,14 +162,64 @@ export function pickLook(
       skin: pick(looks.skinTones, random),
       clothes: pick(looks.clothes, random),
       height: within(looks.childHeight, random),
+      ...pickHair(looks.hair, random),
     }
   }
   const fan =
     fans !== null && fans.chance > 0 && random() < fans.chance
       ? fans.color
       : null
-  return { segment, skin, clothes, height, office, child, fan }
+  return {
+    segment,
+    skin,
+    clothes,
+    height,
+    hair,
+    headwear,
+    office,
+    child,
+    fan,
+  }
 }
+
+/** Picks a hair colour, and whether a cap of it covers the head. */
+function pickHair(
+  hair: CrowdSettings['looks']['hair'],
+  random: () => number,
+): { hair: string; headwear: Headwear } {
+  const colour = pick(hair.colors, random)
+  return {
+    hair: colour,
+    headwear: random() < hair.capChance ? 'cap' : 'hair',
+  }
+}
+
+/** How tall the reference draws a person. */
+const REFERENCE = 116
+
+/** One person to draw: their colours, and what covers their head. */
+interface Person {
+  readonly height: number
+  readonly skin: string
+  readonly clothes: string
+  /** The colour of their arms: their clothes', or a coat's. */
+  readonly sleeves: string
+  readonly trousers: string
+  readonly hair: string
+  readonly headwear: Headwear
+}
+
+/** What a customer carries, in the order it is drawn among their parts. */
+interface Carried {
+  /** Behind the arms and the torso, over the legs. */
+  readonly behind: readonly Container[]
+  /** Over the torso, under the arms in front of it. */
+  readonly over: readonly Container[]
+  /** What each hand holds, around its centre, on that side's bent arm. */
+  readonly held: Partial<Record<Side, (outward: number) => Container>>
+}
+
+const NOTHING: Carried = { behind: [], over: [], held: {} }
 
 /**
  * Draws a customer as `look` describes, with their accessory, office cue,
@@ -102,329 +228,331 @@ export function pickLook(
  * left; a fan is held in the hand on the right.
  * The drawing is for a customer turned to `facing` by mirroring it (its
  * container's `scale.x`): either way, it is lit on the side that shows on
- * the screen's left.
+ * the screen's left, while what they carry keeps its side.
  */
 export function drawCustomer(
   look: Look,
-  style: DrawStyle,
+  style: PeopleStyle,
   looks: CrowdSettings['looks'],
   facing: Facing = 1,
   cup = false,
 ): Container {
   const h = look.height
+  const u = h / REFERENCE
   const root = new Container({ label: 'customer' })
-  const sleeves = look.segment === 'chic' ? looks.coat : look.clothes
-  const holding: Side[] = []
-  if (cup) holding.push('left')
-  if (look.fan !== null) holding.push('right')
   const sun: Side = facing === 1 ? 'left' : 'right'
-  const neck = -h * 0.77
+  const { light, palette } = style
 
   if (look.child !== null) {
-    const { skin, clothes, height } = look.child
     const child = root.addChild(
       new Container({ label: 'child', x: -h * CHILD_OFFSET }),
     )
-    drawBody(
+    drawPerson(
       child,
-      height,
-      skin,
-      clothes,
-      clothes,
-      looks.trousers,
+      { ...look.child, sleeves: look.child.clothes, trousers: looks.trousers },
       style,
-      [],
       sun,
+      NOTHING,
     )
   }
+
+  const behind: Container[] = []
+  const over: Container[] = []
+  const held: Partial<Record<Side, (outward: number) => Container>> = {}
   if (look.office === 'laptopBag') {
-    root.addChild(
-      shadedRect(
+    behind.push(
+      twoTone(
         new Graphics({ label: 'laptopBag' }),
-        [-h * 0.36, -h * 0.5, h * 0.22, h * 0.18, 3],
+        [-42 * u, -58 * u, 26 * u, 21 * u, 3 * u],
         looks.laptopBag,
-        style,
+        light,
         sun,
       ),
     )
   }
   // A bargain hunter's tote hangs from their shoulder behind the arm, so
-  // the hand on its side shows.
+  // the hand on its side shows. Its straps are in its shade.
   if (look.segment === 'aubaine') {
-    root.addChild(
+    const tote = tonesOf(looks.tote, light)
+    behind.push(
       new Graphics({ label: 'bag' })
-        .moveTo(h * 0.18, -h * 0.5)
-        .lineTo(h * 0.12, neck + h * 0.03)
-        .moveTo(h * 0.31, -h * 0.5)
-        .lineTo(h * 0.14, neck + h * 0.03)
-        .stroke(line(style, style.outline * 0.7))
-        .poly(TOTE.map((share) => share * h))
-        .fill(tonesOf(looks.tote, style.light).lit)
-        .poly(toteShade(sun).map((share) => share * h))
-        .fill(tonesOf(looks.tote, style.light).shade)
-        .poly(TOTE.map((share) => share * h))
-        .stroke(line(style)),
+        .moveTo(21 * u, -58 * u)
+        .lineTo(14 * u, -79 * u)
+        .moveTo(36 * u, -58 * u)
+        .lineTo(16 * u, -79 * u)
+        .stroke({ width: 2 * u, color: tote.shade, cap: 'round' })
+        .poly(TOTE.map((at) => at * u))
+        .fill(tote.lit)
+        .poly(toteShade(sun).map((at) => at * u))
+        .fill(tote.shade),
     )
   }
   // A regular's folded newspaper, La Presse-Citron, is tucked under the arm
   // on the left, behind it, so the hand on its side shows.
   if (look.segment === 'habitue') {
-    const [x, y, w, d] = [-h * 0.29, -h * 0.66, h * 0.17, h * 0.18]
-    const band = tonesOf(style.palette.mustard, style.light)
-    const lit = w * (1 - SHADE_SHARE)
-    root.addChild(
-      shadedRect(
-        new Graphics({ label: 'newspaper' }),
-        [x, y, w, d, 2],
-        style.palette.cream,
-        style,
-        sun,
-      )
-        .rect(x, y + d * 0.2, w, d * 0.25)
-        .fill(band.shade)
-        .rect(sun === 'left' ? x : x + w - lit, y + d * 0.2, lit, d * 0.25)
-        .fill(band.lit)
-        .roundRect(x, y, w, d, 2)
-        .stroke(line(style)),
+    const paper = tonesOf(palette.cream, light)
+    const scaled = (points: readonly number[]) => points.map((at) => at * u)
+    const g = new Graphics({ label: 'newspaper' })
+      .poly(scaled(NEWSPAPER.sheet))
+      .fill(paper.lit)
+      .poly(scaled(NEWSPAPER.masthead))
+      .fill(palette.mustard)
+    for (const [x0, y0, x1, y1] of NEWSPAPER.lines) {
+      g.moveTo(x0 * u, y0 * u).lineTo(x1 * u, y1 * u)
+    }
+    behind.push(g.stroke({ width: 1.2 * u, color: paper.shade }))
+  }
+  // A chic customer's long coat, open on their shirt: it hangs behind the
+  // arms, so both hands show, and its fronts lie over the torso.
+  if (look.segment === 'chic') {
+    const coat = tonesOf(looks.coat, light)
+    behind.push(
+      new Graphics({ label: 'coat' })
+        .roundRect(-20 * u, -83 * u, 40 * u, 66 * u, 14 * u)
+        .fill(coat.lit)
+        .roundRect(-20 * u, -83 * u, 40 * u, 66 * u, 14 * u)
+        .fill({ texture: style.shading.side(sun), textureSpace: 'local' })
+        .rect(-0.6 * u, -30 * u, 1.2 * u, 13 * u)
+        .fill(coat.shade),
+    )
+    // The front toward the sun (1) or away from it (-1), from the
+    // reference's, which has the sun on the left.
+    const front = (sign: number) =>
+      LAPEL.map((at, i) => at * u * (i % 2 === 0 ? sign * -sideSign(sun) : 1))
+    over.push(
+      new Graphics({ label: 'lapels' })
+        .poly(front(1))
+        .fill(coat.lit)
+        .poly(front(-1))
+        .fill(coat.shade),
     )
   }
-  const coat =
-    look.segment === 'chic'
-      ? shadedRect(
-          new Graphics({ label: 'coat' }),
-          [-h * 0.18, neck, h * 0.36, h * 0.62, h * 0.08],
-          looks.coat,
-          style,
-          sun,
-        )
-          .poly([-h * 0.07, neck, h * 0.07, neck, 0, neck + h * 0.12])
-          .fill(look.clothes)
-          .stroke(line(style, style.outline * 0.7))
-          .moveTo(0, neck + h * 0.12)
-          .lineTo(0, -h * 0.15)
-          .stroke(line(style, style.outline * 0.6))
-      : null
-  drawBody(
-    root,
-    h,
-    look.skin,
-    look.clothes,
-    sleeves,
-    looks.trousers,
-    style,
-    holding,
-    sun,
-    coat,
-  )
-
   if (look.office === 'laptopBag') {
-    root.addChild(
+    over.push(
       new Graphics({ label: 'laptopStrap' })
-        .moveTo(h * 0.12, neck + h * 0.02)
-        .lineTo(-h * 0.2, -h * 0.5)
-        .stroke(line(style, style.outline * 1.4))
-        .moveTo(h * 0.12, neck + h * 0.02)
-        .lineTo(-h * 0.2, -h * 0.5)
-        .stroke({ width: style.outline * 0.6, color: looks.laptopBag }),
+        .moveTo(14 * u, -80 * u)
+        .lineTo(-23 * u, -58 * u)
+        .stroke({
+          width: 2.5 * u,
+          color: tonesOf(looks.laptopBag, light).shade,
+          cap: 'round',
+        }),
     )
   }
   if (look.office === 'lanyard') {
-    root.addChild(
+    over.push(
       new Graphics({ label: 'lanyard' })
-        .moveTo(-h * 0.07, neck)
-        .lineTo(0, -h * 0.6)
-        .lineTo(h * 0.07, neck)
-        .stroke({ width: style.outline * 0.8, color: style.palette.dangerRed })
-        .rect(-h * 0.04, -h * 0.61, h * 0.08, h * 0.1)
-        .fill(style.palette.cream)
-        .stroke(line(style, style.outline * 0.6)),
+        .moveTo(-8 * u, -82 * u)
+        .lineTo(0, -70 * u)
+        .lineTo(8 * u, -82 * u)
+        .stroke({ width: 1.5 * u, color: palette.dangerRed, cap: 'round' })
+        .rect(-4.6 * u, -71 * u, 9.2 * u, 11.6 * u)
+        .fill(palette.cream),
     )
   }
   if (cup) {
-    drawHeld(
-      root,
-      h,
-      'left',
-      new Graphics({ label: 'cup' })
-        .roundRect(-h * 0.025, -h * 0.13, h * 0.09, h * 0.14, 3)
-        .fill(style.palette.cream)
-        .stroke(line(style))
-        .rect(-h * 0.025, -h * 0.08, h * 0.09, h * 0.04)
-        .fill(style.palette.wood)
-        .roundRect(-h * 0.035, -h * 0.16, h * 0.11, h * 0.04, 2)
-        .fill(style.palette.ink),
-      sleeves,
-      look.skin,
-      style,
-      sun,
-    )
+    const { color, band } = style.shading.figure.cup
+    held.left = (outward) => {
+      const left = outward < 0 ? -9 * u : -4 * u
+      return new Graphics({ label: 'cup' })
+        .roundRect(left, -12 * u, 13 * u, 16 * u, 3 * u)
+        .fill(color)
+        .rect(left, -8 * u, 13 * u, 4 * u)
+        .fill(band)
+    }
   }
   if (look.fan !== null) {
-    drawHeld(
-      root,
-      h,
-      'right',
-      drawFan(h, look.fan, style),
-      sleeves,
-      look.skin,
-      style,
-      sun,
-    )
+    const fan = look.fan
+    held.right = () => drawFan(h, fan, light)
   }
+  drawPerson(
+    root,
+    {
+      height: h,
+      skin: look.skin,
+      clothes: look.clothes,
+      sleeves: look.segment === 'chic' ? looks.coat : look.clothes,
+      trousers: looks.trousers,
+      hair: look.hair,
+      headwear: look.headwear,
+    },
+    style,
+    sun,
+    { behind, over, held },
+  )
   return root
 }
 
-/**
- * A folding fan held upright, its pivot at 0, 0 in the hand: its leaves
- * spread above, outlined like the cup, with the pleats in shade.
- */
-function drawFan(h: number, color: string, style: DrawStyle): Graphics {
-  const reach = h * FAN.reach
-  const inner = reach * 0.3
-  const from = -Math.PI / 2 - FAN.spread
-  const to = -Math.PI / 2 + FAN.spread
-  const fan = new Graphics({ label: 'fan' })
-    .moveTo(...along(inner, from))
-    .arc(0, 0, reach, from, to)
-    .lineTo(...along(inner, to))
-    .arc(0, 0, inner, to, from, true)
-    .closePath()
-    .fill(color)
-    .stroke(line(style))
-  const pleats = FAN.pleats
-  for (let i = 1; i < pleats; i += 1) {
-    const angle = from + ((to - from) * i) / pleats
-    fan.moveTo(...along(inner, angle)).lineTo(...along(reach, angle))
-  }
-  return fan
-    .stroke({
-      width: style.outline * 0.5,
-      color: tonesOf(color, style.light).shade,
-    })
-    .moveTo(0, 0)
-    .lineTo(...along(inner, -Math.PI / 2))
-    .stroke(line(style, style.outline * 0.8))
+/** -1 where the sun is on the drawing's left, 1 where it is on its right. */
+function sideSign(sun: Side): number {
+  return sun === 'left' ? -1 : 1
 }
 
 /**
- * A fan's size, as shares of the height of who holds it, and how wide its
- * leaves open each way from upright, in radians.
+ * The coat's front on the sun's side when it is on the left, in the
+ * reference's lengths: inside the torso's edge, leaving the shirt showing
+ * down the middle. The other front mirrors it, in the coat's shade.
  */
-const FAN = { reach: 0.2, spread: 0.65, pleats: 5 } as const
-
-/** The point `radius` from 0, 0 at `angle`. */
-function along(radius: number, angle: number): [number, number] {
-  return [radius * Math.cos(angle), radius * Math.sin(angle)]
-}
-
-/** The bargain hunter's tote, as shares of the height. */
-const TOTE = [0.15, -0.5, 0.34, -0.5, 0.36, -0.26, 0.13, -0.26]
-
-/** The strip of the tote away from the sun on `sun`'s side. */
-function toteShade(sun: Side): number[] {
-  return sun === 'left'
-    ? [0.29, -0.5, 0.34, -0.5, 0.36, -0.26, 0.31, -0.26]
-    : [0.15, -0.5, 0.2, -0.5, 0.18, -0.26, 0.13, -0.26]
-}
+const LAPEL = [
+  -18, -70, -16, -78, -12, -82, -7, -82, -5, -30, -10, -30, -15, -34, -18, -42,
+]
 
 /**
- * Draws a body in `parent`, feet at 0, 0: legs, arms, torso and head, each
- * labelled and lit on the `sun` side. `sleeves` colours the arms, so a coat
- * covers them. The arms on the `holding` sides stop at the elbow, for
- * drawHeld to finish. A `coat` goes over the torso, and the arms hang in
- * front of it, so its hands show.
+ * Draws a person in `parent`, feet at 0, 0, as the reference's `person()`
+ * does, lit from the `sun` side: the legs, what is carried behind, the far
+ * arm and hand in shade, the torso, what lies over it, the near arm and
+ * hand, then the head with its hair or cap. An arm whose hand holds
+ * something bends in front of the torso, the item in its hand. Each hand
+ * is a part of its own, labelled `hand`.
  */
-function drawBody(
+function drawPerson(
   parent: Container,
-  h: number,
-  skin: string,
-  clothes: string,
-  sleeves: string,
-  trousers: string,
-  style: DrawStyle,
-  holding: readonly Side[],
+  person: Person,
+  style: PeopleStyle,
   sun: Side,
-  coat: Graphics | null = null,
+  carried: Carried,
 ): void {
-  const head = h * 0.115
-  const neck = -h * 0.77
-  const torso = h * 0.3
-  const legs = new Graphics({ label: 'legs' })
-  for (const x of [-h * 0.11, h * 0.02]) {
-    shadedRect(
-      legs,
-      [x, -h * 0.45, h * 0.09, h * 0.45, h * 0.03],
-      trousers,
-      style,
-      sun,
-    )
-  }
-  parent.addChild(legs)
-  const arms = new Graphics({ label: 'arms' })
-  for (const side of ['left', 'right'] as const) {
-    const { x, y, width } = shoulder(h, side)
-    if (holding.includes(side)) {
-      shadedRect(
-        arms,
-        [x, y, width, h * UPPER_ARM, width / 2],
-        sleeves,
-        style,
-        sun,
-      )
-      continue
-    }
-    shadedRect(arms, [x, y, width, h * 0.3, width / 2], sleeves, style, sun)
-    shadedCircle(
-      arms,
-      x + width / 2,
-      y + h * 0.31,
-      width * 0.55,
-      skin,
-      style,
-      sun,
-      0.7,
-    )
-  }
-  const body = shadedRect(
-    new Graphics({ label: 'torso' }),
-    [-torso / 2, neck, torso, h * 0.36, torso * 0.35],
-    clothes,
-    style,
-    sun,
-  )
-  // Without a coat, the torso covers the arms' inner edges.
-  parent.addChild(...(coat === null ? [arms, body] : [body, coat, arms]))
+  const u = person.height / REFERENCE
+  const { light, shading } = style
+  const { shade, lit } = shading.figure
+  const near = sideSign(sun)
+  const far = -near
+  // The reference's x, drawn with the sun on the left, on this drawing.
+  const x = (at: number) => at * -near
+  /** A box from `left` to `left + w` in the reference's x, on this drawing. */
+  const box = (left: number, w: number) =>
+    near === -1 ? left * u : -(left + w) * u
+  const sideOf = (sign: number): Side => (sign < 0 ? 'left' : 'right')
+
   parent.addChild(
-    shadedCircle(
-      new Graphics({ label: 'head' }),
-      0,
-      -h + head,
-      head,
-      skin,
-      style,
-      sun,
-    ),
+    new Graphics({ label: 'legs' })
+      .roundRect(box(-12, 10), -36 * u, 10 * u, 36 * u, 3 * u)
+      .fill(person.trousers)
+      .roundRect(box(2, 10), -36 * u, 10 * u, 36 * u, 3 * u)
+      .fill(mix(person.trousers, light.slate, shade.leg)),
   )
+  for (const item of carried.behind) parent.addChild(item)
+
+  const farTone = {
+    arm: mix(person.sleeves, light.slate, shade.arm),
+    hand: mix(person.skin, light.slate, shade.hand),
+  }
+  const farHeld = carried.held[sideOf(far)]
+  if (farHeld === undefined) {
+    parent.addChild(
+      new Graphics({ label: 'farArm' })
+        .roundRect(box(13, 9), -78 * u, 9 * u, 36 * u, 4.5 * u)
+        .fill(farTone.arm),
+      hand(x(17.5) * u, -40 * u, 5 * u, farTone.hand),
+    )
+  }
+  parent.addChild(
+    new Graphics({ label: 'torso' })
+      .roundRect(-18 * u, -82 * u, 36 * u, 52 * u, 14 * u)
+      .fill(person.clothes)
+      .roundRect(-18 * u, -82 * u, 36 * u, 52 * u, 14 * u)
+      .fill({ texture: shading.side(sun), textureSpace: 'local' }),
+  )
+  for (const item of carried.over) parent.addChild(item)
+  if (farHeld !== undefined) {
+    bend(parent, u, far, 'farArm', farTone.arm, farTone.hand, farHeld(far))
+  }
+  const nearHeld = carried.held[sideOf(near)]
+  if (nearHeld === undefined) {
+    parent.addChild(
+      new Graphics({ label: 'nearArm' })
+        .roundRect(box(-21, 9), -78 * u, 9 * u, 36 * u, 4.5 * u)
+        .fill(mix(person.sleeves, light.sun, lit.arm)),
+      hand(x(-16.5) * u, -40 * u, 5 * u, person.skin),
+    )
+  } else {
+    bend(
+      parent,
+      u,
+      near,
+      'nearArm',
+      mix(person.sleeves, light.sun, lit.bentArm),
+      person.skin,
+      nearHeld(near),
+    )
+  }
+
+  parent.addChild(
+    new Graphics({ label: 'head' })
+      .circle(0, -100 * u, 16 * u)
+      .fill(person.skin)
+      .circle(0, -100 * u, 16 * u)
+      .fill({ texture: shading.round(sun), textureSpace: 'local' }),
+  )
+  if (person.headwear === 'cap') {
+    parent.addChild(
+      new Graphics({ label: 'cap' })
+        .roundRect(-16 * u, -116 * u, 32 * u, 8 * u, 4 * u)
+        .fill(person.hair)
+        .roundRect(box(-16, 14), -116 * u, 14 * u, 3 * u, 1.5 * u)
+        .fill(mix(person.hair, light.sun, lit.capEdge)),
+    )
+  } else {
+    parent.addChild(
+      new Graphics({ label: 'hair' })
+        .ellipse(0, -111 * u, 17 * u, 8.5 * u)
+        .fill(person.hair)
+        .moveTo(x(-12) * u, -114 * u)
+        .quadraticCurveTo(x(-4) * u, -120 * u, x(4) * u, -117 * u)
+        .stroke({
+          width: 2.5 * u,
+          color: mix(person.hair, light.sun, lit.hairEdge),
+          cap: 'round',
+        }),
+    )
+  }
 }
 
-/** A rounded box: its left, top, width, height and corner radius. */
-type Rounded = readonly [number, number, number, number, number]
+/** A hand of `color`, `r` round, centred on `x`, `y`. */
+function hand(x: number, y: number, r: number, color: string): Graphics {
+  return new Graphics({ label: 'hand' }).circle(x, y, r).fill(color)
+}
 
-/** How much of a part's width the shade takes, on the side away from the sun. */
-const SHADE_SHARE = 0.32
+/**
+ * Draws the arm on the side `sign` (-1 the drawing's left, 1 its right)
+ * bent in front of the torso, as the reference's holds its cup: from the
+ * shoulder out to the elbow and back in to the hand, which holds `item`,
+ * drawn around the hand's centre.
+ */
+function bend(
+  parent: Container,
+  u: number,
+  sign: number,
+  label: string,
+  sleeve: string,
+  skin: string,
+  item: Container,
+): void {
+  const at = { x: 12 * u * sign, y: -50 * u }
+  parent.addChild(
+    new Graphics({ label })
+      .moveTo(14 * u * sign, -74 * u)
+      .lineTo(24 * u * sign, -58 * u)
+      .lineTo(14 * u * sign, -50 * u)
+      .stroke({ width: 9 * u, color: sleeve, cap: 'round', join: 'round' }),
+  )
+  item.position.set(at.x, at.y)
+  parent.addChild(item)
+  parent.addChild(hand(at.x, at.y, 5 * u, skin))
+}
 
 /**
  * Fills the rounded box `shape` in `g` lit on the `sun` side: in shade,
- * then in `base` but for a strip on the other side, then outlined.
+ * then in `base` but for a strip on the other side.
  */
-function shadedRect(
+function twoTone(
   g: Graphics,
   [x, y, w, h, r]: Rounded,
   base: string,
-  style: DrawStyle,
+  light: Light,
   sun: Side,
 ): Graphics {
-  const tones = tonesOf(base, style.light)
+  const tones = tonesOf(base, light)
   const lit = w * (1 - SHADE_SHARE)
   return g
     .roundRect(x, y, w, h, r)
@@ -437,107 +565,82 @@ function shadedRect(
       Math.min(r, lit / 2),
     )
     .fill(tones.lit)
-    .roundRect(x, y, w, h, r)
-    .stroke(line(style))
+}
+
+/** A rounded box: its left, top, width, height and corner radius. */
+type Rounded = readonly [number, number, number, number, number]
+
+/** How much of an accessory's width its shade takes, away from the sun. */
+const SHADE_SHARE = 0.32
+
+/**
+ * A folding fan held upright, its pivot at 0, 0 in the hand: its leaves
+ * spread above, with the pleats and the handle in its shade.
+ */
+function drawFan(h: number, color: string, light: Light): Graphics {
+  const reach = h * FAN.reach
+  const inner = reach * 0.3
+  const from = -Math.PI / 2 - FAN.spread
+  const to = -Math.PI / 2 + FAN.spread
+  const shade = tonesOf(color, light).shade
+  const fan = new Graphics({ label: 'fan' })
+    .moveTo(...along(inner, from))
+    .arc(0, 0, reach, from, to)
+    .lineTo(...along(inner, to))
+    .arc(0, 0, inner, to, from, true)
+    .closePath()
+    .fill(color)
+  const pleats = FAN.pleats
+  for (let i = 1; i < pleats; i += 1) {
+    const angle = from + ((to - from) * i) / pleats
+    fan.moveTo(...along(inner, angle)).lineTo(...along(reach, angle))
+  }
+  return fan
+    .stroke({ width: h * FAN.pleat, color: shade })
+    .moveTo(0, 0)
+    .lineTo(...along(inner, -Math.PI / 2))
+    .stroke({ width: h * FAN.handle, color: shade, cap: 'round' })
 }
 
 /**
- * Fills a circle in `g` lit on the `sun` side: in shade, then a smaller
- * disc in `base` touching its edge toward the sun, then outlined `outline`
- * times the style's width.
+ * A fan's size, as shares of the height of who holds it, and how wide its
+ * leaves open each way from upright, in radians.
  */
-function shadedCircle(
-  g: Graphics,
-  cx: number,
-  cy: number,
-  r: number,
-  base: string,
-  style: DrawStyle,
-  sun: Side,
-  outline = 1,
-): Graphics {
-  const tones = tonesOf(base, style.light)
-  const toward = sun === 'left' ? -1 : 1
-  return g
-    .circle(cx, cy, r)
-    .fill(tones.shade)
-    .circle(cx + toward * r * 0.2, cy, r * 0.8)
-    .fill(tones.lit)
-    .circle(cx, cy, r)
-    .stroke(line(style, style.outline * outline))
-}
+const FAN = {
+  reach: 0.2,
+  spread: 0.65,
+  pleats: 5,
+  pleat: 0.01,
+  handle: 0.02,
+} as const
 
-/** How long an upper arm is, from the shoulder, as a share of the height. */
-const UPPER_ARM = 0.22
-
-/** The top left corner and the width of `side`'s arm on a body `h` tall. */
-function shoulder(
-  h: number,
-  side: Side,
-): { x: number; y: number; width: number } {
-  const torso = h * 0.3
-  const width = h * 0.065
-  const x = side === 'left' ? -torso / 2 - width * 0.8 : torso / 2 - width * 0.2
-  return { x, y: -h * 0.73, width }
+/** The point `radius` from 0, 0 at `angle`. */
+function along(radius: number, angle: number): [number, number] {
+  return [radius * Math.cos(angle), radius * Math.sin(angle)]
 }
 
 /**
- * Finishes the arm on `side` that drawBody stopped at the elbow: the
- * forearm bends toward the middle and its hand holds `item`, drawn around
- * the hand's centre at 0, 0. Both go in front of all the body wears.
+ * The regular's folded newspaper, leaning under the arm, in the
+ * reference's lengths: the sheet, its masthead and its lines of print.
  */
-function drawHeld(
-  parent: Container,
-  h: number,
-  side: Side,
-  item: Container,
-  sleeves: string,
-  skin: string,
-  style: DrawStyle,
-  sun: Side,
-): void {
-  const { x, y, width } = shoulder(h, side)
-  const elbow = { x: x + width / 2, y: y + h * UPPER_ARM - width / 2 }
-  const hand = { x: (side === 'left' ? -h : h) * 0.08, y: -h * 0.51 }
-  const reach = Math.hypot(hand.x - elbow.x, hand.y - elbow.y)
-  const rotation = Math.atan2(hand.y - elbow.y, hand.x - elbow.x)
-  item.position.set(hand.x, hand.y)
-  parent.addChild(item)
-  // The forearm is drawn along its own x axis, then turned: the sun comes
-  // from `sun`'s side of the body, which is turned the other way here.
-  const toward = sun === 'left' ? -1 : 1
-  const sunX = toward * Math.cos(rotation)
-  const sunY = -toward * Math.sin(rotation)
-  const sleeve = tonesOf(sleeves, style.light)
-  const lit = width * (1 - SHADE_SHARE)
-  const forearm = new Graphics({
-    label: 'forearm',
-    x: elbow.x,
-    y: elbow.y,
-    rotation,
-  })
-    .roundRect(-width / 2, -width / 2, reach + width / 2, width, width / 2)
-    .fill(sleeve.shade)
-    .roundRect(
-      -width / 2,
-      sunY < 0 ? -width / 2 : width / 2 - lit,
-      reach + width / 2,
-      lit,
-      lit / 2,
-    )
-    .fill(sleeve.lit)
-    .roundRect(-width / 2, -width / 2, reach + width / 2, width, width / 2)
-    .stroke(line(style))
-  const palm = width * 0.55
-  const tones = tonesOf(skin, style.light)
-  forearm
-    .circle(reach, 0, palm)
-    .fill(tones.shade)
-    .circle(reach + sunX * palm * 0.2, sunY * palm * 0.2, palm * 0.8)
-    .fill(tones.lit)
-    .circle(reach, 0, palm)
-    .stroke(line(style, style.outline * 0.7))
-  parent.addChild(forearm)
+const NEWSPAPER = {
+  sheet: [-34, -73, -23, -79, -13, -52, -24, -46],
+  masthead: [-34, -73, -23, -79, -21.5, -75, -32.5, -69],
+  lines: [
+    [-30.5, -66, -22, -70.5],
+    [-28.5, -61, -20, -65.5],
+    [-26.5, -56, -18, -60.5],
+  ],
+} as const
+
+/** The bargain hunter's tote, in the reference's lengths. */
+const TOTE = [17, -58, 39, -58, 42, -30, 15, -30]
+
+/** The strip of the tote away from the sun on `sun`'s side. */
+function toteShade(sun: Side): number[] {
+  return sun === 'left'
+    ? [34, -58, 39, -58, 42, -30, 36, -30]
+    : [17, -58, 23, -58, 21, -30, 15, -30]
 }
 
 /** The bubble's size, its tail's tip at 0, 0. */
@@ -652,135 +755,86 @@ export interface AvatarArt {
   readonly yawn: Container
 }
 
+/** How tall the reference draws the owner, from the feet the counter hides. */
+const OWNER = 130
+
 /**
- * Draws the player's avatar behind the counter, feet at 0, 0: a blue shirt,
- * a cream apron, the hair of `avatar` and two eyes. Its left arm can reach
- * across the counter. Dark circles under the eyes, in `circles`, and the
- * open mouth of a yawn are drawn hidden, for fatigue to show.
+ * Draws the player's avatar behind the counter, feet at 0, 0, as the
+ * reference's owner, lit from the left: a blue shirt with a cream apron,
+ * the hair of `avatar` and two eyes, with no outlines. The arm on the
+ * screen's left can reach across the counter; the other hangs behind the
+ * shirt, in shade. Dark circles under the eyes, in `circles`, and the open
+ * mouth of a yawn are drawn hidden, for fatigue to show.
  */
 export function drawAvatar(
   avatar: Avatar,
-  style: DrawStyle,
+  style: PeopleStyle,
   settings: CrowdSettings['avatar'],
   trousers: string,
   circles: string,
 ): AvatarArt {
-  const h = settings.height
-  const { palette } = style
+  const v = settings.height / OWNER
+  const { palette, light, shading } = style
+  const { shade, lit } = shading.figure
   const shirt = palette.playerBlue
   const root = new Container({ label: `avatar:${avatar}` })
-  const head = h * 0.115
-  const neck = -h * 0.77
-  const torso = h * 0.3
-  const armWidth = h * 0.065
-
   // The avatar faces the viewer, so the sun lights their left.
   const sun: Side = 'left'
-  // The legs stop half an outline above the feet, so their outline ends at
-  // 0 and the counter, whose bottom edge the feet stand on, hides it all.
-  const legs = root.addChild(new Graphics({ label: 'legs' }))
-  for (const x of [-h * 0.11, h * 0.02]) {
-    shadedRect(
-      legs,
-      [x, -h * 0.45, h * 0.09, h * 0.45 - style.outline / 2, h * 0.03],
-      trousers,
-      style,
-      sun,
-    )
-  }
+
+  // The counter, whose bottom edge the feet stand on, hides them.
+  root.addChild(
+    new Graphics({ label: 'legs' })
+      .roundRect(-14 * v, -50 * v, 12 * v, 50 * v, 3 * v)
+      .fill(trousers)
+      .roundRect(2 * v, -50 * v, 12 * v, 50 * v, 3 * v)
+      .fill(mix(trousers, light.slate, shade.leg)),
+  )
   const upper = root.addChild(new Container({ label: 'upper' }))
   upper.addChild(
-    shadedRect(
-      new Graphics({ label: 'otherArm' }),
-      [
-        torso / 2 - armWidth * 0.2,
-        neck + h * 0.04,
-        armWidth,
-        h * 0.3,
-        armWidth / 2,
-      ],
-      shirt,
-      style,
-      sun,
-    ),
-  )
-  // It ends in a hand placed on its sleeve as the reaching arm's is on its own.
-  upper.addChild(
-    shadedCircle(
-      new Graphics({ label: 'otherHand' }),
-      torso / 2 + armWidth * 0.3,
-      neck + h * 0.34 + armWidth * 0.3,
-      armWidth * 0.55,
-      settings.skin,
-      style,
-      sun,
-      0.7,
-    ),
+    new Graphics({ label: 'otherArm' })
+      .roundRect(18 * v, -86 * v, 10 * v, 38 * v, 5 * v)
+      .fill(mix(shirt, light.slate, shade.arm)),
+    hand(23 * v, -48 * v, 5.5 * v, mix(settings.skin, light.slate, shade.hand)),
   )
   upper.addChild(
-    shadedRect(
-      new Graphics({ label: 'shirt' }),
-      [-torso / 2, neck, torso, h * 0.36, torso * 0.35],
-      shirt,
-      style,
-      sun,
-    ),
+    new Graphics({ label: 'shirt' })
+      .roundRect(-24 * v, -90 * v, 48 * v, 40 * v, 12 * v)
+      .fill(shirt),
   )
-  const apron = new Graphics({ label: 'apron' })
-    .moveTo(-h * 0.07, neck + h * 0.02)
-    .lineTo(-h * 0.06, neck - h * 0.02)
-    .moveTo(h * 0.07, neck + h * 0.02)
-    .lineTo(h * 0.06, neck - h * 0.02)
-    .stroke(line(style, style.outline * 0.6))
-  shadedRect(
-    apron,
-    [-h * 0.08, neck + h * 0.02, h * 0.16, h * 0.14, 3],
-    palette.cream,
-    style,
-    sun,
+  // The shirt's light goes over the apron too.
+  upper.addChild(
+    new Graphics({ label: 'apron' })
+      .rect(-14 * v, -82 * v, 28 * v, 32 * v)
+      .fill(palette.cream)
+      .roundRect(-24 * v, -90 * v, 48 * v, 40 * v, 12 * v)
+      .fill({ texture: shading.side(sun), textureSpace: 'local' }),
   )
-  shadedRect(
-    apron,
-    [-h * 0.14, neck + h * 0.14, h * 0.28, h * 0.28, 0],
-    palette.cream,
-    style,
-    sun,
-  )
-  upper.addChild(apron)
 
   // The head turns at the chin, so it can droop without leaving the neck.
-  const cy = -h + head
+  const head = 20 * v
+  const cy = -110 * v
   const chin = cy + head
   const face = upper.addChild(new Container({ label: 'face' }))
   face.pivot.set(0, chin)
   face.position.set(0, chin)
+  // Behind the head, which leaves it showing round the top.
   const hair = new Graphics({ label: 'hair' })
+    .ellipse(0, cy - 16 * v, 21 * v, 11 * v)
+    .fill(settings.hair)
   if (avatar === 'femme') {
-    shadedCircle(
-      hair,
-      head * 0.95,
-      cy - head * 0.7,
-      head * 0.5,
-      settings.hair,
-      style,
-      sun,
-    )
+    hair.circle(head * 0.95, cy - head * 0.7, head * 0.5).fill(settings.hair)
   }
   face.addChild(hair)
   face.addChild(
-    shadedCircle(
-      new Graphics({ label: 'head' }),
-      0,
-      cy,
-      head,
-      settings.skin,
-      style,
-      sun,
-    ),
+    new Graphics({ label: 'head' })
+      .circle(0, cy, head)
+      .fill(settings.skin)
+      .circle(0, cy, head)
+      .fill({ texture: shading.round(sun), textureSpace: 'local' }),
   )
-  // Below the hairline, which runs across the middle of the head.
-  const eyeX = head * 0.38
-  const eyeY = cy + head * 0.25
+  // Just under the hairline.
+  const eyeX = head * 0.35
+  const eyeY = cy - head * 0.05
   // Drawn around their own middle, so they can squint in place.
   const eyes = face.addChild(
     new Graphics({ label: 'eyes', y: eyeY })
@@ -815,43 +869,36 @@ export function drawAvatar(
       .ellipse(0, cy + head * 0.66, head * 0.18, head * 0.22)
       .fill(palette.ink),
   )
-  const cap = new Graphics({ label: 'hairTop' })
-    .arc(0, cy, head, Math.PI, Math.PI * 2)
-    .lineTo(head, cy - head * (avatar === 'femme' ? 0 : 0.3))
-    .lineTo(-head, cy - head * (avatar === 'femme' ? 0 : 0.3))
-    .closePath()
-    .fill(settings.hair)
-    .stroke(line(style))
-  face.addChild(cap)
+  // The hairline across the top of the head, lit.
+  face.addChild(
+    new Graphics({ label: 'hairTop' })
+      .moveTo(-18 * v, cy - 12 * v)
+      .bezierCurveTo(
+        -12 * v,
+        cy - 22 * v,
+        8 * v,
+        cy - 24 * v,
+        18 * v,
+        cy - 14 * v,
+      )
+      .stroke({
+        width: 3 * v,
+        color: mix(settings.hair, light.sun, lit.ownerHairEdge),
+        cap: 'round',
+      }),
+  )
 
   const arm = upper.addChild(
-    new Container({
-      label: 'arm',
-      x: -torso / 2 + armWidth * 0.3,
-      y: neck + h * 0.06,
-    }),
+    new Container({ label: 'arm', x: -21 * v, y: -84 * v }),
   )
-  // Lit as it hangs: as it reaches across the counter, the shade turns
-  // under it, away from the sun.
-  const reaching = new Graphics()
-  shadedRect(
-    reaching,
-    [-armWidth / 2, -armWidth / 2, armWidth, h * 0.3, armWidth / 2],
-    shirt,
-    style,
-    sun,
+  // It hangs toward the sun, lit; as it reaches across the counter, it
+  // keeps its tone.
+  arm.addChild(
+    new Graphics({ label: 'reachingArm' })
+      .roundRect(-5 * v, -5 * v, 10 * v, 40 * v, 5 * v)
+      .fill(mix(shirt, light.sun, lit.arm)),
+    hand(0, 36 * v, 5.5 * v, settings.skin),
   )
-  shadedCircle(
-    reaching,
-    0,
-    h * 0.3 - armWidth * 0.2,
-    armWidth * 0.55,
-    settings.skin,
-    style,
-    sun,
-    0.7,
-  )
-  arm.addChild(reaching)
   return { root, upper, face, arm, eyes, circles: darkCircles, yawn }
 }
 
@@ -860,10 +907,7 @@ export function drawAvatar(
  * at `spill.x`, `spill.y`: a flat puddle centred there, and a drop running
  * down from it over the counter's front edge.
  */
-export function drawSpill(
-  spill: AvatarFatigue['spill'],
-  style: DrawStyle,
-): Graphics {
+export function drawSpill(spill: AvatarFatigue['spill']): Graphics {
   const w = spill.width
   return new Graphics({ label: 'spill', x: spill.x, y: spill.y })
     .roundRect(w * 0.1, 0, w * 0.12, w * 0.42, w * 0.06)
@@ -871,10 +915,9 @@ export function drawSpill(
     .fill(spill.color)
     .ellipse(0, 0, w / 2, w * 0.13)
     .fill(spill.color)
-    .stroke(line(style, style.outline * 0.6))
 }
 
-/** A dark outline, `width` wide. */
+/** The dark outline round a bubble, `width` wide. */
 function line(style: DrawStyle, width: number = style.outline): StrokeStyle {
   return { width, color: style.palette.ink, join: 'round', cap: 'round' }
 }

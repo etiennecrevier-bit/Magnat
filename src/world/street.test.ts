@@ -34,7 +34,8 @@ import { CROWD, type CrowdSettings } from './crowdSettings.ts'
 import { placeCard, saying, type Box, type Point } from './customerCard.ts'
 import { ASSETS, LINES } from './manifest.ts'
 import { SEGMENT_ACCESSORY } from './people.ts'
-import type { ShadowFilters } from './shadows.ts'
+import { SPOT_HALF_RADIUS } from './noise.ts'
+import { castGroupLabel, type ShadowFilters } from './shadows.ts'
 import { createPicker, NOBODY_THERE, type Picker } from './picker.ts'
 import { replayOf } from './replay.ts'
 import { startStreet, type StreetCrowd, type StreetLoaders } from './street.ts'
@@ -1521,9 +1522,17 @@ describe('startStreet: the light over the street', () => {
       expect(cast.isCachedAsTexture).toBe(true)
       expect(cast.alpha).toBe(ASSETS.light.castShadow.opacity)
       expect(cast.filters ?? []).toEqual([])
-      // The customers' shadows, like the street's, are opaque in it.
-      expect(customerShadows(app, 'cast').length).toBeGreaterThan(0)
       for (const shadow of cast.children) expect(shadow.alpha).toBe(1)
+      // The customers' long shadows, in a texture of their own at their
+      // own opacity, opaque in it like the street's.
+      const people = customerShadows(app, 'cast')
+      expect(people.length).toBeGreaterThan(0)
+      const group = people[0]!.parent!
+      expect(group.isCachedAsTexture).toBe(true)
+      expect(group.alpha).toBe(CROWD.figure.shadow.reach.opacity)
+      expect(group.filters ?? []).toEqual([])
+      for (const shadow of group.children) expect(shadow.alpha).toBe(1)
+      expect(group.renderGroup!.textureOptions.resolution).toBe(4)
     }
   })
 
@@ -1579,34 +1588,36 @@ function blendFilterOf(sprite: ViewContainer): Filter {
   return filter
 }
 
-/** The contact or cast shadows customers throw, on the ground. */
+/**
+ * The contact or cast shadows customers throw, on the ground: their long
+ * shadows go in the group at their own opacity.
+ */
 function customerShadows(
   app: ReturnType<typeof createFakeApp>,
   kind: 'cast' | 'contact',
 ): Container[] {
-  return piece(app, 'layer:shadows')
-    .getChildByLabel(kind)!
-    .children.filter((s) => s.label === `${kind}:customer`)
+  const group =
+    kind === 'cast' ? castGroupLabel(CROWD.figure.shadow.reach.opacity) : kind
+  const found = piece(app, 'layer:shadows').getChildByLabel(group)
+  return (found?.children ?? []).filter((s) => s.label === `${kind}:customer`)
 }
 
-/**
- * Where each shade fill under `part` and the lit fill drawn over it are
- * drawn on the stage, along x.
- */
-function shading(part: Graphics): { shade: number; lit: number }[] {
-  const xs = part.context.instructions
-    .flatMap((i) => (i.action === 'fill' ? [i.data] : []))
-    .map((data) => {
-      const { shape, transform } = data.path.shapePath.shapePrimitives[0]!
-      const box = shape.getBounds()
-      const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
-      return part.toGlobal(transform ? transform.apply(centre) : centre).x
-    })
-  const pairs: { shade: number; lit: number }[] = []
-  for (let i = 0; i + 1 < xs.length; i += 2) {
-    pairs.push({ shade: xs[i]!, lit: xs[i + 1]! })
-  }
-  return pairs
+/** The texture of the light over `part`: the last it fills with. */
+function lightOf(part: Graphics): string | undefined {
+  const fills = part.context.instructions.flatMap((i) =>
+    i.action === 'fill' ? [i.data.style.texture] : [],
+  )
+  return fills.at(-1)?.label
+}
+
+/** The middle of a box on the stage. */
+function middleOf(box: {
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
+}): { x: number; y: number } {
+  return { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 }
 }
 
 /** A weekend crowd in which everyone comes with a child. */
@@ -1664,15 +1675,39 @@ describe('startStreet: the customers in the sun', () => {
           const foot = street.toGlobal({ x, y: cast.y })
           expect(box.maxX - foot.x).toBeGreaterThan(foot.x - box.minX)
           expect(box.maxY).toBeGreaterThan(foot.y)
+          // Where the reference puts them, for their size: the long one
+          // 26 right of the feet and 1 up for 60 across, the spot under
+          // them 4 right and 1 down for 44 across its half-dark edge.
+          const { feet, reach } = CROWD.figure.shadow
+          const long = middleOf(box)
+          const across = box.maxX - box.minX
+          expect((long.x - foot.x) / across).toBeCloseTo(reach.dx / reach.width)
+          expect((long.y - foot.y) / across).toBeCloseTo(reach.dy / reach.width)
+          const spotBox = under[0]!.getBounds()
+          const spot = middleOf(spotBox)
+          const spotAcross = (spotBox.maxX - spotBox.minX) * SPOT_HALF_RADIUS
+          expect((spot.x - foot.x) / spotAcross).toBeCloseTo(
+            feet.dx / feet.width,
+          )
+          expect((spot.y - foot.y) / spotAcross).toBeCloseTo(
+            feet.dy / feet.width,
+          )
+          expect(under[0]!.alpha).toBe(feet.opacity)
         }
-        for (const part of [
-          shown.getChildByLabel('head'),
-          shown.getChildByLabel('torso'),
-          child.getChildByLabel('head'),
-        ] as Graphics[]) {
-          for (const { shade, lit } of shading(part)) {
-            expect(lit).toBeLessThan(shade)
-          }
+        // Lit from the screen's left whichever way they face: the light on
+        // the torso and the head comes from the side that shows there, and
+        // the arm in shade hangs on the right.
+        const sun = figure.scale.x === 1 ? 'left' : 'right'
+        for (const person of [shown, child]) {
+          expect(lightOf(person.getChildByLabel('torso') as Graphics)).toBe(
+            `people:side:${sun}`,
+          )
+          expect(lightOf(person.getChildByLabel('head') as Graphics)).toBe(
+            `people:round:${sun}`,
+          )
+          const near = person.getChildByLabel('nearArm')!.getBounds()
+          const far = person.getChildByLabel('farArm')!.getBounds()
+          expect(middleOf(near).x).toBeLessThan(middleOf(far).x)
         }
         checked += 1
       }

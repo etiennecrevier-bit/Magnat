@@ -28,7 +28,7 @@ import type { Shadows } from './shadows.ts'
 /** What everything on the street is drawn with. */
 export interface DrawStyle {
   readonly palette: Palette
-  /** The width of the dark outlines round people, bubbles and the tally. */
+  /** The width of the dark outlines round the bubbles and the tally. */
   readonly outline: number
   readonly light: Light
 }

@@ -10,6 +10,7 @@ import {
 } from 'pixi.js'
 import type { Light } from '../content/assets.ts'
 import type { VisualEffects } from '../ui/settings.ts'
+import { SPOT_HALF_RADIUS } from './noise.ts'
 
 // The shadows on the ground, all in one layer under what stands there: the
 // cast shadows, slate shapes reaching to the lower right, away from the sun,
@@ -17,7 +18,10 @@ import type { VisualEffects } from '../ui/settings.ts'
 // post. The cast shadows are drawn opaque and blurred together, then shown
 // at one opacity, so where two overlap the ground is no darker. Where the
 // renderer has no filters, they are drawn opaque into one texture, which
-// shows at that opacity, without the blur.
+// shows at that opacity, without the blur. A cast shadow at an opacity of
+// its own, as the long one by a person's feet, goes in a group of its own
+// shown the same way, so the ground is no darker where two of those overlap
+// either.
 
 /** What the cast shadows' filters do: blur their edge, then fade them. */
 export interface ShadowFilters {
@@ -50,6 +54,18 @@ export const PIXI_FILTERS: MakeFilters = ({ blur, opacity }) => [
 
 /** What a contact shadow is under, which sets its opacity. */
 export type ContactKind = keyof Light['contactShadow']['opacity']
+
+/**
+ * A soft ellipse `width` wide and `depth` times as deep, at `opacity`, its
+ * centre `dx`, `dy` from where it is put.
+ */
+export interface Oval {
+  readonly dx: number
+  readonly dy: number
+  readonly width: number
+  readonly depth: number
+  readonly opacity: number
+}
 
 /** The shadows on the ground. */
 export interface Shadows {
@@ -112,6 +128,19 @@ export interface Shadows {
     width: number,
     kind: ContactKind,
   ) => Sprite
+  /**
+   * Adds the cast shadow `oval` describes for `owner` at `x`, `y`: a slate
+   * ellipse in the group of cast shadows shown at its opacity, blurred and
+   * faded with them. Its offset is in its own shape, so it stays when the
+   * shadow moves.
+   */
+  castOval: (owner: string, x: number, y: number, oval: Oval) => Graphics
+  /**
+   * Adds the contact shadow `oval` describes for `owner` at `x`, `y`: the
+   * soft spot, half as dark as its middle `oval.width` across. Its offset
+   * is in its anchor, so it stays when the shadow moves.
+   */
+  spot: (owner: string, x: number, y: number, oval: Oval) => Sprite
   /** Blurs the cast shadows' edge with the full visual effects only. */
   setEffects: (effects: VisualEffects) => void
   /**
@@ -122,6 +151,11 @@ export interface Shadows {
   redraw: (resolution: number) => void
   /** Frees the filters. */
   destroy: () => void
+}
+
+/** Where a group of cast shadows shows at an opacity of its own. */
+export function castGroupLabel(opacity: number): string {
+  return `cast@${opacity}`
 }
 
 /**
@@ -142,25 +176,46 @@ export function createShadows(
   const { castShadow, contactShadow } = light
   const cast = layer.addChild(new Container({ label: 'cast' }))
   const contact = layer.addChild(new Container({ label: 'contact' }))
-  const filters = new Map<VisualEffects, Filter[]>()
-  const filtersOf = (effects: VisualEffects) => {
+  const filters = new Map<string, Filter[]>()
+  const filtersOf = (effects: VisualEffects, opacity: number) => {
     if (makeFilters === null) return []
-    let made = filters.get(effects)
+    const key = `${effects}:${opacity}`
+    let made = filters.get(key)
     if (made === undefined) {
       made = makeFilters({
         blur: effects === 'full' ? castShadow.blur : 0,
-        opacity: castShadow.opacity,
+        opacity,
       })
-      filters.set(effects, made)
+      filters.set(key, made)
     }
     return made
   }
+  let effects: VisualEffects = 'full'
   // The texture's pixels per unit; Pixi's default is the screen's.
   let resolution: number | undefined
-  if (makeFilters === null) {
-    cast.cacheAsTexture(true)
-    cast.alpha = castShadow.opacity
-  } else cast.filters = filtersOf('full')
+  // Each group of cast shadows and the opacity it shows at.
+  const groups = new Map<Container, number>()
+  /** Shows `group` at `opacity` as one, filtered or through a texture. */
+  const fade = (group: Container, opacity: number) => {
+    groups.set(group, opacity)
+    if (makeFilters === null) {
+      group.cacheAsTexture(resolution === undefined ? true : { resolution })
+      group.alpha = opacity
+    } else group.filters = filtersOf(effects, opacity)
+  }
+  fade(cast, castShadow.opacity)
+  /** The group of cast shadows shown at `opacity`, made the first time. */
+  const groupAt = (opacity: number) => {
+    if (opacity === castShadow.opacity) return cast
+    const label = castGroupLabel(opacity)
+    let group = layer.getChildByLabel(label)
+    if (group === null) {
+      group = new Container({ label })
+      layer.addChildAt(group, layer.getChildIndex(contact))
+      fade(group, opacity)
+    }
+    return group
+  }
 
   return {
     cast,
@@ -219,6 +274,12 @@ export function createShadows(
           .poly(points.flatMap(([x, y]) => [x, y]))
           .fill(light.slate),
       ),
+    castOval: (owner, x, y, { dx, dy, width, depth, opacity }) =>
+      groupAt(opacity).addChild(
+        new Graphics({ label: `cast:${owner}`, x, y })
+          .ellipse(dx, dy, width / 2, (width * depth) / 2)
+          .fill(light.slate),
+      ),
     contactShadow: (owner, x, y, width, kind) => {
       const sprite = new Sprite({
         texture: spot,
@@ -231,19 +292,39 @@ export function createShadows(
       sprite.setSize(width, width * contactShadow.depth)
       return contact.addChild(sprite)
     },
-    setEffects: (effects) => {
-      if (makeFilters !== null) cast.filters = filtersOf(effects)
+    spot: (owner, x, y, { dx, dy, width, depth, opacity }) => {
+      const across = width / SPOT_HALF_RADIUS
+      const deep = across * depth
+      const sprite = new Sprite({
+        texture: spot,
+        label: `contact:${owner}`,
+        anchor: { x: 0.5 - dx / across, y: 0.5 - dy / deep },
+        x,
+        y,
+        alpha: opacity,
+      })
+      sprite.setSize(across, deep)
+      return contact.addChild(sprite)
+    },
+    setEffects: (wanted) => {
+      effects = wanted
+      if (makeFilters === null) return
+      for (const [group, opacity] of groups) {
+        group.filters = filtersOf(effects, opacity)
+      }
     },
     redraw: (wanted) => {
       if (makeFilters !== null) return
-      if (wanted === resolution) cast.updateCacheTexture()
-      else {
-        resolution = wanted
-        cast.cacheAsTexture({ resolution })
+      const same = wanted === resolution
+      resolution = wanted
+      for (const group of groups.keys()) {
+        if (same) group.updateCacheTexture()
+        else group.cacheAsTexture({ resolution })
       }
     },
     destroy: () => {
-      cast.filters = []
+      for (const group of groups.keys()) group.filters = []
+      groups.clear()
       for (const made of filters.values()) {
         for (const filter of made) filter.destroy()
       }

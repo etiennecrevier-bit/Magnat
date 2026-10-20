@@ -4,7 +4,10 @@ import {
   brickPixels,
   glowAlpha,
   grainPixels,
+  radialPixels,
   rampPixels,
+  sideRampPixels,
+  SPOT_HALF_RADIUS,
   spotPixels,
   strayOf,
   unevennessPixels,
@@ -181,5 +184,76 @@ describe('the ramps and the spot', () => {
     expect(alpha[32 * 64 + 32]).toBe(1)
     expect(alpha[0]).toBe(0)
     expect(alpha[32 * 64]).toBeLessThan(0.05)
+  })
+
+  it('is half as dark as its middle where its edge seems to be', () => {
+    const size = 400
+    const spot = spotPixels('#34404F', size)
+    const alpha = alphas(spot)
+    const x = Math.round((size / 2) * (1 + SPOT_HALF_RADIUS))
+    expect(alpha[(size / 2) * size + x]!).toBeCloseTo(0.5, 1)
+  })
+})
+
+describe('the gradients over people', () => {
+  // The reference's side light: sun at 30 %, gone by 45 %, slate at 38 %.
+  const SIDE = [
+    { offset: 0, color: '#FFF1CF', alpha: 0.3 },
+    { offset: 0.45, color: '#FFF1CF', alpha: 0 },
+    { offset: 1, color: '#34404F', alpha: 0.38 },
+  ]
+
+  /** The colour and the alpha (0 to 1) of pixel `i`, unmultiplied. */
+  function pixel({ data }: Pixels, i: number) {
+    const alpha = data[i * 4 + 3]! / 255
+    const rgb = [0, 1, 2].map((c) => data[i * 4 + c]! / alpha)
+    return { rgb, alpha }
+  }
+
+  it('runs a side through its stops, from the sun on its left', () => {
+    const ramp = sideRampPixels(SIDE, false, 100)
+    expect(ramp.width).toBe(100)
+    expect(ramp.height).toBe(1)
+    const first = pixel(ramp, 0)
+    expect(first.alpha).toBeCloseTo(0.3, 1)
+    expect(first.rgb[0]).toBeCloseTo(0xff, -1)
+    expect(pixel(ramp, 45).alpha).toBeLessThan(0.01)
+    const last = pixel(ramp, 99)
+    expect(last.alpha).toBeCloseTo(0.38, 1)
+    expect(last.rgb[0]).toBeCloseTo(0x34, -1)
+    // Halfway between two stops, halfway between their alphas.
+    expect(pixel(ramp, 72).alpha).toBeCloseTo(0.19, 1)
+  })
+
+  it('mirrors a side for the sun on its right', () => {
+    const ramp = sideRampPixels(SIDE, false, 64)
+    const mirrored = sideRampPixels(SIDE, true, 64)
+    for (let x = 0; x < 64; x += 1) {
+      expect(Array.from(mirrored.data.slice(x * 4, x * 4 + 4))).toEqual(
+        Array.from(ramp.data.slice((63 - x) * 4, (63 - x) * 4 + 4)),
+      )
+    }
+  })
+
+  it('lights a round shape out from its centre, and the last stop beyond', () => {
+    const stops = [
+      { offset: 0, color: '#FFF1CF', alpha: 0.45 },
+      { offset: 0.5, color: '#FFF1CF', alpha: 0 },
+      { offset: 1, color: '#34404F', alpha: 0.42 },
+    ]
+    const size = 100
+    const round = radialPixels(stops, { x: 0.32, y: 0.28 }, 0.85, size)
+    expect([round.width, round.height]).toEqual([size, size])
+    expect(pixel(round, 28 * size + 32).alpha).toBeCloseTo(0.45, 1)
+    // Halfway out, nothing.
+    const halfway = Math.round(28 + 0.85 * 0.5 * 100)
+    expect(pixel(round, halfway * size + 32).alpha).toBeLessThan(0.02)
+    // The far corner is past the radius: the last stop, in slate.
+    const corner = pixel(round, size * size - 1)
+    expect(corner.alpha).toBeCloseTo(0.42, 1)
+    expect(corner.rgb[2]).toBeCloseTo(0x4f, -1)
+    // Its centre is where it is asked for.
+    const other = radialPixels(stops, { x: 0.68, y: 0.28 }, 0.85, size)
+    expect(pixel(other, 28 * size + 68).alpha).toBeCloseTo(0.45, 1)
   })
 })

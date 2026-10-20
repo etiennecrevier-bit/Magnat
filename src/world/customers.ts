@@ -9,7 +9,7 @@ import type {
 import { fatigueOf, type Fatigue } from '../engine/energy.ts'
 import type { GameState, Visit } from '../engine/types.ts'
 import { bobOf, createCrowd, type Customer, type Span } from './crowd.ts'
-import type { CrowdSettings } from './crowdSettings.ts'
+import type { CrowdSettings, FigureShadow } from './crowdSettings.ts'
 import {
   cardOf,
   customerAt,
@@ -28,6 +28,7 @@ import {
 import { TITLE_FONT, TITLE_FONT_FAMILY } from './fonts.ts'
 import {
   CHILD_OFFSET,
+  createPeopleShading,
   drawAvatar,
   drawBubble,
   drawCustomer,
@@ -35,6 +36,7 @@ import {
   drawSpill,
   pickLook,
   type Look,
+  type PeopleStyle,
 } from './people.ts'
 import type { DrawStyle } from './placeholders.ts'
 import {
@@ -137,7 +139,10 @@ export interface CustomersSetup {
  * avatar serves them; no one holds one before.
  */
 export function startCustomers(setup: CustomersSetup): Customers {
-  const { street, style, shadows, crowd: settings, random } = setup
+  const { street, shadows, crowd: settings, random } = setup
+  // The light's gradients on people, made once and shared by everyone.
+  const shading = createPeopleShading(setup.style.light, settings.figure)
+  const style: PeopleStyle = { ...setup.style, shading }
   const root = new Container({ label: 'customers', sortableChildren: true })
   const labels = new Container({ label: 'labels' })
   const crowd = createCrowd(settings, random)
@@ -167,7 +172,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
   }
 
   // The spill sits on the counter, in front of it and of the avatar.
-  const spill = drawSpill(settings.fatigue.spill, style)
+  const spill = drawSpill(settings.fatigue.spill)
   spill.visible = false
   truckLayer?.addChild(spill)
   const spillClock = createSpillClock(settings.fatigue.spill)
@@ -388,6 +393,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
       views.clear()
       root.destroy({ children: true })
       labels.destroy({ children: true })
+      shading.destroy()
     },
   }
 }
@@ -432,13 +438,9 @@ function drinks(visit: Visit): boolean {
 /** How far out of step each customer's fan swings from the last one's. */
 const FAN_STEP = 0.37
 
-/** How wide a person's shadows are, as shares of their height. */
-const BODY_WIDTH = 0.26
-const FEET_WIDTH = 0.34
-
 function createCustomerView(
   look: Look,
-  style: DrawStyle,
+  style: PeopleStyle,
   looks: CrowdSettings['looks'],
   shadows: Shadows,
   bubble: Container,
@@ -460,16 +462,18 @@ function createCustomerView(
   if (look.child !== null) {
     people.push({ at: -look.height * CHILD_OFFSET, height: look.child.height })
   }
+  // As the reference's, whichever way they face: the sun stays on the left.
+  const { feet, reach } = style.shading.figure.shadow
+  const sized = (oval: FigureShadow, height: number) => ({
+    ...oval,
+    dx: oval.dx * height,
+    dy: oval.dy * height,
+    width: oval.width * height,
+  })
   const grounded = people.map(({ at, height }) => ({
     at,
-    cast: shadows.castBody('customer', 0, 0, height * BODY_WIDTH, height),
-    contact: shadows.contactShadow(
-      'customer',
-      0,
-      0,
-      height * FEET_WIDTH,
-      'person',
-    ),
+    cast: shadows.castOval('customer', 0, 0, sized(reach, height)),
+    contact: shadows.spot('customer', 0, 0, sized(feet, height)),
   }))
   return {
     look,
@@ -488,7 +492,7 @@ function createCustomerView(
 /** `look` drawn to face right, then left, holding a cup with `cup`. */
 function drawFacings(
   look: Look,
-  style: DrawStyle,
+  style: PeopleStyle,
   looks: CrowdSettings['looks'],
   cup: boolean,
 ): [Container, Container] {
@@ -511,7 +515,7 @@ function fansOf(...drawings: Container[]): Container[] {
  */
 function holdCup(
   view: CustomerView,
-  style: DrawStyle,
+  style: PeopleStyle,
   looks: CrowdSettings['looks'],
 ): void {
   const [facesRight, facesLeft] = drawFacings(view.look, style, looks, true)
@@ -549,7 +553,7 @@ function boxOf(node: Container): Box {
  */
 function startAvatar(
   kind: Avatar,
-  style: DrawStyle,
+  style: PeopleStyle,
   settings: CrowdSettings,
   random: () => number,
 ) {

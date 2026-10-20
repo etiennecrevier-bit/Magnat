@@ -289,3 +289,84 @@ export function spotPixels(color: string, size = 64): Pixels {
   }
   return pixels
 }
+
+/**
+ * How far out a spot of `spotPixels` is half as dark as in its middle, as a
+ * share of its radius: where its edge seems to be.
+ */
+export const SPOT_HALF_RADIUS = 0.75
+
+/** A stop of a gradient: at `offset` (0 to 1) along it, a colour and its alpha. */
+export interface GradientStop {
+  readonly offset: number
+  readonly color: string
+  readonly alpha: number
+}
+
+/**
+ * The colour and the alpha of `stops` at `t`, as SVG blends them: each
+ * channel and the alpha apart, the first stop before it and the last after.
+ */
+function stopAt(
+  stops: readonly GradientStop[],
+  t: number,
+): { rgb: number[]; alpha: number } {
+  const first = stops[0]!
+  const last = stops.at(-1)!
+  let from = first
+  let to = first
+  if (t >= last.offset) from = to = last
+  else if (t > first.offset) {
+    const i = stops.findIndex((stop) => stop.offset > t)
+    from = stops[i - 1]!
+    to = stops[i]!
+  }
+  const span = to.offset - from.offset
+  const share = span > 0 ? (t - from.offset) / span : 0
+  const [a, b] = [hexToRgb(from.color), hexToRgb(to.color)]
+  return {
+    rgb: [0, 1, 2].map((c) => a[c]! + (b[c]! - a[c]!) * share),
+    alpha: from.alpha + (to.alpha - from.alpha) * share,
+  }
+}
+
+/**
+ * A row of pixels `width` wide going through `stops`, left to right, or
+ * right to left when `mirrored`: a side's gradient to stretch over a shape.
+ */
+export function sideRampPixels(
+  stops: readonly GradientStop[],
+  mirrored: boolean,
+  width = 64,
+): Pixels {
+  const pixels = blank(width, 1)
+  for (let x = 0; x < width; x += 1) {
+    const along = (x + 0.5) / width
+    const { rgb, alpha } = stopAt(stops, mirrored ? 1 - along : along)
+    put(pixels, x, 0, rgb, alpha)
+  }
+  return pixels
+}
+
+/**
+ * A square of pixels `size` a side going through `stops` out from `centre`
+ * to `radius`, both as shares of its side, and the last stop beyond: a
+ * round shape's light to stretch over it.
+ */
+export function radialPixels(
+  stops: readonly GradientStop[],
+  centre: { readonly x: number; readonly y: number },
+  radius: number,
+  size = 64,
+): Pixels {
+  const pixels = blank(size, size)
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const u = (x + 0.5) / size - centre.x
+      const v = (y + 0.5) / size - centre.y
+      const { rgb, alpha } = stopAt(stops, Math.hypot(u, v) / radius)
+      put(pixels, x, y, rgb, alpha)
+    }
+  }
+  return pixels
+}
