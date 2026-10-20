@@ -19,7 +19,7 @@ import { buildCityScene, type CityHit } from './cityScene.ts'
 import { actorsAt, cityView, lineAt, type CityView } from './cityView.ts'
 import { CROWD } from './crowdSettings.ts'
 import type { Point } from './customerCard.ts'
-import { fitScene } from './layout.ts'
+import { fitCity } from './layout.ts'
 import { ASSETS } from './manifest.ts'
 import type { WorldApp } from './mountWorld.ts'
 import { createDayClock, replayOf, type Replay } from './replay.ts'
@@ -45,8 +45,9 @@ export interface CityOptions {
 /**
  * Draws the city on `app` (#165), as `startStreet` draws the street: loads
  * the title font and the city's art, builds the scene, fits it to the
- * screen and shows the game in the store, again each time the game changes.
- * Over it go the atmosphere, then the trip's words. It only reads the store.
+ * screen beside « Ville » (see `fitCity`) and shows the game in the store,
+ * again each time the game changes. Over it go the atmosphere, then the
+ * trip's words. It only reads the store.
  *
  * The day replays on the street's clock: a day lasts `msPerDayAtNormalSpeed`
  * at ×1, from the opening to the close, and starts again on a new day, so
@@ -103,13 +104,7 @@ export async function startCity(
     const fit = () => {
       const { width, height } = app.screen
       if (width === fitted.width && height === fitted.height) return
-      const design = city.designSize
-      const { scale, x, y } = fitScene(
-        width,
-        height,
-        design.width,
-        design.height,
-      )
+      const { scale, x, y } = fitCity(width, height, city)
       fitted = { width, height, scale, x, y }
       for (const layer of [scene.root, people.labels]) {
         layer.scale.set(scale)

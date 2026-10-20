@@ -15,7 +15,7 @@ import { buildCityScene, type CityScene } from './cityScene.ts'
 import type { CityView } from './cityView.ts'
 import { ART_URLS } from './art.ts'
 import { boxCorners, type Vec } from './iso.ts'
-import { fitScene } from './layout.ts'
+import { fitCity } from './layout.ts'
 import { tonesOf } from './light.ts'
 import { ASSETS } from './manifest.ts'
 import type { MakeFilters } from './shadows.ts'
@@ -521,21 +521,27 @@ describe("the city's art", () => {
   })
 
   it.each([
+    [1280, 720],
     [1440, 900],
+    [1440, 1400],
     [1920, 1080],
     [2560, 1080],
+    [3440, 1440],
     [390, 844],
   ])('fills a %i × %i window with sky', (viewWidth, viewHeight) => {
-    const { width, height } = city.designSize
-    const fit = fitScene(viewWidth, viewHeight, width, height)
+    const { width } = city.designSize
+    const fit = fitCity(viewWidth, viewHeight, city)
     const sky = piece('sky')
     expect(sky.x).toBeLessThanOrEqual(-fit.x / fit.scale)
     expect(sky.x + sky.width).toBeGreaterThanOrEqual(
       (viewWidth - fit.x) / fit.scale,
     )
     expect(sky.y).toBeLessThanOrEqual(-fit.y / fit.scale)
-    expect(sky.y + sky.height).toBe(height)
-    // Its gradient stretches across; above the design, its top colour.
+    expect(sky.y + sky.height).toBeGreaterThanOrEqual(
+      (viewHeight - fit.y) / fit.scale,
+    )
+    // Its gradient stretches across; above the design, its top colour, and
+    // below it its bottom one.
     expect(viewBox(CITY_SVGS['city/sky.svg']!)).toEqual({
       x: 0,
       y: sky.y,

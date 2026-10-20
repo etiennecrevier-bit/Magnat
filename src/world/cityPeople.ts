@@ -136,8 +136,9 @@ export function createCityPeople(
   const crewBusts: Container[] = []
   let avatarShown: Avatar | null = null
 
-  // The owner walking, in their blue shirt and apron, drawn facing each
-  // way so the sun stays on their left.
+  // The owner walking, in their blue shirt and apron with their avatar's
+  // hair, drawn facing each way so the sun stays on their left; drawn again
+  // when the avatar changes.
   const ownerLook = {
     ...crowd.employee,
     height: crowd.avatar.height,
@@ -145,19 +146,28 @@ export function createCityPeople(
     hair: crowd.avatar.hair,
   }
   const facings = new Container({ label: 'facings' })
-  const [facesRight, facesLeft] = ([1, -1] as const).map((facing) => {
-    const drawn = facings.addChild(
-      drawEmployee(
-        { ...ownerLook, facing },
-        style,
-        trousers,
-        palette.playerBlue,
-      ),
-    )
-    drawn.label = facing === 1 ? 'facesRight' : 'facesLeft'
-    return drawn
-  }) as [Container, Container]
-  facesLeft.visible = false
+  let facingLeft = false
+  const drawOwner = (avatar: Avatar) => {
+    for (const drawn of facings.removeChildren()) {
+      drawn.destroy({ children: true })
+    }
+    for (const facing of [1, -1] as const) {
+      const drawn = facings.addChild(
+        drawEmployee({ ...ownerLook, facing }, style, trousers, {
+          shirt: palette.playerBlue,
+          avatar,
+        }),
+      )
+      drawn.label = facing === 1 ? 'facesRight' : 'facesLeft'
+      drawn.visible = (facing === -1) === facingLeft
+    }
+  }
+  const face = (left: boolean) => {
+    facingLeft = left
+    facings.children.forEach((drawn, i) => {
+      drawn.visible = (i === 1) === left
+    })
+  }
   const owner = walker('owner', facings, ownerLook.height)
   // The line, the same people each day, facing the truck.
   const random = seeded(city.figure.seed)
@@ -260,6 +270,7 @@ export function createCityPeople(
       view = next
       if (avatar !== avatarShown) {
         avatarShown = avatar
+        drawOwner(avatar)
         ownerBust?.destroy({ children: true })
         const art = drawAvatar(
           avatar,
@@ -312,10 +323,7 @@ export function createCityPeople(
       if (at !== null) {
         ring.position.set(at[0], at[1])
         // Facing the way they walk, there or back.
-        if (walked !== null && at[0] !== walked[0]) {
-          facesLeft.visible = at[0] < walked[0]
-          facesRight.visible = !facesLeft.visible
-        }
+        if (walked !== null && at[0] !== walked[0]) face(at[0] < walked[0])
       }
       walked = at
       line.forEach((customer, i) =>

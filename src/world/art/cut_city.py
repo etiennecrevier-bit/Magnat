@@ -49,9 +49,12 @@ from cut import FONT, NUMBER, bounds, exact_bounds, scoped, svg
 
 HERE = Path(__file__).resolve().parent
 DESIGN_WIDTH = 1440
-# The sky's gradient stretches; above the design it keeps its top colour.
+# The sky's gradient stretches; above the design it keeps its top colour, and
+# below it its bottom one, for the window the city is framed in (`frame`).
 SKY_TOP = -2700
 SKY_TOP_COLOR = "#a3cde2"
+SKY_BOTTOM = 2700
+SKY_BOTTOM_COLOR = "#f6e7cf"
 # The target was rendered with the trip's way in player blue.
 ACCENT = "#2f6fb0"
 
@@ -274,8 +277,9 @@ def main(reference):
 
     written = {}
     top = f'<rect x="0" y="{SKY_TOP}" width="{DESIGN_WIDTH}" height="{-SKY_TOP}" fill="{SKY_TOP_COLOR}"></rect>'
-    view = (0, SKY_TOP, DESIGN_WIDTH, 900 - SKY_TOP)
-    written["sky"] = (view, svg([top] + pieces["sky"], defs, view, (8, 1800), stretch=True))
+    bottom = f'<rect x="0" y="900" width="{DESIGN_WIDTH}" height="{SKY_BOTTOM - 900}" fill="{SKY_BOTTOM_COLOR}"></rect>'
+    view = (0, SKY_TOP, DESIGN_WIDTH, SKY_BOTTOM - SKY_TOP)
+    written["sky"] = (view, svg([top, bottom] + pieces["sky"], defs, view, (8, 1800), stretch=True))
     art = {}
     clouds = [f"cloud-{k + 1}" for k in range(3)]
     for name in ["island"] + clouds + names + ["truck-hatch", "truck-awning"] + shops:
@@ -406,7 +410,7 @@ def layout(scope, calls, names, art):
 
     pieces = [
         {"id": "sky", "kind": "backdrop", "layer": "sky", "x": -DESIGN_WIDTH, "y": SKY_TOP, "width": 3 * DESIGN_WIDTH,
-         "height": 900 - SKY_TOP, "color": "sky", "image": "city/sky.svg"},
+         "height": SKY_BOTTOM - SKY_TOP, "color": "sky", "image": "city/sky.svg"},
     ]
     for k in range(3):
         x, y, w, h = art[f"cloud-{k + 1}"]

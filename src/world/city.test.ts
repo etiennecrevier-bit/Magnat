@@ -19,7 +19,8 @@ import { createSettingsStore } from '../ui/settings.ts'
 import { createGameStore, type GameStore } from '../ui/store.ts'
 import { startCity } from './city.ts'
 import { createCityPicker, type CityLink } from './cityPicker.ts'
-import { boxCorners, type Vec } from './iso.ts'
+import { boxCorners } from './iso.ts'
+import { fitCity } from './layout.ts'
 import { ASSETS } from './manifest.ts'
 import type { ShadowFilters } from './shadows.ts'
 import type { StreetLoaders } from './street.ts'
@@ -104,6 +105,21 @@ function find(app: ReturnType<typeof createFakeApp>, label: string): Container {
   return found
 }
 
+/**
+ * The page's pixel on the middle of `id`'s lit wall, in a window of
+ * `width` × `height`, the city framed beside « Ville ».
+ */
+function onWall(id: string, width = 1440, height = 900) {
+  const { left, front, wall } = boxCorners(
+    city.pieces.find((p) => p.id === id)!,
+  )
+  const fit = fitCity(width, height, city)
+  return {
+    x: fit.x + ((left[0] + front[0]) / 2) * fit.scale,
+    y: fit.y + ((left[1] + front[1]) / 2 - wall / 2) * fit.scale,
+  }
+}
+
 /** Starts the city on `app`, its people and clicks the test's own. */
 async function start(
   app: ReturnType<typeof createFakeApp>,
@@ -141,7 +157,9 @@ describe('startCity', () => {
       'labels',
     ])
     const [root, , labels] = app.stage.children
-    expect(root?.scale.x).toBeCloseTo(1280 / 1440)
+    const fit = fitCity(1280, 800, city)
+    expect(root?.scale.x).toBeCloseTo(fit.scale)
+    expect(root?.position).toMatchObject({ x: fit.x, y: fit.y })
     expect(labels?.scale.x).toBe(root?.scale.x)
     expect(labels?.position).toMatchObject({ x: root?.x, y: root?.y })
     expect(labels?.getChildByLabel('tripLabel')).not.toBeNull()
@@ -254,6 +272,49 @@ describe('startCity', () => {
       // Drawn turned, as the street's people, never flipped whole.
       expect(find(app, 'owner').scale.x).toBeCloseTo(city.figure.scale)
     })
+
+    it('walks the owner with the avatar the player picked, and the new one when it changes', async () => {
+      const app = createFakeApp()
+      const store = tripStore()
+      const as = (avatar: 'femme' | 'homme') => {
+        const { game } = store.getState()
+        store.setState({
+          game: { ...game, profile: { ...game.profile, avatar } },
+        })
+      }
+      as('femme')
+      await start(app, store)
+      /** Each facing, and whether it has the bun. */
+      const buns = () =>
+        find(app, 'facings').children.map((n) => [
+          n.label,
+          n.getChildByLabel('bun') !== null,
+        ])
+      const bust = () =>
+        find(app, 'crew')
+          .children.filter((n) => n.label.startsWith('avatar:'))
+          .map((n) => n.label)
+      expect(buns()).toEqual([
+        ['facesRight', true],
+        ['facesLeft', true],
+      ])
+      expect(bust()).toEqual(['avatar:femme'])
+
+      // Facing left on the way back, then changed to homme: still left.
+      app.frame(msAt(612))
+      app.frame(msAt(670) - msAt(612))
+      as('homme')
+      expect(buns()).toEqual([
+        ['facesRight', false],
+        ['facesLeft', false],
+      ])
+      expect(bust()).toEqual(['avatar:homme'])
+      expect(
+        find(app, 'facings')
+          .children.filter((n) => n.visible)
+          .map((n) => n.label),
+      ).toEqual(['facesLeft'])
+    })
   })
 
   it('moves everyone three times faster at ×3, and freezes them paused', async () => {
@@ -306,17 +367,6 @@ describe('startCity', () => {
   })
 
   describe('a click', () => {
-    /** The page's pixel on the middle of `id`'s lit wall, at 1440 × 900. */
-    const onWall = (id: string) => {
-      const piece = city.pieces.find((p) => p.id === id)!
-      const { left, front, wall } = boxCorners(piece)
-      const point: Vec = [
-        (left[0] + front[0]) / 2,
-        (left[1] + front[1]) / 2 - wall / 2,
-      ]
-      return { x: point[0], y: point[1] }
-    }
-
     it('reports what the building opens, and shows the pointer over it', async () => {
       const opened: CityLink[] = []
       const { picker } = await start(createFakeApp(), tripStore(), {
@@ -337,9 +387,9 @@ describe('startCity', () => {
       const { picker } = await start(app, tripStore(), {
         onOpen: (link) => opened.push(link),
       })
-      const { x, y } = onWall('rent')
-      // Scaled by 0.8 and centred across, standing on the bottom.
-      picker.at({ x: x * 0.8 + 64, y: y * 0.8 })
+      // The same pixel as at 1440 × 900 is elsewhere in the city.
+      picker.at(onWall('bank'))
+      picker.at(onWall('rent', 1280, 720))
       expect(opened).toEqual(['fournil'])
     })
 
@@ -393,16 +443,7 @@ describe('startCity', () => {
   })
 
   describe('the name over a building', () => {
-    /** The page's pixel on the middle of `id`'s lit wall, at `scale`. */
-    const over = (id: string, scale = 1, dx = 0) => {
-      const { left, front, wall } = boxCorners(
-        city.pieces.find((p) => p.id === id)!,
-      )
-      return {
-        x: ((left[0] + front[0]) / 2) * scale + dx,
-        y: ((left[1] + front[1]) / 2 - wall / 2) * scale,
-      }
-    }
+    const over = onWall
     /** The name shown, its words and where its foot is, or null. */
     const shown = (app: ReturnType<typeof createFakeApp>) => {
       const name = find(app, 'labels').getChildByLabel('name')
@@ -485,13 +526,12 @@ describe('startCity', () => {
       const point = over('bank')
       picker.hover(point)
       expect(shown(app)?.text).toBe('La Caisse populaire')
-      // At 1280 × 720 the design is scaled by 0.8 and centred: the same
-      // pixel is elsewhere in it.
+      // At 1280 × 720 the city is smaller: the same pixel is elsewhere in it.
       app.screen.width = 1280
       app.screen.height = 720
       app.frame()
       expect(shown(app)?.text).not.toBe('La Caisse populaire')
-      picker.hover(over('bank', 0.8, 64))
+      picker.hover(over('bank', 1280, 720))
       expect(shown(app)?.text).toBe('La Caisse populaire')
     })
 

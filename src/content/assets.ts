@@ -463,6 +463,36 @@ const citySchema = z.strictObject({
     height: z.int().positive(),
   }),
   /**
+   * How the city is framed in the window: « Ville » keeps to its left
+   * (src/ui/TripPanel.css), so `island`, the part of the design that must
+   * show, is fitted into the room right of the panel, `gap` from it and
+   * from the window's right edge, between the top bar's `top` and the
+   * dock's `bottom`. In a window narrower than `narrow` the panel comes
+   * down from the top, and the whole design is fitted as the street is.
+   */
+  frame: z.strictObject({
+    island: z.strictObject({
+      x: z.number(),
+      y: z.number(),
+      width: size,
+      height: size,
+    }),
+    /**
+     * The panel: `left` from the window's edge, at most `width` wide and
+     * at most `share` of the window less `inset`.
+     */
+    panel: z.strictObject({
+      left: z.number().nonnegative(),
+      width: size,
+      share,
+      inset: z.number().nonnegative(),
+    }),
+    gap: z.number().nonnegative(),
+    top: z.number().nonnegative(),
+    bottom: z.number().nonnegative(),
+    narrow: size,
+  }),
+  /**
    * Layer ids, back to front. They hold the light's shadow layer, which no
    * piece goes in. The layers under it draw their pieces in the order
    * listed; in those over it, the boxes and the people walking are drawn
@@ -610,7 +640,8 @@ function checkCity(
     const onWall = WALL_KINDS.includes(piece.kind)
     const flat = FLAT_KINDS.includes(piece.kind)
     if (flat) {
-      if (piece.on !== undefined) issue('on', `${piece.kind} pieces stand alone`)
+      if (piece.on !== undefined)
+        issue('on', `${piece.kind} pieces stand alone`)
       if (city.layers.indexOf(piece.layer) > city.layers.indexOf(shadowLayer)) {
         issue('layer', `${piece.kind} pieces go under the shadow layer`)
       }
@@ -655,10 +686,7 @@ function checkCity(
     if (piece.opens !== undefined && onWall) {
       issue('opens', 'a click opens a box, not what is on its wall')
     }
-    if (
-      piece.opens !== undefined &&
-      (flat || piece.kind === 'scenery')
-    ) {
+    if (piece.opens !== undefined && (flat || piece.kind === 'scenery')) {
       issue('opens', `a click opens nothing on ${piece.kind} pieces`)
     }
   })
