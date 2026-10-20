@@ -115,6 +115,31 @@ function describers(tag: string): string[] {
   return (attribute(tag, 'aria-describedby') ?? '').split(' ')
 }
 
+/** The text of each `<tag>` that has words, not only an icon. */
+function words(html: string, tag: string): string[] {
+  return texts(html, tag).filter((text) => !text.startsWith('<svg'))
+}
+
+/**
+ * What the tooltip of the « (i) » `label` says, a line each: its title, its
+ * text, then « label : value » for each row, « — » before a thin line.
+ */
+function tipOf(html: string, label: string): string[] {
+  const id = attribute(button(html, label), 'aria-describedby') ?? ''
+  const tip = html
+    .split(`<div id="${id}" role="tooltip"`)[1]
+    ?.split('<span class="tip__arrow"')[0]
+  if (tip === undefined) throw new Error(`No tooltip for ${label}`)
+  return [
+    ...tip.matchAll(
+      /<p class="tip__(?:title|text)">(.*?)<\/p>|<div class="tip__row( tip__row--divider)?"><dt>(.*?)<\/dt><dd[^>]*>(.*?)<\/dd>/g,
+    ),
+  ].map(
+    ([, line, divider, label, value]) =>
+      line ?? `${divider === undefined ? '' : '— '}${label}${S}: ${value}`,
+  )
+}
+
 const TABS: readonly TruckTab[] = [
   'menu',
   'stocks',
@@ -159,7 +184,7 @@ describe('ManagePanelView', () => {
     ])
     const bakery = render('bakery')
     expect(inputs('bakery')).toEqual(['manage-bake-quantity'])
-    expect(texts(bakery, 'button')).toEqual([
+    expect(words(bakery, 'button')).toEqual([
       'Ouvrir · four loué',
       'Ouvrir · four acheté',
       'Acheter',
@@ -517,10 +542,15 @@ function bakeryPart(game: GameState): string {
   )
 }
 
-/** The text of each paragraph and list item, in order, tags removed. */
+/** The section without its tooltips: what shows before any opens. */
+function shown(html: string): string {
+  return html.replace(/<div id="[^"]*" role="tooltip".*?<\/dl>/g, '')
+}
+
+/** The text of each paragraph and list item shown, in order, tags removed. */
 function lines(html: string): string[] {
-  return [...html.matchAll(/<(p|li)\b[^>]*>(.*?)<\/\1>/g)].map(([, , text]) =>
-    (text ?? '').replace(/<[^>]*>/g, ''),
+  return [...shown(html).matchAll(/<(p|li)\b[^>]*>(.*?)<\/\1>/g)].map(
+    ([, , text]) => (text ?? '').replace(/<[^>]*>/g, ''),
   )
 }
 
@@ -531,32 +561,49 @@ function playedTo(game: GameState, day: number): GameState {
   return next
 }
 
+const COSTS = 'Ce que coûte le fournil'
+const UNIT_COST = 'Coût d&#x27;un croissant'
+
 describe('« Fournil »', () => {
   const START = createInitialState(42)
 
-  it('shows a closed bakery, how to open it, its costs and the unit cost of a croissant bought and made side by side', () => {
+  it('shows a closed bakery in one status line, how to open it, its source and its bake, the costs in the tooltips beside', () => {
     const html = bakeryPart(START)
     expect(html).toMatch(
-      /^<section class="manage__bakery" aria-labelledby="manage-bakery"><h3 id="manage-bakery">Fournil<\/h3><p class="manage__bakery-status">Fermé<\/p>/,
+      /^<section class="manage__bakery" aria-labelledby="manage-bakery"><h3 id="manage-bakery">Fournil<\/h3><p id="manage-bakery-status" class="status-line"><span class="status-line__dot status-line__dot--off" aria-hidden="true"><\/span>Fermé<\/p>/,
     )
-    expect(texts(html, 'button')).toEqual([
+    expect(words(html, 'button')).toEqual([
       'Ouvrir · four loué',
       'Ouvrir · four acheté',
       'Acheter',
       'Fabriquer',
     ])
     expect(html).not.toContain('disabled')
-    expect(lines(html)).toEqual([
-      'Fermé',
+    // One line shows; the costs, the unit costs and the fixed costs wait in
+    // the tooltips.
+    expect(lines(html)).toEqual(['Fermé'])
+    expect(shown(html)).not.toContain('<table')
+    expect(tipOf(html, COSTS)).toEqual([
+      'Ce que coûte le fournil',
       `Déménagement${S}: 1${S}500,00${S}$`,
       `Loyer${S}: 2${S}400,00${S}$ par mois`,
       `Four loué${S}: 600,00${S}$ par mois`,
       `Four acheté${S}: 25${S}000,00${S}$`,
       `Capacité${S}: 800 croissants par jour`,
-      `Frais fixes du fournil${S}: 3${S}000,00${S}$ par mois avec le four loué · 2${S}400,00${S}$ par mois avec le four acheté`,
     ])
-    expect(html).toContain(
-      `<table class="data-table manage__unit-costs"><caption>Coût d&#x27;un croissant</caption><thead><tr><th scope="col" class="number">Acheté</th><th scope="col" class="number">Fabriqué</th></tr></thead><tbody><tr><td class="number">1,10${S}$</td><td class="number">0,55${S}$</td></tr></tbody></table>`,
+    expect(tipOf(html, UNIT_COST)).toEqual([
+      'Coût d&#x27;un croissant',
+      `Acheté${S}: 1,10${S}$`,
+      `Fabriqué${S}: 0,55${S}$`,
+      `— Frais fixes, four loué${S}: 3${S}000,00${S}$ par mois`,
+      `Frais fixes, four acheté${S}: 2${S}400,00${S}$ par mois`,
+    ])
+    // Each « (i) » ends the row of what it explains.
+    expect(shown(html)).toMatch(
+      /Ouvrir · four acheté<\/button><button type="button" class="info-button" aria-label="Ce que coûte le fournil"/,
+    )
+    expect(shown(html)).toMatch(
+      /Fabriquer<\/button><\/div><button type="button" class="info-button" aria-label="Coût d&#x27;un croissant"/,
     )
     expect(html).toContain(
       'role="group" aria-label="Provenance des croissants"><button type="button" class="toggle" aria-pressed="true">Acheter</button><button type="button" class="toggle" aria-pressed="false">Fabriquer</button>',
@@ -578,34 +625,39 @@ describe('« Fournil »', () => {
     }
   })
 
-  it('shows a bakery open with a leased oven, which closing gives notice to', () => {
+  it('shows a bakery open with a leased oven, the notice closing gives in the tooltip', () => {
     const open = playedTo(
       applyDecision(START, { kind: 'openBakery', oven: 'louer' }),
       3,
     )
     const html = bakeryPart(open)
-    expect(lines(html).slice(0, 2)).toEqual([
-      'Ouvert depuis le 2 mai · four loué',
-      `Fermer donne un préavis${S}: dernier jour le 30 juin`,
+    expect(lines(html)).toEqual(['Ouvert depuis le 2 mai · four loué'])
+    expect(html).toContain('status-line__dot--ok')
+    expect(words(html, 'button')[0]).toBe('Fermer le fournil')
+    expect(tipOf(html, COSTS).slice(0, 2)).toEqual([
+      'Ce que coûte le fournil',
+      `Fermer donne un préavis${S}: dernier jour le 30 juin.`,
     ])
-    expect(texts(html, 'button')[0]).toBe('Fermer le fournil')
-    expect(lines(html)).toContain(
-      `Frais fixes du fournil${S}: 3${S}000,00${S}$ par mois`,
-    )
+    expect(tipOf(html, UNIT_COST).slice(-1)).toEqual([
+      `— Frais fixes du fournil${S}: 3${S}000,00${S}$ par mois`,
+    ])
   })
 
-  it('shows tomorrow when the plan changes it, and only the oven it has to take the notice back', () => {
+  it('shows tomorrow on the status line when the plan changes it, and only the oven it has to take the notice back', () => {
     const open = playedTo(
       applyDecision(START, { kind: 'openBakery', oven: 'louer' }),
       3,
     )
     const closing = applyDecision(open, { kind: 'closeBakery' })
-    expect(lines(bakeryPart(closing)).slice(0, 2)).toEqual([
-      'Ouvert depuis le 2 mai · four loué',
-      `Demain${S}: en préavis, dernier jour le 30 juin`,
-    ])
+    expect(statusLine(bakeryPart(closing), 'manage-bakery-status')).toBe(
+      `Ouvert depuis le 2 mai · four loué · Demain${S}: en préavis, dernier jour le 30 juin`,
+    )
+    expect(tipOf(bakeryPart(closing), COSTS)).not.toContain(
+      `Fermer donne un préavis${S}: dernier jour le 30 juin.`,
+    )
     const html = bakeryPart(tick(closing))
-    expect(lines(html)[0]).toBe(`En préavis${S}: dernier jour le 30 juin`)
+    expect(lines(html)).toEqual([`En préavis${S}: dernier jour le 30 juin`])
+    expect(html).toContain('status-line__dot--warn')
     expect(tags(html, 'button').slice(0, 2)).toEqual([
       '<button type="button" class="button">',
       '<button type="button" class="button" disabled="">',
@@ -616,33 +668,42 @@ describe('« Fournil »', () => {
     const html = bakeryPart(
       applyDecision(START, { kind: 'openBakery', oven: 'acheter' }),
     )
-    expect(lines(html).slice(0, 2)).toEqual([
-      'Fermé',
-      `Demain${S}: ouvert · four acheté`,
-    ])
-    expect(texts(html, 'button')[0]).toBe('Annuler l&#x27;ouverture')
+    expect(statusLine(html, 'manage-bakery-status')).toBe(
+      `Fermé · Demain${S}: ouvert · four acheté`,
+    )
+    expect(words(html, 'button')[0]).toBe('Annuler l&#x27;ouverture')
   })
 
-  it('leases no oven once the business owns one, which it says', () => {
+  it('leases no oven once the business owns one, which its tooltip says', () => {
     let game = playedTo(
       applyDecision(START, { kind: 'openBakery', oven: 'acheter' }),
       3,
     )
     game = playedTo(applyDecision(game, { kind: 'closeBakery' }), 63)
     const html = bakeryPart(game)
-    expect(lines(html)).toContain(`Four acheté${S}: déjà à vous`)
+    expect(tipOf(html, COSTS)).toContain(`Four acheté${S}: déjà à vous`)
     expect(html).toContain(
       '<button type="button" class="button" disabled="">Ouvrir · four loué</button><button type="button" class="button">Ouvrir · four acheté</button>',
     )
+    expect(tipOf(html, UNIT_COST).slice(3)).toEqual([
+      `— Frais fixes, four acheté${S}: 2${S}400,00${S}$ par mois`,
+    ])
   })
 
-  it('says the croissants are bought while no bakery runs to make them', () => {
+  it('says on the source’s status line that the croissants are bought while no bakery runs to make them', () => {
     const html = bakeryPart(
       applyDecision(START, { kind: 'croissantSource', source: 'fabriquer' }),
     )
     expect(html).toContain('aria-pressed="true">Fabriquer</button>')
-    expect(lines(html)).toContain(
+    expect(statusLine(html, 'manage-bakery-source-status')).toBe(
       'Sans fournil ouvert, les croissants sont achetés.',
+    )
+    expect(html).toContain('status-line__dot--warn')
+    expect(html).toContain(
+      'aria-label="Provenance des croissants" aria-describedby="manage-bakery-source-status"',
+    )
+    expect(statusLine(bakeryPart(START), 'manage-bakery-source-status')).toBe(
+      null,
     )
   })
 })
@@ -719,7 +780,9 @@ describe('ManagePanel', () => {
     gameStore.getState().decide({ kind: 'openBakery', oven: 'louer' })
     gameStore.getState().setTruckTab('bakery')
     const html = renderToStaticMarkup(<ManagePanel />)
-    expect(html).toContain(`<p>Demain${S}: ouvert · four loué</p>`)
+    expect(statusLine(html, 'manage-bakery-status')).toBe(
+      `Fermé · Demain${S}: ouvert · four loué`,
+    )
   })
 
   it('shows the decisions waiting for the next morning', () => {

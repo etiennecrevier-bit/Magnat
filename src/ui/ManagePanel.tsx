@@ -413,9 +413,9 @@ function lockedKinds(game: GameState): DecisionKind[] {
  * « Le camion », the panel wired to the app store, in the dock's frame, a
  * modal dialog (see `useFieldDialog`): the page behind it is out of reach
  * and Escape closes it. It opens on the tab last shown, or on « Fournil »
- * from the bakery in the city. « ✕ » keeps what was typed, after any
- * invalid text is fixed; Escape drops what is still being typed. The
- * changes already made stay either way.
+ * from the bakery in the city. Another tab, or « ✕ », keeps what was
+ * typed, after any invalid text is fixed; Escape drops what is still being
+ * typed. The changes already made stay either way.
  */
 export default function ManagePanel() {
   const decisions = useGame((state) => latestDecisions(state.game))
@@ -431,7 +431,8 @@ export default function ManagePanel() {
   const closePanel = useGame((state) => state.closePanel)
   const tab = useGame((state) => state.truckTab)
   const setTab = useGame((state) => state.setTruckTab)
-  const { dialogRef, onChange, close, onCancel } = useFieldDialog(decide)
+  const { dialogRef, onChange, settle, close, onCancel } =
+    useFieldDialog(decide)
 
   return (
     <DockPanel
@@ -440,7 +441,10 @@ export default function ManagePanel() {
       title="Le camion"
       tabs={TRUCK_TABS}
       tab={tab}
-      onTab={setTab}
+      onTab={(next) => {
+        if (!settle()) return false
+        setTab(next)
+      }}
       onCancel={onCancel}
       onClose={closePanel}
       onDismiss={close}

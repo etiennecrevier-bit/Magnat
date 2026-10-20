@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type RefObject,
 } from 'react'
@@ -18,7 +19,11 @@ interface FrameHeaderProps<T extends string> {
   /** Its tabs; with fewer than two, none show. */
   readonly tabs?: readonly FrameTab<T>[]
   readonly tab?: T
-  readonly onTab?: (tab: T) => void
+  /**
+   * Shows `tab`; false when it stays on the one shown, as when a field there
+   * holds invalid text.
+   */
+  readonly onTab?: (tab: T) => boolean | void
   /** The id of the part the tabs show, which they control. */
   readonly bodyId: string
   /** « ✕ »: closes the frame. */
@@ -48,7 +53,7 @@ export function FrameHeader<T extends string>({
     )
     if (to === null) return
     event.preventDefault()
-    onTab(to)
+    if (onTab(to) === false) return
     document.getElementById(tabId(bodyId, to))?.focus()
   }
   return (
@@ -75,7 +80,10 @@ export function FrameHeader<T extends string>({
                 aria-selected={selected}
                 aria-controls={bodyId}
                 tabIndex={selected ? 0 : -1}
-                onClick={() => onTab?.(id)}
+                onMouseDown={keepFocus}
+                onClick={(event) => {
+                  if (onTab?.(id) !== false) event.currentTarget.focus()
+                }}
               >
                 {label}
               </button>
@@ -87,12 +95,24 @@ export function FrameHeader<T extends string>({
         type="button"
         className="dock-frame__close"
         aria-label="Fermer"
+        onMouseDown={keepFocus}
         onClick={onDismiss}
       >
         <span aria-hidden="true">✕</span>
       </button>
     </div>
   )
+}
+
+/**
+ * A press on a tab or on « ✕ » leaves the focus where it is until the
+ * click, so a field being typed in commits then, in `onTab` or
+ * `onDismiss`, not as the press starts: its message going would shrink the
+ * frame, anchored at the bottom, and move the header from under the
+ * pointer before the click.
+ */
+function keepFocus(event: ReactMouseEvent<HTMLButtonElement>) {
+  event.preventDefault()
 }
 
 interface FrameBodyProps<T extends string> {
@@ -129,7 +149,7 @@ export interface DockPanelProps<T extends string> {
   readonly title: string
   readonly tabs?: readonly FrameTab<T>[]
   readonly tab?: T
-  readonly onTab?: (tab: T) => void
+  readonly onTab?: (tab: T) => boolean | void
   /** The dialog's `cancel`: Escape is closing it. */
   readonly onCancel?: () => void
   /** The dialog's `close`: the store's `closePanel`. */
