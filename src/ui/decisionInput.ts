@@ -150,7 +150,7 @@ function quoted(text: string): string {
 
 /**
  * The restock rule of `product` with `field` set from the field's text,
- * within `units`, the content's limits unless the rungs of « Le rêve »
+ * within `units`, the content's limits unless the rungs of « Améliorations »
  * owned allow more (see `dreamLimits`), the rule's other field kept. A
  * top-up's threshold may not exceed what it fills up to.
  */

@@ -81,7 +81,7 @@ interface TopBarViewProps {
   yesterday?: TodayNumbers | null
   /** Opens « Finances ». */
   onCash?: () => void
-  /** The title the net worth earns of « Le rêve »; null shows none. */
+  /** The title the net worth earns of « Améliorations »; null shows none. */
   title?: string | null
   /** The owner's energy this morning. */
   energy: number
@@ -111,7 +111,7 @@ interface TopBarViewProps {
 
 /**
  * The top bar, a few cards over the street. At the left: the business's
- * name, the date and the owner's title of « Le rêve »; the cash chip; the
+ * name, the date and the owner's title of « Améliorations »; the cash chip; the
  * energy. At the right: the street or the city, the speeds, the chips of
  * what waits, then the gear of « Réglages ».
  */

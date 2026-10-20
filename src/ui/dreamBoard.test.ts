@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import type { DifficultyId, RungId } from '../content/schema.ts'
+import type { DifficultyId, Rung, RungId } from '../content/schema.ts'
 import { createInitialState } from '../engine/clock.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { cents } from '../engine/money.ts'
 import { netWorth } from '../engine/netWorth.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
-import { dreamBoard, priceLine, rungLines } from './dreamBoard.ts'
+import {
+  bonusChip,
+  dreamBoard,
+  factLine,
+  priceLine,
+  rungFacts,
+  rungTip,
+} from './dreamBoard.ts'
 import { DREAM } from '../engine/dream.ts'
 
 // Every space in an amount is a no-break space (U+00A0), as before a colon
@@ -42,7 +49,6 @@ describe('dreamBoard', () => {
     const board = dreamBoard(started())
     expect(board.personal).toMatchObject({
       ladder: 'personal',
-      title: 'Personnel',
       payer: 'Payé par vous',
       cash: 400_000,
       next: { id: 'velo', buyable: true },
@@ -60,7 +66,6 @@ describe('dreamBoard', () => {
       ['chalet', 'locked', 9_000_000],
     ])
     expect(board.company).toMatchObject({
-      title: 'Entreprise',
       payer: "Payé par l'entreprise",
       cash: 1_500_000,
       next: { id: 'espresso', buyable: true },
@@ -149,7 +154,104 @@ describe('dreamBoard', () => {
   })
 })
 
-describe('rungLines', () => {
+describe('the cards', () => {
+  it('says which rung a locked one comes after, and nothing for the others', () => {
+    const board = dreamBoard(buying(started(), 'velo'))
+    expect(board.personal.rungs.map(({ after }) => after)).toEqual([
+      null,
+      null,
+      "Voiture d'occasion",
+      'Condo sur le Plateau',
+      'Voiture de luxe',
+      'Maison à Outremont',
+    ])
+    expect(board.company.rungs.map(({ after }) => after)).toEqual([
+      null,
+      'Machine à espresso pro',
+      null,
+    ])
+  })
+
+  it.each<[RungId, string | null]>([
+    ['velo', `−30${S}% de trajet`],
+    ['voitureOccasion', `−50${S}% de trajet`],
+    ['condo', 'Loyer remplacé'],
+    ['voitureLuxe', `−60${S}% de trajet`],
+    ['maison', 'Hypothèque remplacée'],
+    ['chalet', "+15 d'énergie par congé"],
+    ['espresso', `−20${S}% de service`],
+    ['grandCamion', `+50${S}% de stock`],
+    ['deuxiemeCamion', null],
+  ])('sums up what %s gives in a chip', (id, chip) => {
+    expect(bonusChip(rung(id))).toBe(chip)
+    expect(
+      [
+        ...dreamBoard(started()).personal.rungs,
+        ...dreamBoard(started()).company.rungs,
+      ].find((row) => row.id === id)?.chip,
+    ).toBe(chip)
+  })
+
+  it('words the other bonuses in a chip too', () => {
+    const only = (bonuses: Rung['bonuses']) => ({ ...rung('velo'), bonuses })
+    expect(bonusChip(only([{ kind: 'line', factor: 1.5 }]))).toBe(
+      `+50${S}% de file`,
+    )
+    expect(
+      bonusChip(only([{ kind: 'walkIns', segment: 'chic', factor: 1.05 }])),
+    ).toBe(`+5${S}% de clientèle chic`)
+  })
+})
+
+describe('rungTip', () => {
+  it('tells the name, the price and who pays, and the facts', () => {
+    const board = dreamBoard(started())
+    expect(rungTip(board.personal, board.personal.rungs[0]!)).toEqual({
+      title: 'Vélo électrique',
+      text: `1${S}500,00${S}$, payé par vous`,
+      rows: [{ label: 'Déplacements en ville', value: `−30${S}% de temps` }],
+    })
+    const condo = board.personal.rungs[2]!
+    expect(rungTip(board.personal, condo).rows).toEqual([
+      { label: 'Hypothèque du condo', value: `1${S}100,00${S}$ par mois` },
+      { label: 'Remplace', value: `Loyer (1${S}300,00${S}$ par mois)` },
+    ])
+  })
+
+  it('tells in amber what the next rung still misses', () => {
+    const board = dreamBoard(started('difficile'))
+    const espresso = board.company.rungs[0]!
+    expect(rungTip(board.company, espresso).rows?.at(-1)).toEqual({
+      label: 'Il vous manque',
+      value: `1${S}000,00${S}$`,
+      warn: true,
+    })
+    const easy = dreamBoard(started())
+    expect(
+      rungTip(easy.company, easy.company.rungs[0]!).rows?.some(
+        ({ warn }) => warn === true,
+      ),
+    ).toBe(false)
+  })
+
+  it('tells nothing missing on a rung after the next one', () => {
+    const board = dreamBoard(withCash(started(), 0))
+    const later = board.personal.rungs[1]!
+    expect(later.status).toBe('locked')
+    expect(rungTip(board.personal, later).rows).toEqual([
+      { label: 'Déplacements en ville', value: `−50${S}% de temps` },
+    ])
+    expect(
+      rungTip(board.personal, board.personal.rungs[0]!).rows?.at(-1),
+    ).toEqual({
+      label: 'Il vous manque',
+      value: `1${S}500,00${S}$`,
+      warn: true,
+    })
+  })
+})
+
+describe('rungFacts', () => {
   const game = started()
 
   it.each<[RungId, string[]]>([
@@ -189,12 +291,15 @@ describe('rungLines', () => {
       ],
     ],
   ])('tells what %s gives, in plain facts', (id, lines) => {
-    expect(rungLines(game, rung(id))).toEqual(lines)
+    expect(rungFacts(game, rung(id)).map(factLine)).toEqual(lines)
   })
 
   it('tells the lease the bigger truck ends at difficile', () => {
-    expect(rungLines(started('difficile'), rung('grandCamion')).at(-1)).toBe(
-      `Fin de la location du camion${S}: 1${S}800,00${S}$ par mois`,
+    expect(rungFacts(started('difficile'), rung('grandCamion')).at(-1)).toEqual(
+      {
+        label: 'Fin de la location du camion',
+        value: `1${S}800,00${S}$ par mois`,
+      },
     )
   })
 

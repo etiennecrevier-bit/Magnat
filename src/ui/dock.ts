@@ -38,7 +38,7 @@ export interface DockItem {
   readonly target: DockTarget
   /** Whether a divider comes before it. */
   readonly divided: boolean
-  /** Whether a Défi hides it, as it hid « Le rêve » and « Aller à… ». */
+  /** Whether a Défi hides it, as it hid « Améliorations » and « Aller à… ». */
   readonly hiddenInChallenge: boolean
 }
 

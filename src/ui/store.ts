@@ -1,5 +1,5 @@
 import { createStore, useStore, type StoreApi } from 'zustand'
-import type { EventContent, GrocerId } from '../content/schema.ts'
+import type { EventContent, GrocerId, Ladder } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
 import { createInitialState, startChallenge, tick } from '../engine/clock.ts'
 import {
@@ -203,6 +203,11 @@ export interface GameStoreState {
   truckTab: TruckTab
   /** The tab « Ville » shows; « Aller à… » each time it opens. */
   cityTab: CityTab
+  /**
+   * The ladder « Améliorations » shows, « Vie personnelle » or
+   * « Entreprise », kept while it is closed.
+   */
+  dreamTab: Ladder
   /** The grocer « Contrats » shows, as the city asked; null for none. */
   cityPick: CityPick | null
   /**
@@ -322,6 +327,8 @@ export interface GameStoreState {
   setTruckTab: (tab: TruckTab) => void
   /** Shows `tab` in « Ville ». */
   setCityTab: (tab: CityTab) => void
+  /** Shows the ladder `tab` in « Améliorations ». */
+  setDreamTab: (tab: Ladder) => void
   /**
    * Shows `grocer`'s card on « Contrats » of « Ville », open: the tab, and
    * the card brought into view once more.
@@ -353,7 +360,7 @@ export interface GameStoreState {
   chooseEvent: (choiceId: string) => void
   /**
    * Hands the player's change to the engine's `applyDecision()`, which
-   * leaves it waiting for the next morning, or buys a rung of « Le rêve »
+   * leaves it waiting for the next morning, or buys a rung of « Améliorations »
    * or sends the owner to a place in town that very morning. Throws its
    * RangeError if the engine refuses it.
    */
@@ -483,6 +490,7 @@ function playing(game: GameState) {
     financeSections: FIRST_FINANCE_SECTIONS,
     truckTab: FIRST_TRUCK_TAB,
     cityTab: 'trip' as const,
+    dreamTab: 'personal' as const,
     cityPick: null,
     unreadReports: 0,
   }
@@ -742,6 +750,7 @@ export function createGameStore(
     },
     setTruckTab: (truckTab) => set({ truckTab }),
     setCityTab: (cityTab) => set({ cityTab }),
+    setDreamTab: (dreamTab) => set({ dreamTab }),
     pickGrocer: (grocer) =>
       set({
         cityTab: 'contracts',

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   backdropPoint,
   CITY_TABS,
+  DREAM_TABS,
   drawerEscape,
   financesTabs,
   JOURNAL_TABS,
@@ -96,6 +97,13 @@ describe('the tabs', () => {
     expect(JOURNAL_TABS.map(({ label }) => label)).toEqual([
       'Événements',
       'Bilans',
+    ])
+  })
+
+  it('of « Améliorations »: « Vie personnelle » and « Entreprise »', () => {
+    expect(DREAM_TABS).toEqual([
+      { id: 'personal', label: 'Vie personnelle' },
+      { id: 'company', label: 'Entreprise' },
     ])
   })
 
