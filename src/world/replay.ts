@@ -14,13 +14,11 @@ export interface Replay {
   readonly visits: readonly Visit[]
   /** Its crowd, which picks the office cues or the families. */
   readonly dayType: DayTypeId
-  /** Visits that bought something. */
-  readonly served: number
   /**
-   * Visits that bought nothing because of a price, a sold-out product or the
-   * line.
+   * Visits that reached the counter, as « Hier »'s « Clients servis » counts
+   * them (`todayNumbers`).
    */
-  readonly lost: number
+  readonly served: number
 }
 
 /**
@@ -33,17 +31,11 @@ export function replayOf(game: GameState): Replay | null {
   const { lastDay } = game
   if (lastDay === null || lastDay.visits.length === 0) return null
   if (!opensToday(game)) return null
-  let served = 0
-  let lost = 0
-  for (const { outcome } of lastDay.visits) {
-    if (outcome === 'bought') served += 1
-    else if (outcome !== 'browsed') lost += 1
-  }
   return {
     visits: lastDay.visits,
     dayType: dayTypeOf(toCalendar(lastDay.day).weekday),
-    served,
-    lost,
+    served: lastDay.visits.filter(({ servedMinute }) => servedMinute !== null)
+      .length,
   }
 }
 

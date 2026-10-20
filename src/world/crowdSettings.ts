@@ -269,7 +269,7 @@ export const CROWD: CrowdSettings = {
   },
   fatigue: AVATAR_FATIGUE,
   fans: ASSETS.fans,
-  tally: { x: 850, y: 176, width: 330, height: 96, fontSize: 30 },
+  tally: { x: 850, y: 176, width: 330, height: 56, fontSize: 30 },
   card: { width: 260, gap: 10, margin: 8 },
   pickMargin: 8,
   looks: {

@@ -121,8 +121,9 @@ export interface CustomersSetup {
  * Replays the last day's visits on the street (see `replayOf`): a sample of
  * them walks up, waits in line, buys or not at the counter and leaves, while
  * the avatar serves behind the counter. Speeds with no crowd settings show
- * the day's tally instead, « 87 clients servis » and « 21 clients perdus ».
- * Pausing freezes everyone, the bubbles and the avatar's arm. On a day the
+ * the day's tally instead, « 87 clients servis », the count « Hier » shows:
+ * its losses are « Hier »'s to say (#231). Pausing freezes everyone, the
+ * bubbles and the avatar's arm, and takes the tally down. On a day the
  * truck is closed, the avatar is gone and everyone still waiting walks off
  * without buying. A choice that closes it on the day shown takes the tally
  * down too.
@@ -312,15 +313,14 @@ export function startCustomers(setup: CustomersSetup): Customers {
           'client servi',
           'clients servis',
         )
-        tally.lost.text = countText(
-          replay.lost,
-          'client perdu',
-          'clients perdus',
-        )
       }
     },
     frame: (deltaMs, speed, span) => {
-      if (speed <= 0) return
+      if (speed <= 0) {
+        // The tally goes with the speed that showed it (#231).
+        tally.root.visible = false
+        return
+      }
       fanMs += deltaMs
       const progress = clock.elapse(deltaMs, speed)
       const walking = settings.speeds[speed]
@@ -688,10 +688,9 @@ const REACH_ANGLE = Math.PI * 0.45
 interface Tally {
   readonly root: Container
   readonly served: Text
-  readonly lost: Text
 }
 
-/** The badge that counts the day's customers served and lost. */
+/** The badge that counts the day's customers served. */
 function drawTally(settings: CrowdSettings['tally'], style: DrawStyle): Tally {
   const { x, y, width, height, fontSize } = settings
   const { palette } = style
@@ -702,25 +701,20 @@ function drawTally(settings: CrowdSettings['tally'], style: DrawStyle): Tally {
       .fill(palette.cream)
       .stroke({ width: style.outline, color: palette.ink }),
   )
-  const text = (label: string, color: string, row: number) =>
-    badge.addChild(
-      new Text({
-        label,
-        style: {
-          fontFamily: TITLE_FONT_FAMILY,
-          fontWeight: TITLE_FONT.weight,
-          fontSize,
-          fill: color,
-        },
-        anchor: { x: 0.5, y: 0.5 },
-        position: { x: width / 2, y: (height * row) / 4 },
-      }),
-    )
-  return {
-    root: badge,
-    served: text('served', palette.moneyGreen, 1),
-    lost: text('lost', palette.dangerRed, 3),
-  }
+  const served = badge.addChild(
+    new Text({
+      label: 'served',
+      style: {
+        fontFamily: TITLE_FONT_FAMILY,
+        fontWeight: TITLE_FONT.weight,
+        fontSize,
+        fill: palette.moneyGreen,
+      },
+      anchor: { x: 0.5, y: 0.5 },
+      position: { x: width / 2, y: height / 2 },
+    }),
+  )
+  return { root: badge, served }
 }
 
 /** « 1 client servi », « 87 clients servis »: French counts 0 and 1 as one. */

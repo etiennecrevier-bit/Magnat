@@ -7,6 +7,7 @@ import { applyDecision } from '../engine/decisions.ts'
 import { cents } from '../engine/money.ts'
 import { next, seedRng } from '../engine/rng.ts'
 import type { GameState, Visit, VisitOutcome } from '../engine/types.ts'
+import { todayNumbers } from '../ui/todayNumbers.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
 import {
   arrivalShare,
@@ -112,17 +113,14 @@ describe('replayOf', () => {
     expect(replayOf(sunday)?.dayType).toBe('finDeSemaine')
   })
 
-  it('counts buyers as served, prices, stockouts and the line as lost, and browsers as neither', () => {
-    const visits = wednesday.lastDay?.visits ?? []
-    const count = (...outcomes: VisitOutcome[]) =>
-      visits.filter((v) => outcomes.includes(v.outcome)).length
+  it('counts as served the visits that reached the counter, as « Hier » does', () => {
     const replay = replayOf(wednesday)
-    expect(replay?.served).toBe(count('bought'))
-    expect(replay?.lost).toBe(count('tooExpensive', 'soldOut', 'leftLine'))
-    expect(replay!.served + replay!.lost).toBeLessThanOrEqual(visits.length)
+    expect(replay?.served).toBe(
+      todayNumbers(wednesday.lastDay!).customersServed,
+    )
   })
 
-  it('counts each outcome where it belongs', () => {
+  it('counts as served those who reached the counter, whatever they bought', () => {
     const game: GameState = {
       ...wednesday,
       lastDay: {
@@ -137,7 +135,7 @@ describe('replayOf', () => {
         ],
       },
     }
-    expect(replayOf(game)).toMatchObject({ served: 2, lost: 3 })
+    expect(replayOf(game)?.served).toBe(3)
   })
 })
 

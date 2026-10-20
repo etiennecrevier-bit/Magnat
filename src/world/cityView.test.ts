@@ -353,7 +353,6 @@ describe('lineAt', () => {
     visits: [500, 505, 510, 511, 512, 513, 514, 515, 600].map(visit),
     dayType: 'semaine',
     served: 9,
-    lost: 0,
   }
   const line = { max: 6, minutes: 20 }
 
