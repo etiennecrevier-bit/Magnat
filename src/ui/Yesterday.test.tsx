@@ -162,6 +162,19 @@ describe('Yesterday', () => {
       speed: PAUSED,
     })
   })
+
+  it('opens « Camion » on « Menu », whatever tab it showed last (#227)', () => {
+    gameStore.getState().openPanel('manage', 'bakery')
+    gameStore.getState().closePanel()
+    expect(gameStore.getState().truckTab).toBe('bakery')
+    const view = Yesterday({ folded: false, onFoldChange: () => {} })
+    const open = (view.props as { onOpen: () => void }).onOpen
+    open()
+    expect(gameStore.getState()).toMatchObject({
+      panel: 'manage',
+      truckTab: 'menu',
+    })
+  })
 })
 
 describe('the R key', () => {
