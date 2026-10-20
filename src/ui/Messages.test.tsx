@@ -105,6 +105,12 @@ describe('the message stack', () => {
       'landlord',
     ])
     stop()
+    // Started again for the same game, as React replays an effect, it
+    // keeps them; for a new game, it starts empty.
+    stop = startMessageStack(game, stack)
+    expect(stack.getState().messages).toHaveLength(1)
+    stop()
+    game.getState().startGame(START)
     stop = startMessageStack(game, stack)
     expect(stack.getState().messages).toEqual([])
     stop()

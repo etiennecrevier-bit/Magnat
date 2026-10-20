@@ -50,9 +50,9 @@ export function streetMessages(
   today: Day,
   shownAgainOn: Day | null = null,
 ): readonly Message[] {
-  return messages.filter(
-    ({ day }) => today < Math.max(day, shownAgainOn ?? day) + STREET_DAYS,
-  )
+  return messages.filter(({ day, arrivedOn = day }) => {
+    return today < Math.max(arrivedOn, shownAgainOn ?? arrivedOn) + STREET_DAYS
+  })
 }
 
 export type MessageStack = StoreApi<MessageStackState>
@@ -86,20 +86,35 @@ export function createMessageStack(): MessageStack {
 /** The app's stack. Tests build their own with `createMessageStack`. */
 export const messageStack = createMessageStack()
 
+// The store and game each stack was last started for.
+const startedFor = new WeakMap<
+  MessageStack,
+  { readonly store: GameStore; readonly game: number }
+>()
+
 /**
  * Empties `stack`, then fills it with the messages the game in `store`
  * calls for from now on, and with Réal's postcards (see `startPostcards`),
  * from one run of ids. A postcard's button in the dock pulses until what
  * it opens is open, by a click, a key or a link alike; one already open
  * as the postcard comes does not. Returns what stops it. Started again for
- * each game, so nothing of the last game's messages stays.
+ * each game, so nothing of the last game's messages stays; started again
+ * for the same game, as React replays an effect, it keeps them, and the
+ * postcards and pulses they hold.
  */
 export function startMessageStack(
   store: GameStore,
   stack: MessageStack = messageStack,
 ): () => void {
-  stack.setState({ messages: [], pulsing: [], shownAgainOn: null })
-  const nextId = messageIds()
+  const game = store.getState().gamesStarted
+  const last = startedFor.get(stack)
+  if (last?.store !== store || last.game !== game) {
+    stack.setState({ messages: [], pulsing: [], shownAgainOn: null })
+    startedFor.set(stack, { store, game })
+  }
+  const nextId = messageIds(
+    Math.max(-1, ...stack.getState().messages.map(({ id }) => id)) + 1,
+  )
   const { receive, opened } = stack.getState()
   const isOpen = (target: PostcardTarget) => {
     const item = DOCK_ITEMS.find(({ id }) => id === target)
@@ -114,10 +129,12 @@ export function startMessageStack(
     nextId,
   )
   const stopPostcards = startPostcards(store, ({ id, target, ...card }) => {
+    const today = store.getState().game.day
     receive({
       id: nextId(),
       kind: 'postcard',
       ...card,
+      ...(today > card.day ? { arrivedOn: today } : {}),
       postcard: { id, target },
     })
     if (isOpen(target)) opened(target)

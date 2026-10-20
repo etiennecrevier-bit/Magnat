@@ -41,6 +41,11 @@ export interface Message {
   readonly text: string
   /** The day it is about. */
   readonly day: Day
+  /**
+   * The day it came, when later than `day`: a postcard about a morning a
+   * multi-day advance went through comes as the advance ends.
+   */
+  readonly arrivedOn?: Day
   /** A postcard's id and the dock's button it points at; absent otherwise. */
   readonly postcard?: {
     readonly id: PostcardId
@@ -256,9 +261,9 @@ export function received(
   })
 }
 
-/** Hands out message ids, from 0 up. */
-export function messageIds(): () => number {
-  let next = 0
+/** Hands out message ids, from `from` (0) up. */
+export function messageIds(from = 0): () => number {
+  let next = from
   return () => {
     const id = next
     next += 1

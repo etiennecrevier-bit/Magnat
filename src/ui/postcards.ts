@@ -122,16 +122,22 @@ export function duePostcards(
     )
 }
 
+// Per store, the postcards handed over whose note in the game waits for
+// the end of the store's notification, so one started again meanwhile
+// does not send them twice.
+const unnoted = new WeakMap<GameStore, Set<PostcardId>>()
+
 /**
  * Hands `onPostcard` each postcard the game in `store` calls for, once a
- * game, and notes it shown in the game (`markPostcardsShown`) so a save
- * keeps it.
+ * game, on the morning what it announces first holds, and notes it shown
+ * in the game (`markPostcardsShown`) so a save keeps it.
  *
  * It looks at the game as it starts, at each change to the game or the «
  * Bilan du mois », and at each morning `advance` goes through on the way,
  * so a close below zero or a rung within reach that a multi-day advance
- * passes still counts. What it saw due waits in turn: one postcard a game
- * day at most, in the content's order, the others on the mornings after.
+ * passes still counts, dated on that morning. Whatever is due goes out at
+ * once, in the content's order: nothing waits on a later morning, so a
+ * reload cannot lose a postcard due but not sent.
  *
  * Inside the store's notification it notes them shown a microtask later,
  * since changing the game there would hand the subscribers after it the
@@ -146,51 +152,56 @@ export function startPostcards(
   events: EventContent = EVENTS,
 ): () => void {
   const offers = contractOffers(events)
-  // Due on a morning seen, not handed over yet.
-  const waiting = new Set<PostcardId>()
-  // Handed over, perhaps not noted in the game yet.
-  const sent = new Set<PostcardId>()
-  let sentOn: Day | null = null
+  // Due on a morning `advance` went through, with that morning, until the
+  // store's notification after it sends them.
+  const seen = new Map<PostcardId, Day>()
   let stopped = false
   // The game it was started for: one started since is not its own.
   const started = store.getState().gamesStarted
-  const own = () => !stopped && store.getState().gamesStarted === started
-
-  const notice = (facts: PostcardFacts) => {
-    const skip = new Set([...waiting, ...sent])
-    for (const id of duePostcards(facts, skip, content, offers)) waiting.add(id)
+  const sameGame = () => store.getState().gamesStarted === started
+  const own = () => !stopped && sameGame()
+  let pending = unnoted.get(store)
+  if (pending === undefined) {
+    pending = new Set()
+    unnoted.set(store, pending)
   }
+  const handed = pending
+
+  const due = (facts: PostcardFacts) =>
+    duePostcards(facts, new Set([...seen.keys(), ...handed]), content, offers)
 
   const send = (later: boolean) => {
-    const { game } = store.getState()
-    if (!own() || !postcardsEligible(game) || sentOn === game.day) return
-    const shown = game.postcardsShown ?? []
-    const next = content.items.find(
-      ({ id }) => waiting.has(id) && !shown.includes(id),
-    )
-    if (next === undefined) return
-    waiting.delete(next.id)
-    sent.add(next.id)
-    sentOn = game.day
-    onPostcard({
-      id: next.id,
-      from: content.from,
-      text: next.text,
-      target: next.target,
-      day: game.day,
-    })
+    const state = store.getState()
+    if (!own() || !postcardsEligible(state.game)) return
+    for (const id of due(state)) seen.set(id, state.game.day)
+    const ids = content.items.map(({ id }) => id).filter((id) => seen.has(id))
+    if (ids.length === 0) return
+    for (const id of ids) {
+      const item = content.items.find((card) => card.id === id)!
+      handed.add(id)
+      onPostcard({
+        id,
+        from: content.from,
+        text: item.text,
+        target: item.target,
+        day: seen.get(id)!,
+      })
+    }
+    seen.clear()
     const mark = () => {
-      if (own()) store.getState().markPostcardsShown([next.id])
+      for (const id of ids) handed.delete(id)
+      // Even once stopped: what was handed over is shown.
+      if (sameGame()) store.getState().markPostcardsShown(ids)
     }
     if (later) queueMicrotask(mark)
     else mark()
   }
 
-  notice(store.getState())
   send(false)
   const stopMornings = store.getState().watchMornings((morning) => {
-    if (own())
-      notice({ game: morning, monthReport: store.getState().monthReport })
+    if (!own()) return
+    const facts = { game: morning, monthReport: store.getState().monthReport }
+    for (const id of due(facts)) seen.set(id, morning.day)
   })
   const unsubscribe = store.subscribe((state, previous) => {
     if (
@@ -199,8 +210,6 @@ export function startPostcards(
     ) {
       return
     }
-    if (!own()) return
-    notice(state)
     send(true)
   })
   return () => {

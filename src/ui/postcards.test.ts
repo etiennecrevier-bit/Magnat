@@ -17,7 +17,11 @@ import type { GameState } from '../engine/types.ts'
 import { balance, postEntry } from '../finance/journal.ts'
 import { DOCK_ITEMS } from './dock.ts'
 import { dreamBoard } from './dreamBoard.ts'
-import { createMessageStack, startMessageStack } from './messageStack.ts'
+import {
+  createMessageStack,
+  startMessageStack,
+  streetMessages,
+} from './messageStack.ts'
 import { MAX_MESSAGES } from './messageTriggers.ts'
 import {
   POSTCARDS,
@@ -269,20 +273,22 @@ describe('duePostcards', () => {
 })
 
 describe('startPostcards', () => {
-  it('sends what is due as it starts, the game paused, and notes it at once', () => {
+  it('sends all that is due as it starts, the game paused, and notes it at once', () => {
     const store = createGameStore(START)
     store.getState().setSpeed(0)
     const { sent, stop } = record(store)
-    expect(sent).toEqual([
-      {
-        id: 'amelioration',
-        from: 'Réal, Fort Lauderdale',
-        text: "T'as de quoi te gâter un peu. Regarde Améliorations.",
-        target: 'ameliorations',
-        day: 0,
-      },
-    ])
-    expect(store.getState().game.postcardsShown).toEqual(['amelioration'])
+    expect(sent[0]).toEqual({
+      id: 'amelioration',
+      from: 'Réal, Fort Lauderdale',
+      text: "T'as de quoi te gâter un peu. Regarde Améliorations.",
+      target: 'ameliorations',
+      day: 0,
+    })
+    const opened = ['amelioration', 'ville', 'embauche', 'fournil']
+    expect(sent.map(({ id, day }) => [id, day])).toEqual(
+      opened.map((id) => [id, 0]),
+    )
+    expect(store.getState().game.postcardsShown).toEqual(opened)
     stop()
   })
 
@@ -305,31 +311,31 @@ describe('startPostcards', () => {
     stop()
   })
 
-  it('sends one a game day at most, in order, each once, and notes each a microtask on', async () => {
+  it('loses none to a reload once what it announced stopped holding', () => {
+    // What opens from the first day is sent and noted then: a bakery
+    // opened that morning, then a reload, leaves « fournil » shown.
     const store = createGameStore(START)
     const { sent, stop } = record(store)
-    for (let day = 1; day <= 6; day += 1) {
-      store.getState().advance(1)
-      expect(store.getState().game.day).toBe(day)
-      // Noted in the game only once the store's notification is over.
-      expect(store.getState().game.postcardsShown).toHaveLength(
-        Math.min(day, 4),
-      )
-      await settle()
-    }
-    expect(sent.map(({ id, day }) => [id, day])).toEqual([
-      ['amelioration', 0],
-      ['ville', 1],
-      ['embauche', 2],
-      ['fournil', 3],
-    ])
-    expect(store.getState().game.postcardsShown).toEqual([
-      'amelioration',
-      'ville',
-      'embauche',
-      'fournil',
-    ])
+    store.getState().decide({ kind: 'openBakery', oven: 'louer' })
     stop()
+    const loaded = deserialize(serialize(store.getState().game))
+    expect(postcardHolds('fournil', facts(loaded))).toBe(false)
+    expect(loaded.postcardsShown).toEqual(sent.map(({ id }) => id))
+    expect(loaded.postcardsShown).toContain('fournil')
+  })
+
+  it('loses none to a reload after an advance it went through and out of', async () => {
+    const store = createGameStore(onlyLeft(dipsBelowZero(), 'rouge'))
+    const { sent, stop } = record(store)
+    store.getState().advance(5)
+    await settle()
+    stop()
+    expect(sent.map(({ id }) => id)).toEqual(['rouge'])
+    const loaded = deserialize(serialize(store.getState().game))
+    expect(loaded.postcardsShown).toContain('rouge')
+    const again = record(createGameStore(loaded))
+    expect(again.sent).toEqual([])
+    again.stop()
   })
 
   it('sends a rung within reach the same morning, as cash comes in', async () => {
@@ -359,11 +365,27 @@ describe('startPostcards', () => {
     const { game } = store.getState()
     expect(game.day).toBe(5)
     expect(game.financing.belowZeroSince).toBeNull()
-    expect(sent.map(({ id, day }) => [id, day])).toEqual([['rouge', 5]])
+    // Dated on the first morning below zero, not the advance's last.
+    expect(sent.map(({ id, day }) => [id, day])).toEqual([['rouge', 1]])
     await settle()
     expect(game.postcardsShown).not.toContain('rouge')
     expect(store.getState().game.postcardsShown).toContain('rouge')
     stop()
+  })
+
+  it('sends nothing twice when started again before it noted what it sent', async () => {
+    const store = createGameStore(onlyLeft(startTutorial(), 'ville'))
+    const first = record(store)
+    store.getState().skipTour()
+    first.stop()
+    // Not noted in the game yet, the store's notification barely over.
+    expect(store.getState().game.postcardsShown).not.toContain('ville')
+    const second = record(store)
+    await settle()
+    expect(first.sent.map(({ id }) => id)).toEqual(['ville'])
+    expect(second.sent).toEqual([])
+    expect(store.getState().game.postcardsShown).toContain('ville')
+    second.stop()
   })
 
   it('sends none during the tutorial, then what is due the morning it is skipped', async () => {
@@ -371,9 +393,13 @@ describe('startPostcards', () => {
     const { sent, stop } = record(store)
     expect(sent).toEqual([])
     store.getState().skipTour()
-    expect(sent.map(({ id }) => id)).toEqual(['amelioration'])
+    const ids = sent.map(({ id }) => id)
+    expect(ids).toContain('ville')
+    expect(new Set(sent.map(({ day }) => day))).toEqual(
+      new Set([store.getState().game.day]),
+    )
     await settle()
-    expect(store.getState().game.postcardsShown).toEqual(['amelioration'])
+    expect(store.getState().game.postcardsShown).toEqual(ids)
     stop()
   })
 
@@ -381,13 +407,14 @@ describe('startPostcards', () => {
     const store = createGameStore(START)
     const { sent, stop } = record(store)
     store.getState().advance(1)
-    expect(sent.map(({ id }) => id)).toEqual(['amelioration', 'ville'])
+    const before = sent.map(({ id }) => id)
+    expect(before).toHaveLength(4)
     const other = createInitialState(7)
     store.getState().startGame(other)
     await settle()
     store.getState().advance(1)
     await settle()
-    expect(sent.map(({ id }) => id)).toEqual(['amelioration', 'ville'])
+    expect(sent.map(({ id }) => id)).toEqual(before)
     expect(store.getState().game.postcardsShown).toBeUndefined()
     stop()
   })
@@ -397,7 +424,7 @@ describe('startPostcards', () => {
     const { sent, stop } = record(store)
     stop()
     store.getState().advance(1)
-    expect(sent).toHaveLength(1)
+    expect(sent).toHaveLength(4)
   })
 })
 
@@ -449,9 +476,9 @@ describe('a seeded 2-year game (#239)', () => {
     const sent = [...before.sent, ...after.sent]
     const day = Object.fromEntries(sent.map(({ id, day }) => [id, day]))
     expect(sent.map(({ id }) => id).sort()).toEqual([...ALL].sort())
-    // What the game opens from its first day, a morning each, in order.
+    // What the game opens from its first day, on that day.
     expect([day.amelioration, day.ville, day.embauche, day.fournil]).toEqual([
-      0, 1, 2, 3,
+      0, 0, 0, 0,
     ])
     expect(first.month).toBeDefined()
     expect(day.bilanMois).toBe(first.month)
@@ -497,7 +524,7 @@ describe('the message stack’s postcards', () => {
     const store = createGameStore(START)
     const stack = createMessageStack()
     const stop = startMessageStack(store, stack)
-    // Four postcards over four mornings, and a rent unpaid each morning.
+    // Four postcards as it starts, and a rent unpaid each morning.
     for (let day = 1; day <= 4; day += 1) {
       const { game } = store.getState()
       store.setState({
@@ -532,6 +559,7 @@ describe('the message stack’s postcards', () => {
   it('pulses the button a postcard points at until it opens, by any way', () => {
     const store = createGameStore(START)
     const stack = createMessageStack()
+    store.setState({ game: onlyLeft(START, 'amelioration') })
     const stop = startMessageStack(store, stack)
     expect(stack.getState().messages[0]?.postcard).toEqual({
       id: 'amelioration',
@@ -541,6 +569,49 @@ describe('the message stack’s postcards', () => {
     store.getState().openPanel('dream')
     expect(stack.getState().pulsing).toEqual([])
     stop()
+  })
+
+  it('shows a postcard dated on a morning an advance went through as it ends', () => {
+    const store = createGameStore(onlyLeft(dipsBelowZero(), 'rouge'))
+    const stack = createMessageStack()
+    const stop = startMessageStack(store, stack)
+    store.getState().advance(5)
+    const [card] = stack.getState().messages
+    expect(card).toMatchObject({ kind: 'postcard', day: 1, arrivedOn: 5 })
+    expect(streetMessages(stack.getState().messages, 5)).toEqual([card])
+    stop()
+  })
+
+  it('keeps its postcards when started again for the same game, as React replays an effect', () => {
+    const store = createGameStore(START)
+    const stack = createMessageStack()
+    startMessageStack(store, stack)()
+    const stop = startMessageStack(store, stack)
+    const { messages, pulsing } = stack.getState()
+    expect(messages.map(({ postcard }) => postcard?.id).sort()).toEqual(
+      [...(store.getState().game.postcardsShown ?? [])].sort(),
+    )
+    expect(messages).toHaveLength(4)
+    expect(pulsing).toHaveLength(4)
+    // A message sent since takes an id of its own.
+    const { game } = store.getState()
+    store.setState({
+      game: {
+        ...game,
+        day: 1,
+        personal: { ...game.personal, unpaidRents: [0] },
+      },
+    })
+    const ids = stack.getState().messages.map(({ id }) => id)
+    expect(ids).toHaveLength(5)
+    expect(new Set(ids).size).toBe(5)
+    stop()
+    // A new game starts the stack empty.
+    store.getState().startGame(onlyLeft(createInitialState(7)))
+    const next = startMessageStack(store, stack)
+    expect(stack.getState().messages).toEqual([])
+    expect(stack.getState().pulsing).toEqual([])
+    next()
   })
 
   it('does not pulse a button already open as the postcard comes', () => {
