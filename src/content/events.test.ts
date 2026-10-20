@@ -85,6 +85,9 @@ const NOTICE_CARDS = ['premierAvis', 'deuxiemeAvis', 'dernierAvis']
  */
 const APPOINTMENT_CARDS = ['rendezVousCaisse']
 
+/** Coralie's story of issue #236, which only the tutorial brings, on its day 4. */
+const TUTORIAL_CARDS = ['tutoStory']
+
 /** The portraits of issue #95, one per character but the silhouette. */
 const PORTRAITS = [
   'gillesLacasse',
@@ -318,12 +321,20 @@ describe('events.json', () => {
     })
   })
 
+  it('marks only the tutorial’s card tutorialOnly (#236)', () => {
+    expect(
+      content.events
+        .filter(({ tutorialOnly }) => tutorialOnly === true)
+        .map(({ id }) => id),
+    ).toEqual(TUTORIAL_CARDS)
+  })
+
   it('holds the essai card, which never comes up in a real game', () => {
     const essai = content.events.find(({ id }) => id === 'essai')
     expect(essai?.weight).toBe(0)
   })
 
-  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, the six of #156, the two of #159, the three of #160, then the one of #164, in order', () => {
+  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, the six of #156, the two of #159, the three of #160, the one of #164, then the one of #236, in order', () => {
     expect(content.events.map(({ id }) => id)).toEqual([
       'essai',
       ...CARDS,
@@ -333,6 +344,7 @@ describe('events.json', () => {
       ...FINANCING_CARDS,
       ...NOTICE_CARDS,
       ...APPOINTMENT_CARDS,
+      ...TUTORIAL_CARDS,
     ])
   })
 
@@ -350,10 +362,15 @@ describe('events.json', () => {
     expect(dated).toEqual([['premierJuillet', { month: 6, dayOfMonth: 30 }]])
   })
 
-  it('may draw every card but essai and those of #159, #160 and #164, which the engine brings, unless it only comes as a follow-up', () => {
+  it('may draw every card but essai and those of #159, #160, #164 and #236, which the engine brings, unless it only comes as a follow-up', () => {
     for (const { id, weight, conditions } of content.events.slice(1)) {
       if (
-        [...FINANCING_CARDS, ...NOTICE_CARDS, ...APPOINTMENT_CARDS].includes(id)
+        [
+          ...FINANCING_CARDS,
+          ...NOTICE_CARDS,
+          ...APPOINTMENT_CARDS,
+          ...TUTORIAL_CARDS,
+        ].includes(id)
       ) {
         expect(weight, id).toBe(0)
       } else if (conditions?.followUpOnly !== true)
@@ -399,10 +416,10 @@ describe('events.json', () => {
     }
   })
 
-  it('charges for every outcome of every choice at Difficile, refusing included, but the notices of #160, which change nothing', () => {
+  it('charges for every outcome of every choice at Difficile, refusing included, but the notices of #160, which change nothing, and the tutorial’s card, which plays the same at every difficulty', () => {
     const free = content.events
       .slice(1)
-      .filter(({ id }) => !NOTICE_CARDS.includes(id))
+      .filter(({ id }) => ![...NOTICE_CARDS, ...TUTORIAL_CARDS].includes(id))
       .flatMap(({ id, choices }) =>
         choices.flatMap(({ id: choice, outcomes }) =>
           outcomes.flatMap(({ effects }, outcome) =>
@@ -919,6 +936,37 @@ describe('loadEventContent rejects', () => {
       withEffects({ kind: 'followUp', event: 'chequeDansLaMalle', days: 60 }),
       'no event has the id chequeDansLaMalle',
     )
+  })
+
+  it('a card only the tutorial brings with a weight, a weight by standing, or as a follow-up only (#236)', () => {
+    rejects(
+      file([
+        card({
+          tutorialOnly: true,
+          weightByStanding: { behind: 1 },
+          conditions: { followUpOnly: true },
+        }),
+      ]),
+      'a tutorial card has a weight of 0: no draw brings it',
+      'a tutorial card has no weight by standing',
+      'a tutorial card never comes as a follow-up',
+    )
+  })
+
+  it('a follow-up to a card only the tutorial brings (#236)', () => {
+    const story = card({ id: 'story', weight: 0, tutorialOnly: true })
+    const raw = withEffects({ kind: 'followUp', event: 'story', days: 3 })
+    rejects(
+      { ...raw, events: [...(raw.events as unknown[]), story] },
+      'the event story only comes in the tutorial',
+    )
+  })
+
+  it('a card only the tutorial brings, at a weight of 0, which loads', () => {
+    const loaded = loadEventContent(
+      file([card({ weight: 0, tutorialOnly: true })]),
+    )
+    expect(loaded.events[0]?.tutorialOnly).toBe(true)
   })
 
   it('an effect timed both ways', () => {
