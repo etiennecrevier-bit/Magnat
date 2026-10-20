@@ -191,6 +191,17 @@ describe('placeTip', () => {
     expect(overlaps(tip, equipe)).toBe(false)
     expect(overlaps(tip, ville)).toBe(false)
   })
+
+  it('goes beside the anchor when asked for above but there is no room', () => {
+    const place = placeTip(
+      { left: 401, top: 40, right: 485, bottom: 118 },
+      { width: 160, height: 63 },
+      { width: 1440, height: 900 },
+      TIP,
+      'above',
+    )
+    expect(place.side).toBe('right')
+  })
 })
 
 describe('editsText', () => {
