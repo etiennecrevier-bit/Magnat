@@ -3,8 +3,8 @@
   top: 0;
   z-index: 1;
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
-  grid-template-areas: 'date gauges panels speeds settings';
+  grid-template-columns: auto 1fr auto auto auto auto;
+  grid-template-areas: 'date gauges panels views speeds settings';
   align-items: center;
   gap: 0.5rem 1.5rem;
   padding: 0.5rem 1rem;
@@ -116,6 +116,43 @@
   outline-offset: 2px;
 }
 
+/* « La rue » and « La ville », before the speeds, the size of a panel button
+   and pressed in the gold of a speed. */
+.top-bar__views {
+  grid-area: views;
+  justify-self: end;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.top-bar__view {
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid #52606d;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.top-bar__view:hover {
+  background: #323f4b;
+}
+
+.top-bar__view[aria-pressed='true'] {
+  border-color: #f0b429;
+  background: #f0b429;
+  color: #1f2933;
+  font-weight: 700;
+}
+
+.top-bar__view:focus-visible {
+  outline: 3px solid #7cc4fa;
+  outline-offset: 2px;
+}
+
 .top-bar__speeds {
   grid-area: speeds;
   display: flex;
@@ -179,19 +216,20 @@
    with a large negative amount (about 332 px), the net worth with as large
    an amount and the title of « Le rêve » under it (about 353 px, which
    wraps to the cell), the energy gauge (about 260 px), the four panel
-   buttons (about 562 px, « Le rêve » 97 px of it with its gap), the four
-   speed buttons (about 196 px) and the gear (44 px). All on one row need
-   about 2100 px; below that the energy gauge, then the net worth, wrap
-   under the encaisse in its cell. The row itself holds down to about
-   1530 px, where the cell still fits the cash gauge, the widest that cannot
-   wrap. Below that the gauges get a row of their own under the date and
-   the buttons. */
-@media (max-width: 1529px) {
+   buttons (about 562 px, « Le rêve » 97 px of it with its gap), the switch
+   between the street and the city (about 151 px), the four speed buttons
+   (about 196 px) and the gear (44 px). All on one row need about 2280 px;
+   below that the energy gauge, then the net worth, wrap under the encaisse
+   in its cell. The row itself holds down to about 1710 px, where the cell
+   still fits the cash gauge, the widest that cannot wrap; 1730 px leaves a
+   margin. Below that the gauges get a row of their own under the date and
+   the buttons, the switch at its right end, under the speeds. */
+@media (max-width: 1729px) {
   .top-bar {
     grid-template-columns: 1fr auto auto auto;
     grid-template-areas:
       'date panels speeds settings'
-      'gauges gauges gauges gauges';
+      'gauges gauges views views';
   }
 }
 
@@ -202,7 +240,7 @@
     grid-template-columns: 1fr auto auto;
     grid-template-areas:
       'date speeds settings'
-      'gauges gauges gauges'
+      'gauges views views'
       'panels panels panels';
   }
 }
@@ -218,7 +256,12 @@
       'date settings'
       'gauges gauges'
       'panels panels'
-      'speeds speeds';
+      'speeds speeds'
+      'views views';
+  }
+
+  .top-bar__views {
+    justify-self: stretch;
   }
 
   .top-bar__settings {
@@ -230,6 +273,7 @@
   }
 
   .top-bar__panel,
+  .top-bar__view,
   .top-bar__speed {
     flex: 1;
   }

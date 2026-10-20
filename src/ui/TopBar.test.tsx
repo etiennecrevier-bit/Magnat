@@ -15,6 +15,7 @@ import { closedBakery } from '../engine/bakery.ts'
 import { balance, postEntry } from '../finance/journal.ts'
 import { LOW_BELOW_MONTHS, monthlyFixedCosts } from './cashLevel.ts'
 import { formatMoney } from './formatMoney.ts'
+import { createSettingsStore, SETTINGS_KEY } from './settings.ts'
 import { gameStore, newChallenge, type GameStoreState } from './store.ts'
 import TopBar, { TopBarView } from './TopBar.tsx'
 
@@ -98,6 +99,13 @@ function buttons(html: string) {
     label: /aria-label="([^"]*)"/.exec(tag)?.[1],
     pressed: /aria-pressed="([^"]*)"/.exec(tag)?.[1],
   }))
+}
+
+/** The speed button pressed: the switch's, which have no label, aside. */
+function pressedSpeed(html: string) {
+  return buttons(html).find(
+    ({ label, pressed }) => label !== undefined && pressed === 'true',
+  )
 }
 
 describe('TopBarView', () => {
@@ -212,6 +220,58 @@ describe('TopBarView', () => {
   })
 })
 
+describe('the switch between the street and the city', () => {
+  const VIEWS =
+    '<div class="top-bar__views" role="group" aria-label="Vue">' +
+    '<button type="button" class="top-bar__view" aria-pressed="true">La rue</button>' +
+    '<button type="button" class="top-bar__view" aria-pressed="false">La ville</button>' +
+    '</div><div class="top-bar__speeds"'
+
+  it('names both views before the speeds, the one shown pressed', () => {
+    const html = renderToStaticMarkup(
+      <TopBarView
+        businessName="Le P'tit Camion"
+        day={0}
+        cash={cents(1_000_000)}
+        fixedCosts={cents(175_000)}
+        netWorth={cents(2_500_000)}
+        netWorthChange={null}
+        energy={100}
+        avatar="homme"
+        speed={1}
+        onSpeedChange={() => {}}
+        view="street"
+        onViewChange={() => {}}
+        onManage={() => {}}
+        onStaff={() => {}}
+        onFinances={() => {}}
+        defiLabel={null}
+        defiEnergy={null}
+        onDefi={() => {}}
+        onSettings={() => {}}
+      />,
+    )
+    expect(html).toContain(VIEWS)
+  })
+
+  it('is left out without a way to change the view', () => {
+    expect(render(0, 1)).not.toContain('top-bar__views')
+  })
+
+  it('shows the view the player picked, which the settings keep', () => {
+    // A static render reads the store's first state: the one stored.
+    const stored = JSON.stringify({ worldView: 'city' })
+    const settings = createSettingsStore({
+      getItem: (key) => (key === SETTINGS_KEY ? stored : null),
+      setItem: () => {},
+    })
+    expect(renderToStaticMarkup(<TopBar settings={settings} />)).toContain(
+      '<button type="button" class="top-bar__view" aria-pressed="false">La rue</button>' +
+        '<button type="button" class="top-bar__view" aria-pressed="true">La ville</button>',
+    )
+  })
+})
+
 describe('TopBar', () => {
   it("shows the owner's net worth from the app store, with no arrow before a Sunday is played, and the title it earns", () => {
     const worth = netWorth(gameStore.getState().game)
@@ -255,7 +315,7 @@ describe('TopBar', () => {
     // The default avatar is a woman's, so the word agrees with her.
     expect(html).toContain('energy-gauge--rested')
     expect(html).toContain('aria-valuenow="100" aria-valuetext="Reposée"')
-    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+    expect(pressedSpeed(html)).toEqual({
       label: 'Vitesse normale',
       pressed: 'true',
     })
@@ -299,7 +359,7 @@ describe('TopBar', () => {
     expect(html).toMatch(
       /^<header class="top-bar">.*<\/header><dialog class="panel manage" aria-labelledby="manage-title">.*<\/dialog>$/,
     )
-    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+    expect(pressedSpeed(html)).toEqual({
       label: 'Pause',
       pressed: 'true',
     })
@@ -317,7 +377,7 @@ describe('TopBar', () => {
     expect(html).toMatch(
       /^<header class="top-bar">.*<\/header><dialog class="panel staff" aria-labelledby="staff-title">.*<\/dialog>$/,
     )
-    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+    expect(pressedSpeed(html)).toEqual({
       label: 'Pause',
       pressed: 'true',
     })
@@ -380,7 +440,7 @@ describe('TopBar', () => {
     expect(html).toMatch(
       /^<header class="top-bar">.*<\/header><dialog class="panel settings-panel" aria-labelledby="settings-title">.*<\/dialog>$/,
     )
-    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+    expect(pressedSpeed(html)).toEqual({
       label: 'Pause',
       pressed: 'true',
     })
@@ -402,7 +462,7 @@ describe('TopBar', () => {
     expect(html).toMatch(
       /^<header class="top-bar">.*<\/header><dialog class="panel dream" aria-labelledby="dream-title">.*<\/dialog>$/,
     )
-    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+    expect(pressedSpeed(html)).toEqual({
       label: 'Pause',
       pressed: 'true',
     })
@@ -425,7 +485,7 @@ describe('TopBar', () => {
     expect(html).toMatch(
       /^<header class="top-bar">.*<\/header><dialog class="panel trip" aria-labelledby="trip-title">.*<\/dialog>$/,
     )
-    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+    expect(pressedSpeed(html)).toEqual({
       label: 'Pause',
       pressed: 'true',
     })
@@ -458,7 +518,7 @@ describe('TopBar', () => {
       /^<header class="top-bar">.*<\/header><dialog class="panel finances" aria-labelledby="finances-title">.*<\/dialog>$/,
     )
     expect(html).not.toContain('manage-title')
-    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+    expect(pressedSpeed(html)).toEqual({
       label: 'Pause',
       pressed: 'true',
     })
@@ -511,7 +571,7 @@ describe('TopBar', () => {
       /^<header class="top-bar">.*<\/header><dialog class="panel weekly-report-panel" aria-labelledby="weekly-report-title">.*<\/dialog>$/,
     )
     expect(html).toContain('Lundi 8 mai, an 1')
-    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+    expect(pressedSpeed(html)).toEqual({
       label: 'Pause',
       pressed: 'true',
     })
@@ -527,7 +587,7 @@ describe('TopBar', () => {
     expect(html).toMatch(
       /^<header class="top-bar">.*<\/header><dialog class="panel event-card" aria-labelledby="event-title">.*<\/dialog>$/,
     )
-    expect(buttons(html).find(({ pressed }) => pressed === 'true')).toEqual({
+    expect(pressedSpeed(html)).toEqual({
       label: 'Pause',
       pressed: 'true',
     })

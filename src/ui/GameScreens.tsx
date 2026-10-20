@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Ref } from 'react'
+import { useCallback, useEffect, useRef, type Ref } from 'react'
 import { useStore } from 'zustand'
 import BankruptcyEnd from './BankruptcyEnd.tsx'
 import ContractsScreen from './ContractsScreen.tsx'
@@ -10,14 +10,14 @@ import { FOLD_KEY, handleFoldKey, losesFocusOnFold } from './foldShortcut.ts'
 import Messages from './Messages.tsx'
 import ScreensStrip from './ScreensStrip.tsx'
 import { settingsStore, type SettingsStore } from './settings.ts'
-import { gameStore, useGame } from './store.ts'
+import { gameStore, useGame, type Screen } from './store.ts'
 import Ticker from './Ticker.tsx'
 import TodayPanel from './TodayPanel.tsx'
 import WeekReports from './WeekReports.tsx'
 import WeekSlideIn from './WeekSlideIn.tsx'
 import './GameScreens.css'
 
-export type Screen = 'today' | 'statements' | 'events' | 'reports' | 'contracts'
+export type { Screen }
 
 const SCREENS: Record<Screen, string> = {
   today: "Aujourd'hui",
@@ -131,7 +131,8 @@ export default function GameScreens({
   onMenu: () => void
   settings?: SettingsStore
 }) {
-  const [screen, setScreen] = useState<Screen>('today')
+  const screen = useGame((state) => state.screen)
+  const showScreen = useGame((state) => state.showScreen)
   const folded = useStore(settings, (state) => state.screensFolded)
   const panel = useGame((state) => state.panel)
   const gamesStarted = useGame((state) => state.gamesStarted)
@@ -171,7 +172,7 @@ export default function GameScreens({
       <GameScreensView
         key={`screens-${gamesStarted}`}
         screen={screen}
-        onScreenChange={setScreen}
+        onScreenChange={showScreen}
         autosaveFailed={autosaveFailed}
         folded={folded}
         onFoldChange={fold}
