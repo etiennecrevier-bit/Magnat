@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision } from '../engine/decisions.ts'
+import { sellShares } from '../engine/financing.ts'
 import { cents } from '../engine/money.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
@@ -71,6 +72,15 @@ function dock(html: string): string[] {
 /** The speed the store runs at, which the drawers and panels leave or stop. */
 const speed = () => gameStore.getState().speed
 
+/** The « Finances » drawer of the page `html`. */
+function financesDrawer(html: string): string {
+  return (
+    /<section class="dock-frame dock-drawer finances-drawer".*?<\/section><section class="dock-frame dock-drawer journal-drawer"/.exec(
+      html,
+    )?.[0] ?? ''
+  )
+}
+
 describe('GameScreens', () => {
   it('has the messages top centre, the week’s card, « Hier », the dock, the drawers closed and the ticker, and no screens', () => {
     const html = render()
@@ -92,7 +102,7 @@ describe('GameScreens', () => {
 
   it('has nothing in a drawer until it was opened once', () => {
     expect(render()).toMatch(
-      /<div id="[^"]+" class="dock-frame__body" role="tabpanel" aria-labelledby="[^"]+-tab-today"><\/div><\/section>/,
+      /<div id="[^"]+" class="dock-frame__body" role="tabpanel" aria-labelledby="[^"]+-tab-company"><\/div><\/section>/,
     )
   })
 
@@ -152,29 +162,96 @@ describe('GameScreens', () => {
     }
   })
 
-  it('shows « Finances » open, its « Aujourd’hui » on, without pausing the game', () => {
+  it('shows « Finances » open on « Entreprise », its four tiles and its accordions closed, without pausing the game', () => {
     gameStore.getState().setSpeed(3)
     gameStore.getState().openDrawer('finances')
     const html = render()
     expect(html).toMatch(
       /<section class="dock-frame dock-drawer finances-drawer" role="dialog" aria-modal="false" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\1" class="dock-frame__title">Finances<\/h2>/,
     )
-    expect(html).toContain(
-      '<span class="net-worth-gauge__label">Valeur nette</span>',
-    )
-    expect(html).toContain('<section class="today"><h1>Aujourd&#x27;hui</h1>')
+    expect(
+      [
+        ...financesDrawer(html).matchAll(
+          /role="tab" class="[^"]*" aria-selected="(true|false)"[^>]*>([^<]*)</g,
+        ),
+      ].map(([, selected, label]) => `${label}:${selected}`),
+    ).toEqual(['Entreprise:true', 'Personnel:false'])
+    expect(
+      [
+        ...html.matchAll(/<span class="finance-tile__label">([^<]*)<\/span>/g),
+      ].map(([, label]) => label),
+    ).toEqual(['Encaisse', 'Ce mois-ci', 'Valeur nette', 'À recevoir'])
+    expect(
+      [
+        ...html.matchAll(
+          /class="finance-accordion__button" aria-expanded="(true|false)"[^>]*>.*?<span id="[^"]+">([^<]*)<\/span>/g,
+        ),
+      ].map(([, expanded, title]) => `${title}:${expanded}`),
+    ).toEqual([
+      'Bilan:false',
+      'État des résultats:false',
+      'État des flux de trésorerie:false',
+    ])
+    expect(html).not.toContain('<table')
     expect(html).toContain(
       '<button type="button" id="dock-finances" class="dock__button dock__button--open" aria-haspopup="dialog" aria-expanded="true"',
     )
     expect(speed()).toBe(3)
   })
 
-  it.each([
-    ['personal', 'class="finances"'],
-    ['statements', '<section class="statements"><h1>États financiers</h1>'],
-  ] as const)('shows the « %s » tab of « Finances »', (tab, shows) => {
-    gameStore.getState().openDrawer('finances', tab)
-    expect(render()).toContain(shows)
+  it('shows an accordion a tile opened, its statement on the period it keeps', () => {
+    gameStore.getState().openDrawer('finances')
+    gameStore.getState().setStatementPeriod('balanceSheet', 'yearToDate')
+    gameStore.getState().showFinanceSection('balanceSheet')
+    const html = render()
+    expect(html).toMatch(
+      /class="finance-accordion__button" aria-expanded="true"[^>]*>.*?<span id="([^"]+)">Bilan<\/span>/,
+    )
+    const title =
+      /class="finance-accordion__button" aria-expanded="true"[^>]*>.*?<span id="([^"]+)">Bilan</.exec(
+        html,
+      )?.[1]
+    expect(html).toContain(
+      `<table class="data-table statement" aria-labelledby="${title}">`,
+    )
+    expect(html).toContain(
+      '<button type="button" class="toggle" aria-pressed="true">Depuis le début de l&#x27;année</button>',
+    )
+    expect(html.match(/<table/g)).toHaveLength(1)
+  })
+
+  it('shows « Financement » only once the game sold shares or took a loan', () => {
+    gameStore.getState().openDrawer('finances')
+    expect(render()).not.toContain('>Financement<')
+    const game = gameStore.getState().game
+    gameStore.getState().startGame(
+      sellShares(game, {
+        kind: 'shareSale',
+        investor: 'Duvent Capital',
+        amountCents: cents(1_000_000),
+        share: 0.2,
+      }),
+    )
+    gameStore.getState().openDrawer('finances')
+    gameStore.getState().toggleFinanceSection('financing')
+    const html = render()
+    expect(html).toContain('>Financement</span>')
+    expect(html).toContain('<ul class="financing"><li>Duvent Capital')
+  })
+
+  it('shows « Personnel »: « Vos finances » and the four parts of the net worth', () => {
+    gameStore.getState().openDrawer('finances', 'personal')
+    const html = render()
+    expect(html).toContain('class="finances"')
+    expect(html).toContain('Vos finances')
+    expect(
+      [...html.matchAll(/<li>([^<]*)\u00a0: /g)].map(([, label]) => label),
+    ).toEqual([
+      'Part de l&#x27;entreprise',
+      'Argent personnel',
+      'Biens personnels',
+      'Dettes personnelles',
+    ])
   })
 
   it('shows « Contrats » in « Finances » only in a Défi', () => {
@@ -184,7 +261,19 @@ describe('GameScreens', () => {
     expect(html).not.toContain('>Contrats</button>')
     gameStore.getState().startGame(newChallenge('?seed=7', 'travauxSaintDenis'))
     gameStore.getState().openDrawer('finances', 'contracts')
-    expect(render()).toContain('<section class="contracts">')
+    const defi = render()
+    expect(defi).toContain('<section class="contracts">')
+    expect(
+      [
+        ...financesDrawer(defi).matchAll(
+          /role="tab" class="[^"]*" aria-selected="(?:true|false)"[^>]*>([^<]*)</g,
+        ),
+      ].map(([, label]) => label),
+    ).toEqual(['Entreprise', 'Personnel', 'Contrats'])
+    gameStore.getState().setDrawerTab('finances', 'company')
+    expect(render()).toContain(
+      '<span class="finance-tile__label">Encaisse</span>',
+    )
   })
 
   it.each([

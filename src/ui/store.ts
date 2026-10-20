@@ -23,6 +23,7 @@ import {
   type MonthReport,
 } from './monthlyReport.ts'
 import { settingsStore, type ReportCadence } from './settings.ts'
+import type { PeriodKey, StatementTab } from './statementPeriods.ts'
 import { newWeekOf, opensFullReport } from './weeklyReport.ts'
 
 export const PAUSED = 0
@@ -70,10 +71,40 @@ export type PanelSection = 'bakery' | 'contracts'
 export type Drawer = 'finances' | 'journal'
 
 /**
- * The tabs of « Finances »: « Aujourd'hui », « Vos finances », « États
- * financiers », and, in a Défi, where « Ville » is hidden, « Contrats ».
+ * The tabs of « Finances »: « Entreprise », « Personnel », and, in a Défi,
+ * where « Ville » is hidden, « Contrats ».
  */
-export type FinancesTab = 'today' | 'personal' | 'statements' | 'contracts'
+export type FinancesTab = 'company' | 'personal' | 'contracts'
+
+/**
+ * The accordions of « Entreprise »: the three statements, and «
+ * Financement » once the game took a loan or sold shares.
+ */
+export type FinanceSection = StatementTab | 'financing'
+
+/**
+ * Which accordions of « Entreprise » are open, and the period each
+ * statement shows, kept while the drawer or its tab is closed.
+ */
+export interface FinanceSections {
+  readonly open: Readonly<Record<FinanceSection, boolean>>
+  readonly periods: Readonly<Record<StatementTab, PeriodKey>>
+}
+
+/** Every accordion closed, every statement on this month. */
+export const FIRST_FINANCE_SECTIONS: FinanceSections = {
+  open: {
+    balanceSheet: false,
+    incomeStatement: false,
+    cashFlow: false,
+    financing: false,
+  },
+  periods: {
+    balanceSheet: 'thisMonth',
+    incomeStatement: 'thisMonth',
+    cashFlow: 'thisMonth',
+  },
+}
 
 /** The tabs of « Journal »: « Événements » and « Bilans ». */
 export type JournalTab = 'events' | 'reports'
@@ -114,7 +145,7 @@ export interface DrawerTabs {
 
 /** The tab each drawer opens on in a game that has not picked one yet. */
 export const FIRST_DRAWER_TABS: DrawerTabs = {
-  finances: 'today',
+  finances: 'company',
   journal: 'events',
 }
 
@@ -166,6 +197,8 @@ export interface GameStoreState {
   drawer: Drawer | null
   /** The tab each drawer shows, kept while it is closed. */
   drawerTabs: DrawerTabs
+  /** The accordions of « Finances » open, and their periods. */
+  financeSections: FinanceSections
   /** The tab « Le camion » shows, kept while it is closed. */
   truckTab: TruckTab
   /** The tab « Ville » shows; « Aller à… » each time it opens. */
@@ -272,6 +305,16 @@ export interface GameStoreState {
   openDrawer: <D extends Drawer>(drawer: D, tab?: DrawerTabs[D]) => void
   /** Shows `tab` in `drawer`, open or not. */
   setDrawerTab: <D extends Drawer>(drawer: D, tab: DrawerTabs[D]) => void
+  /** Opens the accordion `section` of « Entreprise », or closes it. */
+  toggleFinanceSection: (section: FinanceSection) => void
+  /** Shows `statement` over `period`, its accordion open or not. */
+  setStatementPeriod: (statement: StatementTab, period: PeriodKey) => void
+  /**
+   * Opens « Finances » on « Entreprise », with the accordion `section`
+   * open, as a tile asks; like `openDrawer`, without pausing, and not
+   * while a panel is open.
+   */
+  showFinanceSection: (section: FinanceSection) => void
   /** Shows `tab` in « Le camion », open or not. */
   setTruckTab: (tab: TruckTab) => void
   /** Shows `tab` in « Ville ». */
@@ -316,8 +359,9 @@ export interface GameStoreState {
    * Plays `game` from now on, new or loaded, at normal speed: paused on the
    * event card if an event waits for the player's choice, and on its end if
    * it is over, a Défi or a game that went bankrupt. Closes the panel and
-   * the drawer open, if any, puts the drawers back on their first tabs and
-   * counts the game in `gamesStarted`.
+   * the drawer open, if any, puts the drawers back on their first tabs,
+   * with every accordion of « Finances » closed, and counts the game in
+   * `gamesStarted`.
    */
   startGame: (game: GameState) => void
 }
@@ -433,6 +477,7 @@ function playing(game: GameState) {
     slideIn: null,
     drawer: null,
     drawerTabs: FIRST_DRAWER_TABS,
+    financeSections: FIRST_FINANCE_SECTIONS,
     truckTab: FIRST_TRUCK_TAB,
     cityTab: 'trip' as const,
     cityPick: null,
@@ -657,6 +702,36 @@ export function createGameStore(
     },
     setDrawerTab: (drawer, tab) =>
       set({ drawerTabs: { ...get().drawerTabs, [drawer]: tab } }),
+    toggleFinanceSection: (section) => {
+      const { financeSections } = get()
+      const { open } = financeSections
+      set({
+        financeSections: {
+          ...financeSections,
+          open: { ...open, [section]: !open[section] },
+        },
+      })
+    },
+    setStatementPeriod: (statement, period) => {
+      const { financeSections } = get()
+      set({
+        financeSections: {
+          ...financeSections,
+          periods: { ...financeSections.periods, [statement]: period },
+        },
+      })
+    },
+    showFinanceSection: (section) => {
+      const { resumeSpeed, financeSections } = get()
+      if (resumeSpeed !== null) return
+      get().openDrawer('finances', 'company')
+      set({
+        financeSections: {
+          ...financeSections,
+          open: { ...financeSections.open, [section]: true },
+        },
+      })
+    },
     setTruckTab: (truckTab) => set({ truckTab }),
     setCityTab: (cityTab) => set({ cityTab }),
     pickGrocer: (grocer) =>

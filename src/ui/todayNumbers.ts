@@ -3,8 +3,8 @@ import type { Cents } from '../engine/money.ts'
 import type { DaySummary, PerProduct } from '../engine/types.ts'
 
 /**
- * The three numbers of a day that the folded strip shows, and the
- * Aujourd'hui panel too, so both always agree.
+ * The three numbers of a day that « Hier » shows, and the cash chip's
+ * tooltip on a phone too, so both always agree.
  */
 export interface TodayNumbers {
   /** « Chiffre d'affaires ». */

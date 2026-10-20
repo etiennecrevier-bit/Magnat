@@ -3,8 +3,8 @@ import { useStore } from 'zustand'
 import pacing from '../content/pacing.json'
 import type { Avatar } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
-import { DEFIS, DIFFICULTIES, FOOD_TRUCK } from '../engine/day.ts'
-import { titleOf, truckReplacedOn } from '../engine/dream.ts'
+import { DEFIS } from '../engine/day.ts'
+import { titleOf } from '../engine/dream.ts'
 import type { Cents } from '../engine/money.ts'
 import { netWorth as netWorthOf } from '../engine/netWorth.ts'
 import type { Day } from '../engine/types.ts'
@@ -19,7 +19,7 @@ import {
 } from './alerts.ts'
 import { CashChipView } from './CashGauge.tsx'
 import { cashAtCloses } from './cashHistory.ts'
-import { monthlyFixedCosts } from './cashLevel.ts'
+import { nextFixedCosts } from './cashLevel.ts'
 import { chipLabel, energyFloorLine } from './defis.ts'
 import { EnergyGaugeView } from './EnergyGauge.tsx'
 import { formatGameDate } from './formatGameDate.ts'
@@ -303,17 +303,7 @@ export default function TopBar({
     return titleOf(netWorthOf(game))?.name ?? null
   }, [challenge, day, journal, financing, personal, dream, weekHistory])
   const fixedCosts = useMemo(
-    () =>
-      monthlyFixedCosts(
-        day,
-        difficulty,
-        firstDay,
-        FOOD_TRUCK,
-        DIFFICULTIES,
-        bakery,
-        undefined,
-        truckReplacedOn(dream),
-      ),
+    () => nextFixedCosts({ day, difficulty, firstDay, bakery, dream }),
     [day, difficulty, firstDay, bakery, dream],
   )
   const defi = challenge === null ? null : defiById(DEFIS, challenge.id)
@@ -335,7 +325,7 @@ export default function TopBar({
       yesterday={
         narrow ? (lastDay === null ? null : todayNumbers(lastDay)) : undefined
       }
-      onCash={() => openDrawer('finances')}
+      onCash={() => openDrawer('finances', 'company')}
       title={title}
       energy={energy}
       avatar={avatar}

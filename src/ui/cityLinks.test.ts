@@ -66,7 +66,7 @@ describe('openCityLink', () => {
 
   it('moves « Finances » already open on another tab to « Contrats » in a Défi', () => {
     const { store, open } = setup(DEFI())
-    store.getState().openDrawer('finances', 'statements')
+    store.getState().openDrawer('finances', 'personal')
     open('contracts')
     expect(store.getState()).toMatchObject({
       drawer: 'finances',

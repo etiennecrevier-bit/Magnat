@@ -35,16 +35,16 @@ export const CITY_TABS: readonly FrameTab<CityTab>[] = [
 ]
 
 /**
- * The tabs of « Finances »; in a Défi, where « Ville » is hidden, «
- * Contrats » too, so the grocers' numbers stay one click away.
+ * The tabs of « Finances »: the company's money and the owner's own; in a
+ * Défi, where « Ville » is hidden, « Contrats » too, so the grocers'
+ * numbers stay one click away.
  */
 export function financesTabs(
   inChallenge: boolean,
 ): readonly FrameTab<FinancesTab>[] {
   const tabs: FrameTab<FinancesTab>[] = [
-    { id: 'today', label: "Aujourd'hui" },
-    { id: 'personal', label: 'Vos finances' },
-    { id: 'statements', label: 'États financiers' },
+    { id: 'company', label: 'Entreprise' },
+    { id: 'personal', label: 'Personnel' },
   ]
   if (inChallenge) tabs.push({ id: 'contracts', label: 'Contrats' })
   return tabs

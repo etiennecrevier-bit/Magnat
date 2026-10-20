@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cents } from '../engine/money.ts'
 import { LABELS } from '../engine/personal.ts'
 import type { Day, PersonalAccount } from '../engine/types.ts'
-import FinancesPanel, { FinancesPanelView } from './FinancesPanel.tsx'
+import { netWorthParts } from '../engine/netWorth.ts'
+import FinancesPanel, {
+  FinancesPanelView,
+  NetWorthPartsView,
+} from './FinancesPanel.tsx'
 import { formatMoney } from './formatMoney.ts'
 import { gameStore, type GameStoreState } from './store.ts'
 
@@ -124,7 +128,11 @@ describe('FinancesPanel', () => {
   it("shows the app store's personal account, as a tab of « Finances »", () => {
     const html = renderToStaticMarkup(<FinancesPanel />)
     expect(html).toMatch(
-      /^<div class="finances"><div class="panel__content">.*<\/div><\/div>$/,
+      /^<div class="finances"><div class="panel__content">.*<\/div><section class="finances__net-worth" aria-labelledby="finances-net-worth">.*<\/section><\/div>$/,
+    )
+    const worth = netWorthParts(gameStore.getState().game)
+    expect(html).toContain(
+      `Valeur nette${S}: <strong>${formatMoney(worth.total)}</strong>`,
     )
     const { game } = gameStore.getState()
     expect(html).toContain(
@@ -139,6 +147,33 @@ describe('FinancesPanel', () => {
     // Day 0, May 1st, takes the rent.
     expect(rows(html)).toEqual([
       ['1er mai', 'Loyer', expect.stringMatching(/^-1.300,00.\$$/)],
+    ])
+  })
+})
+
+describe('NetWorthPartsView', () => {
+  it('shows the « Valeur nette » and its four parts, the debts below zero', () => {
+    const html = renderToStaticMarkup(
+      <NetWorthPartsView
+        netWorth={{
+          companyShare: cents(98_765_432),
+          personalCash: cents(-12_345),
+          personalAssets: cents(40_000_000),
+          personalDebts: cents(15_000_000),
+          total: cents(123_753_087),
+        }}
+      />,
+    )
+    expect(html).toContain(
+      `<h3 id="finances-net-worth">Valeur nette${S}: <strong>1${S}237${S}530,87${S}$</strong></h3>`,
+    )
+    expect(
+      [...html.matchAll(/<li>([^<]*)<\/li>/g)].map(([, item]) => item),
+    ).toEqual([
+      `Part de l&#x27;entreprise${S}: 987${S}654,32${S}$`,
+      `Argent personnel${S}: -123,45${S}$`,
+      `Biens personnels${S}: 400${S}000,00${S}$`,
+      `Dettes personnelles${S}: -150${S}000,00${S}$`,
     ])
   })
 })

@@ -23,6 +23,7 @@ import {
   NORMAL_SPEED,
   PAUSED,
   createGameStore,
+  FIRST_FINANCE_SECTIONS,
   gameStore,
   newChallenge,
   newGame,
@@ -678,7 +679,7 @@ describe('the drawers', () => {
   it('start closed, each on its first tab, with no report unread', () => {
     expect(createGameStore().getState()).toMatchObject({
       drawer: null,
-      drawerTabs: { finances: 'today', journal: 'events' },
+      drawerTabs: { finances: 'company', journal: 'events' },
       unreadReports: 0,
     })
   })
@@ -703,14 +704,14 @@ describe('the drawers', () => {
   it('keep the tab each showed, and open on the one asked for', () => {
     const store = createGameStore()
     store.getState().openDrawer('finances')
-    store.getState().setDrawerTab('finances', 'statements')
+    store.getState().setDrawerTab('finances', 'personal')
     store.getState().openDrawer('journal')
     expect(store.getState()).toMatchObject({
       drawer: 'journal',
-      drawerTabs: { finances: 'statements', journal: 'events' },
+      drawerTabs: { finances: 'personal', journal: 'events' },
     })
     store.getState().openDrawer('finances')
-    expect(store.getState().drawerTabs.finances).toBe('statements')
+    expect(store.getState().drawerTabs.finances).toBe('personal')
     store.getState().openDrawer('finances', 'contracts')
     expect(store.getState()).toMatchObject({
       drawer: 'finances',
@@ -721,11 +722,11 @@ describe('the drawers', () => {
   it('do not open while a panel is open', () => {
     const store = createGameStore()
     store.getState().openPanel('staff')
-    store.getState().openDrawer('finances', 'statements')
+    store.getState().openDrawer('finances', 'personal')
     expect(store.getState()).toMatchObject({
       panel: 'staff',
       drawer: null,
-      drawerTabs: { finances: 'today' },
+      drawerTabs: { finances: 'company' },
     })
   })
 
@@ -753,12 +754,76 @@ describe('the drawers', () => {
 
   it('close and go back to their first tabs as a new game starts', () => {
     const store = createGameStore()
-    store.getState().openDrawer('finances', 'statements')
+    store.getState().openDrawer('finances', 'personal')
     store.getState().startGame(createInitialState(2))
     expect(store.getState()).toMatchObject({
       drawer: null,
-      drawerTabs: { finances: 'today', journal: 'events' },
+      drawerTabs: { finances: 'company', journal: 'events' },
     })
+  })
+})
+
+describe('the accordions of « Finances »', () => {
+  it('start closed, every statement on this month', () => {
+    expect(createGameStore().getState().financeSections).toEqual(
+      FIRST_FINANCE_SECTIONS,
+    )
+    expect(Object.values(FIRST_FINANCE_SECTIONS.open)).not.toContain(true)
+  })
+
+  it('keep their period as they close and open, as the drawer closes and opens, and across the tabs', () => {
+    const store = createGameStore()
+    store.getState().openDrawer('finances')
+    store.getState().toggleFinanceSection('balanceSheet')
+    store.getState().setStatementPeriod('balanceSheet', 'lastMonth')
+    store.getState().toggleFinanceSection('balanceSheet')
+    expect(store.getState().financeSections).toEqual({
+      open: { ...FIRST_FINANCE_SECTIONS.open },
+      periods: { ...FIRST_FINANCE_SECTIONS.periods, balanceSheet: 'lastMonth' },
+    })
+    store.getState().toggleFinanceSection('balanceSheet')
+    store.getState().closeDrawer()
+    store.getState().openDrawer('finances')
+    store.getState().setDrawerTab('finances', 'personal')
+    store.getState().setDrawerTab('finances', 'company')
+    expect(store.getState().financeSections).toEqual({
+      open: { ...FIRST_FINANCE_SECTIONS.open, balanceSheet: true },
+      periods: { ...FIRST_FINANCE_SECTIONS.periods, balanceSheet: 'lastMonth' },
+    })
+  })
+
+  it('open one from a tile on « Entreprise », without pausing the game', () => {
+    const store = createGameStore()
+    store.getState().setSpeed(3)
+    store.getState().openDrawer('finances', 'personal')
+    store.getState().showFinanceSection('incomeStatement')
+    expect(store.getState()).toMatchObject({
+      drawer: 'finances',
+      drawerTabs: { finances: 'company' },
+      financeSections: { open: { incomeStatement: true, cashFlow: false } },
+      speed: 3,
+      resumeSpeed: null,
+    })
+    store.getState().showFinanceSection('incomeStatement')
+    expect(store.getState().financeSections.open.incomeStatement).toBe(true)
+  })
+
+  it('open nothing under a panel', () => {
+    const store = createGameStore()
+    store.getState().openPanel('staff')
+    store.getState().showFinanceSection('cashFlow')
+    expect(store.getState()).toMatchObject({
+      drawer: null,
+      financeSections: FIRST_FINANCE_SECTIONS,
+    })
+  })
+
+  it('close again as a new game starts', () => {
+    const store = createGameStore()
+    store.getState().showFinanceSection('cashFlow')
+    store.getState().setStatementPeriod('cashFlow', 'yearToDate')
+    store.getState().startGame(createInitialState(2))
+    expect(store.getState().financeSections).toEqual(FIRST_FINANCE_SECTIONS)
   })
 })
 

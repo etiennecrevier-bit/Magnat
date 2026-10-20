@@ -84,3 +84,12 @@ export function formatWholeMoney(amount: Cents): string {
   const text = `${formatCount(rounded)}${NO_BREAK_SPACE}$`
   return amount < 0 && rounded > 0 ? `-${text}` : text
 }
+
+/**
+ * Money to the nearest dollar as a statement writes it, negatives in
+ * parentheses: `8 797 $`, `(1 765 $)`.
+ */
+export function formatWholeStatementAmount(amount: Cents): string {
+  const text = formatWholeMoney(amount)
+  return text.startsWith('-') ? `(${text.slice(1)})` : text
+}
