@@ -1,5 +1,6 @@
 import type { AssetManifest } from '../content/assets.ts'
 import type { AvatarFatigue } from '../content/avatarFatigue.ts'
+import type { GradientStop } from './noise.ts'
 import { ASSETS, AVATAR_FATIGUE } from './manifest.ts'
 
 // How the street's customers look and move. These numbers only change what
@@ -119,6 +120,11 @@ export interface CrowdSettings {
     readonly childHeight: Range
     readonly skinTones: readonly string[]
     readonly clothes: readonly string[]
+    /** The colours of hair and caps, and the chance one wears a cap. */
+    readonly hair: {
+      readonly colors: readonly string[]
+      readonly capChance: number
+    }
     /** The chic customer's long coat. */
     readonly coat: string
     /** The bargain hunter's reusable bag. */
@@ -132,7 +138,82 @@ export interface CrowdSettings {
     /** The chance a weekend customer comes with a child. */
     readonly familyChance: number
   }
+  /** How everyone's body takes the light, and the shadows at their feet. */
+  readonly figure: FigureLight
 }
+
+/**
+ * The light on a person, from `person()` in the design reference's
+ * `rue.py` (#197): how much of the sun or slate each part mixes in, the
+ * gradients over the torso and the head, and the two soft shadows on the
+ * ground.
+ */
+export interface FigureLight {
+  /** How much slate the parts away from the sun mix in. */
+  readonly shade: {
+    readonly arm: number
+    readonly hand: number
+    readonly leg: number
+  }
+  /** How much sun the parts toward it mix in. */
+  readonly lit: {
+    /** The arm hanging toward the sun. */
+    readonly arm: number
+    /** That arm bent to hold something. */
+    readonly bentArm: number
+    /** The cap's lit edge, and the hair's lit stroke. */
+    readonly capEdge: number
+    readonly hairEdge: number
+    /** The avatar's hairline. */
+    readonly ownerHairEdge: number
+  }
+  /**
+   * The side gradient over a torso, from the sun's side to the other, each
+   * stop in the sun's or the slate's colour.
+   */
+  readonly side: readonly FigureStop[]
+  /**
+   * The light over a head: out from a centre toward the sun, as shares of
+   * its box, to `radius`.
+   */
+  readonly round: {
+    readonly centre: { readonly x: number; readonly y: number }
+    readonly radius: number
+    readonly stops: readonly FigureStop[]
+  }
+  /** A cup's colour and its band's. */
+  readonly cup: { readonly color: string; readonly band: string }
+  /**
+   * The shadows of someone standing, in slate: a spot under their feet and
+   * a longer one reaching to the lower right, each `dx`, `dy` from their
+   * feet and `width` wide, as shares of their height, `depth` as deep as
+   * it is wide, at `opacity`.
+   */
+  readonly shadow: {
+    readonly feet: FigureShadow
+    readonly reach: FigureShadow
+  }
+}
+
+/** A stop of a figure's gradient, in one of the light's tones. */
+export interface FigureStop extends Omit<GradientStop, 'color'> {
+  readonly tone: 'sun' | 'slate'
+}
+
+/** One of a figure's shadows on the ground. */
+export interface FigureShadow {
+  readonly dx: number
+  readonly dy: number
+  readonly width: number
+  readonly depth: number
+  readonly opacity: number
+}
+
+/**
+ * The reference draws a person 116 tall, from their feet to the top of
+ * their head: its numbers are divided by it.
+ */
+const REFERENCE = 116
 
 /** The street's crowd. */
 export const CROWD: CrowdSettings = {
@@ -164,15 +245,15 @@ export const CROWD: CrowdSettings = {
   slotSpacing: 66,
   edgeMargin: 60,
   bob: { height: 3, stride: 28 },
-  avatar: { x: 730, feetY: 638, height: 122, skin: '#C98E62', hair: '#3B2A20' },
+  avatar: { x: 730, feetY: 638, height: 130, skin: '#C98E62', hair: '#3B2A20' },
   fatigue: AVATAR_FATIGUE,
   fans: ASSETS.fans,
   tally: { x: 850, y: 176, width: 330, height: 96, fontSize: 30 },
   card: { width: 260, gap: 10, margin: 8 },
   pickMargin: 8,
   looks: {
-    height: { min: 132, max: 166 },
-    childHeight: { min: 78, max: 96 },
+    height: { min: 106, max: 126 },
+    childHeight: { min: 62, max: 76 },
     skinTones: [
       '#F5D6B8',
       '#E6B48C',
@@ -189,12 +270,71 @@ export const CROWD: CrowdSettings = {
       '#D9A441',
       '#A34E5C',
       '#4F7A78',
+      // The design reference's shirts.
+      '#3F7F8F',
+      '#7A8F3C',
+      '#6B4A8C',
+      '#C0573A',
+      '#D08A2E',
+      '#4A6FA5',
     ],
+    hair: {
+      colors: [
+        '#7A4B2A',
+        '#4A5A2A',
+        '#C9A24A',
+        '#2B2622',
+        '#5A3A2A',
+        '#3B2A20',
+      ],
+      capChance: 0.35,
+    },
     coat: '#7A5C44',
     tote: '#8FB573',
     laptopBag: '#3F4448',
-    trousers: '#4A4039',
+    trousers: '#3B3A44',
     officeChance: 0.35,
     familyChance: 0.3,
+  },
+  figure: {
+    shade: { arm: 0.45, hand: 0.4, leg: 0.36 },
+    lit: {
+      arm: 0.12,
+      bentArm: 0.15,
+      capEdge: 0.4,
+      hairEdge: 0.45,
+      ownerHairEdge: 0.25,
+    },
+    side: [
+      { offset: 0, tone: 'sun', alpha: 0.3 },
+      { offset: 0.45, tone: 'sun', alpha: 0 },
+      { offset: 1, tone: 'slate', alpha: 0.38 },
+    ],
+    round: {
+      centre: { x: 0.32, y: 0.28 },
+      radius: 0.85,
+      stops: [
+        { offset: 0, tone: 'sun', alpha: 0.45 },
+        { offset: 0.5, tone: 'sun', alpha: 0 },
+        { offset: 1, tone: 'slate', alpha: 0.42 },
+      ],
+    },
+    cup: { color: '#FFFFFF', band: '#C97B2C' },
+    shadow: {
+      feet: {
+        dx: 4 / REFERENCE,
+        dy: 1 / REFERENCE,
+        width: 44 / REFERENCE,
+        depth: 10 / 44,
+        opacity: 0.45,
+      },
+      reach: {
+        dx: 26 / REFERENCE,
+        dy: -1 / REFERENCE,
+        width: 60 / REFERENCE,
+        depth: 8 / 60,
+        opacity: 0.2,
+      },
+    },
   },
 }
