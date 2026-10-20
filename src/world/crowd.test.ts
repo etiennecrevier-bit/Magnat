@@ -9,6 +9,7 @@ import {
   type Span,
 } from './crowd.ts'
 import { CROWD } from './crowdSettings.ts'
+import { ASSETS } from './manifest.ts'
 
 const SPAN: Span = { left: 0, right: 1440 }
 const { counterX, slotSpacing, groundY, laneOffset, edgeMargin } = CROWD
@@ -259,5 +260,25 @@ describe('bobOf', () => {
       expect(bobOf(walked, bob)).toBeGreaterThanOrEqual(0)
       expect(bobOf(walked, bob)).toBeLessThanOrEqual(bob.height)
     }
+  })
+})
+
+describe('where the crowd stands', () => {
+  const at = (id: string) => ASSETS.pieces.find((p) => p.id === id)!
+
+  it('lines up on the sidewalk, left of the truck, a few of them in sight', () => {
+    const sidewalk = at('sidewalk')
+    const truck = at('truck')
+    expect(groundY).toBeGreaterThan(sidewalk.y)
+    expect(groundY).toBeLessThan(sidewalk.y + sidewalk.height)
+    expect(counterX).toBeLessThan(truck.x)
+    // The first five in line stand on the screen.
+    expect(counterX - 4 * slotSpacing).toBeGreaterThan(0)
+  })
+
+  it('walks past the line in the road, in front of the truck', () => {
+    const truck = at('truck')
+    expect(groundY + laneOffset).toBeGreaterThan(truck.y + truck.height)
+    expect(groundY + laneOffset).toBeLessThan(ASSETS.designSize.height)
   })
 })

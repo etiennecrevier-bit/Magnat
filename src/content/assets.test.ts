@@ -123,6 +123,28 @@ describe('assets.json', () => {
     for (const piece of pieces.filter((p) => p.kind === 'backdrop')) {
       expect(piece.image, piece.id).toBeDefined()
     }
+    // The truck is art too (#199), each file once, its shadow on the ground
+    // under the people's.
+    for (const file of [
+      'truck',
+      'espresso-machine',
+      'croissant-rack',
+      'croissants',
+      'counter',
+      'awning',
+      'truck-sign',
+      'truck-shadow',
+    ]) {
+      const named = pieces.filter((p) => p.image === `truck/${file}.svg`)
+      expect(
+        named.map((p) => p.id),
+        file,
+      ).toEqual([file])
+    }
+    expect(pieces.find((p) => p.id === 'truck-shadow')).toMatchObject({
+      kind: 'backdrop',
+      layer: 'street',
+    })
     for (const kind of [
       'truck',
       'counter',
@@ -135,6 +157,7 @@ describe('assets.json', () => {
       'rolledAwning',
       'closedSign',
       'truckSign',
+      'lettering',
     ]) {
       expect(count(kind), kind).toBe(1)
     }
@@ -209,6 +232,7 @@ describe('assets.json', () => {
       'rival-truck': 'La Patate Pressée',
       'festival-banner': 'Festival du Pas Pire',
       'out-of-order': 'Hors service',
+      lettering: 'CAFÉ · CROISSANTS',
       truck: undefined,
     })
   })
@@ -408,6 +432,7 @@ describe('loadAssetManifest', () => {
     'rival-truck',
     'festival-banner',
     'out-of-order',
+    'lettering',
   ]) {
     rejects(
       `the ${id} without its text`,

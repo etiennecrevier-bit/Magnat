@@ -5,9 +5,9 @@
   "slump": { "bodyDrop": 6, "headDrop": 3, "tiltRadians": 0.14 },
   "circlesColor": "#6E4B63",
   "spill": {
-    "x": 905,
-    "y": 636,
-    "width": 34,
+    "x": 680,
+    "y": 590,
+    "width": 30,
     "color": "#6F4A2F",
     "showMs": 1200,
     "fadeMs": 600

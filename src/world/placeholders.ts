@@ -563,6 +563,16 @@ export const PLACEHOLDERS: Record<PieceKind, DrawPlaceholder> = {
       rotation: -0.06,
     })
   },
+
+  lettering: (piece, style) => {
+    // Painted on the truck, so it is the same with its art or without.
+    const text = writing(piece.text, {
+      fontSize: piece.height,
+      fill: color(piece, style),
+    })
+    text.position.set(piece.width / 2, piece.height / 2)
+    return new Container({ children: [text] })
+  },
 }
 
 /**
