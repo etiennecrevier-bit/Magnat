@@ -3,13 +3,18 @@
 // under its screens for all of the bar, so their last rows can still be
 // scrolled above it. The top bar is fixed along the top and wraps onto
 // more rows as the window narrows, so what sits under it, the messages and
-// the dock's panels, starts where it actually ends.
+// the dock's panels, starts where it actually ends. The week's card grows
+// with its fact, so the messages, which share its band on a narrow screen,
+// end above all of it while it shows.
 
 /** The custom property Ticker.css pads the page with. */
 export const TICKER_HEIGHT = '--ticker-height'
 
 /** The custom property that holds how far down the top bar ends. */
 export const TOP_BAR_ROOM = '--top-bar-room'
+
+/** The custom property that holds the height of the week's card. */
+export const REPORT_CARD_HEIGHT = '--report-card-height'
 
 /** The parts of a ResizeObserver used here, so tests can fake one. */
 export interface ObserverLike {
@@ -77,4 +82,23 @@ export function keepRoomUnder(
   observe: (onResize: () => void) => ObserverLike = resizeObserver,
 ): () => void {
   return keepMeasured(bar, page, TOP_BAR_ROOM, (box) => box.bottom, observe)
+}
+
+/**
+ * Keeps `page`'s `--report-card-height` at the height of the week's card
+ * `card`, now and each time it changes size, and returns what stops it and
+ * takes the property away.
+ */
+export function keepRoomOver(
+  card: Element,
+  page: PageLike,
+  observe: (onResize: () => void) => ObserverLike = resizeObserver,
+): () => void {
+  return keepMeasured(
+    card,
+    page,
+    REPORT_CARD_HEIGHT,
+    (box) => box.height,
+    observe,
+  )
 }

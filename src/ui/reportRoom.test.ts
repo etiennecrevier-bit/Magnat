@@ -1,17 +1,26 @@
 import { describe, expect, it } from 'vitest'
 
-// The week's card stands above the dock (#202, Do 8). Vitest runs without a
+// The week's card stands above the dock (#202, Do 8) and clear of the
+// messages (#230). Vitest runs without a
 // browser, so this test works out the custom properties the way a browser
 // does: each element inherits its parent's computed values, and a var() in
 // a custom property is replaced where that property is declared. Ticker.tsx
-// sets --ticker-height on the body (tickerRoom.ts); the CSS is read from disk.
+// sets --ticker-height on the body, TopBar.tsx --top-bar-room and
+// WeekSlideIn.tsx --report-card-height (tickerRoom.ts); the CSS is read from
+// disk.
 // The app's types leave Node's out, hence the cast.
 const NODE_FS: string = 'node:fs'
 const { readFileSync } = (await import(/* @vite-ignore */ NODE_FS)) as {
   readFileSync: (path: URL, encoding: 'utf8') => string
 }
 
-const SHEETS = ['Ticker.css', 'Dock.css', 'Yesterday.css', 'WeekSlideIn.css']
+const SHEETS = [
+  'Ticker.css',
+  'Dock.css',
+  'Yesterday.css',
+  'WeekSlideIn.css',
+  'GameScreens.css',
+]
 
 /** The dock's height on a phone: a 48 px tile, 6 px above and under it and
     its 3 px top border (63 px in the review's screenshots, #230). */
@@ -107,11 +116,12 @@ function substitute(value: string, props: Map<string, string>): string {
   }
 }
 
-/** The length `value` (px, rem, calc(), + − × ÷) in pixels. */
-function pixels(value: string): number {
+/** The length `value` (px, rem, dvh, calc(), + − × ÷) in pixels, in a
+    window `height` px high. */
+function pixels(value: string, height: number): number {
   const tokens = value
     .replace(/calc\(/g, '(')
-    .match(/\d*\.?\d+(?:px|rem)?|[-+*/()]/g)!
+    .match(/\d*\.?\d+(?:px|rem|dvh)?|[-+*/()]/g)!
   let i = 0
   const atom = (): number => {
     const token = tokens[i++]!
@@ -121,6 +131,7 @@ function pixels(value: string): number {
       return inside
     }
     if (token.endsWith('rem')) return parseFloat(token) * REM
+    if (token.endsWith('dvh')) return (parseFloat(token) * height) / 100
     return parseFloat(token)
   }
   const product = (): number => {
@@ -142,14 +153,16 @@ function pixels(value: string): number {
 
 /**
  * The computed custom properties and `property` of the element matched by
- * `selectors`, down the page html › body › it, in a `width` px window, the
- * body's style holding `bodyStyle` (as tickerRoom.ts sets it).
+ * `selectors`, down the page html › body › it, in a `width` px window
+ * `height` px high, the body's style holding `bodyStyle` (as tickerRoom.ts
+ * sets it).
  */
 function computed(
   width: number,
   bodyStyle: Record<string, string>,
   selectors: string[],
   property: string,
+  height = 844,
 ): number {
   const holds = (rule: Rule, names: string[]) =>
     names.includes(rule.selector) &&
@@ -181,7 +194,7 @@ function computed(
   const element = cascade(selectors, body.props)
   const value = element.declared.get(property)
   if (value === undefined) throw new Error(`${property} is not declared`)
-  return pixels(substitute(value, element.props))
+  return pixels(substitute(value, element.props), height)
 }
 
 describe("the week's card on a phone", () => {
@@ -200,4 +213,47 @@ describe("the week's card on a phone", () => {
       })
     }
   }
+})
+
+describe("the messages on a phone, under the week's card", () => {
+  // A 390 × 844 phone, its top bar wrapped onto two rows, the card as tall
+  // as a week's with a two-line fact, under each ticker.
+  const WIDTH = 390
+  const HEIGHT = 844
+  const CARD_HEIGHT = 212
+  const NOTICES = '.shell__notices'
+  const WHILE_CARD = 'body:has(.week-slide-in__card) .shell__notices'
+  for (const ticker of [44, 88, 112]) {
+    const style = {
+      '--ticker-height': `${ticker}px`,
+      '--top-bar-room': '150px',
+      '--report-card-height': `${CARD_HEIGHT}px`,
+    }
+    const noticesBottom = (selectors: string[]) =>
+      computed(WIDTH, style, selectors, 'top', HEIGHT) +
+      computed(WIDTH, style, selectors, 'max-height', HEIGHT)
+
+    it(`end 12 px above the card under a ${ticker} px ticker`, () => {
+      const cardBottom = computed(WIDTH, style, ['.week-slide-in'], 'bottom')
+      const cardTop = HEIGHT - cardBottom - CARD_HEIGHT
+      expect(noticesBottom([NOTICES, WHILE_CARD])).toBe(cardTop - 12)
+    })
+
+    it(`reach down to 12 px above the dock under a ${ticker} px ticker when no card shows`, () => {
+      const dockBottom = computed(WIDTH, style, ['.dock'], 'bottom')
+      const dockTop = HEIGHT - dockBottom - PHONE_DOCK_HEIGHT
+      expect(noticesBottom([NOTICES])).toBeLessThanOrEqual(dockTop - 12)
+    })
+  }
+
+  it('keep all of their room on a wide window, beside the card', () => {
+    const style = {
+      '--ticker-height': '44px',
+      '--report-card-height': `${CARD_HEIGHT}px`,
+    }
+    const whileCard = [NOTICES, WHILE_CARD]
+    expect(computed(1280, style, whileCard, 'max-height', 900)).toBe(
+      computed(1280, style, [NOTICES], 'max-height', 900),
+    )
+  })
 })

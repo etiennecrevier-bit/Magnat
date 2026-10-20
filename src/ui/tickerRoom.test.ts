@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { keepRoomFor, keepRoomUnder, type ObserverLike } from './tickerRoom.ts'
+import {
+  keepRoomFor,
+  keepRoomOver,
+  keepRoomUnder,
+  type ObserverLike,
+} from './tickerRoom.ts'
 
 /**
  * A bar of `height` whose top is `top` px down the window, which can be
@@ -89,5 +94,27 @@ describe('keepRoomUnder', () => {
     stop()
     expect(disconnected()).toBe(true)
     expect(style.has('--top-bar-room')).toBe(false)
+  })
+})
+
+describe('keepRoomOver', () => {
+  it("gives the page the height of the week's card at once", () => {
+    const { bar, style, observed } = setUp(212, keepRoomOver, 400)
+    expect(style.get('--report-card-height')).toBe('212px')
+    expect(observed).toEqual([bar])
+  })
+
+  it('follows the card as a long fact wraps onto more lines', () => {
+    const { bar, style, resize } = setUp(212, keepRoomOver, 400)
+    bar.height = 260
+    resize()
+    expect(style.get('--report-card-height')).toBe('260px')
+  })
+
+  it('stops watching and takes the room back when the card goes', () => {
+    const { style, stop, disconnected } = setUp(212, keepRoomOver, 400)
+    stop()
+    expect(disconnected()).toBe(true)
+    expect(style.has('--report-card-height')).toBe(false)
   })
 })

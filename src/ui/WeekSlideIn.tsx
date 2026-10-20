@@ -10,6 +10,7 @@ import {
 import { gameStore, useGame } from './store.ts'
 import { WeekFigures, type Figures } from './WeeklyReport.tsx'
 import { factLines } from './weeklyReport.ts'
+import { keepRoomOver } from './tickerRoom.ts'
 import { hideSlideInAfter, slideInReport } from './weekSlideIn.ts'
 import './WeekSlideIn.css'
 
@@ -23,6 +24,12 @@ interface WeekSlideInViewProps {
   onOpen: () => void
 }
 
+/** Keeps the card's height on the page while it shows, so the messages
+    end above it (see tickerRoom.ts). */
+function keepRoom(card: HTMLElement | null) {
+  return card === null ? undefined : keepRoomOver(card, document.body)
+}
+
 /**
  * The week, or the month, in brief, at the bottom right: ventes,
  * bénéfice, encaisse and the first fact, with « Voir le bilan ».
@@ -34,7 +41,7 @@ export function WeekSlideInView({
   onOpen,
 }: WeekSlideInViewProps) {
   return (
-    <section className="week-slide-in__card" aria-label={title}>
+    <section ref={keepRoom} className="week-slide-in__card" aria-label={title}>
       <p className="week-slide-in__title">{title}</p>
       <WeekFigures report={report} className="week-slide-in__figures" />
       {topFact !== null && <p className="week-slide-in__fact">{topFact}</p>}
