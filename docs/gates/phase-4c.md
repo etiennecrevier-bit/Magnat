@@ -77,13 +77,13 @@ From the street on `Mardi 9 mai, an 1`, after « Fermer » on the weekly report.
 | 4. Speed up, then pause | « ×3 », then Pause; Space also toggles them | 2 | Exactly (day 5) |
 | 5. Cash, then Finances | Read « Encaisse 9 523 $ » on the chip, then « Finances » | 1 | Exactly (day 6) |
 
-- Task 5's amount matches the engine: Encaisse at the close of day 8 is `9 522,88 $`; the chip rounds it to `9 523 $`, and its tooltip and « Finances » show the same.
+- Task 5's amount matches the engine: in the save taken on `Mercredi 10 mai` (engine `day` 9), Encaisse at the close of `Mardi 9 mai` (`lastDay.day` 8) is `9 522,88 $`; the chip rounds it to `9 523 $`, and its tooltip and « Finances » show the same.
 - On the phone the paths are the same with taps. The dock shows icons only (truck, people, map, bar chart, star…), so « Camion » and « Finances » are found by their icons, as Réal showed them. A tap on the cash chip also opens « Finances ».
 
 #### Task 3 cannot be done
 - The croissant's tooltip on « Menu », after the tour: « Croissant · hier · Vendus 41 · Rupture 13 · Périmés 0 · Coût unitaire 1,15 $ · Marge unitaire 2,65 $ ». Then « vendus » per customer segment. No « Trop cher » row, and the word « cher » is nowhere on the page.
 - The café's tooltip on day 3 has no such row either: « Café · hier · Vendus 38 · Rupture 0 · Périmés 0 · … ». So Réal says « Y en a qui trouvaient ton café cher. Passe ta souris dessus. », and what opens does not show it.
-- Cause: `yesterdayFacts()` in `src/ui/productFacts.ts` always sets `pricedOut` to null (`PRICED_OUT_UNKNOWN`), so `productTip()` and the status line leave « Trop cher » out. Its comment says the engine counts priced-out visits only for all products together. That is no longer true: `DaySummary.pricedOut` is per product. In the phone game, the engine counted 24 croissant customers priced out on day 8.
+- Cause: `yesterdayFacts()` in `src/ui/productFacts.ts` always sets `pricedOut` to null (`PRICED_OUT_UNKNOWN`), so `productTip()` and the status line leave « Trop cher » out. Its comment says the engine counts priced-out visits only for all products together. That is no longer true: `DaySummary.pricedOut` is per product. In the phone game's save, the engine counted 24 croissant customers priced out on `Mardi 9 mai` (`lastDay.day` 8, read on `Mercredi 10 mai`). That is a later day than the tooltip above, which was read on the morning of `Mardi 9 mai` and describes `Lundi 8 mai`.
 - Likely player behaviour: give « Rupture » or « Ventes perdues » as the answer, or give up.
 - This is a defect for a follow-up card (UI: show the engine's per-product `pricedOut` in the tooltip and status line). This card only reports it. Until then, task 3 cannot pass. Étienne decides whether to play the gate now and score task 3 as "not available", or wait for the fix.
 
