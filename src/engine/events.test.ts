@@ -209,6 +209,21 @@ describe('drawEvent', () => {
       expect(drawEvent(MORNING, EVENTS)).toBe(MORNING)
     })
 
+    it('never draws a card only the tutorial brings, even with a weight above 0 (#236)', () => {
+      const loaded = content([card('tuto', { weight: 0, tutorialOnly: true })])
+      // The schema holds such a card to a weight of 0; the draw does not rely on it.
+      const weighed: EventContent = {
+        ...loaded,
+        events: loaded.events.map((event) => ({ ...event, weight: 5 })),
+      }
+      expect(drawEvent(MORNING, weighed)).toBe(MORNING)
+      const withOther = content([
+        card('tuto', { weight: 0, tutorialOnly: true }),
+        card('a'),
+      ])
+      expect(draws(MORNING, withOther)).toBe('a')
+    })
+
     it('picks among the events that may come by weight, with one more draw', () => {
       const events = content([
         card('lourd', { weight: 3 }),

@@ -4,7 +4,11 @@ import {
   type DifficultyId,
   type EventContent,
 } from '../../src/content/schema.ts'
-import { createInitialState, tick } from '../../src/engine/clock.ts'
+import {
+  createInitialState,
+  startTutorial,
+  tick,
+} from '../../src/engine/clock.ts'
 import {
   DIFFICULTIES,
   ENERGY,
@@ -25,22 +29,27 @@ import type { DaySummary, PerProduct } from '../../src/engine/types.ts'
 import { getAccount } from '../../src/finance/accounts.ts'
 import { emptyJournal, postEntry } from '../../src/finance/journal.ts'
 import { NO_EVENTS } from '../../src/engine/events.ts'
+import { TUTORIAL } from '../../src/engine/tutorial.ts'
 import {
   answerEvent,
   contractChoices,
   contractChooser,
+  doTutorialSteps,
   eventChooser,
   financingChoices,
   financingChooser,
   grocerCards,
   grocerOf,
   isFinancingCard,
+  isTutorialCard,
   journalHash,
   modifierDays,
   playMorning,
   simulate,
   startGame,
+  tutorialChooser,
   withFinancingCards,
+  withTutorialCards,
   type SimulationResult,
 } from './simulate.ts'
 
@@ -909,5 +918,79 @@ describe('simulate with the financing', () => {
 
   it('plays the same game twice', () => {
     expect(play('accept').journalHash).toBe(play('accept').journalHash)
+  })
+})
+
+describe('simulate the tutorial (#236)', () => {
+  const tutorial = (
+    events: 'none' | 'random',
+    days = 8,
+    seed = TUTORIAL.seed,
+  ) =>
+    simulate(
+      seed,
+      days,
+      'moyen',
+      [],
+      events,
+      EVENTS,
+      DIFFICULTIES,
+      null,
+      null,
+      true,
+    )
+
+  it("plays its eight days with the events off, Coralie's story answered and every step done", () => {
+    const run = tutorial('none')
+    expect(run.days).toBe(8)
+    expect(run.eventHistory).toEqual([
+      {
+        day: 3,
+        event: 'tutoStory',
+        followUp: false,
+        choice: 'avecPlaisir',
+        outcome: 0,
+      },
+    ])
+    // Open every day of the tutorial, Monday included.
+    expect(run.daySummaries.every(({ visits }) => visits.length > 0)).toBe(true)
+  })
+
+  it('starts the game the tutorial opens, on the seed given', () => {
+    const state = startGame(TUTORIAL.seed, 'moyen', [], DIFFICULTIES, true)
+    expect(state).toEqual(
+      startTutorial({ ...defaultProfile(), difficulty: 'moyen' }),
+    )
+    const other = startGame(7, 'moyen', [], DIFFICULTIES, true)
+    expect(other.seed).toBe(7)
+    expect(other.tutorial).toEqual(state.tutorial)
+  })
+
+  it('plays the same game twice, its random draws coming back from day 8', () => {
+    const once = tutorial('random', 120)
+    expect(tutorial('random', 120).journalHash).toBe(once.journalHash)
+    expect(once.eventHistory[0]?.event).toBe('tutoStory')
+    expect(once.eventHistory.slice(1).every(({ day }) => day >= 7)).toBe(true)
+  })
+
+  it('does every step due that morning, and none of a later day', () => {
+    const morning = doTutorialSteps(startTutorial())
+    expect(morning.tutorial?.step).toBe('lireHier')
+    expect(doTutorialSteps(morning)).toBe(morning)
+  })
+
+  it('answers the tutorial’s cards with their first choice, and leaves the others to the fallback', () => {
+    const story = EVENTS.events.find(({ id }) => id === 'tutoStory')
+    const other = EVENTS.events.find(({ id }) => id === 'influenceuse')
+    if (story === undefined || other === undefined) throw new Error('no card')
+    expect(isTutorialCard(story)).toBe(true)
+    expect(isTutorialCard(other)).toBe(false)
+    expect(tutorialChooser(null)(story)).toBe('avecPlaisir')
+    expect(() => tutorialChooser(null)(other)).toThrow(RangeError)
+    expect(tutorialChooser(() => 'nonMerci')(other)).toBe('nonMerci')
+    expect(withTutorialCards(NO_EVENTS).events.map(({ id }) => id)).toEqual([
+      'tutoStory',
+    ])
+    expect(withTutorialCards(EVENTS)).toBe(EVENTS)
   })
 })

@@ -11,7 +11,12 @@ import {
   type StreetModifierKind,
   type TimedEventEffect,
 } from '../../src/content/schema.ts'
-import { createInitialState, tick, toCalendar } from '../../src/engine/clock.ts'
+import {
+  createInitialState,
+  startTutorial,
+  tick,
+  toCalendar,
+} from '../../src/engine/clock.ts'
 import { GROCERS } from '../../src/engine/contracts.ts'
 import {
   CUSTOMERS,
@@ -35,6 +40,7 @@ import { defaultProfile } from '../../src/engine/profile.ts'
 import { int, seedRng } from '../../src/engine/rng.ts'
 import { PERCENTILES } from '../../src/engine/percentiles.ts'
 import { MODIFIER_KINDS } from '../../src/engine/street.ts'
+import { TUTORIAL, tutorialStepOf } from '../../src/engine/tutorial.ts'
 import type {
   Day,
   DaySummary,
@@ -290,6 +296,60 @@ export function withFinancingCards(
     : { ...content, events: [...content.events, ...missing] }
 }
 
+/** Whether `card` only comes in the tutorial (#236). */
+export function isTutorialCard({ tutorialOnly }: EventCard): boolean {
+  return tutorialOnly === true
+}
+
+/**
+ * Answers each card only the tutorial brings with its first choice, and
+ * every other card with `fallback`. Throws a RangeError on another card when
+ * `fallback` is null.
+ */
+export function tutorialChooser(
+  fallback: ((event: EventCard) => string) | null,
+): (event: EventCard) => string {
+  return (card) => {
+    if (isTutorialCard(card)) return idOf(card.choices, 0)
+    if (fallback === null) {
+      throw new RangeError(`Only the tutorial's cards come up: ${card.id}`)
+    }
+    return fallback(card)
+  }
+}
+
+/**
+ * `content` with the cards only the tutorial brings of `from`, by default
+ * the shipped ones, after its own, unless it holds them already. No draw
+ * brings them, so the content's draws stay as they were.
+ */
+export function withTutorialCards(
+  content: EventContent,
+  from: EventContent = EVENTS,
+): EventContent {
+  const held = new Set(content.events.map(({ id }) => id))
+  const missing = from.events.filter(
+    (card) => isTutorialCard(card) && !held.has(card.id),
+  )
+  return missing.length === 0
+    ? content
+    : { ...content, events: [...content.events, ...missing] }
+}
+
+/**
+ * `state` with every step of its tutorial due that morning done, in order,
+ * as the UI marks them once the player made each gesture; `state` itself
+ * when none is due.
+ */
+export function doTutorialSteps(state: GameState): GameState {
+  let done = state
+  for (let step = tutorialStepOf(done); step !== null;) {
+    done = applyDecision(done, { kind: 'tutorialStep', step: step.id })
+    step = tutorialStepOf(done)
+  }
+  return done
+}
+
 /**
  * One year of play. Years count from the first day of the game, so year 1
  * runs from day 0 to the day before its first anniversary; the last year
@@ -386,7 +446,12 @@ export interface SimulationResult {
  * pacing, unless `contracts` is `none` too. With a `financing` policy, the
  * financing's cards of `eventContent` come up whatever the other policies,
  * when the engine brings them, and it answers them (see
- * `financingChooser`). The game opens, and plays every
+ * `financingChooser`). With `tutorial`, the game is the tutorial's, on
+ * `seed` rather than its own (see `startGame`): each morning, once the
+ * event waiting is answered, every step due is done (see
+ * `doTutorialSteps`), and the cards only the tutorial brings, of
+ * `eventContent`, come up whatever the policies, each answered with its
+ * first choice (see `tutorialChooser`). The game opens, and plays every
  * day, with `difficulties`, by default the shipped ones, and stops early
  * if it ends, such as in bankruptcy (#160). Throws a RangeError
  * unless `days` is a safe integer of at least 1, `seed` and `difficulty` are
@@ -403,12 +468,13 @@ export function simulate(
   difficulties: DifficultyContent = DIFFICULTIES,
   contracts: ContractPolicy | null = null,
   financing: FinancingPolicy | null = null,
+  tutorial = false,
 ): SimulationResult {
   if (!Number.isSafeInteger(days) || days < 1) {
     throw new RangeError(`Days to play must be a whole number from 1: ${days}`)
   }
 
-  let state = startGame(seed, difficulty, changes, difficulties)
+  let state = startGame(seed, difficulty, changes, difficulties, tutorial)
   const grocersOnly =
     events === 'none' && contracts !== null && contracts !== 'none'
   const played = grocersOnly
@@ -416,20 +482,24 @@ export function simulate(
     : events === 'none'
       ? NO_EVENTS
       : eventContent
-  const content =
+  const financed =
     financing === null ? played : withFinancingCards(played, eventContent)
+  const content = tutorial
+    ? withTutorialCards(financed, eventContent)
+    : financed
   const answer = events === 'none' ? null : eventChooser(events, seed)
   const answered =
     contracts === null || played === NO_EVENTS
       ? answer
       : contractChooser(contracts, answer)
-  const choose =
+  const financier =
     financing === null ? answered : financingChooser(financing, answered)
+  const choose = tutorial ? tutorialChooser(financier) : financier
   const daySummaries: DaySummary[] = []
   const morningEnergy: number[] = []
   const unpaidRents: Day[] = []
   for (let day = 0; day < days && state.ended === null; day += 1) {
-    state = answerEvent(state, content, choose)
+    state = doTutorialSteps(answerEvent(state, content, choose))
     morningEnergy.push(state.energy)
     state = playMorning(state, content, null, PERCENTILES, difficulties)
     if (state.lastDay === null) throw new Error(`Day ${day} left no summary`)
@@ -462,7 +532,8 @@ export function simulate(
  * opened with `difficulties`, by default the shipped ones, on the morning of
  * day 0, with `changes` made to the starting decisions, in order, and
  * already in effect, where the player's would wait for the next morning.
- * Throws a RangeError unless `seed` and `difficulty` are ones
+ * With `tutorial`, the game is the tutorial's (see `startTutorial`), but on
+ * `seed`. Throws a RangeError unless `seed` and `difficulty` are ones
  * `createInitialState` accepts and every change is one `applyDecision`
  * accepts.
  */
@@ -471,13 +542,12 @@ export function startGame(
   difficulty: DifficultyId = defaultProfile().difficulty,
   changes: readonly DecisionChange[] = [],
   difficulties: DifficultyContent = DIFFICULTIES,
+  tutorial = false,
 ): GameState {
-  let state = createInitialState(
-    seed,
-    FOOD_TRUCK,
-    { ...defaultProfile(), difficulty },
-    difficulties,
-  )
+  const profile = { ...defaultProfile(), difficulty }
+  let state = tutorial
+    ? startTutorial(profile, FOOD_TRUCK, difficulties, { ...TUTORIAL, seed })
+    : createInitialState(seed, FOOD_TRUCK, profile, difficulties)
   for (const change of changes) state = applyDecision(state, change)
   // What tick() does each morning, before day 0 is played.
   return {

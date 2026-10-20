@@ -13,6 +13,7 @@ import type {
   PersonalContent,
   PlacesContent,
   StaffContent,
+  TutorialContent,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
@@ -55,6 +56,15 @@ import { PLACES, loanAppointment, noTrips } from './places.ts'
 import { defaultProfile, validateProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
 import { STAFF } from './staff.ts'
+import {
+  TUTORIAL,
+  checkTutorialDay,
+  endOfProtection,
+  isProtected,
+  openingTutorial,
+  tutorialDecisions,
+  withScriptedEvent,
+} from './tutorial.ts'
 import type { GameState, Profile } from './types.ts'
 import { openingWeek } from './week.ts'
 
@@ -197,6 +207,40 @@ export function startChallenge(
 }
 
 /**
+ * Starts the tutorial game of `tutorial` (#236) as `createInitialState()`
+ * opens a game at `profile`'s difficulty, with the tutorial's seed, its
+ * decisions laid over the starting ones (see `tutorialDecisions`), and the
+ * tutorial on its first step (see `openingTutorial`). Throws a RangeError if
+ * the decisions break the content's limits (see `validateDecisions`) or give
+ * a product another kind of restock rule than it starts with, and as
+ * `createInitialState()` does.
+ */
+export function startTutorial(
+  profile: Profile = defaultProfile(),
+  content: FoodTruckContent = FOOD_TRUCK,
+  difficulties: DifficultyContent = DIFFICULTIES,
+  tutorial: TutorialContent = TUTORIAL,
+): GameState {
+  const opened = createInitialState(
+    tutorial.seed,
+    content,
+    profile,
+    difficulties,
+  )
+  const decisions = tutorialDecisions(opened.decisions, tutorial)
+  validateDecisions(decisions, content.decisionLimits)
+  for (const product of PRODUCTS) {
+    const { kind } = opened.decisions.restock[product]
+    if (decisions.restock[product].kind !== kind) {
+      throw new RangeError(
+        `Invalid tutorial: restock.${product} must stay a ${kind} rule: ${decisions.restock[product].kind}`,
+      )
+    }
+  }
+  return { ...opened, decisions, tutorial: openingTutorial(tutorial) }
+}
+
+/**
  * Plays business day `state.day` with `state.decisions` (see `playDay`, with
  * `bakery` as the bakery's content, `grocers` as the contracts', `staff` as
  * the employees', `financing`'s rules, which may end the game at the
@@ -219,9 +263,16 @@ export function startChallenge(
  * otherwise the draw, with no chance of a new event unless the Défi lets
  * random events come, though a follow-up still comes, and never the
  * financing's cards nor the letters, since a Défi's medals read the books
- * as they are; and nothing once the Défi is over. Returns a new state;
+ * as they are; and nothing once the Défi is over. While a tutorial of
+ * `tutorial` protects the game (see `isProtected`), the morning brings the
+ * card the tutorial brings that day, if `events` holds it (see
+ * `withScriptedEvent`), and nothing else; on the morning the protection
+ * ends, the tutorial is done (see `endOfProtection`) and the morning goes
+ * on as in any game. Returns a new state;
  * never mutates `state`. Throws an Error while an event waits for the
- * player's choice, once the game has ended, and once the Défi is over.
+ * player's choice, once the game has ended, once the Défi is over, and
+ * while a step of the tutorial due that day is not done (see
+ * `checkTutorialDay`).
  */
 export function tick(
   state: GameState,
@@ -239,7 +290,9 @@ export function tick(
   financing: FinancingContent = FINANCING,
   dream: DreamContent = DREAM,
   places: PlacesContent = PLACES,
+  tutorial: TutorialContent = TUTORIAL,
 ): GameState {
+  checkTutorialDay(state, tutorial)
   const played = playDay(
     state,
     content,
@@ -255,7 +308,7 @@ export function tick(
     dream,
     places,
   )
-  const morning: GameState = {
+  const morning: GameState = endOfProtection({
     ...played,
     day: state.day + 1,
     decisions: latestDecisions(played),
@@ -263,8 +316,11 @@ export function tick(
     energy: nightRest(played.energy, energy),
     ownerAway: false,
     town: { ...played.town, trip: null },
-  }
+  })
   if (morning.ended !== null) return morning
+  if (isProtected(morning)) {
+    return withScriptedEvent(morning, events, tutorial)
+  }
   const { challenge } = morning
   if (challenge === null) {
     return drawEvent(

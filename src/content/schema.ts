@@ -17,6 +17,7 @@ import profileJson from './profile.json'
 import reportJson from './report.json'
 import segmentsJson from './segments.json'
 import staffJson from './staff.json'
+import tutorialJson from './tutorial.json'
 
 // Every object is strict, so a mistyped key while tuning fails loudly instead
 // of being silently dropped.
@@ -1175,9 +1176,15 @@ const eventSchema = z
     conditions: eventConditionsSchema.optional(),
     /** Two or three to choose from, or one on a notice (see `isNoticeCard`). */
     choices: z.array(eventChoiceSchema).min(1).max(3),
+    /**
+     * Only the tutorial brings it (#236), on its day: a weight of 0, none
+     * by standing, and never a follow-up only.
+     */
+    tutorialOnly: z.boolean().optional(),
   })
   .superRefine((card, ctx) => {
     const { situation, quote, choices } = card
+    if (card.tutorialOnly === true) checkTutorialOnly(card, ctx)
     if (isNoticeCard(card)) {
       checkNotice(card, ctx)
     } else {
@@ -1261,6 +1268,34 @@ function checkNotice(
   }
 }
 
+/**
+ * What a card only the tutorial brings is held to: a weight of 0, none by
+ * standing, and not a follow-up only, so no draw and no story brings it.
+ */
+function checkTutorialOnly(
+  {
+    weight,
+    weightByStanding,
+    conditions,
+  }: Pick<EventCard, 'weight' | 'weightByStanding' | 'conditions'>,
+  ctx: z.RefinementCtx,
+): void {
+  const issue = (message: string, path: (string | number)[]) =>
+    ctx.addIssue({ code: 'custom', message, path })
+  if (weight !== 0) {
+    issue('a tutorial card has a weight of 0: no draw brings it', ['weight'])
+  }
+  if (weightByStanding !== undefined) {
+    issue('a tutorial card has no weight by standing', ['weightByStanding'])
+  }
+  if (conditions?.followUpOnly === true) {
+    issue('a tutorial card never comes as a follow-up', [
+      'conditions',
+      'followUpOnly',
+    ])
+  }
+}
+
 /** How often events come: the first day, the gap and the daily chance. */
 const eventPacingSchema = z.strictObject({
   /** No event is drawn before this game day. */
@@ -1330,6 +1365,11 @@ export const eventContentSchema = z
   })
   .superRefine(({ events }, ctx) => {
     const ids = new Set(events.map(({ id }) => id))
+    const tutorialOnly = new Set(
+      events.flatMap(({ id, tutorialOnly: only }) =>
+        only === true ? [id] : [],
+      ),
+    )
     const choicesOf = new Map(
       events.map(({ id, choices }) => [id, choices.map((c) => c.id)]),
     )
@@ -1369,10 +1409,15 @@ export const eventContentSchema = z
         choiceIds.add(choice.id)
         choice.outcomes.forEach(({ effects }, o) => {
           effects.forEach((effect, f) => {
-            if (effect.kind === 'followUp' && !ids.has(effect.event)) {
+            if (
+              effect.kind === 'followUp' &&
+              (!ids.has(effect.event) || tutorialOnly.has(effect.event))
+            ) {
               ctx.addIssue({
                 code: 'custom',
-                message: `no event has the id ${effect.event}`,
+                message: tutorialOnly.has(effect.event)
+                  ? `the event ${effect.event} only comes in the tutorial`
+                  : `no event has the id ${effect.event}`,
                 path: [
                   'events',
                   e,
@@ -2346,6 +2391,14 @@ function defiContentFor(events: EventContent) {
           issue(`no event has the id ${event}`, [d, 'events', e, 'event'])
           return
         }
+        if (card.tutorialOnly === true) {
+          issue(`the event ${event} only comes in the tutorial`, [
+            d,
+            'events',
+            e,
+            'event',
+          ])
+        }
         choices.forEach((choice, c) => {
           if (!card.choices.some(({ id }) => id === choice)) {
             issue(`the event ${event} has no choice ${choice}`, [
@@ -2674,6 +2727,158 @@ export function loadDefiPercentileContent(
   raw: unknown = defiPercentilesJson,
 ): DefiPercentileContent {
   return parsed(defiPercentileContentSchema, raw, 'defis-percentiles.json')
+}
+
+/**
+ * What makes a tutorial step done, for the UI to wait on (#236): `next` a
+ * button of the bubble, `openTruck` and `finances` a
+ * panel opened, `priceChange` any price changed, `priceOrOk` that or the
+ * bubble's button, `speed1` and `speed3` a speed picked, `pause` the pause,
+ * `readYesterday` « Hier » or the croissant's tooltip opened,
+ * `restockRaise` the croissant rule raised, `tooltip` the café's tooltip
+ * opened and `choice` a choice made on the event card.
+ */
+export const tutorialGestureSchema = z.enum([
+  'next',
+  'openTruck',
+  'priceChange',
+  'speed1',
+  'readYesterday',
+  'restockRaise',
+  'tooltip',
+  'priceOrOk',
+  'choice',
+  'speed3',
+  'pause',
+  'finances',
+])
+
+export type TutorialGesture = z.infer<typeof tutorialGestureSchema>
+
+/** One step of the tutorial: what the player is asked to do on its day. */
+const tutorialStepSchema = z.strictObject({
+  id: idSchema,
+  /** The tutorial's day, from 1 to its `days`. */
+  day: z.int().positive(),
+  gesture: tutorialGestureSchema,
+})
+
+export type TutorialStep = z.output<typeof tutorialStepSchema>
+
+/**
+ * The tutorial game (#236): its seed, what it changes in the starting
+ * decisions, the days it protects, the cards it brings on its days, and
+ * its steps in order.
+ */
+export const tutorialContentSchema = z
+  .strictObject({
+    _note: z.string().optional(),
+    seed: z.int().min(0).max(0xffff_ffff),
+    /**
+     * Laid over the content's starting decisions: the prices and restock
+     * rules of the products it names, and the weekdays open.
+     */
+    decisions: z.strictObject({
+      pricesCents: z.partialRecord(productIdSchema, money).optional(),
+      restock: z.partialRecord(productIdSchema, restockRuleSchema).optional(),
+      daysOpen: z.array(weekday).min(1).optional(),
+    }),
+    /** The days the tutorial protects, from its first. */
+    days: z.int().positive(),
+    /** The cards it brings, each on the morning of its tutorial day. */
+    scriptedEvents: z.array(
+      z.strictObject({ day: z.int().positive(), event: idSchema }),
+    ),
+    steps: z.array(tutorialStepSchema).min(1),
+  })
+  .superRefine(({ days, steps, scriptedEvents }, ctx) => {
+    const issue = (message: string, path: (string | number)[]) =>
+      ctx.addIssue({ code: 'custom', message, path })
+    const ids = new Set<string>()
+    steps.forEach(({ id, day }, s) => {
+      if (ids.has(id))
+        issue(`the step id ${id} appears twice`, ['steps', s, 'id'])
+      ids.add(id)
+      if (day > days) {
+        issue(`the step falls after the tutorial's ${days} days`, [
+          'steps',
+          s,
+          'day',
+        ])
+      }
+      const before = steps[s - 1]
+      if (before !== undefined && before.day > day) {
+        issue('the steps go in the order of their days', ['steps', s, 'day'])
+      }
+    })
+    for (let day = 1; day <= days; day += 1) {
+      if (!steps.some((step) => step.day === day)) {
+        issue(`day ${day} has no step`, ['steps'])
+      }
+    }
+    const scripted = new Set<number>()
+    scriptedEvents.forEach(({ day }, e) => {
+      // A card comes as `tick()` brings the morning: day 1's has none.
+      if (day < 2) {
+        issue('a card comes on day 2 at the earliest', [
+          'scriptedEvents',
+          e,
+          'day',
+        ])
+      }
+      if (day > days) {
+        issue(`the event falls after the tutorial's ${days} days`, [
+          'scriptedEvents',
+          e,
+          'day',
+        ])
+      }
+      if (scripted.has(day)) {
+        issue('one event a day at most', ['scriptedEvents', e, 'day'])
+      }
+      scripted.add(day)
+    })
+  })
+
+export type TutorialContent = z.output<typeof tutorialContentSchema>
+
+/**
+ * The tutorial, checked against `events`: each card it brings is one of
+ * them that only the tutorial brings.
+ */
+function tutorialContentFor(events: EventContent) {
+  const cards = new Map(events.events.map((card) => [card.id, card]))
+  return tutorialContentSchema.superRefine(({ scriptedEvents }, ctx) => {
+    scriptedEvents.forEach(({ event }, e) => {
+      const card = cards.get(event)
+      if (card?.tutorialOnly === true) return
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          card === undefined
+            ? `no event has the id ${event}`
+            : `the event ${event} is not tutorialOnly`,
+        path: ['scriptedEvents', e, 'event'],
+      })
+    })
+  })
+}
+
+/**
+ * Validates the tutorial game against the event cards `events` and returns
+ * it typed, with money as `Cents`. Throws an Error naming every invalid
+ * field: besides each field, the step ids are unique, the steps go in the
+ * order of their days, from 1 to `days`, with one at least each day, and
+ * each card it brings falls on one of its days but the first, one a day at
+ * most, and is
+ * a card of `events` only the tutorial brings. Pass `raw` only to check
+ * other data; by default it reads `tutorial.json`, against `events.json`.
+ */
+export function loadTutorialContent(
+  raw: unknown = tutorialJson,
+  events: EventContent = loadEventContent(),
+): TutorialContent {
+  return parsed(tutorialContentFor(events), raw, 'tutorial.json')
 }
 
 function parsed<T extends z.ZodType>(

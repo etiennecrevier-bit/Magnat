@@ -22,6 +22,7 @@ import { inventoryValue } from '../src/engine/inventory.ts'
 import { add, cents, sub, type Cents } from '../src/engine/money.ts'
 import { STAFF_MEMO } from '../src/engine/staff.ts'
 import { MODIFIER_KINDS } from '../src/engine/street.ts'
+import { TUTORIAL, isProtected, tutorialDay } from '../src/engine/tutorial.ts'
 import type { Day, GameState } from '../src/engine/types.ts'
 import type { AccountCode } from '../src/finance/accounts.ts'
 import {
@@ -33,12 +34,15 @@ import {
 import { balanceSheet, cashFlowStatement } from '../src/finance/statements.ts'
 import {
   contractChooser,
+  doTutorialSteps,
   eventChooser,
   financingChooser,
   isFinancingCard,
+  isTutorialCard,
   journalHash,
   simulate,
   startGame,
+  tutorialChooser,
   type YearSummary,
 } from '../tools/sim/simulate.ts'
 
@@ -54,7 +58,9 @@ import {
 // through the ten years, and it runs short of cash and borrows, long enough
 // for Mme Prudhomme's letters before a bankruptcy (#160), though none of
 // the games ends. The essai card sells shares too, so the investor's
-// dividends post in every game.
+// dividends post in every game. The last game starts as the tutorial (#236)
+// on its own seed, its steps done each morning and Coralie's story taken,
+// then goes on unprotected from day 8.
 // The whole file must stay under BUDGET_MS in CI; if it gets slower, make
 // the slow part faster rather than checking fewer days or seeds.
 
@@ -68,10 +74,12 @@ const GAMES: readonly {
   seed: number
   difficulty: DifficultyId
   changes: readonly DecisionChange[]
+  tutorial: boolean
 }[] = [
-  { seed: 1, difficulty: 'facile', changes: [] },
-  { seed: 42, difficulty: 'moyen', changes: STAFFED },
-  { seed: 2026, difficulty: 'difficile', changes: [] },
+  { seed: 1, difficulty: 'facile', changes: [], tutorial: false },
+  { seed: 42, difficulty: 'moyen', changes: STAFFED, tutorial: false },
+  { seed: 2026, difficulty: 'difficile', changes: [], tutorial: false },
+  { seed: TUTORIAL.seed, difficulty: 'moyen', changes: [], tutorial: true },
 ]
 const DAYS = 3650
 const BUDGET_MS = 60_000
@@ -151,6 +159,7 @@ interface Checked {
     street: string[]
     financing: string[]
     ended: string[]
+    tutorial: string[]
   }
   /** Events that came up, follow-ups included, and those drawn. */
   events: number
@@ -166,6 +175,8 @@ interface Checked {
   financingCards: number
   /** Mme Prudhomme's letters before a bankruptcy that came up (#160). */
   notices: number
+  /** The cards only the tutorial brings that came up (#236). */
+  scripted: number
   /** Emergency loans taken, rounds of shares sold and dividends paid. */
   loans: number
   shareSales: number
@@ -235,14 +246,15 @@ class Tally {
 }
 
 /**
- * Plays `DAYS` days from `seed` at `difficulty`, checking each close against
- * the state just played, then plays the same game again with the headless
- * runner.
+ * Plays `DAYS` days from `seed` at `difficulty`, the tutorial's game with
+ * `tutorial`, checking each close against the state just played, then plays
+ * the same game again with the headless runner.
  */
 function check(
   seed: number,
   difficulty: DifficultyId,
   changes: readonly DecisionChange[],
+  tutorial: boolean,
 ): Checked {
   const checked: Checked = {
     days: 0,
@@ -258,6 +270,7 @@ function check(
       street: [],
       financing: [],
       ended: [],
+      tutorial: [],
     },
     events: 0,
     drawn: 0,
@@ -269,6 +282,7 @@ function check(
     wages: 0,
     financingCards: 0,
     notices: 0,
+    scripted: 0,
     loans: 0,
     shareSales: 0,
     dividends: 0,
@@ -283,12 +297,20 @@ function check(
     if (list.length < MAX_FAILURES) list.push(message)
   }
 
-  let state: GameState = startGame(seed, difficulty, changes)
+  let state: GameState = startGame(
+    seed,
+    difficulty,
+    changes,
+    DIFFICULTIES,
+    tutorial,
+  )
   const tally = new Tally()
   tally.count(state.journal)
-  const choose = financingChooser(
-    'accept',
-    contractChooser('all', eventChooser('random', seed)),
+  const choose = tutorialChooser(
+    financingChooser(
+      'accept',
+      contractChooser('all', eventChooser('random', seed)),
+    ),
   )
   const grocerPayments = new Set(
     Object.values(GROCERS.grocers).map(({ name }) => `Encaissement · ${name}`),
@@ -304,7 +326,20 @@ function check(
       checked.events += 1
       const card = EVENTS_IN_PLAY.events.find(({ id }) => id === pending.event)
       if (card === undefined) throw new Error(`Unknown event ${pending.event}`)
-      if (isFinancingCard(card) || isNoticeCard(card)) {
+      if (isProtected(state) && !isTutorialCard(card)) {
+        fail('tutorial', `day ${day}: ${card.id} during the tutorial`)
+      }
+      if (isTutorialCard(card)) {
+        // The tutorial brings it on its day, as a draw that morning.
+        checked.scripted += 1
+        const scripted = TUTORIAL.scriptedEvents.find(
+          ({ event }) => event === card.id,
+        )
+        if (!isProtected(state) || scripted?.day !== tutorialDay(state)) {
+          fail('tutorial', `day ${day}: ${card.id} off its tutorial day`)
+        }
+        lastDrawn = day
+      } else if (isFinancingCard(card) || isNoticeCard(card)) {
         // The engine brings it the morning after a close below zero,
         // whatever the first day and the gap, as a draw that morning: the
         // next card drawn keeps its gap from it.
@@ -333,6 +368,7 @@ function check(
       }
       state = resolveEvent(state, choose(card), EVENTS_IN_PLAY)
     }
+    state = doTutorialSteps(state)
     state = tick(
       state,
       FOOD_TRUCK,
@@ -479,6 +515,9 @@ function check(
     checked.checkMs.push(performance.now() - dayPlayed)
   }
 
+  if (tutorial && state.tutorial?.done !== true) {
+    fail('tutorial', 'the tutorial never ended')
+  }
   checked.loans = state.financing.loans.length
   checked.shareSales = state.financing.shareSales.length
   checked.checkedHash = journalHash(state.journal)
@@ -492,6 +531,7 @@ function check(
     DIFFICULTIES,
     'all',
     'accept',
+    tutorial,
   )
   checked.replayHash = replay.journalHash
   checked.replayYears = replay.years
@@ -502,13 +542,13 @@ function check(
 const CHECKED: Checked[] = []
 
 describe.each(GAMES)(
-  `seed $seed at $difficulty over ${DAYS} days`,
-  ({ seed, difficulty, changes }) => {
+  `seed $seed at $difficulty, tutorial $tutorial, over ${DAYS} days`,
+  ({ seed, difficulty, changes, tutorial }) => {
     let checked: Checked
     // Both runs of the game happen here, so the timeout covers the whole
     // workload; the test at the end of the file holds every game to the budget.
     beforeAll(() => {
-      checked = check(seed, difficulty, changes)
+      checked = check(seed, difficulty, changes, tutorial)
       CHECKED.push(checked)
     }, BUDGET_MS)
 
@@ -557,6 +597,11 @@ describe.each(GAMES)(
 
     it('keeps the financing within its limits, its cards and the letters only after a close below zero', () => {
       expect(checked.failures.financing).toEqual([])
+    })
+
+    it('protects the tutorial’s seven days, brings its card on its day only, and ends it', () => {
+      expect(checked.failures.tutorial).toEqual([])
+      expect(checked.scripted).toBe(tutorial ? 1 : 0)
     })
 
     it('plays the ten years without going bankrupt', () => {

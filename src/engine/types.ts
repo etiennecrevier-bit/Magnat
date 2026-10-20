@@ -49,6 +49,12 @@ export interface DaySummary {
   readonly revenue: Cents
   /** Units customers asked for after the product had sold out. */
   readonly lostSales: PerProduct
+  /**
+   * Customers who would have wanted one unit at their reference price but
+   * not at the day's, above it: each product's « trop cher ». A visit may
+   * count for several products, and still buy another.
+   */
+  readonly pricedOut: PerProduct
   /** Units written off at the close because their shelf life was over. */
   readonly spoiled: PerProduct
   /** Each customer segment's visits, counted by how they ended. */
@@ -364,6 +370,29 @@ export interface GameState {
   readonly dream: DreamState
   /** The owner's trips in town (#164), and what they still give. */
   readonly town: TownState
+  /**
+   * The tutorial (#236), in a game that started with one; absent in any
+   * other, a Défi included.
+   */
+  readonly tutorial?: TutorialState
+}
+
+/**
+ * The tutorial's progress (#236). While it is not done, the game is
+ * protected: no event drawn, no financing card, no letter and no
+ * bankruptcy, and `tick()` refuses a day whose steps are not all done.
+ */
+export interface TutorialState {
+  /** The step the player is asked to do next; null once none is left. */
+  readonly step: string | null
+  /** The game day the tutorial's day 1 is played. */
+  readonly startedDay: Day
+  /** The morning the protection ends: the tutorial's day after its last. */
+  readonly endsDay: Day
+  /** Whether the tutorial is over, finished or skipped. */
+  readonly done: boolean
+  /** Whether the player skipped it. */
+  readonly skipped: boolean
 }
 
 /** The owner's trips in town (#164). */

@@ -120,6 +120,9 @@ function stock(units: number | Partial<Record<ProductId, number>>) {
 
 const PLENTY = stock(10_000)
 
+/** Each product as appealing as at its reference, whatever the day. */
+const EVERY_APPEAL = perProduct(() => 1)
+
 /** A counter that serves everyone the moment they arrive: no one waits. */
 const INSTANT: Counter = {
   service: { baseSeconds: 0, perItemSeconds: 0, maxAheadInLine: 0 },
@@ -501,6 +504,41 @@ describe('serveWalkIns', () => {
     ).toBe(40)
   })
 
+  it('counts each product a customer found too expensive in pricedOut (#236)', () => {
+    const served = serve(weekday(40, { productAppeal: EVERY_APPEAL }), {
+      customers: everyone({ base: 1, reference: 200, sensitivity: 50 }),
+      price: () => cents(400),
+    })
+    expect(served.pricedOut).toEqual({ cafe: 40, chocolat: 40, croissant: 40 })
+  })
+
+  it('counts in pricedOut only the products above the reference, a customer who bought another included', () => {
+    const served = serve(weekday(40, { productAppeal: EVERY_APPEAL }), {
+      customers: everyone({ base: 1, reference: 200, sensitivity: 50 }),
+      price: (product) => cents(product === 'cafe' ? 400 : 200),
+    })
+    expect(served.pricedOut).toEqual({ cafe: 40, chocolat: 0, croissant: 0 })
+    expect(served.sold).toEqual({ cafe: 0, chocolat: 40, croissant: 40 })
+    expect(
+      SEGMENTS.reduce((n, id) => n + served.segments[id].tooExpensive, 0),
+    ).toBe(0)
+  })
+
+  it('counts at least as many priced out as visits too expensive, with the shipped customers', () => {
+    const served = serve(weekday(120), { price: prices({ cafe: 375 }) })
+    const visits = SEGMENTS.reduce(
+      (n, id) => n + served.segments[id].tooExpensive,
+      0,
+    )
+    const pricedOut = PRODUCTS.reduce(
+      (n, product) => n + served.pricedOut[product],
+      0,
+    )
+    expect(visits).toBeGreaterThan(0)
+    expect(pricedOut).toBeGreaterThanOrEqual(visits)
+    expect(served.pricedOut.cafe).toBeGreaterThan(0)
+  })
+
   it('counts a customer who wants nothing at any price as browsed', () => {
     const served = serve(weekday(40), {
       customers: everyone({ base: 0, reference: 200, sensitivity: 50 }),
@@ -525,6 +563,7 @@ describe('serveWalkIns', () => {
       const outcomes = new Set(served.visits.map(({ outcome }) => outcome))
       expect(outcomes.has('tooExpensive')).toBe(false)
       expect(outcomes.has('browsed')).toBe(true)
+      expect(served.pricedOut).toEqual({ cafe: 0, chocolat: 0, croissant: 0 })
     }
   })
 

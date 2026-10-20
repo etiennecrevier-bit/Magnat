@@ -174,6 +174,15 @@ describe('loadDefiContent', () => {
       'the event essai has no choice oui',
     ],
     [
+      'a forced event only the tutorial brings (#236)',
+      [
+        defi({
+          events: [{ day: 0, event: 'tutoStory', choices: ['avecPlaisir'] }],
+        }),
+      ],
+      'the event tutoStory only comes in the tutorial',
+    ],
+    [
       'no choice allowed',
       [defi({ events: [{ day: 0, event: 'essai', choices: [] }] })],
       '→ at defis[0].events[0].choices',

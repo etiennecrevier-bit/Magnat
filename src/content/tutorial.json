@@ -1,0 +1,27 @@
+{
+  "_note": "The tutorial game (#236): seven protected days with Réal, the same seed at every difficulty. The croissants start low, 40 a day, so day 1 sells out around noon and « Hier » shows it on day 2; the café starts at 3,75 $, above what the habitués find fair, so some find it too expensive on day 2 and Réal points at it on day 3. The truck opens all seven days, since the game's day 0 is a Monday, which the content's starting decisions close. The steps' texts are the UI's (#238); each step says only which gesture completes it.",
+  "seed": 20261020,
+  "decisions": {
+    "pricesCents": { "cafe": 375 },
+    "restock": { "croissant": { "kind": "buyDaily", "quantity": 40 } },
+    "daysOpen": [1, 2, 3, 4, 5, 6, 7]
+  },
+  "days": 7,
+  "scriptedEvents": [{ "day": 4, "event": "tutoStory" }],
+  "steps": [
+    { "id": "bienvenue", "day": 1, "gesture": "next" },
+    { "id": "ouvrirCamion", "day": 1, "gesture": "openTruck" },
+    { "id": "changerPrix", "day": 1, "gesture": "priceChange" },
+    { "id": "lancerJour", "day": 1, "gesture": "speed1" },
+    { "id": "lireHier", "day": 2, "gesture": "readYesterday" },
+    { "id": "commander", "day": 2, "gesture": "restockRaise" },
+    { "id": "tropCher", "day": 3, "gesture": "tooltip" },
+    { "id": "ajuster", "day": 3, "gesture": "priceOrOk" },
+    { "id": "evenement", "day": 4, "gesture": "choice" },
+    { "id": "accelerer", "day": 5, "gesture": "speed3" },
+    { "id": "pause", "day": 5, "gesture": "pause" },
+    { "id": "encaisse", "day": 6, "gesture": "next" },
+    { "id": "finances", "day": 6, "gesture": "finances" },
+    { "id": "aurevoir", "day": 7, "gesture": "next" }
+  ]
+}

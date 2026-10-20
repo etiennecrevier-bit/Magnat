@@ -45,6 +45,7 @@ import { PRODUCTS } from './inventory.ts'
 import type { Cents } from './money.ts'
 import { addMovement } from './personal.ts'
 import { PLACES, goTo } from './places.ts'
+import { completeStep } from './tutorial.ts'
 import { STAFF } from './staff.ts'
 import type {
   BakeryPlan,
@@ -121,6 +122,11 @@ export type DecisionChange =
       readonly kind: 'goTo'
       readonly place: PlaceId | null
     }
+  | {
+      /** Marks the tutorial's step done, as the UI saw its gesture (#236). */
+      readonly kind: 'tutorialStep'
+      readonly step: string
+    }
 
 /**
  * The decisions a game starts with, from the content: the truck's, then no
@@ -195,6 +201,9 @@ export function latestDecisions(state: GameState): Decisions {
  * `bought`), and `goTo` sends the owner to a place of `places` that day,
  * or keeps them at the truck, in place of the trip chosen before (see
  * `goTo` in places.ts, which says when it throws a RangeError).
+ * `tutorialStep` does not wait either: it marks the tutorial's step done
+ * that morning (see `completeStep`, which says when it throws a
+ * RangeError).
  */
 export function applyDecision(
   state: GameState,
@@ -213,6 +222,7 @@ export function applyDecision(
   if (change.kind === 'goTo') {
     return goTo(state, change.place, places, undefined, undefined, content)
   }
+  if (change.kind === 'tutorialStep') return completeStep(state, change.step)
   if (isLockable(change.kind) && isLocked(state, change.kind, defis)) {
     throw new RangeError(
       `Invalid decision: the Défi ${state.challenge?.id} locks ${change.kind}`,
