@@ -3,9 +3,11 @@ import { formatDayAndMonth } from './formatGameDate.ts'
 import {
   messageElementId,
   messageStack,
+  streetMessages,
   type MessageStack,
 } from './messageStack.ts'
 import type { Message } from './messageTriggers.ts'
+import { gameStore, type GameStore } from './store.ts'
 import './Messages.css'
 
 interface MessagesViewProps {
@@ -49,15 +51,25 @@ export function MessagesView({ messages, onDismiss }: MessagesViewProps) {
 }
 
 /**
- * The messages in `stack`, which the shell fills with those the app
- * store's game calls for (see `startMessageStack`).
+ * The messages in `stack` the street shows on `store`'s game day (see
+ * `streetMessages`), which the shell fills with those the app store's game
+ * calls for (see `startMessageStack`).
  */
 export default function Messages({
   stack = messageStack,
+  store = gameStore,
 }: {
   stack?: MessageStack
+  store?: GameStore
 }) {
   const messages = useStore(stack, (state) => state.messages)
+  const shownAgainOn = useStore(stack, (state) => state.shownAgainOn)
   const dismiss = useStore(stack, (state) => state.dismiss)
-  return <MessagesView messages={messages} onDismiss={dismiss} />
+  const today = useStore(store, (state) => state.game.day)
+  return (
+    <MessagesView
+      messages={streetMessages(messages, today, shownAgainOn)}
+      onDismiss={dismiss}
+    />
+  )
 }

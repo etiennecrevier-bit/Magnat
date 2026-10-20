@@ -9,7 +9,11 @@ import {
 import { GROCERS, startContract } from '../engine/contracts.ts'
 import type { Day, GameState } from '../engine/types.ts'
 import { followAlert, missedThisWeek, topAlerts } from './alerts.ts'
-import { createMessageStack, messageElementId } from './messageStack.ts'
+import {
+  createMessageStack,
+  messageElementId,
+  streetMessages,
+} from './messageStack.ts'
 import { contractsBoard } from './contractsBoard.ts'
 import { createGameStore, PAUSED } from './store.ts'
 
@@ -143,5 +147,26 @@ describe('followAlert', () => {
     followAlert('messages', stack, createGameStore(START), at)
     expect(at.getElementById).toHaveBeenCalledWith(messageElementId(2))
     expect(focus).toHaveBeenCalledTimes(1)
+  })
+
+  it('brings the messages folded into it back on the street (#232)', () => {
+    const stack = createMessageStack()
+    const message = { kind: 'landlord', from: 'X', text: 'Y', day: 31 } as const
+    stack.getState().receive({ ...message, id: 1 })
+    const store = createGameStore({ ...START, day: 40 })
+    const onStreet = () =>
+      streetMessages(
+        stack.getState().messages,
+        store.getState().game.day,
+        stack.getState().shownAgainOn,
+      ).map(({ id }) => id)
+    expect(onStreet()).toEqual([])
+    followAlert(
+      'messages',
+      stack,
+      store,
+      page(() => {}),
+    )
+    expect(onStreet()).toEqual([1])
   })
 })

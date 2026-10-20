@@ -1,7 +1,11 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { createInitialState } from '../engine/clock.ts'
-import { createMessageStack, startMessageStack } from './messageStack.ts'
+import {
+  createMessageStack,
+  startMessageStack,
+  streetMessages,
+} from './messageStack.ts'
 import type { Message } from './messageTriggers.ts'
 import Messages, { MessagesView } from './Messages.tsx'
 import { createGameStore } from './store.ts'
@@ -96,5 +100,40 @@ describe('the message stack', () => {
     stop = startMessageStack(game, stack)
     expect(stack.getState().messages).toEqual([])
     stop()
+  })
+  // #232: the street shows a message for 3 game days, then it folds into
+  // the « N messages » chip: still in the stack, which the chip counts.
+  it('takes a message off the street 3 days on, and keeps it for the chip', () => {
+    const START = createInitialState(42)
+    const game = createGameStore({ ...START, day: 31 })
+    const stack = createMessageStack()
+    const stop = startMessageStack(game, stack)
+    const rentUnpaid = { ...START.personal, unpaidRents: [31] }
+    const playTo = (day: number) =>
+      game.setState({ game: { ...START, day, personal: rentUnpaid } })
+    const street = () =>
+      render(
+        streetMessages(stack.getState().messages, game.getState().game.day),
+      )
+    playTo(32)
+    expect(street()).toContain('message--landlord')
+    playTo(33)
+    expect(street()).toContain('message--landlord')
+    // Eight days on, with no « Fermer » pressed.
+    playTo(40)
+    expect(street()).toBe(render([]))
+    expect(stack.getState().messages.map(({ kind }) => kind)).toEqual([
+      'landlord',
+    ])
+    stop()
+  })
+
+  it('shows a message again for 3 days from the day the chip brings it back', () => {
+    const messages = [RENT]
+    expect(streetMessages(messages, 33)).toEqual([RENT])
+    expect(streetMessages(messages, 34)).toEqual([])
+    expect(streetMessages(messages, 40, 40)).toEqual([RENT])
+    expect(streetMessages(messages, 42, 40)).toEqual([RENT])
+    expect(streetMessages(messages, 43, 40)).toEqual([])
   })
 })

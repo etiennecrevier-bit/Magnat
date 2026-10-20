@@ -1,4 +1,6 @@
 import { createStore, type StoreApi } from 'zustand'
+import messageStreet from '../content/messageStreet.json'
+import type { Day } from '../engine/types.ts'
 import { received, startMessages, type Message } from './messageTriggers.ts'
 import type { GameStore } from './store.ts'
 
@@ -8,8 +10,34 @@ import type { GameStore } from './store.ts'
 export interface MessageStackState {
   /** Newest first, at most `MAX_MESSAGES`. */
   readonly messages: readonly Message[]
+  /**
+   * The day the chip last brought every message back on the street, or
+   * `null`: from then, each shows again for `STREET_DAYS` (see
+   * `streetMessages`).
+   */
+  readonly shownAgainOn: Day | null
   readonly receive: (message: Message) => void
   readonly dismiss: (id: number) => void
+  /** Brings every message in the stack back on the street from `today`. */
+  readonly showAgain: (today: Day) => void
+}
+
+/** The game days a message shows on the street from its day. */
+export const STREET_DAYS = messageStreet.streetDays
+
+/**
+ * The messages the street shows on `today`, newest first: each for
+ * `STREET_DAYS` from its day, or from `shownAgainOn` when the chip brought
+ * it back since. The others fold into the chip, which still counts them.
+ */
+export function streetMessages(
+  messages: readonly Message[],
+  today: Day,
+  shownAgainOn: Day | null = null,
+): readonly Message[] {
+  return messages.filter(
+    ({ day }) => today < Math.max(day, shownAgainOn ?? day) + STREET_DAYS,
+  )
 }
 
 export type MessageStack = StoreApi<MessageStackState>
@@ -17,9 +45,11 @@ export type MessageStack = StoreApi<MessageStackState>
 export function createMessageStack(): MessageStack {
   return createStore<MessageStackState>()((set, get) => ({
     messages: [],
+    shownAgainOn: null,
     receive: (message) => set({ messages: received(get().messages, message) }),
     dismiss: (id) =>
       set({ messages: get().messages.filter((message) => message.id !== id) }),
+    showAgain: (today) => set({ shownAgainOn: today }),
   }))
 }
 
@@ -35,7 +65,7 @@ export function startMessageStack(
   store: GameStore,
   stack: MessageStack = messageStack,
 ): () => void {
-  stack.setState({ messages: [] })
+  stack.setState({ messages: [], shownAgainOn: null })
   return startMessages(store, stack.getState().receive)
 }
 

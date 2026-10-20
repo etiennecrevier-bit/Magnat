@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom'
 import { mondayOf } from '../engine/calendar.ts'
 import type { GameState } from '../engine/types.ts'
 import { openContracts } from './cityLinks.ts'
@@ -70,8 +71,9 @@ export function topAlerts({
 
 /**
  * What a chip does: a missed delivery opens the « Contrats » (see
- * `openContracts`); the messages chip moves the focus to the newest
- * message in `stack`.
+ * `openContracts`); the messages chip brings the messages in `stack` back
+ * on the street, those folded into it included, and moves the focus to the
+ * newest.
  */
 export function followAlert(
   id: AlertId,
@@ -85,5 +87,7 @@ export function followAlert(
   }
   const newest = stack.getState().messages[0]
   if (newest === undefined) return
+  // Rendered now, so the newest is on the page to take the focus.
+  flushSync(() => stack.getState().showAgain(store.getState().game.day))
   page.getElementById(messageElementId(newest.id))?.focus()
 }
