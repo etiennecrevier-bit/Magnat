@@ -225,7 +225,10 @@ describe('EventCardView', () => {
     const refuser = (difficulty: DifficultyId) =>
       choices(render(card, null, null, null, difficulty)).at(-1)?.tags
     expect(refuser('moyen')).toEqual(['Rien ne change'])
-    expect(refuser('difficile')).toEqual([`Énergie ${M}6`])
+    expect(refuser('difficile')).toEqual([
+      `Énergie ${M}6`,
+      `Clients ${M}6${S}% pendant 1 semaine`,
+    ])
   })
 
   it('disables the choices a Défi leaves out, with the reason and no key', () => {
@@ -350,12 +353,13 @@ describe('EventCard', () => {
   })
 
   it('writes the amounts of what came of the choice as the game plays them', () => {
-    // At Moyen, with the shipped scaling of 1.1, Normand's 60 $ are 66 $.
+    // At Moyen, with the shipped scaling of 1.1, Normand's 60 $ are 66 $,
+    // whichever way helping him turns out.
     gameStore.getState().startGame(waiting('premierJuillet'))
     gameStore.getState().chooseEvent('aiderNormand')
     const html = renderToStaticMarkup(<EventCard />)
     expect(html).toContain(
-      `Il a passé par la fenêtre. Normand vous glisse 66${S}$ et une bière tiède.</p>`,
+      `Il a passé par la fenêtre. Normand vous glisse 66${S}$ et une bière tiède`,
     )
   })
 
