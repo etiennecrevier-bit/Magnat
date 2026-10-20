@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="52" viewBox="582 376 40 52">
+<defs>
+<pattern id="vl-leaves" width="22" height="18" patternUnits="userSpaceOnUse">
+<circle cx="4" cy="5" r="2.4" fill="#34404f" fill-opacity="0.16"></circle>
+<circle cx="15" cy="12" r="2.8" fill="#34404f" fill-opacity="0.13"></circle>
+<circle cx="12" cy="3" r="1.8" fill="#fff1cf" fill-opacity="0.18"></circle>
+</pattern>
+</defs>
+<ellipse cx="600.0" cy="425.0" rx="6" ry="3" fill="#34404f" opacity="0.4"></ellipse>
+<rect x="597.5" y="404.6" width="5.0" height="20.4" fill="#5a3a2a"></rect>
+<rect x="597.5" y="404.6" width="2.0" height="20.4" fill="#7d5a42"></rect>
+<circle cx="595.4" cy="401.8" r="10.2" fill="#3d6a3f"></circle>
+<circle cx="603.0" cy="393.3" r="12.8" fill="#3d6a3f"></circle>
+<circle cx="611.5" cy="400.9" r="10.2" fill="#3d6a3f"></circle>
+<circle cx="604.7" cy="405.2" r="9.3" fill="#3d6a3f"></circle>
+<circle cx="592.4" cy="397.8" r="10.2" fill="#5f9a4a"></circle>
+<circle cx="592.4" cy="397.8" r="10.2" fill="url(#vl-leaves)"></circle>
+<circle cx="600.0" cy="389.3" r="12.8" fill="#5f9a4a"></circle>
+<circle cx="600.0" cy="389.3" r="12.8" fill="url(#vl-leaves)"></circle>
+<circle cx="608.5" cy="396.9" r="10.2" fill="#5f9a4a"></circle>
+<circle cx="608.5" cy="396.9" r="10.2" fill="url(#vl-leaves)"></circle>
+<circle cx="601.7" cy="401.2" r="9.3" fill="#5f9a4a"></circle>
+<circle cx="601.7" cy="401.2" r="9.3" fill="url(#vl-leaves)"></circle>
+<circle cx="590.6" cy="394.4" r="5.1" fill="#8cc061" opacity="0.85"></circle>
+<circle cx="598.3" cy="385.0" r="6.0" fill="#8cc061" opacity="0.85"></circle>
+</svg>

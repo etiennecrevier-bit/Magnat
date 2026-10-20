@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="58" height="44" viewBox="912 515 58 44">
+<defs>
+<linearGradient id="vl-glass" x1="0" y1="0" x2="0.35" y2="1">
+<stop offset="0" stop-color="#e6f3f5"></stop><stop offset="0.45" stop-color="#a8cad7"></stop><stop offset="1" stop-color="#6a8ea2"></stop>
+</linearGradient>
+<linearGradient id="vl-glassDark" x1="0" y1="0" x2="0.35" y2="1">
+<stop offset="0" stop-color="#a9c2cc"></stop><stop offset="1" stop-color="#4d6676"></stop>
+</linearGradient>
+</defs>
+<polygon points="912.0,539.0 952.0,559.0 952.0,548.0 912.0,528.0" fill="#e2d3b6"></polygon>
+<polygon points="952.0,559.0 970.0,550.0 970.0,539.0 952.0,548.0" fill="#99958b"></polygon>
+<polygon points="930.0,519.0 970.0,539.0 952.0,548.0 912.0,528.0" fill="#ebdcbe"></polygon>
+<polygon points="922.5,531.8 943.5,542.2 943.5,533.2 922.5,522.8" fill="#e2d3b6"></polygon>
+<polygon points="943.5,542.2 958.5,534.8 958.5,525.8 943.5,533.2" fill="#99958b"></polygon>
+<polygon points="937.5,515.2 958.5,525.8 943.5,533.2 922.5,522.8" fill="#ebdcbe"></polygon>
+<polygon points="924.2,530.6 941.8,539.4 941.8,533.4 924.2,524.6" fill="url(#vl-glass)"></polygon>
+<polygon points="945.0,539.5 957.0,533.5 957.0,527.5 945.0,533.5" fill="url(#vl-glassDark)"></polygon>
+<ellipse cx="920.0" cy="541.0" rx="4" ry="4.5" fill="#2b2622"></ellipse>
+<ellipse cx="944.0" cy="553.0" rx="4" ry="4.5" fill="#2b2622"></ellipse>
+</svg>

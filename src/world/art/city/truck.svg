@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="97" height="86" viewBox="548 318 97 86">
+<defs>
+<linearGradient id="vl-faceV" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#fff1cf" stop-opacity="0.26"></stop><stop offset="0.5" stop-color="#fff1cf" stop-opacity="0"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0.30"></stop>
+</linearGradient>
+<linearGradient id="vl-glass" x1="0" y1="0" x2="0.35" y2="1">
+<stop offset="0" stop-color="#e6f3f5"></stop><stop offset="0.45" stop-color="#a8cad7"></stop><stop offset="1" stop-color="#6a8ea2"></stop>
+</linearGradient>
+</defs>
+<polygon points="548.0,371.0 598.0,396.0 598.0,362.0 548.0,337.0" fill="#e8a93a"></polygon>
+<polygon points="548.0,371.0 598.0,396.0 598.0,362.0 548.0,337.0" fill="url(#vl-faceV)"></polygon>
+<polygon points="598.0,396.0 629.0,380.5 629.0,346.5 598.0,362.0" fill="#a07f42"></polygon>
+<polygon points="579.0,321.5 629.0,346.5 598.0,362.0 548.0,337.0" fill="#efbf67"></polygon>
+<polygon points="586.5,325.2 621.5,342.8 621.5,335.8 586.5,318.2" fill="#2b2622"></polygon>
+<polygon points="598.0,396.0 614.0,404.0 614.0,378.0 598.0,370.0" fill="#e8a93a"></polygon>
+<polygon points="598.0,396.0 614.0,404.0 614.0,378.0 598.0,370.0" fill="url(#vl-faceV)"></polygon>
+<polygon points="614.0,404.0 645.0,388.5 645.0,362.5 614.0,378.0" fill="#a07f42"></polygon>
+<polygon points="629.0,354.5 645.0,362.5 614.0,378.0 598.0,370.0" fill="#efbf67"></polygon>
+<polygon points="618.6,389.7 640.4,378.8 640.4,368.8 618.6,379.7" fill="url(#vl-glass)"></polygon>
+<polygon points="601.2,385.6 610.8,390.4 610.8,380.4 601.2,375.6" fill="url(#vl-glass)"></polygon>
+<ellipse cx="561.2" cy="374.6" rx="6" ry="7" fill="#2b2622"></ellipse><ellipse cx="560.2" cy="374.6" rx="2.5" ry="3" fill="#a7aeb3"></ellipse>
+<ellipse cx="604.1" cy="396.0" rx="6" ry="7" fill="#2b2622"></ellipse><ellipse cx="603.1" cy="396.0" rx="2.5" ry="3" fill="#a7aeb3"></ellipse>
+</svg>

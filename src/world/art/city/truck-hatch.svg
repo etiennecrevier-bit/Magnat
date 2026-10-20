@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="37" viewBox="553 345 40 37">
+<defs>
+<linearGradient id="vl-warmInside" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#ffe9bd"></stop><stop offset="1" stop-color="#e9b980"></stop>
+</linearGradient>
+</defs>
+<polygon points="553.0,361.5 593.0,381.5 593.0,365.5 553.0,345.5" fill="url(#vl-warmInside)"></polygon>
+<polygon points="553.0,349.5 593.0,369.5 593.0,365.5 553.0,345.5" fill="#34404f" opacity="0.35"></polygon>
+</svg>
