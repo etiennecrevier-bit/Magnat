@@ -295,10 +295,19 @@ const spotSchema = z
     piece: z.string().min(1).optional(),
     /** Shows the spot only on some days, as a piece's `shows` does. */
     shows: showsSchema.optional(),
+    /**
+     * Shows the spot on open days while an employee serves at the truck,
+     * where the street then draws one.
+     */
+    staffed: z.literal(true).optional(),
   })
-  .refine((spot) => spot.piece === undefined || spot.shows === undefined, {
-    message: 'a spot follows its piece or its own shows, not both',
-  })
+  .refine(
+    ({ piece, shows, staffed }) =>
+      [piece, shows, staffed].filter((rule) => rule !== undefined).length <= 1,
+    {
+      message: 'a spot follows its piece, its own shows or the staff, one only',
+    },
+  )
 
 export type Spot = z.output<typeof spotSchema>
 

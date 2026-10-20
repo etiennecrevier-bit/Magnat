@@ -10,17 +10,18 @@ import {
   spotAt,
   spotMark,
   spotsShown,
+  type SpotsView,
 } from './streetSpots.ts'
-import type { TruckView } from './truckView.ts'
 
-const OPEN: Pick<TruckView, 'open' | 'modifiers'> = {
+const OPEN: SpotsView = {
   open: true,
   modifiers: [],
+  inChallenge: false,
+  staffAtTruck: 0,
 }
-const CLOSED: Pick<TruckView, 'open' | 'modifiers'> = {
-  open: false,
-  modifiers: [],
-}
+const CLOSED: SpotsView = { ...OPEN, open: false }
+/** An open day with an employee serving at the truck. */
+const STAFFED: SpotsView = { ...OPEN, staffAtTruck: 1 }
 
 function spot(id: string): Spot {
   const found = ASSETS.spots.find((s) => s.id === id)
@@ -31,7 +32,7 @@ function spot(id: string): Spot {
 const ids = (spots: readonly Spot[]) => spots.map(({ id }) => id)
 
 describe('the spots of the street', () => {
-  it('are the chalkboard, the rack, the owner and the far city, from the manifest', () => {
+  it('are the chalkboard, the rack, the owner, the employee and the far city, from the manifest', () => {
     expect(
       ASSETS.spots.map(({ id, opens, label, detail }) => ({
         id,
@@ -55,6 +56,11 @@ describe('the spots of the street', () => {
         text: 'Vous · horaire, salaire',
       },
       {
+        id: 'employee',
+        opens: { dock: 'equipe' },
+        text: 'Équipe · embauches, rôles',
+      },
+      {
         id: 'city',
         opens: { dock: 'ville' },
         text: 'La ville · banque, meunerie, fournil',
@@ -67,8 +73,18 @@ describe('the spots of the street', () => {
     for (const { opens } of ASSETS.spots) expect(dock).toContain(opens.dock)
   })
 
-  it('show every one on an open day', () => {
-    expect(ids(spotsShown(ASSETS, OPEN, false))).toEqual([
+  it('show every one on an open day an employee serves at the truck', () => {
+    expect(ids(spotsShown(ASSETS, STAFFED))).toEqual([
+      'menu',
+      'stocks',
+      'owner',
+      'employee',
+      'city',
+    ])
+  })
+
+  it('show no employee while none serves at the truck, as none is drawn', () => {
+    expect(ids(spotsShown(ASSETS, OPEN))).toEqual([
       'menu',
       'stocks',
       'owner',
@@ -76,15 +92,19 @@ describe('the spots of the street', () => {
     ])
   })
 
-  it('lose the chalkboard and the owner on a closed day, as their art goes', () => {
-    expect(ids(spotsShown(ASSETS, CLOSED, false))).toEqual(['stocks', 'city'])
+  it('lose the chalkboard, the owner and the employee on a closed day, as their art goes', () => {
+    expect(ids(spotsShown(ASSETS, { ...STAFFED, open: false }))).toEqual([
+      'stocks',
+      'city',
+    ])
   })
 
-  it('lose the far city in a Défi, which hides « Ville »', () => {
-    expect(ids(spotsShown(ASSETS, OPEN, true))).toEqual([
+  it('lose the far city in a Défi, which hides « Ville », but not « Équipe »', () => {
+    expect(ids(spotsShown(ASSETS, { ...STAFFED, inChallenge: true }))).toEqual([
       'menu',
       'stocks',
       'owner',
+      'employee',
     ])
   })
 
@@ -97,13 +117,13 @@ describe('the spots of the street', () => {
       ),
       spots: ASSETS.spots,
     }
-    expect(ids(spotsShown(manifest, OPEN, false))).not.toContain('stocks')
-    expect(ids(spotsShown(manifest, CLOSED, false))).toContain('stocks')
+    expect(ids(spotsShown(manifest, OPEN))).not.toContain('stocks')
+    expect(ids(spotsShown(manifest, CLOSED))).toContain('stocks')
   })
 })
 
 describe('spotAt', () => {
-  const spots = spotsShown(ASSETS, OPEN, false)
+  const spots = spotsShown(ASSETS, STAFFED)
 
   it('finds each spot in its manifest box, edges included', () => {
     for (const s of ASSETS.spots) {
@@ -121,7 +141,7 @@ describe('spotAt', () => {
     expect(spotAt(spots, { x: menu.x - 1, y: menu.y })).toBeNull()
     expect(spotAt(spots, { x: menu.x, y: menu.y + menu.height + 1 })).toBeNull()
     expect(spotAt(spots, { x: 5, y: 5 })).toBeNull()
-    const closed = spotsShown(ASSETS, CLOSED, false)
+    const closed = spotsShown(ASSETS, CLOSED)
     expect(spotAt(closed, { x: menu.x + 1, y: menu.y + 1 })).toBeNull()
   })
 

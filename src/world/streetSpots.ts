@@ -20,19 +20,28 @@ export interface Fit {
   readonly y: number
 }
 
+/** What the street's spots show by: the truck's day and the game around it. */
+export interface SpotsView extends Pick<TruckView, 'open' | 'modifiers'> {
+  /** Whether the game is a Défi. */
+  readonly inChallenge: boolean
+  /** The employees serving at the truck (see `staffAtTruck`). */
+  readonly staffAtTruck: number
+}
+
 /**
  * The spots of `manifest` the street shows in `view`: each with its piece,
- * or on the days its own `shows` says, or always. In a Défi, those that open
- * a dock button the Défi hides go too, as « Ville » does.
+ * or on the days its own `shows` says, or, `staffed`, on open days while an
+ * employee serves at the truck, or always. In a Défi, those that open a dock
+ * button the Défi hides go too, as « Ville » does.
  */
 export function spotsShown(
   manifest: Pick<AssetManifest, 'pieces' | 'spots'>,
-  view: Pick<TruckView, 'open' | 'modifiers'>,
-  inChallenge: boolean,
+  view: SpotsView,
 ): readonly Spot[] {
   const pieces = new Map(manifest.pieces.map((piece) => [piece.id, piece]))
   return manifest.spots.filter((spot) => {
-    if (inChallenge && hiddenInChallenge(spot.opens)) return false
+    if (view.inChallenge && hiddenInChallenge(spot.opens)) return false
+    if (spot.staffed === true) return view.open && view.staffAtTruck > 0
     const shows =
       spot.piece === undefined ? spot.shows : pieces.get(spot.piece)?.shows
     return shows === undefined || showsOn(shows, view)

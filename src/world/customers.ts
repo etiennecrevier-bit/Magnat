@@ -32,6 +32,7 @@ import {
   drawAvatar,
   drawBubble,
   drawCustomer,
+  drawEmployee,
   drawPickMark,
   drawSpill,
   pickLook,
@@ -46,7 +47,12 @@ import {
   type Replay,
 } from './replay.ts'
 import type { Shadows } from './shadows.ts'
-import { chosenModifiers, opensToday, showsOn } from './truckView.ts'
+import {
+  chosenModifiers,
+  opensToday,
+  showsOn,
+  staffAtTruck,
+} from './truckView.ts'
 
 /** The customers on the street, the avatar who serves them and the tally. */
 export interface Customers {
@@ -171,6 +177,16 @@ export function startCustomers(setup: CustomersSetup): Customers {
     if (!open) avatar.rest()
   }
 
+  // The employee at the truck (#208) stands still on the sidewalk, with
+  // their shadows, on open days while one serves at it.
+  const employee = drawStanding(
+    drawEmployee(settings.employee, style, settings.looks.trousers),
+    settings.employee,
+    style,
+    shadows,
+  )
+  root.addChild(employee.root)
+
   // The spill sits on the counter, in front of it and of the avatar.
   const spill = drawSpill(settings.fatigue.spill)
   spill.visible = false
@@ -276,6 +292,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
       swingFans()
       fatigue = fatigueOf(game.energy, setup.energy)
       showAvatar(game.profile.avatar, open)
+      employee.show(open && staffAtTruck(game) > 0)
       if (!open) {
         crowd.dismiss()
         dropSpill()
@@ -387,6 +404,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
     destroy: () => {
       avatar?.destroy()
       avatar = null
+      employee.destroy()
       spill.destroy()
       pickedId = null
       for (const view of views.values()) destroyView(view)
@@ -525,6 +543,47 @@ function holdCup(
   view.facesRight = facesRight
   view.facesLeft = facesLeft
   view.fans = fansOf(facesRight, facesLeft)
+}
+
+/**
+ * `figure`, standing still with its feet at `at`, among the customers by
+ * its feet, with its shadows on the ground as a customer's; hidden until
+ * shown. Its shadows are made the first time it shows, as a customer's are
+ * when they come.
+ */
+function drawStanding(
+  figure: Container,
+  at: { readonly x: number; readonly feetY: number; readonly height: number },
+  style: PeopleStyle,
+  shadows: Shadows,
+) {
+  figure.position.set(at.x, at.feetY)
+  figure.zIndex = at.feetY
+  figure.visible = false
+  const { feet, reach } = style.shading.figure.shadow
+  const sized = (oval: FigureShadow) => ({
+    ...oval,
+    dx: oval.dx * at.height,
+    dy: oval.dy * at.height,
+    width: oval.width * at.height,
+  })
+  let ground: Container[] = []
+  return {
+    root: figure,
+    show: (shown: boolean) => {
+      figure.visible = shown
+      if (shown && ground.length === 0) {
+        ground = [
+          shadows.castOval(figure.label, at.x, at.feetY, sized(reach)),
+          shadows.spot(figure.label, at.x, at.feetY, sized(feet)),
+        ]
+      }
+      for (const shadow of ground) shadow.visible = shown
+    },
+    destroy: () => {
+      for (const shadow of ground) shadow.destroy()
+    },
+  }
 }
 
 /** Takes a customer off the street, with their shadows. */

@@ -278,6 +278,7 @@ describe('assets.json', () => {
         { id: 'menu', piece: 'chalkboard', shows: undefined },
         { id: 'stocks', piece: 'croissant-rack', shows: undefined },
         { id: 'owner', piece: undefined, shows: 'open' },
+        { id: 'employee', piece: undefined, shows: undefined },
         { id: 'city', piece: 'far', shows: undefined },
       ],
     )
@@ -340,7 +341,14 @@ describe('loadAssetManifest', () => {
     (raw) => {
       ;(raw.spots as Record<string, unknown>[])[0]!.shows = 'open'
     },
-    /a spot follows its piece or its own shows, not both/,
+    /a spot follows its piece, its own shows or the staff, one only/,
+  )
+  rejects(
+    'a spot following both the staff and its own days',
+    (raw) => {
+      ;(raw.spots as Record<string, unknown>[])[3]!.shows = 'open'
+    },
+    /a spot follows its piece, its own shows or the staff, one only/,
   )
   rejects(
     'a legend shown no day',

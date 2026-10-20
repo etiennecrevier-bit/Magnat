@@ -37,7 +37,7 @@ import {
   type StreetLink,
 } from './streetSpots.ts'
 import { setUpOrUndo } from './teardown.ts'
-import { truckView } from './truckView.ts'
+import { staffAtTruck, truckView } from './truckView.ts'
 
 /**
  * How the street loads what it draws: Pixi's `Assets`, or a test's fakes.
@@ -261,7 +261,11 @@ export async function startStreet(
     const show = (game: GameState) => {
       const view = truckView(game)
       scene.update(view)
-      spots = spotsShown(manifest, view, game.challenge !== null)
+      spots = spotsShown(manifest, {
+        ...view,
+        inChallenge: game.challenge !== null,
+        staffAtTruck: staffAtTruck(game),
+      })
       customers.onGame(game)
     }
     show(store.getState().game)

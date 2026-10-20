@@ -40,7 +40,7 @@ import { createPicker, NO_MARKS, NOBODY_THERE, type Picker } from './picker.ts'
 import { replayOf } from './replay.ts'
 import { startStreet, type StreetCrowd, type StreetLoaders } from './street.ts'
 import { spotAt, spotMark, spotsShown, type StreetLink } from './streetSpots.ts'
-import { truckView } from './truckView.ts'
+import { staffAtTruck, truckView } from './truckView.ts'
 
 /** A Pixi app with a real stage, a screen the test resizes and a ticker it runs. */
 function createFakeApp(width = 1440, height = 900) {
@@ -1415,7 +1415,12 @@ function customerOverSpot(
   app: ReturnType<typeof createFakeApp>,
   store: GameStore,
 ): { walker: Container; point: Point } {
-  const spots = spotsShown(ASSETS, truckView(store.getState().game), false)
+  const { game } = store.getState()
+  const spots = spotsShown(ASSETS, {
+    ...truckView(game),
+    inChallenge: false,
+    staffAtTruck: staffAtTruck(game),
+  })
   return playUntil(app, store, () => {
     for (const walker of walkers(app)) {
       const point = centreOf(boxOf(figureOf(walker)))
@@ -1441,6 +1446,39 @@ describe('startStreet: the spots (#208)', () => {
       { dock: 'ville' },
     ])
     expect(picker.view().open).toBeNull()
+  })
+
+  it('draws the employee serving at the truck, whose spot opens « Équipe »', async () => {
+    const store = mondayStore()
+    store.setState({
+      game: applyDecision(store.getState().game, {
+        kind: 'hire',
+        role: 'camion',
+        candidate: 'amelie',
+      }),
+    })
+    store.getState().advance(2)
+    const { app, picker, opened } = await spotStreet(store)
+    const employee = app.stage.getChildByLabel('employee', true)!
+    expect(employee.visible).toBe(true)
+
+    // Their spot holds them, as drawn.
+    const spot = ASSETS.spots.find(({ id }) => id === 'employee')!
+    const box = boxOf(employee)
+    expect(box.left).toBeGreaterThanOrEqual(spot.x)
+    expect(box.right).toBeLessThanOrEqual(spot.x + spot.width)
+    expect(box.top).toBeGreaterThanOrEqual(spot.y)
+    expect(box.bottom).toBeLessThanOrEqual(spot.y + spot.height)
+
+    picker.at(middleOfSpot('employee'))
+    expect(opened).toEqual([{ dock: 'equipe' }])
+  })
+
+  it('draws no employee, and opens nothing there, while none serves at the truck', async () => {
+    const { app, picker, opened } = await spotStreet()
+    expect(app.stage.getChildByLabel('employee', true)?.visible).toBe(false)
+    picker.at(middleOfSpot('employee'))
+    expect(opened).toEqual([])
   })
 
   it('points over a spot, and nowhere beside everyone', async () => {
