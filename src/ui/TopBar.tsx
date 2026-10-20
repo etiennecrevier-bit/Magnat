@@ -26,7 +26,9 @@ import { formatGameDate } from './formatGameDate.ts'
 import { Icon } from './icons.tsx'
 import { messageStack, type MessageStack } from './messageStack.ts'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
-import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
+import { gameStore, NORMAL_SPEED, PAUSED, useGame } from './store.ts'
+import { coachShowing } from './tutorialFlow.ts'
+import { tutorialSignals } from './tutorialSignals.ts'
 import { keepRoomUnder } from './tickerRoom.ts'
 import { todayNumbers, type TodayNumbers } from './todayNumbers.ts'
 import { enRouteLine } from './tripBoard.ts'
@@ -195,6 +197,7 @@ export function TopBarView({
               }
               aria-label={speedLabel(option)}
               aria-pressed={option === speed}
+              data-tuto={`speed.${option}`}
               onClick={() => onSpeedChange(option)}
             >
               {speedText(option)}
@@ -275,8 +278,11 @@ export default function TopBar({
   const narrow = useMediaQuery(NARROW_QUERY)
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) =>
+    // Réal's bubble waits for its own gesture: Space does not pause then.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (coachShowing(gameStore.getState())) return
       handlePauseKey(event, togglePause)
+    }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', blockSpaceClick)
     return () => {
@@ -330,7 +336,10 @@ export default function TopBar({
       energy={energy}
       avatar={avatar}
       speed={speed}
-      onSpeedChange={setSpeed}
+      onSpeedChange={(next) => {
+        tutorialSignals.emit({ kind: 'speed', speed: next })
+        setSpeed(next)
+      }}
       enRoute={enRouteLine({ day, events, town })}
       defiLabel={defiLabel}
       defiEnergy={defiEnergy}

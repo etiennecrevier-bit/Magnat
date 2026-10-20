@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState } from '../engine/clock.ts'
-import { FOOD_TRUCK } from '../engine/day.ts'
+import { DEFIS, FOOD_TRUCK } from '../engine/day.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import { deserialize, serialize } from '../engine/save.ts'
 import type { GameState } from '../engine/types.ts'
@@ -13,7 +13,13 @@ import {
   type SaveStorage,
   type StoredSave,
 } from './saves.ts'
-import { continueStoredGame, savedLine } from './startMenu.ts'
+import { createSettingsStore } from './settings.ts'
+import {
+  answerTourOffer,
+  continueStoredGame,
+  savedLine,
+  startFromForm,
+} from './startMenu.ts'
 import { createGameStore, newChallenge } from './store.ts'
 
 afterEach(() => {
@@ -173,5 +179,49 @@ describe('savedLine', () => {
         ended: { reason: 'bankruptcy', day: 213 },
       }),
     ).toBe('Continued, faillite le 30 novembre, an 1')
+  })
+})
+
+const DEFIS_FIRST = DEFIS.defis[0]!.id
+
+describe('Réal’s offer', () => {
+  const profile = {
+    businessName: 'Chez Mimi',
+    avatar: 'homme' as const,
+    difficulty: 'difficile' as const,
+  }
+
+  it('comes on the first game only', () => {
+    const settings = createSettingsStore(null)
+    expect(startFromForm(profile, settings.getState(), '')).toEqual({
+      offer: profile,
+    })
+    answerTourOffer(false, profile, settings.getState(), '?seed=9')
+    const later = startFromForm(profile, settings.getState(), '?seed=9')
+    expect('game' in later && later.game.seed).toBe(9)
+    expect('game' in later && later.game.tutorial).toBeUndefined()
+  })
+
+  it('« Faire la visite » starts the tour on its own seed, at the difficulty picked', () => {
+    const settings = createSettingsStore(null)
+    const game = answerTourOffer(true, profile, settings.getState(), '?seed=9')
+    expect(game.tutorial).toMatchObject({ step: 'bienvenue', done: false })
+    expect(game.seed).not.toBe(9)
+    expect(game.profile).toEqual(profile)
+    expect(settings.getState().tutorialOffered).toBe(true)
+  })
+
+  it('« Passer » starts a game without the tour, and keeps it offered', () => {
+    const settings = createSettingsStore(null)
+    const game = answerTourOffer(false, profile, settings.getState(), '')
+    expect(game.tutorial).toBeUndefined()
+    expect(settings.getState().tutorialOffered).toBe(true)
+  })
+
+  it('never comes with a Défi, which has no tour', () => {
+    const settings = createSettingsStore(null)
+    const defi = newChallenge('', DEFIS_FIRST)
+    expect(defi.tutorial).toBeUndefined()
+    expect(settings.getState().tutorialOffered).toBe(false)
   })
 })

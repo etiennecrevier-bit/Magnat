@@ -62,13 +62,82 @@ describe('tutorial.json', () => {
   })
 })
 
+describe('tutorial.json, what Réal says', () => {
+  const content = loadTutorialContent()
+
+  it('has a text for every step, a button only where the step waits for one', () => {
+    for (const { gesture, text, button } of content.steps) {
+      expect(text.length).toBeGreaterThan(0)
+      expect(button !== undefined).toBe(
+        gesture === 'next' || gesture === 'priceOrOk',
+      )
+    }
+  })
+
+  it('keeps Réal to sentences of 15 words at most', () => {
+    const lines = content.steps.flatMap(({ text, fallback }) =>
+      fallback === undefined ? [text] : [text, fallback.text],
+    )
+    for (const line of lines) {
+      for (const sentence of line.split(/(?<=[.!?])\s+/)) {
+        expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(15)
+      }
+    }
+  })
+
+  it('falls back on day 2 without a shortage and on day 3 without a complaint', () => {
+    expect(
+      content.steps.flatMap(({ id, day, fallback }) =>
+        fallback === undefined ? [] : [[day, id, fallback.fact]],
+      ),
+    ).toEqual([
+      [2, 'lireHier', 'croissantShortage'],
+      [3, 'tropCher', 'cafeTooExpensive'],
+    ])
+  })
+
+  it('centres the first and the last bubble, and points every other at something', () => {
+    for (const { id, anchors } of content.steps) {
+      expect(anchors.length === 0, id).toBe(
+        id === 'bienvenue' || id === 'aurevoir',
+      )
+    }
+  })
+})
+
 describe('loadTutorialContent rejects', () => {
+  it('a button where the step waits for none, none where it waits for one, and tipAnchors likewise', () => {
+    const raw = shipped()
+    const steps = raw.steps as Json[]
+    delete steps[0]!.button
+    steps[1]!.button = 'Allez'
+    delete steps[4]!.tipAnchors
+    steps[5]!.tipAnchors = ['menu.cafe']
+    rejects(
+      raw,
+      'a next step has a button',
+      'a openTruck step has no button',
+      'a readYesterday step has tipAnchors',
+      'a restockRaise step has no tipAnchors',
+    )
+  })
+
+  it('an anchor that is no data-tuto, a fallback on a fact the engine does not tell, or no coach', () => {
+    const raw = shipped()
+    const steps = raw.steps as Json[]
+    steps[1]!.anchors = ['Dock camion']
+    steps[4]!.fallback = { fact: 'rain', text: 'Il pleut.', button: 'Ok' }
+    delete raw.coach
+    rejects(raw, 'a data-tuto anchor', 'steps[4].fallback.fact', 'coach')
+  })
+
   it('a step id used twice, steps out of the order of their days, and one after the last day', () => {
     const raw = shipped()
+    const step = { text: 'Salut.', button: 'Ok', anchors: [] }
     raw.steps = [
-      { id: 'a', day: 2, gesture: 'next' },
-      { id: 'a', day: 1, gesture: 'next' },
-      { id: 'b', day: 8, gesture: 'next' },
+      { id: 'a', day: 2, gesture: 'next', ...step },
+      { id: 'a', day: 1, gesture: 'next', ...step },
+      { id: 'b', day: 8, gesture: 'next', ...step },
     ]
     rejects(
       raw,

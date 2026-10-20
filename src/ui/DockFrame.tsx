@@ -37,6 +37,8 @@ interface FrameHeaderProps<T extends string> {
   readonly bodyId: string
   /** « ✕ »: closes the frame. */
   readonly onDismiss: () => void
+  /** Whether the frame is a panel or a drawer, for « ✕ »'s `data-tuto`. */
+  readonly kind?: 'panel' | 'drawer'
 }
 
 /**
@@ -52,6 +54,7 @@ export function FrameHeader<T extends string>({
   onTab,
   bodyId,
   onDismiss,
+  kind = 'panel',
 }: FrameHeaderProps<T>) {
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (tab === undefined || onTab === undefined) return
@@ -87,6 +90,7 @@ export function FrameHeader<T extends string>({
                 role="tab"
                 className={selected ? 'tab on' : 'tab'}
                 aria-selected={selected}
+                data-tuto={`tab.${id}`}
                 aria-controls={bodyId}
                 tabIndex={selected ? 0 : -1}
                 onMouseDown={keepFocus}
@@ -104,6 +108,7 @@ export function FrameHeader<T extends string>({
         type="button"
         className="dock-frame__close"
         aria-label="Fermer"
+        data-tuto={`${kind}.close`}
         onMouseDown={keepFocus}
         onClick={onDismiss}
       >
@@ -242,6 +247,7 @@ export function DockPanel<T extends string>({
         onTab={onTab}
         bodyId={bodyId}
         onDismiss={onDismiss}
+        kind="panel"
       />
       <FrameBody bodyId={bodyId} tabs={tabs} tab={tab}>
         {children}
@@ -356,6 +362,7 @@ export function DockDrawer<T extends string>({
         onTab={onTab}
         bodyId={bodyId}
         onDismiss={onClose}
+        kind="drawer"
       />
       {/* A body of its own per tab, which scrolls, so each tab opens from its
           top rather than where the last one was scrolled (#228). */}

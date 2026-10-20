@@ -41,6 +41,7 @@ export function YesterdayView({
           <button
             type="button"
             className="yesterday-pill"
+            data-tuto="yesterday.pill"
             aria-expanded={false}
             aria-keyshortcuts={FOLD_KEY}
             {...anchor}
@@ -55,7 +56,12 @@ export function YesterdayView({
   const lost = numbers?.lostSales ?? 0
   return (
     <section className="yesterday" aria-label="Hier">
-      <button type="button" className="yesterday__open" onClick={onOpen}>
+      <button
+        type="button"
+        className="yesterday__open"
+        data-tuto="yesterday"
+        onClick={onOpen}
+      >
         <span className="yesterday__title">Hier</span>
         <span className="yesterday__row">
           <span>Ventes</span>

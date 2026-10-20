@@ -24,6 +24,9 @@ import { settingsStore, type SettingsStore } from './settings.ts'
 import StaffPanel from './StaffPanel.tsx'
 import { gameStore, useGame } from './store.ts'
 import { watchStreetLegend } from './streetLegend.ts'
+import { coachShowing, watchTutorial } from './tutorialFlow.ts'
+import { tutorialSignals } from './tutorialSignals.ts'
+import CoachBubble from './CoachBubble.tsx'
 import Ticker from './Ticker.tsx'
 import TripPanel from './TripPanel.tsx'
 import WeekSlideIn from './WeekSlideIn.tsx'
@@ -34,7 +37,7 @@ import './GameScreens.css'
  * The panel open, in the dock's frame for those the dock opens, centred for
  * the Défi's, the event card, the report and « Magnat ».
  */
-function OpenPanel() {
+function OpenPanel({ saveGame }: { saveGame?: () => boolean }) {
   const panel = useGame((state) => state.panel)
   switch (panel) {
     case 'manage':
@@ -46,7 +49,7 @@ function OpenPanel() {
     case 'dream':
       return <DreamPanel />
     case 'settings':
-      return <SettingsPanel />
+      return <SettingsPanel saveGame={saveGame} />
     case 'defi':
       return <DefiPanel />
     case 'event':
@@ -77,10 +80,13 @@ function OpenPanel() {
 export default function GameScreens({
   autosaveFailed = false,
   onMenu,
+  saveGame,
   settings = settingsStore,
 }: {
   autosaveFailed?: boolean
   onMenu: () => void
+  /** Saves the game played now, as « Refaire la visite » asks; whether it did. */
+  saveGame?: () => boolean
   settings?: SettingsStore
 }) {
   const folded = useStore(settings, (state) => state.screensFolded)
@@ -96,6 +102,8 @@ export default function GameScreens({
   useEffect(() => startMessageStack(gameStore), [gamesStarted])
 
   useEffect(() => watchStreetLegend(gameStore, settings), [settings])
+
+  useEffect(() => watchTutorial(gameStore, tutorialSignals), [])
 
   // When what had the focus goes away as « Hier » hides or shows, the
   // button that takes its place gets it.
@@ -115,6 +123,8 @@ export default function GameScreens({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // Réal's bubble waits for its own gesture: the shortcuts wait too.
+      if (coachShowing(gameStore.getState())) return
       handleFoldKey(event, () => fold(!settings.getState().screensFolded))
       const inChallenge = gameStore.getState().game.challenge !== null
       handleDockKey(event, dockItems(inChallenge), (item) =>
@@ -145,7 +155,8 @@ export default function GameScreens({
       <FinancesDrawer key={`finances-${gamesStarted}`} />
       <JournalDrawer key={`journal-${gamesStarted}`} />
       <Ticker key={`ticker-${gamesStarted}`} />
-      <OpenPanel />
+      <OpenPanel saveGame={saveGame} />
+      <CoachBubble />
       {panel === 'defiEnd' && <DefiEnd onMenu={onMenu} />}
       {panel === 'bankruptcy' && <BankruptcyEnd onMenu={onMenu} />}
     </>

@@ -1,0 +1,151 @@
+/* Réal's bubble (#238): the layer over the whole window, a manual popover
+   on the top layer. CoachBubble.tsx places the hole, the four blocks and
+   the bubble each frame. Ink #2b2622 at 35 % dims everything but the hole;
+   the bubble is the panels' cream #fff7e8 with ink text. */
+.coach {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  pointer-events: none;
+  /* Without popovers, above the panels anyway. */
+  z-index: 90;
+}
+
+.coach__hole {
+  position: fixed;
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.coach[data-dim] .coach__hole {
+  box-shadow: 0 0 0 100vmax rgb(43 38 34 / 35%);
+}
+
+/* What keeps every press outside the hole from the game. */
+.coach__block {
+  position: fixed;
+  pointer-events: auto;
+}
+
+.coach__spot {
+  position: fixed;
+  pointer-events: auto;
+}
+
+.coach__bubble {
+  position: relative;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 2px solid #2b2622;
+  border-radius: 16px;
+  background: #fff7e8;
+  color: #2b2622;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 28%);
+}
+
+.coach__who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.coach__portrait {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border: 2px solid #2b2622;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* A cream figure on a warm brown until Réal's portrait lands (#237). */
+.coach__silhouette {
+  background: #8c6d52;
+  fill: #fff7e8;
+}
+
+.coach__name {
+  margin: 0;
+  font-family: Fredoka, sans-serif;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.coach__text,
+.coach__confirm-text {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.coach__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+/* « Passer la visite »: a small link, after the step's button. */
+.coach__skip {
+  margin-left: auto;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: #5c5149;
+  font: inherit;
+  font-size: 0.875rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.coach__arrow {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #2b2622;
+  background: #fff7e8;
+  transform: rotate(45deg);
+}
+
+.coach__spot[data-side='center'] .coach__arrow {
+  display: none;
+}
+
+/* The arrow sits on the edge facing the target. */
+.coach__spot[data-side='right'] .coach__arrow {
+  left: -10px;
+  top: calc(var(--coach-arrow) - 8px);
+  border-top-color: transparent;
+  border-right-color: transparent;
+}
+
+.coach__spot[data-side='left'] .coach__arrow {
+  right: -10px;
+  top: calc(var(--coach-arrow) - 8px);
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+}
+
+.coach__spot[data-side='above'] .coach__arrow {
+  bottom: -10px;
+  left: calc(var(--coach-arrow) - 8px);
+  border-top-color: transparent;
+  border-left-color: transparent;
+}
+
+.coach__spot[data-side='below'] .coach__arrow {
+  top: -10px;
+  left: calc(var(--coach-arrow) - 8px);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+}

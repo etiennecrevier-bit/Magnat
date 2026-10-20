@@ -22,6 +22,7 @@ import {
   type TipContent,
   type TipPrefer,
 } from './tooltip.ts'
+import { tutorialSignals } from './tutorialSignals.ts'
 import './Tooltip.css'
 
 /**
@@ -75,7 +76,9 @@ export interface TooltipProps {
  * takes the focus: text taller than the window scrolls by the wheel, or by
  * the arrows, Page Up, Page Down, Home and End on the focused anchor, except
  * in a text field inside it, which keeps those keys. It is a manual
- * popover, so it shows above an open panel while staying in its page.
+ * popover, so it shows above an open panel while staying in its page. On
+ * an anchor with a `data-tuto`, it tells the tutorial's signals when it
+ * opens, and registers how to open it there.
  */
 export default function Tooltip({
   content,
@@ -92,6 +95,20 @@ export default function Tooltip({
   const bodyRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => () => control.dispose(), [control])
+
+  // An anchor Réal's bubble may point at (#238) tells the tutorial when its
+  // tooltip opens, and lets the bubble open it, as a tap on a phone does
+  // not.
+  const tuto = anchorElement?.dataset.tuto
+  useEffect(() => {
+    if (tuto === undefined) return
+    return tutorialSignals.registerTip(tuto, control.open)
+  }, [tuto, control])
+  useEffect(() => {
+    if (open && tuto !== undefined) {
+      tutorialSignals.emit({ kind: 'tooltip', anchor: tuto })
+    }
+  }, [open, tuto])
 
   // Placed while open: at its width first, so it is measured at the height
   // its text wraps to there, then beside its anchor, and again whenever the

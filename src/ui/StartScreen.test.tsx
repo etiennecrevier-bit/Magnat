@@ -5,7 +5,12 @@ import { createInitialState, tick } from '../engine/clock.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
 import { serialize } from '../engine/save.ts'
 import { SAVE_KEY, type StoredSave } from './saves.ts'
-import StartScreen, { NewGameFormView, StartMenuView } from './StartScreen.tsx'
+import StartScreen, {
+  NewGameFormView,
+  StartMenuView,
+  TourOfferView,
+} from './StartScreen.tsx'
+import { TUTORIAL } from '../engine/tutorial.ts'
 
 // Every space in an amount is a no-break space (U+00A0).
 const S = ' '
@@ -285,5 +290,19 @@ describe('StartScreen', () => {
     })
     const html = renderToStaticMarkup(<StartScreen onStart={() => {}} />)
     expect(html).toContain('Ce navigateur bloque la sauvegarde automatique.')
+  })
+})
+
+describe('TourOfferView', () => {
+  it('says Réal waits at the truck, with « Faire la visite » first and « Passer »', () => {
+    const { offer } = TUTORIAL.coach
+    const html = renderToStaticMarkup(
+      <TourOfferView onAccept={() => {}} onDecline={() => {}} />,
+    )
+    expect(html).toContain(offer.text.replace(/'/g, '&#x27;'))
+    expect(buttons(html)).toEqual([
+      { text: offer.accept, primary: true },
+      { text: offer.decline, primary: false },
+    ])
   })
 })

@@ -9,10 +9,18 @@ import {
 } from './settings.ts'
 import SettingsPanel, {
   ImportButton,
+  ReplayTourField,
   SettingsPanelView,
   VisualEffectsField,
+  type ReplayStep,
 } from './SettingsPanel.tsx'
-import { gameStore, type GameStoreState } from './store.ts'
+import {
+  gameStore,
+  newChallenge,
+  newGame,
+  type GameStoreState,
+} from './store.ts'
+import { TUTORIAL } from '../engine/tutorial.ts'
 
 // A static render reads a Zustand store's initial state, so the connected
 // panel reads the app store's current state through this stand-in.
@@ -283,5 +291,42 @@ describe('SettingsPanel', () => {
       { value: 'simple', checked: false },
     ])
     expect(back).toContain('<input type="checkbox" role="switch"/>')
+  })
+})
+
+describe('« Refaire la visite »', () => {
+  const { replay } = TUTORIAL.coach
+  const field = (step: ReplayStep) =>
+    renderToStaticMarkup(
+      <ReplayTourField
+        step={step}
+        onAsk={() => {}}
+        onConfirm={() => {}}
+        onAnyway={() => {}}
+        onCancel={() => {}}
+      />,
+    )
+  const texts = (html: string) =>
+    [...html.matchAll(/<(?:button|p)[^>]*>([^<]*)<\/(?:button|p)>/g)].map(
+      ([, text]) => text!.replace(/&#x27;/g, "'"),
+    )
+
+  it('asks, then says the game is saved first, then that the save failed', () => {
+    expect(texts(field('idle'))).toEqual([replay.button, replay.hint])
+    expect(texts(field('confirm'))).toEqual([
+      replay.confirm,
+      replay.yes,
+      replay.no,
+    ])
+    const failed = field('saveFailed')
+    expect(failed).toContain('role="alert"')
+    expect(texts(failed)).toEqual([replay.saveFailed, replay.anyway, replay.no])
+  })
+
+  it('shows in « Réglages » of a game, never in a Défi', () => {
+    gameStore.getState().startGame(newGame('?seed=4'))
+    expect(renderToStaticMarkup(<SettingsPanel />)).toContain(replay.button)
+    gameStore.getState().startGame(newChallenge('?seed=4', 'moisSansConge'))
+    expect(renderToStaticMarkup(<SettingsPanel />)).not.toContain(replay.button)
   })
 })

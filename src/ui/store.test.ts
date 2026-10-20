@@ -28,6 +28,7 @@ import {
   isNewGame,
   newChallenge,
   newGame,
+  newTutorialGame,
   seedFromSearch,
   type GameStore,
 } from './store.ts'
@@ -2014,5 +2015,99 @@ describe('a purchase of « Le rêve »', () => {
     expect(() =>
       store.getState().decide({ kind: 'buy', rung: 'velo' }),
     ).toThrow(RangeError)
+  })
+})
+
+describe('the tutorial in the store (#238)', () => {
+  it('plays a new tour on the tutorial’s own seed, whatever the address, at the difficulty picked', () => {
+    const profile = { ...defaultProfile(), difficulty: 'difficile' as const }
+    const tour = newTutorialGame(profile)
+    expect(isNewGame(tour)).toBe(true)
+    expect(tour.seed).toBe(newTutorialGame().seed)
+    expect(tour.profile.difficulty).toBe('difficile')
+  })
+
+  it('starts paused on the step due, with or without a panel, and holds the days', () => {
+    const store = createGameStore(newTutorialGame())
+    expect(store.getState().speed).toBe(PAUSED)
+    store.getState().setSpeed(3)
+    store.getState().advance(5)
+    expect(store.getState().game.day).toBe(0)
+
+    // A save loaded on the event card of day 4 resumes paused.
+    const game = newTutorialGame()
+    const onCard = createGameStore({
+      ...game,
+      day: 3,
+      tutorial: { ...game.tutorial!, step: 'evenement' },
+      events: {
+        ...game.events,
+        pending: { event: 'tutoStory', followUp: false },
+      },
+    })
+    expect(onCard.getState()).toMatchObject({
+      panel: 'event',
+      speed: PAUSED,
+      resumeSpeed: PAUSED,
+    })
+  })
+
+  it('stops on the morning a step comes, paused, with the drawer closed', () => {
+    const store = createGameStore(newTutorialGame())
+    for (const id of ['bienvenue', 'ouvrirCamion', 'changerPrix']) {
+      store.getState().completeTutorialStep(id)
+    }
+    store.getState().closePanel()
+    store.getState().completeTutorialStep('lancerJour')
+    expect(store.getState().speed).toBe(NORMAL_SPEED)
+    store.getState().openDrawer('journal')
+    store.getState().advance(3)
+    expect(store.getState()).toMatchObject({
+      speed: PAUSED,
+      lastSpeed: NORMAL_SPEED,
+      drawer: null,
+    })
+    expect(store.getState().game.day).toBe(1)
+    expect(store.getState().game.tutorial?.step).toBe('lireHier')
+  })
+
+  it('skips the tour at once, going on at normal speed, unprotected', () => {
+    const store = createGameStore(newTutorialGame())
+    store.getState().skipTour()
+    expect(store.getState().game.tutorial).toMatchObject({
+      done: true,
+      skipped: true,
+      step: null,
+    })
+    expect(store.getState().speed).toBe(NORMAL_SPEED)
+    store.getState().advance(2)
+    expect(store.getState().game.day).toBe(2)
+    // A second skip, or one in a game without a tour, does nothing.
+    const after = store.getState().game
+    store.getState().skipTour()
+    expect(store.getState().game).toBe(after)
+  })
+
+  it('a step that launches the day with a panel open goes on as the panel closes', () => {
+    const store = createGameStore(newTutorialGame())
+    store.getState().completeTutorialStep('bienvenue')
+    store.getState().openPanel('manage')
+    store.getState().completeTutorialStep('ouvrirCamion')
+    store.getState().completeTutorialStep('changerPrix')
+    // lancerJour, the step left, is done with ×1, not from the panel.
+    expect(store.getState().resumeSpeed).toBe(PAUSED)
+    store.getState().completeTutorialStep('lancerJour')
+    expect(store.getState().resumeSpeed).toBe(NORMAL_SPEED)
+    store.getState().closePanel()
+    expect(store.getState().speed).toBe(NORMAL_SPEED)
+  })
+
+  it('keeps whether the game is a tour replayed over the saved game', () => {
+    const store = createGameStore(createInitialState(3))
+    expect(store.getState().keepsSave).toBe(false)
+    store.getState().startGame(newTutorialGame(), { keepsSave: true })
+    expect(store.getState().keepsSave).toBe(true)
+    store.getState().startGame(createInitialState(4))
+    expect(store.getState().keepsSave).toBe(false)
   })
 })

@@ -54,6 +54,7 @@ export function DockView({ items, isOpen, badges, onActivate }: DockViewProps) {
                   <button
                     type="button"
                     id={dockButtonId(item.id)}
+                    data-tuto={`dock.${item.id}`}
                     className={
                       open ? 'dock__button dock__button--open' : 'dock__button'
                     }

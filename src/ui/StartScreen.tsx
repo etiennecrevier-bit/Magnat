@@ -4,13 +4,19 @@ import type { Avatar, DifficultyId } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
 import { DEFIS } from '../engine/day.ts'
 import { defaultProfile } from '../engine/profile.ts'
-import type { GameState } from '../engine/types.ts'
+import { TUTORIAL } from '../engine/tutorial.ts'
+import type { GameState, Profile } from '../engine/types.ts'
 import { DefiBriefingView, DefiListView } from './DefisScreen.tsx'
 import { DIFFICULTIES, difficultyLine, readBusinessName } from './newGame.ts'
 import { browserStorage, readStoredSave, type StoredSave } from './saves.ts'
 import { settingsStore, type SettingsStore } from './settings.ts'
-import { continueStoredGame, savedLine } from './startMenu.ts'
-import { newChallenge, newGame } from './store.ts'
+import {
+  answerTourOffer,
+  continueStoredGame,
+  savedLine,
+  startFromForm,
+} from './startMenu.ts'
+import { newChallenge } from './store.ts'
 import './StartScreen.css'
 
 const AVATARS: Record<Avatar, string> = { femme: 'Femme', homme: 'Homme' }
@@ -200,13 +206,55 @@ export function NewGameFormView({
   )
 }
 
-/** The start screen's pages: the menu, a form, a list, a briefing. */
-type Page = 'menu' | 'newGame' | 'defis' | { readonly briefing: string }
+interface TourOfferViewProps {
+  onAccept: () => void
+  onDecline: () => void
+}
+
+/**
+ * Réal's offer on the player's first game (#238): « Réal t'attend au
+ * camion. », with « Faire la visite » and « Passer ».
+ */
+export function TourOfferView({ onAccept, onDecline }: TourOfferViewProps) {
+  const headingId = useId()
+  const { offer } = TUTORIAL.coach
+  return (
+    <section className="start-screen" aria-labelledby={headingId}>
+      <h1 id={headingId}>{offer.title}</h1>
+      <p className="start-screen__offer">{offer.text}</p>
+      <div className="start-screen__actions">
+        <button
+          type="button"
+          className="button button--primary"
+          onClick={onAccept}
+        >
+          {offer.accept}
+        </button>
+        <button type="button" className="button" onClick={onDecline}>
+          {offer.decline}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * The start screen's pages: the menu, a form, Réal's offer for the
+ * profile the form made, a list, a briefing.
+ */
+type Page =
+  | 'menu'
+  | 'newGame'
+  | { readonly offer: Profile }
+  | 'defis'
+  | { readonly briefing: string }
 
 /**
  * The start screen wired to the browser's saves and the medals `settings`
  * keeps: the menu, then the new game form, or the Défis and a Défi's
- * briefing. `onStart` gets the game to play, new, continued or a Défi.
+ * briefing. `onStart` gets the game to play, new, continued or a Défi. The
+ * player's first new game, as `settings` keep it, offers Réal's tour first,
+ * whose game keeps the difficulty picked for its day 8; a Défi never does.
  */
 export default function StartScreen({
   onStart,
@@ -234,16 +282,37 @@ export default function StartScreen({
           onDifficultyChange={setDifficulty}
           onBusinessNameChange={setBusinessName}
           onAvatarChange={setAvatar}
-          onStart={(name) =>
-            onStart(
-              newGame(window.location.search, {
-                businessName: name,
-                avatar,
-                difficulty,
-              }),
+          onStart={(name) => {
+            const next = startFromForm(
+              { businessName: name, avatar, difficulty },
+              settings.getState(),
+              window.location.search,
             )
-          }
+            if ('game' in next) onStart(next.game)
+            else setPage(next)
+          }}
           onBack={() => setPage('menu')}
+        />
+      </main>
+    )
+  }
+
+  if (typeof page === 'object' && 'offer' in page) {
+    const { offer: profile } = page
+    const answer = (accept: boolean) =>
+      onStart(
+        answerTourOffer(
+          accept,
+          profile,
+          settings.getState(),
+          window.location.search,
+        ),
+      )
+    return (
+      <main>
+        <TourOfferView
+          onAccept={() => answer(true)}
+          onDecline={() => answer(false)}
         />
       </main>
     )

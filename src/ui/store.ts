@@ -1,7 +1,12 @@
 import { createStore, useStore, type StoreApi } from 'zustand'
 import type { EventContent, GrocerId, Ladder } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
-import { createInitialState, startChallenge, tick } from '../engine/clock.ts'
+import {
+  createInitialState,
+  startChallenge,
+  startTutorial,
+  tick,
+} from '../engine/clock.ts'
 import {
   CUSTOMERS,
   DEFIS,
@@ -14,6 +19,7 @@ import {
 import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
 import { resolveEvent } from '../engine/events.ts'
 import { defaultProfile } from '../engine/profile.ts'
+import { skipTutorial, tutorialStepOf } from '../engine/tutorial.ts'
 import type { Day, GameState, Profile, WeekReport } from '../engine/types.ts'
 import { isChallengeOver } from './defis.ts'
 import {
@@ -250,6 +256,12 @@ export interface GameStoreState {
    * when none shows. It hides while a panel is open.
    */
   slideIn: Day | null
+  /**
+   * Whether the game played is a tour of Réal's replayed from « Réglages »
+   * over a game kept in the browser's save, which the autosave then leaves
+   * alone until the tour is over (see `startAutosave`).
+   */
+  keepsSave: boolean
   /** Ignored while a panel is open: the game stays paused. */
   setSpeed: (speed: number) => void
   /** Ignored while a panel is open: the game stays paused. */
@@ -286,6 +298,12 @@ export interface GameStoreState {
    * of the Défi, or the « Faillite » of a game that went bankrupt (see
    * `endPanel`); with a panel already open, it opens when that panel
    * closes. Once the game is over it does nothing.
+   *
+   * In the tutorial (#236), it never plays a day while a step is due, and
+   * stops on the morning one comes, paused, with the drawer closed: a panel
+   * that opens that morning, such as the event card, resumes paused too,
+   * and the step that launches the day resumes the game (see
+   * `completeTutorialStep`).
    */
   advance: (days: number) => void
   /**
@@ -366,14 +384,29 @@ export interface GameStoreState {
    */
   decide: (change: DecisionChange) => void
   /**
+   * Marks the tutorial's step `id` done, as the UI saw its gesture, through
+   * the engine's `applyDecision()`; does nothing unless it is the step due,
+   * so a gesture seen twice changes nothing. Once no step is left that day,
+   * the game goes on at normal speed: at once, or as the panel open closes.
+   * With `resume` false, it stays as it is, for the caller to resume.
+   */
+  completeTutorialStep: (id: string, resume?: boolean) => void
+  /**
+   * Ends the tutorial at once, through the engine's `skipTutorial()`, and
+   * goes on at normal speed, as `completeTutorialStep` does. Does nothing
+   * without a tutorial under way.
+   */
+  skipTour: () => void
+  /**
    * Plays `game` from now on, new or loaded, at normal speed: paused on the
    * event card if an event waits for the player's choice, and on its end if
    * it is over, a Défi or a game that went bankrupt. Closes the panel and
    * the drawer open, if any, puts the drawers back on their first tabs,
    * with every accordion of « Finances » closed, and counts the game in
-   * `gamesStarted`.
+   * `gamesStarted`. With `keepsSave`, `game` is a tour replayed over the
+   * game the browser saved (see `keepsSave`).
    */
-  startGame: (game: GameState) => void
+  startGame: (game: GameState, options?: { keepsSave?: boolean }) => void
 }
 
 export type GameStore = StoreApi<GameStoreState>
@@ -461,6 +494,22 @@ export function newChallenge(
 }
 
 /**
+ * The tutorial game for `profile` (#236): the tutorial's own seed, the same
+ * at every difficulty, whatever `?seed=` the address names. Throws a
+ * RangeError if the engine rejects `profile`.
+ */
+export function newTutorialGame(
+  profile: Profile = defaultProfile(),
+): GameState {
+  return made(startTutorial(profile, FOOD_TRUCK))
+}
+
+/** Whether a step of `game`'s tutorial is due, which holds its days. */
+function stepDue(game: GameState): boolean {
+  return tutorialStepOf(game) !== null
+}
+
+/**
  * The panel that ends `game`, once it is over: the end of its Défi, or the
  * « Faillite » of a game that went bankrupt; null while it goes on.
  */
@@ -482,17 +531,20 @@ function openingPanel(game: GameState): EndPanel | 'event' | null {
 /**
  * The store's state for playing `game` from its start, at normal speed: on
  * its end or the event card, paused, if it opens on one (see
- * `openingPanel`). The report of a game loaded on its morning does not
- * show again, and only `lastWeek` is kept of its weeks.
+ * `openingPanel`). A tutorial game with a step due starts paused, and its
+ * panel resumes paused. The report of a game loaded on its morning does
+ * not show again, and only `lastWeek` is kept of its weeks.
  */
-function playing(game: GameState) {
+function playing(game: GameState, keepsSave = false) {
   const panel = openingPanel(game)
   const waiting = panel !== null
+  const held = stepDue(game)
   return {
     game,
-    speed: waiting ? PAUSED : NORMAL_SPEED,
+    keepsSave,
+    speed: waiting || held ? PAUSED : NORMAL_SPEED,
     lastSpeed: NORMAL_SPEED,
-    resumeSpeed: waiting ? NORMAL_SPEED : null,
+    resumeSpeed: waiting ? (held ? PAUSED : NORMAL_SPEED) : null,
     panel,
     panelSection: null,
     eventBefore: null,
@@ -511,6 +563,18 @@ function playing(game: GameState) {
     cityPick: null,
     unreadReports: 0,
   }
+}
+
+/**
+ * What goes on at normal speed: the game at once, or, with a panel open,
+ * as it closes.
+ */
+function goOn(
+  state: Pick<GameStoreState, 'resumeSpeed'>,
+): Partial<GameStoreState> {
+  return state.resumeSpeed !== null
+    ? { resumeSpeed: NORMAL_SPEED }
+    : { speed: NORMAL_SPEED, lastSpeed: NORMAL_SPEED }
 }
 
 /**
@@ -547,6 +611,7 @@ export function createGameStore(
       } = get()
       if (
         days <= 0 ||
+        stepDue(start) ||
         endPanel(start) !== null ||
         start.events.pending !== null ||
         panel === 'event' ||
@@ -557,6 +622,22 @@ export function createGameStore(
       ) {
         return
       }
+      // A tutorial morning with a step due holds the game, paused, its
+      // drawer closed so nothing covers what the step points at; a panel
+      // opening or open that morning resumes paused.
+      const put = (patch: Partial<GameStoreState>) => {
+        if (patch.game === undefined || !stepDue(patch.game)) {
+          set(patch)
+          return
+        }
+        const opens =
+          patch.resumeSpeed !== undefined && patch.resumeSpeed !== null
+        set(
+          opens || resumeSpeed !== null
+            ? { ...patch, drawer: null, resumeSpeed: PAUSED }
+            : { ...patch, drawer: null, speed: PAUSED },
+        )
+      }
       let next = start
       let { weekReports } = get()
       let comes: ReportCadence | null = null
@@ -564,6 +645,7 @@ export function createGameStore(
       for (
         let i = 0;
         i < days &&
+        !stepDue(next) &&
         next.events.pending === null &&
         comes === null &&
         !crowned &&
@@ -596,7 +678,7 @@ export function createGameStore(
       // morning.
       const ending = endPanel(next)
       if (ending !== null) {
-        set(
+        put(
           resumeSpeed === null
             ? {
                 game: next,
@@ -637,7 +719,7 @@ export function createGameStore(
                 unreadReports: get().unreadReports + 1,
               }
             : { slideIn: get().slideIn }
-        set(
+        put(
           resumeSpeed === null
             ? {
                 game: next,
@@ -657,7 +739,7 @@ export function createGameStore(
               },
         )
       } else if (opens) {
-        set(
+        put(
           resumeSpeed === null
             ? {
                 game: next,
@@ -678,7 +760,7 @@ export function createGameStore(
               },
         )
       } else if (report !== null) {
-        set({
+        put({
           game: next,
           weekReports,
           ...shown,
@@ -686,9 +768,9 @@ export function createGameStore(
           unreadReports: get().unreadReports + 1,
         })
       } else if (!eventComes || resumeSpeed !== null) {
-        set({ game: next, weekReports })
+        put({ game: next, weekReports })
       } else {
-        set({
+        put({
           game: next,
           weekReports,
           panel: 'event',
@@ -844,8 +926,26 @@ export function createGameStore(
       if (get().slideIn !== null) set({ slideIn: null })
     },
     decide: (change) => set({ game: applyDecision(get().game, change) }),
-    startGame: (next) =>
-      set({ ...playing(next), gamesStarted: get().gamesStarted + 1 }),
+    completeTutorialStep: (id, resume = true) => {
+      const { game: current } = get()
+      if (tutorialStepOf(current)?.id !== id) return
+      const next = applyDecision(current, { kind: 'tutorialStep', step: id })
+      set(
+        resume && !stepDue(next)
+          ? { game: next, ...goOn(get()) }
+          : { game: next },
+      )
+    },
+    skipTour: () => {
+      const { game: current } = get()
+      if (current.tutorial === undefined || current.tutorial.done) return
+      set({ game: skipTutorial(current), ...goOn(get()) })
+    },
+    startGame: (next, options) =>
+      set({
+        ...playing(next, options?.keepsSave ?? false),
+        gamesStarted: get().gamesStarted + 1,
+      }),
   }))
 }
 

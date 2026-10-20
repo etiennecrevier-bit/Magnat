@@ -322,7 +322,9 @@ describe('ManagePanelView', () => {
   it('lays out each restock rule by its kind, with steppers of one unit and its status line', () => {
     const html = render('stocks', { game: playedGame() })
     const rules = html
-      .split('<div class="product-card product-card--stock" role="group"')
+      .split(
+        /<div class="product-card product-card--stock" data-tuto="stocks\.\w+" role="group"/,
+      )
       .slice(1)
     expect(rules).toHaveLength(3)
     const [cafe = '', , croissant = ''] = rules
@@ -764,7 +766,9 @@ describe('ManagePanel', () => {
   it('opens on the tab last shown', () => {
     gameStore.getState().setTruckTab('payMarketing')
     const html = renderToStaticMarkup(<ManagePanel />)
-    expect(html).toContain('aria-selected="true" aria-controls')
+    expect(html).toMatch(
+      /aria-selected="true" data-tuto="tab\.\w+" aria-controls/,
+    )
     expect(html).toMatch(/aria-selected="true"[^>]*>Salaire et marketing</)
     expect(html).toContain('id="manage-pay-weekly"')
   })

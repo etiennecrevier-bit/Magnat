@@ -56,6 +56,11 @@ export interface Settings {
   readonly screensFolded: boolean
   /** Whether the street's legend shows, kept between games, not saved. */
   readonly streetLegend: StreetLegend
+  /**
+   * Whether Réal's tour was offered, on the player's first game (#238):
+   * later games start without the offer.
+   */
+  readonly tutorialOffered: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -65,6 +70,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bestMedals: {},
   screensFolded: false,
   streetLegend: 'unseen',
+  tutorialOffered: false,
 }
 
 /** The localStorage key the settings are kept under. */
@@ -85,6 +91,7 @@ export interface SettingsState extends Settings {
   setReportCadence: (reportCadence: ReportCadence) => void
   setScreensFolded: (screensFolded: boolean) => void
   setStreetLegend: (streetLegend: StreetLegend) => void
+  setTutorialOffered: (tutorialOffered: boolean) => void
   setWorldView: (worldView: WorldView) => void
   /**
    * Keeps `medal` as the best won in the Défi `defiId` unless a better one,
@@ -124,7 +131,9 @@ export function readSettings(storage: SettingsStorage | null): Settings {
     bestMedals,
     screensFolded,
     streetLegend,
+    tutorialOffered,
   } = stored as Record<string, unknown>
+  const legend = readStreetLegend(streetLegend)
   return {
     visualEffects: VISUAL_EFFECTS.includes(visualEffects as VisualEffects)
       ? (visualEffects as VisualEffects)
@@ -141,7 +150,13 @@ export function readSettings(storage: SettingsStorage | null): Settings {
       typeof screensFolded === 'boolean'
         ? screensFolded
         : DEFAULT_SETTINGS.screensFolded,
-    streetLegend: readStreetLegend(streetLegend),
+    streetLegend: legend,
+    // Settings kept before the tour existed: a player whose first game took
+    // the street's legend has played, so is not offered the tour.
+    tutorialOffered:
+      typeof tutorialOffered === 'boolean'
+        ? tutorialOffered
+        : legend !== 'unseen',
   }
 }
 
@@ -225,6 +240,7 @@ export function createSettingsStore(
         reportCadence,
         screensFolded,
         streetLegend,
+        tutorialOffered,
       } = get()
       writeSettings(storage, {
         visualEffects,
@@ -233,6 +249,7 @@ export function createSettingsStore(
         bestMedals,
         screensFolded,
         streetLegend,
+        tutorialOffered,
       })
     }
     return {
@@ -244,6 +261,7 @@ export function createSettingsStore(
       setReportCadence: (reportCadence) => change({ reportCadence }),
       setScreensFolded: (screensFolded) => change({ screensFolded }),
       setStreetLegend: (streetLegend) => change({ streetLegend }),
+      setTutorialOffered: (tutorialOffered) => change({ tutorialOffered }),
       setWorldView: (worldView) => set({ worldView }),
       recordMedal: (defiId, medal) => {
         const { bestMedals } = get()

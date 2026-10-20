@@ -77,7 +77,7 @@ describe('YesterdayView', () => {
   it('shows the last day’s sales, customers served and lost sales on one button', () => {
     expect(render(NUMBERS)).toMatch(
       new RegExp(
-        '^<section class="yesterday" aria-label="Hier"><button type="button" class="yesterday__open">' +
+        '^<section class="yesterday" aria-label="Hier"><button type="button" class="yesterday__open" data-tuto="yesterday">' +
           '<span class="yesterday__title">Hier</span>' +
           `<span class="yesterday__row"><span>Ventes</span><strong>8${S}797${S}\\$</strong></span>` +
           `<span class="yesterday__row"><span>Clients servis</span><strong>1${S}250</strong></span>` +
@@ -113,7 +113,7 @@ describe('YesterdayView', () => {
   it('hidden, leaves a pill that shows it again, its tooltip naming R', () => {
     const html = render(NUMBERS, true)
     expect(html).toMatch(
-      /^<button type="button" class="yesterday-pill" aria-expanded="false" aria-keyshortcuts="R" aria-describedby="[^"]+">Hier<\/button>/,
+      /^<button type="button" class="yesterday-pill" data-tuto="yesterday.pill" aria-expanded="false" aria-keyshortcuts="R" aria-describedby="[^"]+">Hier<\/button>/,
     )
     expect(html).toContain(
       '<p class="tip__title">Afficher « Hier »</p><p class="tip__text">Touche R</p>',

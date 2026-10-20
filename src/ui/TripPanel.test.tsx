@@ -208,7 +208,7 @@ describe('TripPanel', () => {
       /^<dialog class="panel dock-frame dock-panel trip" aria-labelledby="([^"]+)" style="--city-ratio:0.625"><div class="dock-frame__header"><h2 id="\1" class="dock-frame__title">Ville<\/h2>/,
     )
     expect(html).toMatch(
-      /<button id="([^"]+)-tab-trip" type="button" role="tab" class="tab on" aria-selected="true" aria-controls="\1" tabindex="0">Aller à…<\/button><button id="\1-tab-contracts" type="button" role="tab" class="tab" aria-selected="false" aria-controls="\1" tabindex="-1">Contrats<\/button>/,
+      /<button id="([^"]+)-tab-trip" type="button" role="tab" class="tab on" aria-selected="true" data-tuto="tab.trip" aria-controls="\1" tabindex="0">Aller à…<\/button><button id="\1-tab-contracts" type="button" role="tab" class="tab" aria-selected="false" data-tuto="tab.contracts" aria-controls="\1" tabindex="-1">Contrats<\/button>/,
     )
     expect(html).toContain('<ul class="trip__places">')
     gameStore.getState().decide({ kind: 'goTo', place: 'meunerie' })
