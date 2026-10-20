@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Ladder, RungId } from '../content/schema.ts'
 import type { DecisionChange } from '../engine/decisions.ts'
 import type { Cents } from '../engine/money.ts'
@@ -237,39 +237,17 @@ function Foot({
       break
   }
   if (confirming) {
-    const buy = () => {
-      onConfirmingChange(null)
-      onChange({ kind: 'buy', rung: id })
-    }
     return (
-      <div className="dream__confirm">
-        <p role="alert">
-          Acheter {name}? {priceLine(row, rung)}
-        </p>
-        {facts.length > 0 && (
-          <ul className="dream__facts">
-            {facts.map((fact) => (
-              <li key={fact.label}>{factLine(fact)}</li>
-            ))}
-          </ul>
-        )}
-        <button
-          type="button"
-          className="button dream__buy"
-          aria-describedby={describedBy}
-          onClick={buy}
-        >
-          Confirmer
-        </button>{' '}
-        <button
-          type="button"
-          className="button"
-          aria-describedby={describedBy}
-          onClick={() => onConfirmingChange(null)}
-        >
-          Annuler
-        </button>
-      </div>
+      <ConfirmBuy
+        question={`Acheter ${name}? ${priceLine(row, rung)}`}
+        lines={facts.map(factLine)}
+        describedBy={describedBy}
+        onConfirm={() => {
+          onConfirmingChange(null)
+          onChange({ kind: 'buy', rung: id })
+        }}
+        onCancel={() => onConfirmingChange(null)}
+      />
     )
   }
   if (buyable) {
@@ -296,6 +274,59 @@ function Foot({
         text={cashText(cash, needed)}
       />
       <p className="dream__note">{cashText(cash, needed)}</p>
+    </div>
+  )
+}
+
+/**
+ * The purchase to confirm, in place of « Acheter »: the price, who pays
+ * and what the rung gives, then « Confirmer », which takes the focus as
+ * « Acheter » goes, and « Annuler ».
+ */
+function ConfirmBuy({
+  question,
+  lines,
+  describedBy,
+  onConfirm,
+  onCancel,
+}: {
+  question: string
+  lines: readonly string[]
+  describedBy: string
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const confirm = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    confirm.current?.focus()
+  }, [])
+  return (
+    <div className="dream__confirm">
+      <p role="alert">{question}</p>
+      {lines.length > 0 && (
+        <ul className="dream__facts">
+          {lines.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      )}
+      <button
+        ref={confirm}
+        type="button"
+        className="button dream__buy"
+        aria-describedby={describedBy}
+        onClick={onConfirm}
+      >
+        Confirmer
+      </button>{' '}
+      <button
+        type="button"
+        className="button"
+        aria-describedby={describedBy}
+        onClick={onCancel}
+      >
+        Annuler
+      </button>
     </div>
   )
 }

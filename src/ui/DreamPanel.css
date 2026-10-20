@@ -3,12 +3,14 @@
    one ladder as white cards. Text keeps at least 4.5:1 against what it sits
    on; the chip's green is darkened from the reference's #2e7d4f for that. */
 
-/* Wider than the other panels, for three cards of about 300 px a row. On a
+/* Wider than the other panels, for three cards of about 300 px a row, and
+   as tall whichever tab shows, so the tabs stay under the pointer. On a
    phone the frame's full-screen rule (DockFrame.css) applies instead. */
 @media (min-width: 700px) {
   .panel.dock-frame.dream {
     --panel-width: 1040px;
     width: min(1040px, calc(100% - 2rem));
+    height: min(740px, calc(100dvh - var(--frame-top) - var(--frame-bottom)));
     max-height: min(
       740px,
       calc(100dvh - var(--frame-top) - var(--frame-bottom))
