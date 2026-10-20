@@ -21,7 +21,7 @@ import { ENERGY, EVENTS, FOOD_TRUCK } from '../engine/day.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { next, seedRng } from '../engine/rng.ts'
-import type { StreetModifier, Visit } from '../engine/types.ts'
+import type { DaySummary, StreetModifier, Visit } from '../engine/types.ts'
 import { createSettingsStore } from '../ui/settings.ts'
 import { createGameStore, type GameStore } from '../ui/store.ts'
 import { todayNumbers } from '../ui/todayNumbers.ts'
@@ -486,9 +486,6 @@ describe('startStreet: the customers', () => {
     expect((tally.getChildByLabel('served') as Text).text).toBe(
       `${replay.served} clients servis`,
     )
-    expect((tally.getChildByLabel('lost') as Text).text).toBe(
-      `${replay.lost} clients perdus`,
-    )
     expect(arm(app).rotation).toBe(0)
 
     // Back to x1: the tally goes and customers come again.
@@ -518,15 +515,23 @@ describe('startStreet: the customers', () => {
     store.getState().setSpeed(10)
     // Days on until one where visitors left without buying while no unit
     // ran out, as on #231's day: « 29 clients perdus », « Ventes perdues 0 ».
+    const walkedOff = (day: DaySummary) =>
+      day.visits.filter(
+        ({ outcome }) => outcome !== 'bought' && outcome !== 'browsed',
+      ).length
     for (let day = 0; day < 30; day += 1) {
       const { lastDay } = store.getState().game
-      const lost = replayOf(store.getState().game)?.lost ?? 0
-      if (lastDay !== null && lost !== todayNumbers(lastDay).lostSales) break
+      if (
+        lastDay !== null &&
+        walkedOff(lastDay) !== todayNumbers(lastDay).lostSales
+      )
+        break
       store.getState().advance(1)
     }
     app.frame(16)
-    const numbers = todayNumbers(store.getState().game.lastDay!)
-    expect(replayOf(store.getState().game)!.lost).not.toBe(numbers.lostSales)
+    const { lastDay } = store.getState().game
+    const numbers = todayNumbers(lastDay!)
+    expect(walkedOff(lastDay!)).not.toBe(numbers.lostSales)
 
     // Every count the street shows by « Hier » is the one « Hier » shows.
     const tally = piece(app, 'tally')
