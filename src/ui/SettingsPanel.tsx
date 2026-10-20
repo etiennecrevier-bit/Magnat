@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from 'zustand'
 import pacing from '../content/pacing.json'
+import { TUTORIAL } from '../engine/tutorial.ts'
 import { DockPanel } from './DockFrame.tsx'
 import { useModal } from './dockFrame.ts'
 import { downloadSave } from './saves.ts'
@@ -15,6 +16,7 @@ import {
 import {
   createSaveImports,
   importAction,
+  replayTour,
   takePickedFile,
 } from './settingsPanel.ts'
 import { gameStore, useGame } from './store.ts'
@@ -23,6 +25,7 @@ import './SettingsPanel.css'
 
 const TITLE_ID = 'settings-title'
 const IMPORT_HINT_ID = 'settings-import-hint'
+const REPLAY_HINT_ID = 'settings-replay-hint'
 
 const EFFECTS: Record<VisualEffects, string> = {
   full: 'Complets',
@@ -76,6 +79,76 @@ export function VisualEffectsField({
   )
 }
 
+/** Where « Refaire la visite » stands: asked, confirming, or the save failed. */
+export type ReplayStep = 'idle' | 'confirm' | 'saveFailed'
+
+interface ReplayTourFieldProps {
+  step: ReplayStep
+  onAsk: () => void
+  onConfirm: () => void
+  /** « Refaire quand même », once the save failed. */
+  onAnyway: () => void
+  onCancel: () => void
+}
+
+/**
+ * « Refaire la visite » (#238): asks to confirm that the game played is
+ * saved first, and says so when the save fails, before Réal's tour starts.
+ */
+export function ReplayTourField({
+  step,
+  onAsk,
+  onConfirm,
+  onAnyway,
+  onCancel,
+}: ReplayTourFieldProps) {
+  const { replay } = TUTORIAL.coach
+  return (
+    <fieldset className="settings-panel__setting">
+      <legend>{replay.button}</legend>
+      {step === 'idle' ? (
+        <>
+          <div className="settings-panel__actions">
+            <button
+              type="button"
+              className="button"
+              aria-describedby={REPLAY_HINT_ID}
+              onClick={onAsk}
+            >
+              {replay.button}
+            </button>
+          </div>
+          <p id={REPLAY_HINT_ID} className="settings-panel__hint">
+            {replay.hint}
+          </p>
+        </>
+      ) : (
+        <>
+          {step === 'confirm' ? (
+            <p className="settings-panel__hint">{replay.confirm}</p>
+          ) : (
+            <p className="settings-panel__error" role="alert">
+              {replay.saveFailed}
+            </p>
+          )}
+          <div className="settings-panel__actions">
+            <button
+              type="button"
+              className="button button--primary"
+              onClick={step === 'confirm' ? onConfirm : onAnyway}
+            >
+              {step === 'confirm' ? replay.yes : replay.anyway}
+            </button>
+            <button type="button" className="button" onClick={onCancel}>
+              {replay.no}
+            </button>
+          </div>
+        </>
+      )}
+    </fieldset>
+  )
+}
+
 /** « Importer une partie », which opens the browser's file picker. */
 export function ImportButton({ onImport }: { onImport: (file: File) => void }) {
   const fileInput = useRef<HTMLInputElement>(null)
@@ -115,13 +188,15 @@ interface SettingsPanelViewProps {
   onImport: (file: File) => void
   /** Why the last imported file was rejected, if it was. */
   importError: string | null
+  /** « Refaire la visite »; null hides it, as in a Défi. */
+  replay?: ReplayTourFieldProps | null
   onClose: () => void
 }
 
 /**
  * « Réglages »: the visual effects, the « Bilan » every week or every
- * month, with the switch that opens it in full each time, and the game's
- * export and import.
+ * month, with the switch that opens it in full each time, the game's
+ * export and import, and « Refaire la visite » outside a Défi.
  */
 export function SettingsPanelView({
   visualEffects,
@@ -133,6 +208,7 @@ export function SettingsPanelView({
   onExport,
   onImport,
   importError,
+  replay = null,
   onClose,
 }: SettingsPanelViewProps) {
   return (
@@ -196,6 +272,7 @@ export function SettingsPanelView({
           </p>
         )}
       </fieldset>
+      {replay !== null && <ReplayTourField {...replay} />}
     </div>
   )
 }
@@ -203,13 +280,17 @@ export function SettingsPanelView({
 /**
  * « Réglages » in the dock's frame, a modal dialog, wired to `settings` and
  * the app store: it exports the game played, and plays the game a file
- * imported holds in its place, which closes the panel. « ✕ » or Escape
- * closes it.
+ * imported holds in its place, which closes the panel. « Refaire la
+ * visite » saves the game with `saveGame` and starts Réal's tour in its
+ * place (see `replayTour`), never in a Défi. « ✕ » or Escape closes it.
  */
 export default function SettingsPanel({
   settings = settingsStore,
+  saveGame = () => false,
 }: {
   settings?: SettingsStore
+  /** Saves the game played now; whether it did. */
+  saveGame?: () => boolean
 }) {
   const closePanel = useGame((state) => state.closePanel)
   const startGame = useGame((state) => state.startGame)
@@ -224,6 +305,8 @@ export default function SettingsPanel({
   )
   const [imports] = useState(() => createSaveImports())
   const [importError, setImportError] = useState<string | null>(null)
+  const [replayStep, setReplayStep] = useState<ReplayStep>('idle')
+  const inChallenge = useGame((state) => state.game.challenge !== null)
   const dialogRef = useRef<HTMLDialogElement>(null)
   useModal(dialogRef)
 
@@ -254,6 +337,21 @@ export default function SettingsPanel({
         onExport={() => downloadSave(gameStore.getState().game)}
         onImport={(file) => void importFile(file)}
         importError={importError}
+        replay={
+          inChallenge
+            ? null
+            : {
+                step: replayStep,
+                onAsk: () => setReplayStep('confirm'),
+                onConfirm: () => {
+                  if (!replayTour(gameStore, saveGame)) {
+                    setReplayStep('saveFailed')
+                  }
+                },
+                onAnyway: () => replayTour(gameStore, saveGame, true),
+                onCancel: () => setReplayStep('idle'),
+              }
+        }
         onClose={() => dialogRef.current?.close()}
       />
     </DockPanel>

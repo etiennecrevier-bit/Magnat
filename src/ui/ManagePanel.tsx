@@ -240,6 +240,7 @@ function StocksTab({
             <div
               key={product}
               className="product-card product-card--stock"
+              data-tuto={`stocks.${product}`}
               role="group"
               aria-labelledby={`manage-restock-${product}-name`}
             >

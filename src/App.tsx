@@ -4,7 +4,11 @@ import { startAutosave } from './ui/autosave.ts'
 import { openCityLink } from './ui/cityLinks.ts'
 import { startGameLoop } from './ui/gameLoop.ts'
 import GameScreens from './ui/GameScreens.tsx'
-import { browserStorage, createSaveWriter } from './ui/saves.ts'
+import {
+  browserStorage,
+  createSaveWriter,
+  type SaveWriter,
+} from './ui/saves.ts'
 import StartScreen from './ui/StartScreen.tsx'
 import { gameStore } from './ui/store.ts'
 import TopBar from './ui/TopBar.tsx'
@@ -18,6 +22,8 @@ import WorldCanvas from './world/WorldCanvas.tsx'
 export default function App() {
   const [playing, setPlaying] = useState(false)
   const [autosaveFailed, setAutosaveFailed] = useState(false)
+  // The autosave's writer, for « Refaire la visite » to save the game now.
+  const [saveRef] = useState(() => ({ current: null as SaveWriter | null }))
 
   useEffect(() => {
     if (!playing) return
@@ -27,10 +33,22 @@ export default function App() {
   useEffect(() => {
     if (!playing) return
     const save = createSaveWriter(browserStorage())
-    return startAutosave(gameStore, (game, replaces) =>
+    saveRef.current = save
+    const stop = startAutosave(gameStore, (game, replaces) =>
       setAutosaveFailed(!save(game, replaces)),
     )
-  }, [playing])
+    return () => {
+      stop()
+      saveRef.current = null
+    }
+  }, [playing, saveRef])
+
+  const saveGame = () => {
+    const save = saveRef.current
+    const saved = save !== null && save(gameStore.getState().game)
+    setAutosaveFailed(!saved)
+    return saved
+  }
 
   const start = (game: GameState) => {
     gameStore.getState().startGame(game)
@@ -46,6 +64,7 @@ export default function App() {
           <GameScreens
             autosaveFailed={autosaveFailed}
             onMenu={() => setPlaying(false)}
+            saveGame={saveGame}
           />
         </>
       ) : (

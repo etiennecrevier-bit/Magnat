@@ -90,7 +90,7 @@ export function EventCardView({
   const text = (written: string, scope: TextScope) =>
     formatCardText(cardText(written, scope, difficulty, scaling))
   return (
-    <div className="panel__content event-card__content">
+    <div className="panel__content event-card__content" data-tuto="event.card">
       <div className="event-card__who">
         {portrait === null ? (
           <Silhouette
@@ -130,7 +130,7 @@ export function EventCardView({
         </blockquote>
       )}
       {result === null ? (
-        <ol className="event-card__choices">
+        <ol className="event-card__choices" data-tuto="event.choices">
           {choices.map((choice, index) => {
             const forbidden = allowed !== null && !allowed.includes(choice.id)
             const reasonId = `event-choice-${choice.id}-reason`

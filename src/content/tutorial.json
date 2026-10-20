@@ -1,27 +1,166 @@
 {
-  "_note": "The tutorial game (#236): seven protected days with Réal, the same seed at every difficulty. The croissants start low, 40 a day, so day 1 sells out around noon and « Hier » shows it on day 2; the café starts at 3,75 $, above what the habitués find fair, so some find it too expensive on day 2 and Réal points at it on day 3. The truck opens all seven days, since the game's day 0 is a Monday, which the content's starting decisions close. The steps' texts are the UI's (#238); each step says only which gesture completes it.",
+  "_note": "The tutorial game (#236): seven protected days with Réal, the same seed at every difficulty. The croissants start low, 40 a day, so day 1 sells out around noon and « Hier » shows it on day 2; the café starts at 3,75 $, above what the habitués find fair, so some find it too expensive on day 2 and Réal points at it on day 3. The truck opens all seven days, since the game's day 0 is a Monday, which the content's starting decisions close. Each step says which gesture completes it, and what the UI's bubble shows (#238): Réal's `text`, its `touchText` where the screen cannot hover, the `button` of a step that waits for one, the `anchors` it points at, by their `data-tuto`, the first one the player can reach winning (none centres the bubble), the `tipAnchors` whose tooltip opening completes it, and the `fallback` it shows instead when the fact it points at did not happen. `coach` holds the bubble's other texts.",
   "seed": 20261020,
   "decisions": {
-    "pricesCents": { "cafe": 375 },
-    "restock": { "croissant": { "kind": "buyDaily", "quantity": 40 } },
+    "pricesCents": {
+      "cafe": 375
+    },
+    "restock": {
+      "croissant": {
+        "kind": "buyDaily",
+        "quantity": 40
+      }
+    },
     "daysOpen": [1, 2, 3, 4, 5, 6, 7]
   },
   "days": 7,
-  "scriptedEvents": [{ "day": 4, "event": "tutoStory" }],
+  "scriptedEvents": [
+    {
+      "day": 4,
+      "event": "tutoStory"
+    }
+  ],
   "steps": [
-    { "id": "bienvenue", "day": 1, "gesture": "next" },
-    { "id": "ouvrirCamion", "day": 1, "gesture": "openTruck" },
-    { "id": "changerPrix", "day": 1, "gesture": "priceChange" },
-    { "id": "lancerJour", "day": 1, "gesture": "speed1" },
-    { "id": "lireHier", "day": 2, "gesture": "readYesterday" },
-    { "id": "commander", "day": 2, "gesture": "restockRaise" },
-    { "id": "tropCher", "day": 3, "gesture": "tooltip" },
-    { "id": "ajuster", "day": 3, "gesture": "priceOrOk" },
-    { "id": "evenement", "day": 4, "gesture": "choice" },
-    { "id": "accelerer", "day": 5, "gesture": "speed3" },
-    { "id": "pause", "day": 5, "gesture": "pause" },
-    { "id": "encaisse", "day": 6, "gesture": "next" },
-    { "id": "finances", "day": 6, "gesture": "finances" },
-    { "id": "aurevoir", "day": 7, "gesture": "next" }
-  ]
+    {
+      "id": "bienvenue",
+      "day": 1,
+      "gesture": "next",
+      "text": "Salut! Moi c'est Réal. Vingt ans dans ce camion. Aujourd'hui, il est à toi.",
+      "button": "Allons-y",
+      "anchors": []
+    },
+    {
+      "id": "ouvrirCamion",
+      "day": 1,
+      "gesture": "openTruck",
+      "text": "Tout se règle ici. Ouvre le camion.",
+      "anchors": ["dock.camion"]
+    },
+    {
+      "id": "changerPrix",
+      "day": 1,
+      "gesture": "priceChange",
+      "text": "Le prix du café, c'est toi qui décides. Essaie-le.",
+      "anchors": ["menu.cafe.price", "tab.menu", "dock.camion"]
+    },
+    {
+      "id": "lancerJour",
+      "day": 1,
+      "gesture": "speed1",
+      "text": "Ferme ça, pis on ouvre. Lance la journée.",
+      "anchors": ["panel.close", "speed.1"]
+    },
+    {
+      "id": "lireHier",
+      "day": 2,
+      "gesture": "readYesterday",
+      "text": "Plus de croissants vers midi. Regarde ce que ça a donné.",
+      "anchors": ["yesterday", "yesterday.pill", "cash.chip"],
+      "tipAnchors": ["yesterday", "cash.chip", "menu.croissant"],
+      "fallback": {
+        "fact": "croissantShortage",
+        "text": "T'as pas manqué de croissants hier. Pas pire!",
+        "button": "Correct"
+      }
+    },
+    {
+      "id": "commander",
+      "day": 2,
+      "gesture": "restockRaise",
+      "text": "Les croissants, ça se commande la veille. Monte ta commande.",
+      "anchors": ["stocks.croissant", "tab.stocks", "dock.camion"]
+    },
+    {
+      "id": "tropCher",
+      "day": 3,
+      "gesture": "tooltip",
+      "text": "Y en a qui trouvaient ton café cher. Passe ta souris dessus.",
+      "touchText": "Y en a qui trouvaient ton café cher. Touche-le pour voir.",
+      "anchors": ["menu.cafe", "tab.menu", "dock.camion"],
+      "tipAnchors": ["menu.cafe"],
+      "fallback": {
+        "fact": "cafeTooExpensive",
+        "text": "Personne s'est plaint du café. Pas pire!",
+        "button": "Parfait"
+      }
+    },
+    {
+      "id": "ajuster",
+      "day": 3,
+      "gesture": "priceOrOk",
+      "text": "Ajuste comme tu le sens. C'est ton camion.",
+      "button": "C'est correct de même",
+      "anchors": ["menu.cafe.price", "tab.menu", "dock.camion"]
+    },
+    {
+      "id": "evenement",
+      "day": 4,
+      "gesture": "choice",
+      "text": "Des fois, quelqu'un cogne à la vitrine. À toi de choisir.",
+      "anchors": ["event.choices", "event.card"]
+    },
+    {
+      "id": "accelerer",
+      "day": 5,
+      "gesture": "speed3",
+      "text": "Quand tout roule, va plus vite.",
+      "anchors": ["speed.3"]
+    },
+    {
+      "id": "pause",
+      "day": 5,
+      "gesture": "pause",
+      "text": "Pis quand tu veux réfléchir, arrête le temps.",
+      "anchors": ["speed.0"]
+    },
+    {
+      "id": "encaisse",
+      "day": 6,
+      "gesture": "next",
+      "text": "Ça, c'est l'argent dans ta caisse. Garde un œil dessus.",
+      "button": "Compris",
+      "anchors": ["cash.chip"]
+    },
+    {
+      "id": "finances",
+      "day": 6,
+      "gesture": "finances",
+      "text": "Le détail est là. Ouvre-le quand tu veux.",
+      "anchors": ["dock.finances"]
+    },
+    {
+      "id": "aurevoir",
+      "day": 7,
+      "gesture": "next",
+      "text": "Bon. La Floride m'attend. Les clés sont à toi. Je t'écris.",
+      "button": "Merci, Réal",
+      "anchors": []
+    }
+  ],
+  "coach": {
+    "character": "realGingras",
+    "name": "Réal Gingras",
+    "offer": {
+      "title": "La visite",
+      "text": "Réal t'attend au camion.",
+      "accept": "Faire la visite",
+      "decline": "Passer"
+    },
+    "skip": {
+      "link": "Passer la visite",
+      "confirm": "Passer la visite? Tu pourras la refaire dans « Réglages ».",
+      "yes": "Passer",
+      "no": "Rester"
+    },
+    "replay": {
+      "button": "Refaire la visite",
+      "hint": "Sept jours avec Réal, dans une petite partie à part.",
+      "confirm": "Votre partie en cours sera sauvegardée. « Continuer » la reprend jusqu'à la fin de la visite, qui la remplace ensuite.",
+      "yes": "Refaire la visite",
+      "no": "Annuler",
+      "saveFailed": "La partie en cours n'a pas pu être sauvegardée. La visite la remplacera.",
+      "anyway": "Refaire quand même"
+    },
+    "resumeAfterPauseMs": 1500
+  }
 }

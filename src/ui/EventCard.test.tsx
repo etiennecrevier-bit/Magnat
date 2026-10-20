@@ -187,7 +187,7 @@ describe('EventCardView', () => {
       },
     ])
     expect(html).toContain(
-      '<ol class="event-card__choices"><li><button type="button"',
+      '<ol class="event-card__choices" data-tuto="event.choices"><li><button type="button"',
     )
   })
 
@@ -310,7 +310,7 @@ describe('EventCard', () => {
     gameStore.getState().startGame(waiting())
     const html = renderToStaticMarkup(<EventCard />)
     expect(html).toMatch(
-      /^<dialog class="panel event-card" aria-labelledby="event-title"><div class="panel__content event-card__content">.*<\/dialog>$/,
+      /^<dialog class="panel event-card" aria-labelledby="event-title"><div class="panel__content event-card__content" data-tuto="event.card">.*<\/dialog>$/,
     )
     expect(html).toContain('La carte d&#x27;essai')
     expect(choices(html)).toHaveLength(3)

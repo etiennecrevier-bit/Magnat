@@ -2755,12 +2755,92 @@ export const tutorialGestureSchema = z.enum([
 
 export type TutorialGesture = z.infer<typeof tutorialGestureSchema>
 
-/** One step of the tutorial: what the player is asked to do on its day. */
+/**
+ * The facts of the last day a tutorial step may point at, as the engine's
+ * `tutorialFacts` tells them: a croissant shortage, and customers who found
+ * the café too expensive.
+ */
+export const tutorialFactSchema = z.enum([
+  'croissantShortage',
+  'cafeTooExpensive',
+])
+
+export type TutorialFact = z.infer<typeof tutorialFactSchema>
+
+/** An element of the interface a step points at, by its `data-tuto`. */
+const tutorialAnchorSchema = z
+  .string()
+  .regex(/^[a-z][a-zA-Z0-9]*(\.[a-zA-Z0-9]+)*$/, 'a data-tuto anchor')
+
+/** What a gesture waits on: a button of the bubble, `next` and `priceOrOk`. */
+const BUTTON_GESTURES: readonly TutorialGesture[] = ['next', 'priceOrOk']
+
+/** The gestures a tooltip opening completes. */
+const TOOLTIP_GESTURES: readonly TutorialGesture[] = [
+  'tooltip',
+  'readYesterday',
+]
+
+/**
+ * One step of the tutorial: what the player is asked to do on its day, and
+ * what the UI's bubble shows for it (#238): Réal's `text`, its
+ * `touchText` where the screen cannot hover, the `button` a
+ * step that waits for one shows, the `anchors` it points at, the first one
+ * the player can reach winning, none centring the bubble, the `tipAnchors`
+ * whose tooltip opening completes it, and the `fallback` it shows in its
+ * place, a button to go on, when `fact` did not happen the day before.
+ */
 const tutorialStepSchema = z.strictObject({
   id: idSchema,
   /** The tutorial's day, from 1 to its `days`. */
   day: z.int().positive(),
   gesture: tutorialGestureSchema,
+  text: z.string().min(1),
+  /** What Réal says instead where the screen cannot hover, as on a phone. */
+  touchText: z.string().min(1).optional(),
+  button: z.string().min(1).optional(),
+  anchors: z.array(tutorialAnchorSchema),
+  tipAnchors: z.array(tutorialAnchorSchema).min(1).optional(),
+  fallback: z
+    .strictObject({
+      fact: tutorialFactSchema,
+      text: z.string().min(1),
+      button: z.string().min(1),
+    })
+    .optional(),
+})
+
+/**
+ * The bubble's texts besides the steps': who Réal is, his offer on a first
+ * game, « Passer la visite » and « Refaire la visite » with their
+ * confirmations, and how long after the pause the game goes on by itself.
+ */
+const tutorialCoachSchema = z.strictObject({
+  /** The id of Réal's portrait, as for an event card's character. */
+  character: idSchema,
+  name: z.string().min(1),
+  offer: z.strictObject({
+    title: z.string().min(1),
+    text: z.string().min(1),
+    accept: z.string().min(1),
+    decline: z.string().min(1),
+  }),
+  skip: z.strictObject({
+    link: z.string().min(1),
+    confirm: z.string().min(1),
+    yes: z.string().min(1),
+    no: z.string().min(1),
+  }),
+  replay: z.strictObject({
+    button: z.string().min(1),
+    hint: z.string().min(1),
+    confirm: z.string().min(1),
+    yes: z.string().min(1),
+    no: z.string().min(1),
+    saveFailed: z.string().min(1),
+    anyway: z.string().min(1),
+  }),
+  resumeAfterPauseMs: z.int().min(0),
 })
 
 export type TutorialStep = z.output<typeof tutorialStepSchema>
@@ -2790,12 +2870,27 @@ export const tutorialContentSchema = z
       z.strictObject({ day: z.int().positive(), event: idSchema }),
     ),
     steps: z.array(tutorialStepSchema).min(1),
+    coach: tutorialCoachSchema,
   })
   .superRefine(({ days, steps, scriptedEvents }, ctx) => {
     const issue = (message: string, path: (string | number)[]) =>
       ctx.addIssue({ code: 'custom', message, path })
     const ids = new Set<string>()
-    steps.forEach(({ id, day }, s) => {
+    steps.forEach(({ id, day, gesture, button, tipAnchors }, s) => {
+      const waitsForButton = BUTTON_GESTURES.includes(gesture)
+      if (waitsForButton && button === undefined) {
+        issue(`a ${gesture} step has a button`, ['steps', s, 'button'])
+      }
+      if (!waitsForButton && button !== undefined) {
+        issue(`a ${gesture} step has no button`, ['steps', s, 'button'])
+      }
+      const waitsForTip = TOOLTIP_GESTURES.includes(gesture)
+      if (waitsForTip && tipAnchors === undefined) {
+        issue(`a ${gesture} step has tipAnchors`, ['steps', s, 'tipAnchors'])
+      }
+      if (!waitsForTip && tipAnchors !== undefined) {
+        issue(`a ${gesture} step has no tipAnchors`, ['steps', s, 'tipAnchors'])
+      }
       if (ids.has(id))
         issue(`the step id ${id} appears twice`, ['steps', s, 'id'])
       ids.add(id)

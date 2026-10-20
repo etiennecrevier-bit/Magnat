@@ -48,6 +48,7 @@ describe('the settings', () => {
       bestMedals: {},
       screensFolded: false,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
     expect(readSettings(null)).toEqual(DEFAULT_SETTINGS)
     expect(readSettings(memory())).toEqual(DEFAULT_SETTINGS)
@@ -65,6 +66,7 @@ describe('the settings', () => {
       bestMedals: {},
       screensFolded: false,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
     expect(createSettingsStore(storage).getState().visualEffects).toBe('simple')
   })
@@ -79,6 +81,7 @@ describe('the settings', () => {
       bestMedals: {},
       screensFolded: false,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
     expect(createSettingsStore(storage).getState().openReportEveryWeek).toBe(
       true,
@@ -95,6 +98,7 @@ describe('the settings', () => {
       bestMedals: {},
       screensFolded: false,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
     expect(createSettingsStore(storage).getState().reportCadence).toBe('month')
   })
@@ -110,6 +114,7 @@ describe('the settings', () => {
       bestMedals: {},
       screensFolded: true,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
     const reloaded = createSettingsStore(storage)
     expect(reloaded.getState().screensFolded).toBe(true)
@@ -122,6 +127,7 @@ describe('the settings', () => {
       bestMedals: {},
       screensFolded: false,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
     expect(createSettingsStore(storage).getState().screensFolded).toBe(false)
   })
@@ -152,6 +158,28 @@ describe('the settings', () => {
       worldView: 'street',
       screensFolded: true,
     })
+  })
+
+  it('keep whether the tour was offered, which a new browser has not', () => {
+    const storage = memory()
+    expect(createSettingsStore(storage).getState().tutorialOffered).toBe(false)
+    createSettingsStore(storage).getState().setTutorialOffered(true)
+    expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toMatchObject({
+      tutorialOffered: true,
+    })
+    const reloaded = createSettingsStore(storage)
+    expect(reloaded.getState().tutorialOffered).toBe(true)
+    reloaded.getState().setVisualEffects('simple')
+    expect(readSettings(storage).tutorialOffered).toBe(true)
+  })
+
+  it('count a player whose settings, older than the tour, saw a first game as offered it', () => {
+    const older = (streetLegend: unknown) =>
+      readSettings(memory({ [SETTINGS_KEY]: JSON.stringify({ streetLegend }) }))
+        .tutorialOffered
+    expect(older('unseen')).toBe(false)
+    expect(older({ seed: 7 })).toBe(true)
+    expect(older('done')).toBe(true)
   })
 
   it("keep the street's legend in this browser: the first game's seed, then done", () => {
@@ -190,6 +218,7 @@ describe('the settings', () => {
       bestMedals: {},
       screensFolded: false,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
 
     createSettingsStore(storage).getState().setVisualEffects('full')
@@ -200,6 +229,7 @@ describe('the settings', () => {
       bestMedals: {},
       screensFolded: false,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
     createSettingsStore(storage).getState().setOpenReportEveryWeek(false)
     expect(readSettings(storage)).toEqual({
@@ -209,6 +239,7 @@ describe('the settings', () => {
       bestMedals: {},
       screensFolded: false,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
     createSettingsStore(storage).getState().setReportCadence('month')
     createSettingsStore(storage).getState().setVisualEffects('simple')
@@ -219,6 +250,7 @@ describe('the settings', () => {
       bestMedals: {},
       screensFolded: false,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
   })
 
@@ -233,6 +265,7 @@ describe('the settings', () => {
       bestMedals: {},
       screensFolded: false,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
   })
 
@@ -246,6 +279,7 @@ describe('the settings', () => {
         bestMedals: {},
         screensFolded: false,
         streetLegend: 'unseen',
+        tutorialOffered: false,
       },
     ],
     [
@@ -257,6 +291,7 @@ describe('the settings', () => {
         bestMedals: {},
         screensFolded: false,
         streetLegend: 'unseen',
+        tutorialOffered: false,
       },
     ],
     [
@@ -268,6 +303,7 @@ describe('the settings', () => {
         bestMedals: {},
         screensFolded: false,
         streetLegend: 'unseen',
+        tutorialOffered: false,
       },
     ],
     [
@@ -279,6 +315,7 @@ describe('the settings', () => {
         bestMedals: {},
         screensFolded: false,
         streetLegend: 'unseen',
+        tutorialOffered: false,
       },
     ],
     [
@@ -290,6 +327,7 @@ describe('the settings', () => {
         bestMedals: {},
         screensFolded: false,
         streetLegend: 'unseen',
+        tutorialOffered: false,
       },
     ],
     [
@@ -301,6 +339,7 @@ describe('the settings', () => {
         bestMedals: {},
         screensFolded: true,
         streetLegend: 'unseen',
+        tutorialOffered: false,
       },
     ],
     [
@@ -312,6 +351,7 @@ describe('the settings', () => {
         bestMedals: {},
         screensFolded: true,
         streetLegend: 'unseen',
+        tutorialOffered: false,
       },
     ],
     [
@@ -323,6 +363,7 @@ describe('the settings', () => {
         bestMedals: {},
         screensFolded: true,
         streetLegend: 'unseen',
+        tutorialOffered: false,
       },
     ],
   ])('keep a valid setting beside an invalid one: %j', (stored, settings) => {
@@ -368,6 +409,7 @@ describe('the settings', () => {
         bestMedals: {},
         screensFolded: false,
         streetLegend: 'unseen',
+        tutorialOffered: false,
       }),
     ).toBe(false)
     const store = createSettingsStore(BLOCKED)
@@ -395,6 +437,7 @@ describe('the settings', () => {
       bestMedals: { travauxSaintDenis: 'bronze', zeroGaspillage: 'argent' },
       screensFolded: false,
       streetLegend: 'unseen',
+      tutorialOffered: false,
     })
     expect(createSettingsStore(storage).getState().bestMedals).toEqual({
       travauxSaintDenis: 'bronze',
@@ -491,6 +534,7 @@ describe('the settings', () => {
         bestMedals: { travauxSaintDenis: 'or' },
         screensFolded: false,
         streetLegend: 'unseen',
+        tutorialOffered: false,
       })
       expect(a.getState().bestMedals).toEqual({ travauxSaintDenis: 'or' })
     })
@@ -558,6 +602,7 @@ describe('the settings', () => {
         bestMedals: kept,
         screensFolded: false,
         streetLegend: 'unseen',
+        tutorialOffered: false,
       })
     },
   )

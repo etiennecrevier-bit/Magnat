@@ -30,6 +30,8 @@ interface NumberFieldViewProps {
    * the screen already names the field, such as a product card's title.
    */
   hideLabel?: boolean
+  /** The `data-tuto` Réal's bubble points at the field by (#238). */
+  tuto?: string
 }
 
 /** A labelled text field for an amount or a number of units. */
@@ -47,6 +49,7 @@ export function NumberFieldView({
   disabled = false,
   describedBy,
   hideLabel = false,
+  tuto,
 }: NumberFieldViewProps) {
   const unitId = `${id}-unit`
   const errorId = `${id}-error`
@@ -56,7 +59,7 @@ export function NumberFieldView({
     ...(describedBy === undefined ? [] : [describedBy]),
   ]
   return (
-    <div className="field">
+    <div className="field" data-tuto={tuto}>
       <label
         className={hideLabel ? 'visually-hidden' : 'field__label'}
         htmlFor={id}

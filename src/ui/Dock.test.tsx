@@ -43,7 +43,7 @@ describe('DockView', () => {
   it('is a labelled list of buttons, each with an icon and a word', () => {
     const html = render()
     expect(html).toMatch(
-      /^<nav class="dock" aria-label="Panneaux"><ul class="dock__items"><li class="dock__item"><button type="button" id="dock-camion" class="dock__button" aria-haspopup="dialog" aria-expanded="false" aria-keyshortcuts="C" aria-describedby="[^"]+"><span class="dock__tile"><svg class="icon" width="28" height="28"[^>]*>.*?<\/svg><\/span><span class="dock__label">Camion<\/span><\/button>/,
+      /^<nav class="dock" aria-label="Panneaux"><ul class="dock__items"><li class="dock__item"><button type="button" id="dock-camion" data-tuto="dock.camion" class="dock__button" aria-haspopup="dialog" aria-expanded="false" aria-keyshortcuts="C" aria-describedby="[^"]+"><span class="dock__tile"><svg class="icon" width="28" height="28"[^>]*>.*?<\/svg><\/span><span class="dock__label">Camion<\/span><\/button>/,
     )
     expect(html).toMatch(/<\/ul><\/nav>$/)
   })
@@ -80,7 +80,7 @@ describe('DockView', () => {
     )
     expect(open).toEqual([
       expect.stringContaining(
-        'id="dock-finances" class="dock__button dock__button--open"',
+        'id="dock-finances" data-tuto="dock.finances" class="dock__button dock__button--open"',
       ),
     ])
   })
@@ -146,7 +146,7 @@ describe('Dock', () => {
     const html = renderToStaticMarkup(<Dock />)
     expect(html).toContain(badge)
     expect(html).toContain(
-      'id="dock-journal" class="dock__button dock__button--open" aria-haspopup="dialog" aria-expanded="true"',
+      'id="dock-journal" data-tuto="dock.journal" class="dock__button dock__button--open" aria-haspopup="dialog" aria-expanded="true"',
     )
     gameStore.getState().readReports()
     expect(renderToStaticMarkup(<Dock />)).not.toContain('dock__badge')
@@ -155,7 +155,7 @@ describe('Dock', () => {
   it('shows the panel open as open', () => {
     gameStore.getState().openPanel('staff')
     expect(renderToStaticMarkup(<Dock />)).toContain(
-      'id="dock-equipe" class="dock__button dock__button--open"',
+      'id="dock-equipe" data-tuto="dock.equipe" class="dock__button dock__button--open"',
     )
   })
 })

@@ -135,7 +135,11 @@ export function ProductCard({
           )
         }
         return (
-          <div className="product-card" {...anchor}>
+          <div
+            className="product-card"
+            data-tuto={`menu.${product}`}
+            {...anchor}
+          >
             <div className="product-card__head">
               <ProductGlyph product={product} />
               <h3 className="product-card__name">{name}</h3>
@@ -147,6 +151,7 @@ export function ProductCard({
               id={id}
               label={name}
               hideLabel
+              tuto={`menu.${product}.price`}
               unit="$"
               inputMode="decimal"
               value={formatAmount(price)}

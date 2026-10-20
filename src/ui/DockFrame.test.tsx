@@ -42,10 +42,10 @@ describe('FrameHeader', () => {
     ).toBe(
       '<div class="dock-frame__header"><h2 id="t" class="dock-frame__title">Ville</h2>' +
         '<div class="dock-frame__tabs" role="tablist" aria-label="Ville">' +
-        '<button id="b-tab-trip" type="button" role="tab" class="tab" aria-selected="false" aria-controls="b" tabindex="-1">Aller à…</button>' +
-        '<button id="b-tab-contracts" type="button" role="tab" class="tab on" aria-selected="true" aria-controls="b" tabindex="0">Contrats</button>' +
+        '<button id="b-tab-trip" type="button" role="tab" class="tab" aria-selected="false" data-tuto="tab.trip" aria-controls="b" tabindex="-1">Aller à…</button>' +
+        '<button id="b-tab-contracts" type="button" role="tab" class="tab on" aria-selected="true" data-tuto="tab.contracts" aria-controls="b" tabindex="0">Contrats</button>' +
         '</div>' +
-        '<button type="button" class="dock-frame__close" aria-label="Fermer"><span aria-hidden="true">✕</span></button></div>',
+        '<button type="button" class="dock-frame__close" aria-label="Fermer" data-tuto="panel.close"><span aria-hidden="true">✕</span></button></div>',
     )
   })
 
@@ -60,7 +60,7 @@ describe('FrameHeader', () => {
         />,
       ),
     ).toBe(
-      '<div class="dock-frame__header"><h2 id="t" class="dock-frame__title">Camion</h2><button type="button" class="dock-frame__close" aria-label="Fermer"><span aria-hidden="true">✕</span></button></div>',
+      '<div class="dock-frame__header"><h2 id="t" class="dock-frame__title">Camion</h2><button type="button" class="dock-frame__close" aria-label="Fermer" data-tuto="panel.close"><span aria-hidden="true">✕</span></button></div>',
     )
   })
 

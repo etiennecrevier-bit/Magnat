@@ -139,7 +139,7 @@ describe('GameScreens', () => {
     createSettingsStore(storage).getState().setScreensFolded(true)
     const html = render(createSettingsStore(storage))
     expect(html).toContain(
-      '<div class="yesterday-spot"><button type="button" class="yesterday-pill" aria-expanded="false" aria-keyshortcuts="R"',
+      '<div class="yesterday-spot"><button type="button" class="yesterday-pill" data-tuto="yesterday.pill" aria-expanded="false" aria-keyshortcuts="R"',
     )
     expect(html).not.toContain('<section class="yesterday"')
   })
@@ -194,7 +194,7 @@ describe('GameScreens', () => {
     ])
     expect(html).not.toContain('<table')
     expect(html).toContain(
-      '<button type="button" id="dock-finances" class="dock__button dock__button--open" aria-haspopup="dialog" aria-expanded="true"',
+      '<button type="button" id="dock-finances" data-tuto="dock.finances" class="dock__button dock__button--open" aria-haspopup="dialog" aria-expanded="true"',
     )
     expect(speed()).toBe(3)
   })

@@ -1,5 +1,7 @@
+import { isProtected } from '../engine/tutorial.ts'
 import type { GameState } from '../engine/types.ts'
 import { importSaveFile, type ImportedSave } from './saves.ts'
+import { newTutorialGame, type GameStore } from './store.ts'
 
 // Reading an imported file takes a while, and meanwhile the player may pick
 // another file or close « Réglages ». A read that finishes after that must
@@ -72,4 +74,25 @@ export function takePickedFile(
   const file = input.files?.[0]
   input.value = ''
   if (file !== undefined) onImport(file)
+}
+
+/**
+ * « Refaire la visite » (#238), once confirmed: saves the game played with
+ * `saveGame`, then starts Réal's tour for its profile in its place, keeping
+ * the saved game for « Continuer » until the tour is over (see
+ * `startAutosave`). A tour replayed during a replayed tour keeps the game
+ * saved before the first. When the save fails, nothing starts and it
+ * returns false, so the player is told; with `anyway`, the tour starts
+ * without saving and replaces the saved game as any new game does.
+ */
+export function replayTour(
+  store: Pick<GameStore, 'getState'>,
+  saveGame: () => boolean,
+  anyway = false,
+): boolean {
+  const { game, keepsSave, startGame } = store.getState()
+  const kept = keepsSave && isProtected(game)
+  if (!anyway && !kept && !saveGame()) return false
+  startGame(newTutorialGame(game.profile), { keepsSave: !anyway })
+  return true
 }

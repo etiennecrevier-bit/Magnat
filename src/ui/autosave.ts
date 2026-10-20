@@ -1,7 +1,8 @@
 import { toCalendar } from '../engine/clock.ts'
+import { isProtected } from '../engine/tutorial.ts'
 import type { Day, GameState } from '../engine/types.ts'
 import { browserHost, type LoopHost } from './gameLoop.ts'
-import type { GameStore } from './store.ts'
+import type { GameStore, GameStoreState } from './store.ts'
 
 /** The browser APIs the autosave needs, injectable so tests can fake them. */
 export type AutosaveHost = Pick<LoopHost, 'isHidden' | 'onVisibilityChange'>
@@ -23,7 +24,11 @@ function monthOf(day: Day): string {
  * in bankruptcy, is handed over once, the moment it ends, whatever its
  * month, or when it is started in place of another, and never again, so
  * « Continuer » shows its end; one continued already ended is not handed
- * over at all. Returns a function that stops it.
+ * over at all. A tour of Réal's replayed over the saved game (`keepsSave`)
+ * is not handed over while it is protected, so « Continuer » keeps the
+ * game saved before it; the moment its protection ends, on day 8 or as it
+ * is skipped, it is handed over at once, with `replaces` set. Returns a
+ * function that stops it.
  */
 export function startAutosave(
   store: GameStore,
@@ -33,13 +38,25 @@ export function startAutosave(
   const write = (game: GameState, replaces = false) => {
     if (game.challenge === null) writeGame(game, replaces)
   }
+  // A replayed tour keeps the saved game while it is protected.
+  const holds = ({
+    keepsSave,
+    game,
+  }: Pick<GameStoreState, 'keepsSave' | 'game'>) =>
+    keepsSave && isProtected(game)
   const first = store.getState().game
   let savedMonth = monthOf(first.day)
-  if (first.ended === null) write(first)
+  if (first.ended === null && !holds(store.getState())) write(first)
 
   const unsubscribe = store.subscribe((state, previous) => {
     if (state.game === previous.game) return
     const started = state.gamesStarted !== previous.gamesStarted
+    if (holds(state)) return
+    if (state.keepsSave && !started && holds(previous)) {
+      savedMonth = monthOf(state.game.day)
+      write(state.game, true)
+      return
+    }
     if (state.game.ended !== null) {
       if (started || previous.game.ended === null) write(state.game, started)
       return
@@ -50,8 +67,10 @@ export function startAutosave(
     write(state.game, started)
   })
   const stopWatching = host.onVisibilityChange(() => {
-    const { game } = store.getState()
-    if (host.isHidden() && game.ended === null) write(game)
+    const state = store.getState()
+    if (host.isHidden() && state.game.ended === null && !holds(state)) {
+      write(state.game)
+    }
   })
 
   return () => {

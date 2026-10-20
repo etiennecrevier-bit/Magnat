@@ -49,6 +49,7 @@ export function CashChipView({
         <button
           type="button"
           className={`cash-chip cash-chip--${level}`}
+          data-tuto="cash.chip"
           aria-haspopup="dialog"
           {...anchor}
           onClick={onOpen}

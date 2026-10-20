@@ -54,7 +54,7 @@ describe('CashChipView', () => {
       const html = render(cash)
       expect(html).toMatch(
         new RegExp(
-          `^<button type="button" class="cash-chip cash-chip--${level}" aria-haspopup="dialog" aria-describedby="[^"]+">`,
+          `^<button type="button" class="cash-chip cash-chip--${level}" data-tuto="cash.chip" aria-haspopup="dialog" aria-describedby="[^"]+">`,
         ),
       )
       expect(html).toContain('<span class="cash-chip__label">Encaisse</span>')
