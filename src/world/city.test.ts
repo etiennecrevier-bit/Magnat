@@ -1,4 +1,11 @@
-import { Container, Sprite, Texture, type Filter, type Ticker } from 'pixi.js'
+import {
+  Container,
+  Sprite,
+  Text,
+  Texture,
+  type Filter,
+  type Ticker,
+} from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AssetManifest } from '../content/assets.ts'
 import { createInitialState, startChallenge, tick } from '../engine/clock.ts'
@@ -153,11 +160,11 @@ describe('startCity', () => {
       city: {
         ...city,
         pieces: city.pieces.map((p) =>
-          p.id === 'caisse'
+          p.id === 'bank'
             ? { ...p, image: 'dummy.png' }
             : p.id === 'mill'
               ? { ...p, image: 'city/mill.png' }
-              : p,
+              : { ...p, image: undefined },
         ),
       },
     }
@@ -166,8 +173,8 @@ describe('startCity', () => {
     expect(loaders.loadTexture).toHaveBeenCalledExactlyOnceWith(
       expect.stringMatching(/dummy\.png$/),
     )
-    const caisse = find(app, 'caisse').children[0] as Sprite
-    expect(caisse.texture).toBe(texture)
+    const bank = find(app, 'bank').children[0] as Sprite
+    expect(bank.texture).toBe(texture)
     expect(find(app, 'mill').children[0]?.label).toBe('placeholder')
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('src/world/art/city/mill.png'),
@@ -191,7 +198,10 @@ describe('startCity', () => {
       expect(hatch.visible).toBe(true)
       expect(shutter.visible).toBe(false)
       expect(line()).toBeGreaterThan(0)
-      expect(find(app, 'bust').visible).toBe(true)
+      const crew = find(app, 'crew')
+      expect(
+        crew.children.find((n) => n.label.startsWith('avatar:'))?.visible,
+      ).toBe(true)
 
       app.frame(msAt(640) - msAt(595))
       expect(hatch.visible).toBe(false)
@@ -206,23 +216,43 @@ describe('startCity', () => {
       expect(store.getState().game).toBe(game)
     })
 
-    it('walks the owner back behind the truck across the avenue, then in front of it at the hatch', async () => {
+    it('walks the owner on the sidewalks, drawn in front of the café, then of the Caisse at its door', async () => {
       const app = createFakeApp()
       await start(app, tripStore())
       const owner = find(app, 'owner')
-      const truck = find(app, 'truck')
+      const z = (id: string) => find(app, id).zIndex
 
-      // At the Caisse's door, then on the way back, crossing the avenue past
-      // the truck's far end, then a step from the hatch.
-      const door = city.routes.caisse.at(-1)!
-      app.frame(msAt(640))
+      // Past the café, at the reference's 720, 410, then at the door.
+      const { caisse } = city.routes
+      app.frame(msAt(600 + 25 * 0.1))
+      expect(owner.visible).toBe(true)
+      expect(owner.zIndex).toBeGreaterThan(z('cafe'))
+      const door = caisse.at(-1)!
+      app.frame(msAt(640) - msAt(600 + 25 * 0.1))
       expect(owner.position).toMatchObject({ x: door[0], y: door[1] })
-      app.frame(msAt(673) - msAt(640))
-      expect(owner.visible).toBe(true)
-      expect(owner.zIndex).toBeLessThan(truck.zIndex)
-      app.frame(msAt(679.8) - msAt(673))
-      expect(owner.visible).toBe(true)
-      expect(owner.zIndex).toBeGreaterThan(truck.zIndex)
+      expect(owner.zIndex).toBeGreaterThan(z('bank'))
+      // With the ring under their feet and the way's dot at the door.
+      expect(find(app, 'ring').visible).toBe(true)
+      expect(find(app, 'ring').position).toMatchObject({
+        x: door[0],
+        y: door[1],
+      })
+    })
+
+    it('faces the owner the way they walk, there and back, lit from the left', async () => {
+      const app = createFakeApp()
+      await start(app, tripStore())
+      const facing = () =>
+        find(app, 'facings')
+          .children.filter((n) => n.visible)
+          .map((n) => n.label)
+      // Along the avenue to the right, then back to the left.
+      app.frame(msAt(612))
+      expect(facing()).toEqual(['facesRight'])
+      app.frame(msAt(670) - msAt(612))
+      expect(facing()).toEqual(['facesLeft'])
+      // Drawn turned, as the street's people, never flipped whole.
+      expect(find(app, 'owner').scale.x).toBeCloseTo(city.figure.scale)
     })
   })
 
@@ -292,12 +322,12 @@ describe('startCity', () => {
       const { picker } = await start(createFakeApp(), tripStore(), {
         onOpen: (link) => opened.push(link),
       })
-      expect(picker.over(onWall('bakery'))).toBe(true)
-      expect(picker.over(onWall('triplex-west-1'))).toBe(false)
-      picker.at(onWall('bakery'))
+      expect(picker.over(onWall('rent'))).toBe(true)
+      expect(picker.over(onWall('tri1'))).toBe(false)
+      picker.at(onWall('rent'))
       picker.at(onWall('chez-normand'))
-      picker.at(onWall('caisse'))
-      picker.at(onWall('triplex-west-1'))
+      picker.at(onWall('bank'))
+      picker.at(onWall('tri1'))
       expect(opened).toEqual(['fournil', { grocer: 'chezNormand' }, 'trip'])
     })
 
@@ -307,7 +337,7 @@ describe('startCity', () => {
       const { picker } = await start(app, tripStore(), {
         onOpen: (link) => opened.push(link),
       })
-      const { x, y } = onWall('bakery')
+      const { x, y } = onWall('rent')
       // Scaled by 0.8 and centred across, standing on the bottom.
       picker.at({ x: x * 0.8 + 64, y: y * 0.8 })
       expect(opened).toEqual(['fournil'])
@@ -319,9 +349,9 @@ describe('startCity', () => {
       const { picker } = await start(createFakeApp(), store, {
         onOpen: (link) => opened.push(link),
       })
-      expect(picker.over(onWall('caisse'))).toBe(false)
-      picker.at(onWall('caisse'))
-      picker.at(onWall('bakery'))
+      expect(picker.over(onWall('bank'))).toBe(false)
+      picker.at(onWall('bank'))
+      picker.at(onWall('rent'))
       expect(opened).toEqual(['fournil'])
     })
 
@@ -329,8 +359,152 @@ describe('startCity', () => {
       const { picker } = await start(createFakeApp(), tripStore(), {
         onOpen: null,
       })
-      expect(picker.over(onWall('bakery'))).toBe(false)
-      expect(() => picker.at(onWall('bakery'))).not.toThrow()
+      expect(picker.over(onWall('rent'))).toBe(false)
+      expect(() => picker.at(onWall('rent'))).not.toThrow()
+    })
+  })
+
+  it('draws the street’s people at the city’s scale, each with the reference’s two shadows', async () => {
+    const app = createFakeApp()
+    await start(app, tripStore())
+    app.frame(msAt(595))
+    const block = find(app, 'layer:block')
+    const inLine = block.children.filter(
+      (n) => n.label.startsWith('customer:') && n.visible,
+    )
+    expect(inLine.length).toBeGreaterThan(0)
+    for (const one of inLine) {
+      expect(one.scale.y).toBeCloseTo(city.figure.scale)
+      // The street's customer, turned to face the truck up the sidewalk.
+      expect(one.children[0]?.label).toBe('customer')
+      expect(one.children[0]?.scale.x).toBe(-1)
+      const own = (layer: Container) =>
+        layer.children.filter((n) => n.label.endsWith(`:${one.label}`))
+      const shadows = find(app, 'layer:shadows')
+      expect(
+        own(shadows).length +
+          shadows.children.flatMap((group) => own(group)).length,
+        one.label,
+      ).toBe(2)
+    }
+    // Who serves shows only through the hatch's window, with no legs.
+    const crew = find(app, 'crew')
+    expect(crew.mask).toBe(crew.getChildByLabel('window'))
+  })
+
+  describe('the name over a building', () => {
+    /** The page's pixel on the middle of `id`'s lit wall, at `scale`. */
+    const over = (id: string, scale = 1, dx = 0) => {
+      const { left, front, wall } = boxCorners(
+        city.pieces.find((p) => p.id === id)!,
+      )
+      return {
+        x: ((left[0] + front[0]) / 2) * scale + dx,
+        y: ((left[1] + front[1]) / 2 - wall / 2) * scale,
+      }
+    }
+    /** The name shown, its words and where its foot is, or null. */
+    const shown = (app: ReturnType<typeof createFakeApp>) => {
+      const name = find(app, 'labels').getChildByLabel('name')
+      if (name === null) return null
+      const words = name.getChildByLabel('text') as Text
+      return { text: words.text, x: name.x, y: name.y }
+    }
+    /** Where a box's name goes: over the middle of its top. */
+    const above = (id: string) => {
+      const { left, right, back, wall } = boxCorners(
+        city.pieces.find((p) => p.id === id)!,
+      )
+      return {
+        x: (left[0] + right[0]) / 2,
+        y: back[1] - wall - city.label.above,
+      }
+    }
+
+    it('names the place, the shop or the bakery for rent under the pointer, over its top', async () => {
+      const app = createFakeApp()
+      const { picker } = await start(app, tripStore(), { onOpen: () => {} })
+      picker.hover(over('bank'))
+      expect(shown(app)).toEqual({
+        text: 'La Caisse populaire',
+        ...above('bank'),
+      })
+      picker.hover(over('silo'))
+      expect(shown(app)?.text).toBe('La meunerie')
+      picker.hover(over('chez-normand'))
+      expect(shown(app)?.text).toBe('Épicerie Chez Normand')
+      picker.hover(over('rent'))
+      expect(shown(app)?.text).toBe('À louer')
+    })
+
+    it('names nothing over a triplex, a tree or the sky, and nothing once the pointer leaves', async () => {
+      const app = createFakeApp()
+      const { picker } = await start(app, tripStore(), { onOpen: () => {} })
+      picker.hover(over('bank'))
+      picker.hover(over('tri1'))
+      expect(shown(app)).toBeNull()
+      picker.hover(over('bank'))
+      picker.hover({ x: 40, y: 40 })
+      expect(shown(app)).toBeNull()
+      picker.hover(over('bank'))
+      picker.hover(null)
+      expect(shown(app)).toBeNull()
+    })
+
+    it('names nothing while the page cannot open it, nor a trip in a Défi', async () => {
+      const app = createFakeApp()
+      const { picker } = await start(app, tripStore(), { onOpen: null })
+      picker.hover(over('bank'))
+      expect(shown(app)).toBeNull()
+      const defi = createFakeApp()
+      const store = createGameStore(startChallenge('travauxSaintDenis', 42))
+      const started = await start(defi, store, { onOpen: () => {} })
+      started.picker.hover(over('bank'))
+      expect(shown(defi)).toBeNull()
+      started.picker.hover(over('rent'))
+      expect(shown(defi)?.text).toBe('À louer')
+    })
+
+    it('follows the game under a still pointer: « Le fournil » once the bakery runs', async () => {
+      const app = createFakeApp()
+      const store = tripStore()
+      const { picker } = await start(app, store, { onOpen: () => {} })
+      picker.hover(over('rent'))
+      expect(shown(app)?.text).toBe('À louer')
+      store
+        .getState()
+        .decide({ kind: 'openBakery', oven: 'louer' } satisfies DecisionChange)
+      store.getState().advance(1)
+      expect(shown(app)?.text).toBe('Le fournil')
+    })
+
+    it('finds the building again under a still pointer when the window changes size', async () => {
+      const app = createFakeApp()
+      const { picker } = await start(app, tripStore(), { onOpen: () => {} })
+      app.frame()
+      const point = over('bank')
+      picker.hover(point)
+      expect(shown(app)?.text).toBe('La Caisse populaire')
+      // At 1280 × 720 the design is scaled by 0.8 and centred: the same
+      // pixel is elsewhere in it.
+      app.screen.width = 1280
+      app.screen.height = 720
+      app.frame()
+      expect(shown(app)?.text).not.toBe('La Caisse populaire')
+      picker.hover(over('bank', 0.8, 64))
+      expect(shown(app)?.text).toBe('La Caisse populaire')
+    })
+
+    it('takes the name down with the city, and a later city hears nothing of the old pointer', async () => {
+      const app = createFakeApp()
+      const { picker, stop } = await start(app, tripStore(), {
+        onOpen: () => {},
+      })
+      picker.hover(over('bank'))
+      const labels = find(app, 'labels')
+      stop()
+      expect(labels.destroyed).toBe(true)
+      expect(() => picker.hover(over('bank'))).not.toThrow()
     })
   })
 

@@ -757,19 +757,20 @@ export interface AvatarArt {
 
 /**
  * Draws an employee who serves at the truck (#208), feet at 0, 0, as a
- * customer is drawn: in the staff's mustard shirt, as the city draws them,
- * with a cream apron like the owner's, carrying nothing. Turned to `facing`
- * by mirroring, lit on the side that shows on the screen's left.
+ * customer is drawn: in the staff's mustard shirt, or `shirt`, with a cream
+ * apron like the owner's, carrying nothing. Turned to `facing` by
+ * mirroring, lit on the side that shows on the screen's left. The city
+ * draws the owner walking so, in their blue shirt.
  */
 export function drawEmployee(
   look: CrowdSettings['employee'],
   style: PeopleStyle,
   trousers: string,
+  shirt: string = style.palette.mustard,
 ): Container {
   const u = look.height / REFERENCE
   const root = new Container({ label: 'employee' })
   const sun: Side = look.facing === 1 ? 'left' : 'right'
-  const shirt = style.palette.mustard
   const apron = new Graphics({ label: 'apron' })
     .roundRect(-11 * u, -72 * u, 22 * u, 40 * u, 4 * u)
     .fill(style.palette.cream)

@@ -3,16 +3,15 @@ import type {
   CityManifest,
   CityPiece,
   CityPieceKind,
+  ColorName,
   Light,
 } from '../content/assets.ts'
-import type { Avatar } from '../content/schema.ts'
 import { TITLE_FONT, TITLE_FONT_FAMILY } from './fonts.ts'
 import {
   boxCorners,
   castShadow,
   raised,
   type BoxCorners,
-  type BoxSize,
   type Vec,
 } from './iso.ts'
 import { mix, tonesOf, type Tones } from './light.ts'
@@ -48,36 +47,21 @@ const WALL_SLOPE = Math.atan(0.5)
 
 /** The placeholder for each kind of piece of the city. */
 export const CITY_PLACEHOLDERS: Record<CityPieceKind, DrawCityPiece> = {
-  ground: (piece, style) => {
+  backdrop: (piece, style) => {
+    const g = new Graphics({ label: 'backdrop' })
+    // The island lies flat in its box; the sky and the clouds fill theirs.
+    if (piece.depth === undefined) {
+      return g.rect(0, 0, piece.width, piece.height).fill(color(piece, style))
+    }
     const { left, front, right, back } = localCorners(piece)
-    const g = new Graphics({ label: 'ground' })
     return g.poly(flat([left, front, right, back])).fill(top(piece, style))
   },
 
-  park: (piece, style) => {
-    const box = localCorners(piece)
-    const root = new Container()
-    const grass = root.addChild(new Graphics({ label: 'grass' }))
-    grass
-      .poly(flat([box.left, box.front, box.right, box.back]))
-      .fill(top(piece, style))
-    // A gravel walk across it, corner to corner.
-    const walk = tonesOf(style.palette.sidewalk, style.light).top
-    const across = (s: number, t: number) => onGround(box, s, t)
-    grass
-      .poly(
-        flat([
-          across(0, 0.46),
-          across(1, 0.46),
-          across(1, 0.56),
-          across(0, 0.56),
-        ]),
-      )
-      .fill(walk)
-    const trees = root.addChild(new Graphics({ label: 'trees' }))
-    for (const [x, y] of treesOf(box)) tree(trees, x, y, box.wall, style)
-    return root
-  },
+  // Each box's placeholder throws its own shadow.
+  shadows: () => new Container({ label: 'shadows' }),
+
+  scenery: (piece, style) =>
+    drawBox(piece, style, { roof: color(piece, style), bricks: false }),
 
   triplex: (piece, style) =>
     drawBox(piece, style, {
@@ -162,16 +146,6 @@ export const CITY_PLACEHOLDERS: Record<CityPieceKind, DrawCityPiece> = {
           style.palette.wood,
           style,
         )
-        board(
-          face,
-          piece.text,
-          w * 0.06,
-          storey * 1.04,
-          w * 0.56,
-          storey * 0.34,
-          style.palette.cream,
-          style,
-        )
       },
       shade: (face, w, h) => windowRows(face, w, h, 2, 2, style),
     }),
@@ -192,16 +166,6 @@ export const CITY_PLACEHOLDERS: Record<CityPieceKind, DrawCityPiece> = {
           style.palette.wood,
           style,
           'shade',
-        )
-        board(
-          face,
-          piece.text,
-          w * 0.12,
-          h * 0.06,
-          w * 0.76,
-          h * 0.1,
-          style.palette.cream,
-          style,
         )
       },
     }),
@@ -346,28 +310,39 @@ export const CITY_PLACEHOLDERS: Record<CityPieceKind, DrawCityPiece> = {
   hatch: (piece, style) =>
     onWall(piece, (face, w, h) => {
       const g = face.addChild(new Graphics({ label: 'hatch' }))
-      const inside = mix(style.palette.ink, style.light.slate, 0.4)
-      g.rect(w * 0.04, h * 0.28, w * 0.92, h * 0.72).fill(inside)
-      g.rect(0, h * 0.84, w, h * 0.16).fill(
-        tones(style.palette.wood, style).top,
-      )
-      awning(face, 0, 0, w, h * 0.3, color(piece, style), style)
+      const inside = tones(color(piece, style), style)
+      g.rect(0, 0, w, h).fill(inside.lit)
+      g.rect(0, 0, w, h * 0.25).fill(inside.shade)
     }),
+
+  awning: (piece, style) =>
+    onWall(piece, (face, w, h) =>
+      awning(face, 0, 0, w, h, color(piece, style), style),
+    ),
 
   shutter: (piece, style) =>
     onWall(piece, (face, w, h) => {
       const t = tones(color(piece, style), style)
       const g = face.addChild(new Graphics({ label: 'shutter' }))
-      g.rect(w * 0.04, h * 0.28, w * 0.92, h * 0.72).fill(t.lit)
-      for (let y = h * 0.36; y < h; y += 3) {
-        g.rect(w * 0.04, y, w * 0.92, 1).fill(t.shade)
+      g.rect(0, 0, w, h).fill(t.lit)
+      for (let y = 2; y < h; y += 3) {
+        g.rect(0, y, w, 1).fill(t.shade)
       }
     }),
 
   sign: (piece, style) =>
-    onWall(piece, (face, w, h) =>
-      board(face, piece.text, 0, 0, w, h, color(piece, style), style),
-    ),
+    onWall(piece, (face, w, h) => {
+      // The reference's board: white, a slate strip along its foot, and
+      // its words in their colour.
+      face.addChild(
+        new Graphics({ label: 'board' })
+          .rect(0, 0, w, h)
+          .fill(color(piece, style))
+          .rect(0, h - SIGN_STRIP * h, w, SIGN_STRIP * h)
+          .fill({ color: style.light.slate, alpha: SIGN_STRIP_OPACITY }),
+      )
+      write(face, piece.text, w, h, piece.trim, style)
+    }),
 
   windows: (piece, style) =>
     onWall(piece, (face, w, h) => {
@@ -566,7 +541,25 @@ function board(
       .rect(x, y, w, Math.min(2, h / 4))
       .fill(t.top),
   )
-  if (text === undefined) return
+  const words = write(face, text, w, h, undefined, style)
+  words?.position.set(x + w / 2, y + h / 2)
+}
+
+/**
+ * Writes `text` in the middle of a board `w` by `h` from 0, 0, in `ink`
+ * or the city's sign colour, shrunk to fit: in the title font, its strokes
+ * thickened in their own colour, as the reference's words in weight 700.
+ */
+function write(
+  face: Container,
+  text: string | undefined,
+  w: number,
+  h: number,
+  ink: ColorName | undefined,
+  style: CityStyle,
+): Text | null {
+  if (text === undefined) return null
+  const fill = style.palette[ink ?? style.sign.color]
   const words = face.addChild(
     new Text({
       label: 'text',
@@ -575,18 +568,26 @@ function board(
         fontFamily: TITLE_FONT_FAMILY,
         fontWeight: TITLE_FONT.weight,
         fontSize: style.sign.fontSize,
-        fill: style.palette[style.sign.color],
+        fill,
+        stroke: { color: fill, width: SIGN_STROKE },
       },
       anchor: 0.5,
-      x: x + w / 2,
-      y: y + h / 2,
+      x: w / 2,
+      y: h / 2,
     }),
   )
   const room = w * 0.9
   const width = style.measureWidth(words)
   const tall = style.sign.fontSize / (h * 0.9)
   words.scale.set(Math.min(1, room / width, 1 / tall))
+  return words
 }
+
+/** The share of a sign's height its slate strip takes, and its opacity. */
+const SIGN_STRIP = 3 / 16
+const SIGN_STRIP_OPACITY = 0.2
+/** How much the words of a sign are thickened, as Fredoka 700. */
+const SIGN_STROKE = 0.5
 
 /** An awning in stripes of `base` and cream, its shadow on the wall under it. */
 function awning(
@@ -696,63 +697,9 @@ function ball(
     .fill(t.top)
 }
 
-/** A tree standing at `x`, `y`, `height` tall: its trunk, then its crown. */
-function tree(
-  g: Graphics,
-  x: number,
-  y: number,
-  height: number,
-  style: CityStyle,
-): void {
-  const crown = height * 0.36
-  g.rect(x - 1.5, y - height * 0.5, 3, height * 0.5).fill(
-    tones(style.palette.wood, style).shade,
-  )
-  ball(g, x, y - height + crown, crown, style.palette.foliage, style)
-}
-
-/** Where a park's trees stand, about one every 50 pixels each way. */
-export function treesOf(box: BoxCorners): Vec[] {
-  const along = Math.hypot(
-    box.right[0] - box.back[0],
-    box.right[1] - box.back[1],
-  )
-  const across = Math.hypot(
-    box.left[0] - box.back[0],
-    box.left[1] - box.back[1],
-  )
-  const rows = Math.max(1, Math.round(across / TREE_SPACING))
-  const columns = Math.max(1, Math.round(along / TREE_SPACING))
-  const trees: Vec[] = []
-  for (let row = 0; row < rows; row += 1) {
-    for (let column = 0; column < columns; column += 1) {
-      const t = (row + 0.5) / rows
-      // The walk runs across the middle; no tree stands on it.
-      if (t > 0.4 && t < 0.62) continue
-      trees.push(onGround(box, (column + 0.5) / columns, t))
-    }
-  }
-  return trees
-}
-
-/** How far apart a park's trees stand, in pixels on the ground. */
-const TREE_SPACING = 50
-
-/**
- * The point on a box's footprint `s` of the way from its back corner to its
- * right one and `t` of the way to its left one.
- */
-function onGround(box: BoxCorners, s: number, t: number): Vec {
-  const { back, right, left } = box
-  return [
-    back[0] + (right[0] - back[0]) * s + (left[0] - back[0]) * t,
-    back[1] + (right[1] - back[1]) * s + (left[1] - back[1]) * t,
-  ]
-}
-
 /**
  * The shadows a placeholder throws on the ground, for the kinds that throw
- * any: a box's from its walls, a park's from its trees.
+ * any: a box's from its walls.
  */
 export const CITY_SHADOWS: Partial<
   Record<
@@ -760,12 +707,6 @@ export const CITY_SHADOWS: Partial<
     (piece: CityPiece, shadows: Shadows, light: Light) => readonly Container[]
   >
 > = {
-  park: (piece, shadows) => {
-    const box = boxCorners(piece)
-    return treesOf(box).map(([x, y]) =>
-      shadows.castMass(piece.id, x, y, box.wall * 0.36, box.wall * 0.7),
-    )
-  },
   triplex: (piece, shadows, light) => boxShadow(piece, shadows, light),
   building: (piece, shadows, light) => boxShadow(piece, shadows, light),
   mill: (piece, shadows, light) => boxShadow(piece, shadows, light),
@@ -786,102 +727,90 @@ function boxShadow(
   ]
 }
 
-/** What a tiny person of the city looks like. */
-export interface FigureLook {
-  readonly coat: string
-  readonly skin: string
-  readonly hair: string
-  /** The owner's apron over their shirt. */
-  readonly apron?: string
-  /** The hair of the avatar the player picked: longer for `femme`. */
-  readonly avatar?: Avatar
-}
-
 /**
- * A tiny person standing with their feet at 0, 0: legs, a coat lit on the
- * left, a head and hair. The `bust` is only the head and shoulders, with
- * their foot at 0, 0, for someone serving in the truck's hatch.
- */
-export function drawFigure(
-  look: FigureLook,
-  style: CityStyle,
-  size: Pick<CityManifest['figure'], 'height' | 'width'>,
-  bust = false,
-): Container {
-  const { height: h, width: w } = size
-  const root = new Container({ label: bust ? 'bust' : 'figure' })
-  const g = root.addChild(new Graphics())
-  // A bust stands as tall as the figure from its chest up.
-  const lift = bust ? -h * 0.5 : 0
-  const coat = tones(look.coat, style)
-  const top = -h * 0.78 - lift
-  const waist = bust ? 0 : -h * 0.36
-  if (!bust) {
-    const trousers = mix(look.coat, style.light.slate, 0.6)
-    g.rect(-w * 0.36, -h * 0.4, w * 0.3, h * 0.4).fill(trousers)
-    g.rect(w * 0.06, -h * 0.4, w * 0.3, h * 0.4).fill(
-      mix(trousers, style.light.slate, 0.3),
-    )
-  }
-  g.roundRect(-w / 2, top, w, waist - top, w * 0.3).fill(coat.lit)
-  g.rect(w * 0.16, top + w * 0.2, w * 0.34, waist - top - w * 0.2).fill(
-    coat.shade,
-  )
-  if (look.apron !== undefined) {
-    g.rect(
-      -w * 0.3,
-      top + (waist - top) * 0.3,
-      w * 0.6,
-      (waist - top) * 0.7,
-    ).fill(tones(look.apron, style).lit)
-  }
-  const head = h * 0.13
-  const headY = top - head * 0.9
-  if (look.avatar === 'femme') {
-    g.roundRect(-head * 1.05, headY - head, head * 2.1, head * 2.2, head).fill(
-      look.hair,
-    )
-  }
-  const skin = tones(look.skin, style)
-  g.circle(0, headY, head).fill(skin.shade)
-  g.circle(-head * 0.15, headY - head * 0.15, head * 0.8).fill(skin.lit)
-  g.moveTo(-head, headY - head * 0.1)
-    .arc(0, headY, head, Math.PI * 1.05, Math.PI * 1.95)
-    .fill(look.hair)
-  return root
-}
-
-/**
- * The delivery van: a box `van` sized, with a stripe along its lit side,
- * its footprint's middle at 0, 0.
+ * The delivery van, as the reference's cars: a low box `van` sized, a
+ * smaller one on it with its windows, both lit from the left, a stripe
+ * along its lit side and two wheels, its footprint's middle at 0, 0.
  */
 export function drawVan(
   van: CityManifest['deliveries']['van'],
   style: CityStyle,
 ): Container {
-  const size: BoxSize = {
-    x: 0,
-    y: 0,
-    width: van.width,
-    height: van.height,
-    depth: van.depth,
-  }
-  const { left, right } = boxCorners(size)
-  const middle: Vec = [(left[0] + right[0]) / 2, (left[1] + right[1]) / 2]
-  const piece: CityPiece = {
-    id: 'van',
-    kind: 'truck',
-    layer: '',
-    ...size,
-    color: van.color,
-    trim: van.stripe,
-  }
-  const art = CITY_PLACEHOLDERS.truck(piece, style)
-  art.position.set(-middle[0], -middle[1])
   const root = new Container({ label: 'van' })
-  root.addChild(art)
+  const g = root.addChild(new Graphics())
+  const across = van.width - van.depth
+  // A step along the van, and one across it, on the ground.
+  const along: Vec = [van.depth, van.depth / 2]
+  const side: Vec = [-across, across / 2]
+  const at = (s: number, t: number, z = 0): Vec => [
+    along[0] * (s - 0.5) + side[0] * (t - 0.5),
+    along[1] * (s - 0.5) + side[1] * (t - 0.5) - z,
+  ]
+  const wall = van.height - van.width / 2
+  const lower = wall * VAN_LOWER
+  const body = tones(style.palette[van.color], style)
+  const glass = tones(style.palette.glass, style)
+  /** A box from `s0`, `t0` to `s1`, `t1` of the van, `z0` to `z1` up. */
+  const box = (
+    s0: number,
+    t0: number,
+    s1: number,
+    t1: number,
+    z0: number,
+    z1: number,
+  ) => {
+    g.poly(
+      flat([at(s0, t1, z0), at(s1, t1, z0), at(s1, t1, z1), at(s0, t1, z1)]),
+    )
+      .fill(body.lit)
+      .poly(
+        flat([at(s1, t1, z0), at(s1, t0, z0), at(s1, t0, z1), at(s1, t1, z1)]),
+      )
+      .fill(body.shade)
+      .poly(
+        flat([at(s0, t0, z1), at(s1, t0, z1), at(s1, t1, z1), at(s0, t1, z1)]),
+      )
+      .fill(body.top)
+  }
+  box(0, 0, 1, 1, 0, lower)
+  g.poly(
+    flat([
+      at(0, 1, lower * 0.3),
+      at(1, 1, lower * 0.3),
+      at(1, 1, lower * 0.6),
+      at(0, 1, lower * 0.6),
+    ]),
+  ).fill(tones(style.palette[van.stripe], style).lit)
+  box(0.22, 0.08, 0.75, 0.92, lower, wall)
+  const pane = (wall - lower) * 0.2
+  g.poly(
+    flat([
+      at(0.26, 0.92, lower + pane),
+      at(0.71, 0.92, lower + pane),
+      at(0.71, 0.92, wall - pane),
+      at(0.26, 0.92, wall - pane),
+    ]),
+  )
+    .fill(glass.lit)
+    .poly(
+      flat([
+        at(0.75, 0.88, lower + pane),
+        at(0.75, 0.12, lower + pane),
+        at(0.75, 0.12, wall - pane),
+        at(0.75, 0.88, wall - pane),
+      ]),
+    )
+    .fill(glass.shade)
+  for (const s of [0.2, 0.8]) {
+    const [x, y] = at(s, 1, VAN_WHEEL * 0.4)
+    g.ellipse(x, y, VAN_WHEEL * 0.9, VAN_WHEEL).fill(style.palette.ink)
+  }
   return root
 }
+
+/** The share of the van's height its lower box takes, and a wheel's size. */
+const VAN_LOWER = 0.55
+const VAN_WHEEL = 4.5
 
 /**
  * The words of the day's trip on a board in `label`'s colours, outlined,

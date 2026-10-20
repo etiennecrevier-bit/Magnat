@@ -5,7 +5,7 @@ import { createPicker } from './picker.ts'
 const POINT = { x: 10, y: 20 }
 
 function target(over = true) {
-  return { openAt: vi.fn(), isOver: vi.fn(() => over) }
+  return { openAt: vi.fn(), isOver: vi.fn(() => over), hoverAt: vi.fn() }
 }
 
 describe('createCityPicker', () => {
@@ -38,6 +38,30 @@ describe('createCityPicker', () => {
     expect(first.openAt).toHaveBeenCalledTimes(1)
     expect(second.openAt).not.toHaveBeenCalled()
   })
+
+  it('tells the city where the pointer is, and that it is gone when another city takes over or it lets go', () => {
+    const picker = createCityPicker()
+    const first = target()
+    const second = target()
+    const letFirstGo = picker.connect(first)
+    picker.hover(POINT)
+    picker.hover(null)
+    expect(first.hoverAt.mock.calls).toEqual([[POINT], [null]])
+    // A city that stops holding the picker names nothing any more.
+    const letSecondGo = picker.connect(second)
+    expect(first.hoverAt.mock.calls.at(-1)).toEqual([null])
+    picker.hover(POINT)
+    expect(second.hoverAt.mock.calls).toEqual([[POINT]])
+    expect(first.hoverAt).toHaveBeenCalledTimes(3)
+    letSecondGo()
+    expect(second.hoverAt.mock.calls.at(-1)).toEqual([null])
+    // Letting go while another holds it leaves that one be.
+    const third = target()
+    picker.connect(third)
+    letFirstGo()
+    expect(third.hoverAt).not.toHaveBeenCalled()
+    expect(() => picker.hover(null)).not.toThrow()
+  })
 })
 
 describe('worldPicks', () => {
@@ -62,9 +86,11 @@ describe('worldPicks', () => {
     expect(picks.over(POINT)).toBe(true)
     picks.close()
     expect(customers.unpick).toHaveBeenCalledTimes(1)
-    // Only the street marks the spot under the pointer.
+    // Both hear where the pointer is: the street marks its spot, the city
+    // names its building.
     picks.hover(POINT)
     picks.hover(null)
     expect(customers.hover.mock.calls).toEqual([[POINT], [null]])
+    expect(buildings.hoverAt.mock.calls).toEqual([[POINT], [null]])
   })
 })

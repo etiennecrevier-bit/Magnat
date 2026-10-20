@@ -5,8 +5,8 @@ import type {
   CityPiece,
   CityShows,
 } from '../content/assets.ts'
-import { WALL_KINDS } from '../content/assets.ts'
-import type { GrocerContent, GrocerId } from '../content/schema.ts'
+import { FLAT_KINDS, WALL_KINDS } from '../content/assets.ts'
+import type { GrocerContent, GrocerId, PlaceId } from '../content/schema.ts'
 import { GROCERS } from '../engine/contracts.ts'
 import type { VisualEffects } from '../ui/settings.ts'
 import {
@@ -32,10 +32,15 @@ import {
   type Shadows,
 } from './shadows.ts'
 
-/** What a building opens, and the grocer whose shop it is, if any. */
+/**
+ * What a building opens, the place it is or the grocer whose shop it is, if
+ * any, and the middle of its top, over which its name shows.
+ */
 export interface CityHit {
   readonly opens: CityOpens
   readonly grocer?: GrocerId
+  readonly place?: PlaceId
+  readonly top: Vec
 }
 
 /** The city, built once from the manifest and shown from the game. */
@@ -59,8 +64,13 @@ export interface CityScene {
   readonly shadows: Shadows
   /** The boxes of `block`, in the order they are drawn. */
   readonly boxes: readonly RankedBox[]
-  /** The truck's own node, where who serves shows in the hatch. */
+  /** The truck's own node. */
   readonly truck: Container
+  /**
+   * Where who serves shows, in the truck's node: over its hatch, under its
+   * awning.
+   */
+  readonly crew: Container
   /** Shows the day in `view`: the bakery, the grocers' contracts. */
   update: (view: CityView) => void
   /** Shows the truck serving, its hatch open, or closed. */
@@ -80,13 +90,15 @@ export interface CityScene {
 /**
  * Builds the city from `manifest.city`, in its palette and light. Each piece
  * is a container at its position holding its art: the image `textures`
- * holds for it, stretched to its size, or else its placeholder. A piece on
- * a wall goes in its box's container, so it is drawn with it. In the layers
- * under the shadow layer, the pieces are drawn in the order listed; in
- * those over it, the boxes are drawn from the farthest to the nearest (see
- * `rankBoxes`). Only a placeholder throws its shadows on the ground; they
- * show and hide with their piece. A grocer's shop writes the grocer's name
- * from `grocers`. Nothing shows the game until the first `update`.
+ * holds for it, at its `art` or stretched to its size, or else its
+ * placeholder. A piece on a wall goes in its box's container, so it is
+ * drawn with it. In the layers under the shadow layer, the pieces are drawn
+ * in the order listed; in those over it, the boxes are drawn from the
+ * farthest to the nearest (see `rankBoxes`). The shadows on the ground are
+ * an image; a placeholder throws its own only when no image of shadows
+ * loaded, and they show and hide with their piece. A grocer's shop's
+ * placeholder writes the grocer's name from `grocers`. Nothing shows the
+ * game until the first `update`.
  */
 export function buildCityScene(
   manifest: AssetManifest,
@@ -128,7 +140,15 @@ export function buildCityScene(
   const shadows = createShadows(shadowLayer, light, materials.spot, makeFilters)
 
   const standing = city.pieces.filter(
-    (piece) => !WALL_KINDS.includes(piece.kind),
+    (piece) =>
+      !WALL_KINDS.includes(piece.kind) && !FLAT_KINDS.includes(piece.kind),
+  )
+  // The shadows the image of shadows holds need no placeholder's.
+  const baked = city.pieces.some(
+    (piece) =>
+      piece.kind === 'shadows' &&
+      piece.image !== undefined &&
+      textures.has(piece.image),
   )
   const ranked = new Map<string, RankedBox>()
   for (const id of city.layers.slice(over + 1)) {
@@ -144,6 +164,7 @@ export function buildCityScene(
     byMinute: boolean
     nodes: readonly Container[]
   }[] = []
+  let crew: Container | null = null
   const hits: {
     polygon: Vec[]
     node: Container
@@ -168,9 +189,12 @@ export function buildCityScene(
     if (box !== undefined) node.zIndex = box.rank
     ;(host ?? layers.get(piece.layer))?.addChild(node)
     nodes.set(piece.id, node)
+    if (piece.kind === 'hatch' && host !== undefined && crew === null) {
+      crew = host.addChild(new Container({ label: 'crew' }))
+    }
 
     const thrown =
-      art.label === 'placeholder'
+      art.label === 'placeholder' && !baked
         ? (CITY_SHADOWS[piece.kind]?.(piece, shadows, light) ?? [])
         : []
     if (piece.shows !== undefined) {
@@ -180,16 +204,29 @@ export function buildCityScene(
         nodes: [node, ...thrown],
       })
     }
-    if (host === undefined) {
+    // A click goes through scenery and flat pieces to what is behind.
+    if (
+      host === undefined &&
+      piece.kind !== 'scenery' &&
+      !FLAT_KINDS.includes(piece.kind)
+    ) {
+      const corners = boxCorners(piece)
+      const top: Vec = [
+        (corners.left[0] + corners.right[0]) / 2,
+        corners.back[1] - corners.wall,
+      ]
       hits.push({
-        polygon: silhouette(boxCorners(piece)),
+        polygon: silhouette(corners),
         node,
         hit:
           piece.opens === undefined
             ? null
-            : piece.grocer === undefined
-              ? { opens: piece.opens }
-              : { opens: piece.opens, grocer: piece.grocer },
+            : {
+                opens: piece.opens,
+                top,
+                ...(piece.grocer === undefined ? {} : { grocer: piece.grocer }),
+                ...(piece.place === undefined ? {} : { place: piece.place }),
+              },
         layer: city.layers.indexOf(piece.layer),
         rank: box?.rank ?? order,
       })
@@ -201,6 +238,7 @@ export function buildCityScene(
   const truckPiece = city.pieces.find((piece) => piece.kind === 'truck')
   const truck = truckPiece === undefined ? undefined : nodes.get(truckPiece.id)
   if (truck === undefined) throw new Error('The city has no truck')
+  crew ??= truck.addChild(new Container({ label: 'crew' }))
 
   let shown: Pick<CityView, 'bakery' | 'contracts'> = {
     bakery: false,
@@ -225,6 +263,7 @@ export function buildCityScene(
     shadows,
     boxes: [...ranked.values()].sort((a, b) => a.rank - b.rank),
     truck,
+    crew,
     update: (view) => {
       shown = view
       show(false)
@@ -250,8 +289,8 @@ export function buildCityScene(
 }
 
 /**
- * The piece's image stretched to its size, along its wall for a piece on
- * one, or else its placeholder.
+ * The piece's image at its `art`, as drawn; or else stretched to its size,
+ * along its wall for a piece on one; or else its placeholder.
  */
 function drawCityPiece(
   piece: CityPiece,
@@ -266,6 +305,12 @@ function drawCityPiece(
     return placeholder
   }
   const sprite = new Sprite({ texture, label: 'image' })
+  if (piece.art !== undefined) {
+    // Drawn already where it goes, a wall's as seen: no second slant.
+    sprite.position.set(piece.art.x - piece.x, piece.art.y - piece.y)
+    sprite.setSize(piece.art.width, piece.art.height)
+    return sprite
+  }
   sprite.setSize(piece.width, piece.height)
   if (!WALL_KINDS.includes(piece.kind)) return sprite
   const slope = Math.atan(0.5)
