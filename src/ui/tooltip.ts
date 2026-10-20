@@ -35,6 +35,8 @@ export interface TipRow {
   readonly value: string
   /** Shows the value in amber, as something to look at. */
   readonly warn?: boolean
+  /** Starts a part of its own, under a thin line. */
+  readonly divider?: boolean
 }
 
 /** What a tooltip says. Every part but the title is optional. */
@@ -203,6 +205,39 @@ export function tipScrollTop(
   if (to === undefined) return null
   const next = clamp(to, 0, end)
   return next === view.scrollTop ? null : next
+}
+
+/** The parts of an element `editsText` reads. */
+export interface KeyTarget {
+  readonly tagName: string
+  readonly isContentEditable?: boolean
+}
+
+/**
+ * Whether `target`, inside the anchor, is where the player types, a text
+ * field or an editable part: there the arrows, Home and End move the caret
+ * or pick an option, and never scroll the tooltip.
+ */
+export function editsText(target: KeyTarget): boolean {
+  const tag = target.tagName.toUpperCase()
+  return (
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    target.isContentEditable === true
+  )
+}
+
+/**
+ * Whether the focus leaving the anchor for `next`, null when it leaves the
+ * page or goes nowhere, takes it out of the anchor, which closes the
+ * tooltip; moving between the controls inside the anchor does not.
+ */
+export function blurLeaves<T>(
+  anchor: { contains(other: T): boolean },
+  next: T | null,
+): boolean {
+  return next === null || !anchor.contains(next)
 }
 
 /** `value`, held between `min` and `max`; `min` wins if they cross. */

@@ -20,8 +20,16 @@ interface NumberFieldViewProps {
   after?: ReactNode
   /** Whether the field cannot be changed, such as in a Défi that locks it. */
   disabled?: boolean
-  /** The id of what else describes the field, such as why it is locked. */
+  /**
+   * The ids, space-separated, of what else describes the field, such as why
+   * it is locked.
+   */
   describedBy?: string
+  /**
+   * Whether the label is for screen readers only, where something else on
+   * the screen already names the field, such as a product card's title.
+   */
+  hideLabel?: boolean
 }
 
 /** A labelled text field for an amount or a number of units. */
@@ -38,6 +46,7 @@ export function NumberFieldView({
   after,
   disabled = false,
   describedBy,
+  hideLabel = false,
 }: NumberFieldViewProps) {
   const unitId = `${id}-unit`
   const errorId = `${id}-error`
@@ -48,7 +57,10 @@ export function NumberFieldView({
   ]
   return (
     <div className="field">
-      <label className="field__label" htmlFor={id}>
+      <label
+        className={hideLabel ? 'visually-hidden' : 'field__label'}
+        htmlFor={id}
+      >
         {label}
       </label>
       <div className="field__control">

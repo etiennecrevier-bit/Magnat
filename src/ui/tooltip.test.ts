@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  blurLeaves,
   createTipControl,
+  editsText,
   placeTip,
   TIP,
   tipBounds,
@@ -152,6 +154,37 @@ describe('placeTip', () => {
       TIP,
     )
     expect(short.arrow).toBe(15)
+  })
+})
+
+describe('editsText', () => {
+  it('keeps the keys in a text field or an editable part', () => {
+    expect(editsText({ tagName: 'INPUT' })).toBe(true)
+    expect(editsText({ tagName: 'textarea' })).toBe(true)
+    expect(editsText({ tagName: 'SELECT' })).toBe(true)
+    expect(editsText({ tagName: 'DIV', isContentEditable: true })).toBe(true)
+  })
+
+  it('leaves them to the tooltip on a button or the anchor itself', () => {
+    expect(editsText({ tagName: 'BUTTON' })).toBe(false)
+    expect(editsText({ tagName: 'DIV', isContentEditable: false })).toBe(false)
+    expect(editsText({ tagName: 'SPAN' })).toBe(false)
+  })
+})
+
+describe('blurLeaves', () => {
+  // A card holding a field and a stepper.
+  const inside = new Set(['card', 'field', 'stepper'])
+  const card = { contains: (other: string) => inside.has(other) }
+
+  it('keeps the tooltip while the focus moves inside the anchor', () => {
+    expect(blurLeaves(card, 'stepper')).toBe(false)
+    expect(blurLeaves(card, 'field')).toBe(false)
+  })
+
+  it('closes it once the focus leaves the anchor or the page', () => {
+    expect(blurLeaves(card, 'tab')).toBe(true)
+    expect(blurLeaves(card, null)).toBe(true)
   })
 })
 

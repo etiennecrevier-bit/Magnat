@@ -587,6 +587,34 @@ describe('a panel opened at a section', () => {
   })
 })
 
+describe('the tab of « Le camion »', () => {
+  it('starts on « Menu », keeps the tab last shown, and starts again with a new game', () => {
+    const store = createGameStore()
+    expect(store.getState().truckTab).toBe('menu')
+    store.getState().setTruckTab('stocks')
+    store.getState().openPanel('manage')
+    store.getState().closePanel()
+    expect(store.getState().truckTab).toBe('stocks')
+    store.getState().startGame(createInitialState(2))
+    expect(store.getState().truckTab).toBe('menu')
+  })
+
+  it('shows « Fournil » when the panel opens at the bakery, and keeps it', () => {
+    const store = createGameStore()
+    store.getState().openPanel('manage', 'bakery')
+    expect(store.getState().truckTab).toBe('bakery')
+    store.getState().closePanel()
+    store.getState().openPanel('manage')
+    expect(store.getState().truckTab).toBe('bakery')
+  })
+
+  it('leaves it when another panel opens at a section', () => {
+    const store = createGameStore()
+    store.getState().openPanel('trip', 'contracts')
+    expect(store.getState().truckTab).toBe('menu')
+  })
+})
+
 describe('the drawers', () => {
   it('start closed, each on its first tab, with no report unread', () => {
     expect(createGameStore().getState()).toMatchObject({

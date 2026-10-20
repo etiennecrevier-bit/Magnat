@@ -7,7 +7,12 @@ export interface FieldDialog {
   readonly dialogRef: RefObject<HTMLDialogElement | null>
   /** Hands a change to `decide`, unless Escape is closing the dialog. */
   readonly onChange: (change: DecisionChange) => void
-  /** Fermer: commits the field being typed in, then closes if all is valid. */
+  /**
+   * Commits the field being typed in, then says whether every field is
+   * valid. When one is not, it gets the focus back, with its message.
+   */
+  readonly settle: () => boolean
+  /** Fermer: closes once `settle` finds every field valid. */
   readonly close: () => void
   /** For the dialog's `onCancel`: Escape drops what is still being typed. */
   readonly onCancel: () => void
@@ -39,27 +44,31 @@ export function useFieldDialog(
     if (!cancelled.current) decide(change)
   }
 
-  const close = () => {
+  const settle = () => {
     const dialog = dialogRef.current
-    if (dialog === null) return
+    if (dialog === null) return false
     // The field being typed in commits as it loses the focus, and shows its
-    // message now if its text is invalid. Any such field keeps the panel
-    // open and gets the focus back.
+    // message now if its text is invalid. Only a field: a tab or a button
+    // keeps the focus it has. Any invalid field gets the focus back.
     const active = document.activeElement
-    if (active instanceof HTMLElement && dialog.contains(active)) {
+    if (active instanceof HTMLInputElement && dialog.contains(active)) {
       flushSync(() => active.blur())
     }
     const invalid = dialog.querySelector<HTMLElement>('[aria-invalid="true"]')
     if (invalid !== null) {
       invalid.focus()
-      return
+      return false
     }
-    dialog.close()
+    return true
+  }
+
+  const close = () => {
+    if (settle()) dialogRef.current?.close()
   }
 
   const onCancel = () => {
     cancelled.current = true
   }
 
-  return { dialogRef, onChange, close, onCancel }
+  return { dialogRef, onChange, settle, close, onCancel }
 }

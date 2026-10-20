@@ -12,10 +12,12 @@ import {
   type RefCallback,
 } from 'react'
 import {
+  blurLeaves,
   createTipControl,
   placeTip,
   TIP,
   tipBounds,
+  editsText,
   tipScrollTop,
   type TipContent,
 } from './tooltip.ts'
@@ -62,11 +64,12 @@ export interface TooltipProps {
  * The game's one tooltip, on its anchor: dark, with a title, an optional
  * text, rows of figures and a hint of what clicking does, and an arrow
  * toward the anchor. It opens on hover after a moment, at once on keyboard
- * focus and on a long press, and closes on leave, blur, Escape or a press
- * elsewhere. It never takes the focus: text taller than the window scrolls
- * by the wheel, or by the arrows, Page Up, Page Down, Home and End on the
- * focused anchor. It is a manual popover, so it shows above an open panel
- * while staying in its page.
+ * focus on the anchor or inside it and on a long press, and closes on
+ * leave, blur out of the anchor, Escape or a press elsewhere. It never
+ * takes the focus: text taller than the window scrolls by the wheel, or by
+ * the arrows, Page Up, Page Down, Home and End on the focused anchor, except
+ * in a text field inside it, which keeps those keys. It is a manual
+ * popover, so it shows above an open panel while staying in its page.
  */
 export default function Tooltip({ content, width, children }: TooltipProps) {
   const id = useId()
@@ -124,7 +127,8 @@ export default function Tooltip({ content, width, children }: TooltipProps) {
   // While open or about to open, the first Escape closes only the tooltip,
   // or stops it opening, before a panel or an event card hears it, and a
   // press anywhere else closes it. While open, the scroll keys on the
-  // focused anchor scroll text taller than the window.
+  // focused anchor scroll text taller than the window, but not in a text
+  // field inside it, where they move the caret.
   useEffect(() => {
     if (!open && !waiting) return
     const onKey = (event: KeyboardEvent) => {
@@ -138,6 +142,7 @@ export default function Tooltip({ content, width, children }: TooltipProps) {
       const target = event.target
       if (!open || body === null || !(target instanceof Node)) return
       if (!anchorElement?.contains(target)) return
+      if (target instanceof HTMLElement && editsText(target)) return
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
         return
       }
@@ -170,8 +175,12 @@ export default function Tooltip({ content, width, children }: TooltipProps) {
     onPointerDown: (event) => control.pressStart(event.pointerType),
     onPointerUp: () => control.pressEnd(),
     onPointerCancel: () => control.pressEnd(),
-    onFocus: (event) => control.focus(isFocusVisible(event.currentTarget)),
-    onBlur: () => control.blur(),
+    // The focus may land on the anchor or on a control inside it, such as a
+    // card's field and steppers; moving between those keeps it open.
+    onFocus: (event) => control.focus(isFocusVisible(event.target)),
+    onBlur: (event) => {
+      if (blurLeaves(event.currentTarget, event.relatedTarget)) control.blur()
+    },
     onClickCapture: (event) => {
       if (!control.clickAfterPress()) return
       event.preventDefault()
@@ -224,7 +233,12 @@ export function TipBody({
       {rows !== undefined && rows.length > 0 && (
         <dl className="tip__rows">
           {rows.map((row, index) => (
-            <div className="tip__row" key={index}>
+            <div
+              className={
+                row.divider ? 'tip__row tip__row--divider' : 'tip__row'
+              }
+              key={index}
+            >
               <dt>{row.label}</dt>
               <dd className={row.warn ? 'tip__value--warn' : undefined}>
                 {row.value}

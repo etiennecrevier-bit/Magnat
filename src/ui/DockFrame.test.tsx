@@ -58,15 +58,100 @@ describe('FrameHeader', () => {
       header.props as {
         children: [
           unknown,
-          { props: { children: { props: { onClick: () => void } }[] } },
-          { props: { onClick: () => void } },
+          {
+            props: {
+              children: {
+                props: {
+                  onClick: (event: object) => void
+                  onMouseDown: (event: object) => void
+                }
+              }[]
+            }
+          },
+          {
+            props: {
+              onClick: () => void
+              onMouseDown: (event: object) => void
+            }
+          },
         ]
       }
     ).children
-    tabs.props.children[1]!.props.onClick()
+    const focus = vi.fn()
+    tabs.props.children[1]!.props.onClick({ currentTarget: { focus } })
     close.props.onClick()
     expect(onTab).toHaveBeenCalledWith('contracts')
+    expect(focus).toHaveBeenCalledTimes(1)
     expect(onDismiss).toHaveBeenCalledTimes(1)
+    // A press leaves the focus where it is until the click.
+    for (const button of [tabs.props.children[1]!, close]) {
+      const preventDefault = vi.fn()
+      button.props.onMouseDown({ preventDefault })
+      expect(preventDefault).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('leaves the focus where it is when a click on a tab is refused', () => {
+    const header = FrameHeader({
+      titleId: 't',
+      title: 'Ville',
+      tabs: CITY_TABS,
+      tab: 'trip',
+      onTab: () => false,
+      bodyId: 'b',
+      onDismiss: () => {},
+    })
+    const [, list] = (
+      header.props as {
+        children: [
+          unknown,
+          {
+            props: {
+              children: { props: { onClick: (event: object) => void } }[]
+            }
+          },
+        ]
+      }
+    ).children
+    const focus = vi.fn()
+    list.props.children[1]!.props.onClick({ currentTarget: { focus } })
+    expect(focus).not.toHaveBeenCalled()
+  })
+
+  it('moves the focus with the arrows only to a tab shown', () => {
+    const focus = vi.fn()
+    vi.stubGlobal('document', { getElementById: () => ({ focus }) })
+    try {
+      const keyDown = (onTab: (tab: string) => boolean | void) => {
+        const header = FrameHeader({
+          titleId: 't',
+          title: 'Ville',
+          tabs: CITY_TABS,
+          tab: 'trip',
+          onTab,
+          bodyId: 'b',
+          onDismiss: () => {},
+        })
+        const [, list] = (
+          header.props as {
+            children: [
+              unknown,
+              { props: { onKeyDown: (event: object) => void } },
+            ]
+          }
+        ).children
+        list.props.onKeyDown({ key: 'ArrowRight', preventDefault: () => {} })
+      }
+      // A tab that holds invalid text keeps it, and the focus goes there.
+      const refuse = vi.fn(() => false)
+      keyDown(refuse)
+      expect(refuse).toHaveBeenCalledWith('contracts')
+      expect(focus).not.toHaveBeenCalled()
+      keyDown(() => {})
+      expect(focus).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 

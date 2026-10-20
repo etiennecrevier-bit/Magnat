@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from 'react'
-import type { FinancesTab, JournalTab } from './store.ts'
+import type { FinancesTab, JournalTab, TruckTab } from './store.ts'
 import { isInside } from './pauseShortcut.ts'
 
 // The frame of the dock's panels and drawers (DockFrame.tsx): its tabs, its
@@ -15,6 +15,18 @@ export interface FrameTab<T extends string> {
 export function tabId(bodyId: string, tab: string): string {
   return `${bodyId}-tab-${tab}`
 }
+
+/**
+ * The tabs of « Le camion »: what it sells and at what price, how much it
+ * orders, when it opens, the owner's pay and the marketing, and the bakery.
+ */
+export const TRUCK_TABS: readonly FrameTab<TruckTab>[] = [
+  { id: 'menu', label: 'Menu' },
+  { id: 'stocks', label: 'Stocks' },
+  { id: 'schedule', label: 'Horaire' },
+  { id: 'payMarketing', label: 'Salaire et marketing' },
+  { id: 'bakery', label: 'Fournil' },
+]
 
 /** The tabs of « Ville »: where the owner goes, and whom they deliver to. */
 export type CityTab = 'trip' | 'contracts'

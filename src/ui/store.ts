@@ -78,6 +78,16 @@ export type FinancesTab = 'today' | 'personal' | 'statements' | 'contracts'
 /** The tabs of « Journal »: « Événements » and « Bilans ». */
 export type JournalTab = 'events' | 'reports'
 
+/**
+ * The tabs of « Le camion »: « Menu », « Stocks », « Horaire », « Salaire et
+ * marketing » and « Fournil ».
+ */
+export type TruckTab =
+  'menu' | 'stocks' | 'schedule' | 'payMarketing' | 'bakery'
+
+/** The tab « Le camion » opens on in a game that has not picked one yet. */
+export const FIRST_TRUCK_TAB: TruckTab = 'menu'
+
 /** The tab each drawer shows. */
 export interface DrawerTabs {
   readonly finances: FinancesTab
@@ -138,6 +148,8 @@ export interface GameStoreState {
   drawer: Drawer | null
   /** The tab each drawer shows, kept while it is closed. */
   drawerTabs: DrawerTabs
+  /** The tab « Le camion » shows, kept while it is closed. */
+  truckTab: TruckTab
   /**
    * How many reports came only as the card sliding in since the player
    * last read one, in the full report or in « Journal »: the count on the
@@ -222,7 +234,7 @@ export interface GameStoreState {
    * panel and the speed it remembered stay. The event card, « Magnat » and
    * the end of a game only open on their own. The report takes the card
    * sliding in away and counts the reports as read. It closes the drawer
-   * open, if any.
+   * open, if any. « Le camion » at « Fournil » shows that tab.
    */
   openPanel: (
     panel: Exclude<Panel, 'event' | 'magnat' | EndPanel>,
@@ -237,6 +249,8 @@ export interface GameStoreState {
   openDrawer: <D extends Drawer>(drawer: D, tab?: DrawerTabs[D]) => void
   /** Shows `tab` in `drawer`, open or not. */
   setDrawerTab: <D extends Drawer>(drawer: D, tab: DrawerTabs[D]) => void
+  /** Shows `tab` in « Le camion », open or not. */
+  setTruckTab: (tab: TruckTab) => void
   /** Closes the drawer open, if any. */
   closeDrawer: () => void
   /**
@@ -384,6 +398,7 @@ function playing(game: GameState) {
     slideIn: null,
     drawer: null,
     drawerTabs: FIRST_DRAWER_TABS,
+    truckTab: FIRST_TRUCK_TAB,
     unreadReports: 0,
   }
 }
@@ -581,6 +596,9 @@ export function createGameStore(
         panel,
         panelSection: section ?? null,
         drawer: null,
+        ...(panel === 'manage' && section === 'bakery'
+          ? { truckTab: 'bakery' as const }
+          : {}),
         ...(panel === 'report' ? { slideIn: null, unreadReports: 0 } : {}),
       })
     },
@@ -596,6 +614,7 @@ export function createGameStore(
     },
     setDrawerTab: (drawer, tab) =>
       set({ drawerTabs: { ...get().drawerTabs, [drawer]: tab } }),
+    setTruckTab: (truckTab) => set({ truckTab }),
     closeDrawer: () => {
       if (get().drawer !== null) set({ drawer: null })
     },

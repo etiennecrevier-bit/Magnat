@@ -5,6 +5,7 @@ import { cents } from '../engine/money.ts'
 import { netWorthParts, type NetWorthParts } from '../engine/netWorth.ts'
 import type { DaySummary } from '../engine/types.ts'
 import type { FinancingSummary } from './financingSummary.ts'
+import { formatMoney } from './formatMoney.ts'
 import { gameStore } from './store.ts'
 import TodayPanel, { TodayPanelView } from './TodayPanel.tsx'
 
@@ -54,22 +55,6 @@ function netWorthLines(html: string) {
   return { total, parts }
 }
 
-/**
- * Each row of the table's body, the products, or of its foot, the total:
- * its name and the numbers in its cells.
- */
-function rows(html: string, part: 'tbody' | 'tfoot' = 'tbody') {
-  const section = new RegExp(`<${part}>.*</${part}>`).exec(html)?.[0] ?? ''
-  return [
-    ...section.matchAll(
-      /<tr><th scope="row">([^<]*)<\/th>((?:<td[^>]*>[^<]*<\/td>)*)<\/tr>/g,
-    ),
-  ].map(([, name, cells = '']) => [
-    name,
-    ...[...cells.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map(([, n]) => n),
-  ])
-}
-
 describe('TodayPanelView', () => {
   it('says so before the first day is over', () => {
     const html = render(null)
@@ -80,7 +65,7 @@ describe('TodayPanelView', () => {
     expect(html).not.toContain('<table')
   })
 
-  it("shows yesterday's units per product and in all, the revenue and the customers served", () => {
+  it("shows yesterday's revenue and customers served, and no table of units by product, which moved to « Le camion »", () => {
     const html = render({
       day: 3,
       sold: { cafe: 87, chocolat: 12, croissant: 54 },
@@ -122,15 +107,8 @@ describe('TodayPanelView', () => {
       missed: [],
     })
     expect(html).toContain(`Hier${S}: Jeudi 4 mai, an 1`)
-    expect(html).toContain(
-      '<tr><th scope="col">Produit</th><th scope="col" class="number">Vendus</th><th scope="col" class="number">Ventes perdues</th><th scope="col" class="number">Périmés</th></tr>',
-    )
-    expect(rows(html)).toEqual([
-      ['Café', '87', '0', '2'],
-      ['Chocolat chaud', '12', '3', '0'],
-      ['Croissant', '54', '6', '10'],
-    ])
-    expect(rows(html, 'tfoot')).toEqual([['Total', '153', '9', '12']])
+    expect(html).not.toContain('<table')
+    expect(html).not.toContain('Ventes perdues')
     expect(html).toContain(
       `Chiffre d&#x27;affaires${S}: <strong>1${S}234,56${S}$</strong></p>` +
         `<p>Clients servis${S}: <strong>1</strong></p>`,
@@ -142,33 +120,10 @@ describe('TodayPanelView', () => {
     const { lastDay } = tick(tick(createInitialState(42)))
     if (lastDay === null) throw new Error('A played day has a summary')
     const html = render(lastDay)
-    expect(rows(html)).toEqual([
-      [
-        'Café',
-        String(lastDay.sold.cafe),
-        String(lastDay.lostSales.cafe),
-        String(lastDay.spoiled.cafe),
-      ],
-      [
-        'Chocolat chaud',
-        String(lastDay.sold.chocolat),
-        String(lastDay.lostSales.chocolat),
-        String(lastDay.spoiled.chocolat),
-      ],
-      [
-        'Croissant',
-        String(lastDay.sold.croissant),
-        String(lastDay.lostSales.croissant),
-        String(lastDay.spoiled.croissant),
-      ],
-    ])
-    const { sold, lostSales, spoiled } = lastDay
-    const total = (units: typeof sold) =>
-      String(units.cafe + units.chocolat + units.croissant)
-    expect(rows(html, 'tfoot')).toEqual([
-      ['Total', total(sold), total(lostSales), total(spoiled)],
-    ])
     expect(lastDay.revenue).toBeGreaterThan(0)
+    expect(html).toContain(
+      `Chiffre d&#x27;affaires${S}: <strong>${formatMoney(lastDay.revenue)}</strong>`,
+    )
   })
 
   it('shows the « Valeur nette » and its four parts before the first day is over, the debts below zero', () => {

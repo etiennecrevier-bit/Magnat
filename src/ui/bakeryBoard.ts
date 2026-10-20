@@ -21,7 +21,7 @@ import {
 import type { Cents } from '../engine/money.ts'
 import type { BakeryState, Day, GameState } from '../engine/types.ts'
 
-// What the « Fournil » section of « Gérer le camion » shows (#163). The
+// What the « Fournil » tab of « Le camion » shows (#163). The
 // engine runs the bakery (src/engine/bakery.ts) and decides what the player
 // may change (applyDecision); this only reads them.
 

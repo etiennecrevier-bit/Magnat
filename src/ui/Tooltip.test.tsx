@@ -81,6 +81,20 @@ describe('Tooltip', () => {
     expect(html).not.toContain('tip__link')
   })
 
+  it('starts a part of its own under a thin line on a divider row', () => {
+    const html = render({
+      title: 'Croissant · hier',
+      rows: [
+        { label: 'Vendus', value: '70' },
+        { label: 'Habitués', value: '30 vendus', divider: true },
+      ],
+    })
+    expect(html).toContain(
+      '<div class="tip__row"><dt>Vendus</dt><dd>70</dd></div>' +
+        '<div class="tip__row tip__row--divider"><dt>Habitués</dt><dd>30 vendus</dd></div>',
+    )
+  })
+
   it('gives each tooltip its own id', () => {
     const html = renderToStaticMarkup(
       <>
