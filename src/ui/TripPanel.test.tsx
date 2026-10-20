@@ -108,7 +108,7 @@ describe('TripPanelView', () => {
       `<p id="trip-meunerie-status" class="status-line"><span class="status-line__dot status-line__dot--warn" aria-hidden="true"></span>Fermé pendant ce temps</p></div><button type="button" class="button button--primary" aria-label="Y aller${S}: La meunerie" aria-describedby="trip-meunerie-status `,
     )
     expect(rows(html)[2]).toBe(
-      `Le Bureau des permis et des formulaires|Toute la journée||Rien à déposer pour l&#x27;instant|Y aller`,
+      `Le Bureau des permis et des formulaires|Toute la journée||Rien à déposer|Y aller`,
     )
     expect(rows(html)[3]).toBe(
       `Le fournil|Trajet${S}: 15${S}min · visite${S}: 15${S}min||Fermé pendant ce temps|Y aller`,
@@ -135,13 +135,13 @@ describe('TripPanelView', () => {
   it('disables « Y aller » with the reason as the status line when the owner cannot go', () => {
     const html = render()
     expect(html).toContain(
-      `<p id="trip-caisse-refusal" class="status-line"><span class="status-line__dot status-line__dot--off" aria-hidden="true"></span>Votre encaisse suffit, sans prêt</p></div><button type="button" class="button button--primary" aria-label="Y aller${S}: La Caisse populaire" aria-describedby="trip-caisse-refusal `,
+      `<p id="trip-caisse-refusal" class="status-line"><span class="status-line__dot status-line__dot--off" aria-hidden="true"></span>Votre encaisse suffit</p></div><button type="button" class="button button--primary" aria-label="Y aller${S}: La Caisse populaire" aria-describedby="trip-caisse-refusal `,
     )
     expect(html).toMatch(
       /aria-label="Y aller\u00a0: La Caisse populaire" aria-describedby="[^"]+" disabled="">Y aller<\/button>/,
     )
     expect(rows(html)[0]).toBe(
-      `La Caisse populaire|Trajet${S}: 25${S}min · visite${S}: 30${S}min||Votre encaisse suffit, sans prêt|Y aller`,
+      `La Caisse populaire|Trajet${S}: 25${S}min · visite${S}: 30${S}min||Votre encaisse suffit|Y aller`,
     )
   })
 
@@ -183,7 +183,7 @@ describe('TripPanelView', () => {
     )
     const html = render(booked)
     expect(html).toContain(
-      `Déplacement obligatoire aujourd&#x27;hui</p></div><button type="button" class="button" aria-label="Annuler${S}: Le Bureau des permis et des formulaires" aria-describedby="trip-bureauPermis-refusal `,
+      `Déplacement obligatoire</p></div><button type="button" class="button" aria-label="Annuler${S}: Le Bureau des permis et des formulaires" aria-describedby="trip-bureauPermis-refusal `,
     )
     expect(html).toMatch(/disabled="">Annuler<\/button>/)
   })

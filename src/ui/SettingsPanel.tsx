@@ -70,7 +70,7 @@ export function VisualEffectsField({
         ))}
       </div>
       <p className="settings-panel__hint">
-        Les effets simples allègent la rue pour les ordinateurs plus lents.
+        Les effets simples ménagent les ordinateurs lents.
       </p>
     </fieldset>
   )
@@ -175,8 +175,7 @@ export function SettingsPanelView({
         </label>
         {cadence === 'month' && (
           <p className="settings-panel__hint">
-            Les {pacing.fullReportWeeks} premières semaines d'une partie, le
-            bilan vient quand même chaque semaine.
+            Bilan hebdomadaire les {pacing.fullReportWeeks} premières semaines.
           </p>
         )}
       </fieldset>

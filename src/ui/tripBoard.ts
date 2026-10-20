@@ -147,26 +147,26 @@ function givesLine(effect: PlaceEffect): string | null {
 }
 
 /** Why the owner cannot go, as the player reads it. */
-function refusalLine(game: GameState, refusal: TripRefusal): string {
+export function refusalLine(game: GameState, refusal: TripRefusal): string {
   switch (refusal) {
     case 'defi':
-      return 'Pas de déplacement pendant un défi'
+      return 'Pas pendant un défi'
     case 'ended':
       return 'La partie est terminée'
     case 'played':
       return 'La journée est jouée'
     case 'booked':
-      return "Déplacement obligatoire aujourd'hui"
+      return 'Déplacement obligatoire'
     case 'nothingToFile':
-      return "Rien à déposer pour l'instant"
+      return 'Rien à déposer'
     case 'came':
-      return 'Mme Prudhomme vous a déjà reçu cette année'
+      return 'Déjà reçu cette année'
     case 'mayNotLend':
       return game.financing.loans.some((loan) => isLoanOpen(loan, game.day))
-        ? "Un prêt d'urgence est déjà en cours"
-        : "Mme Prudhomme ne prête qu'une fois"
+        ? 'Un prêt déjà en cours'
+        : "Un seul prêt d'urgence"
     case 'noNeed':
-      return 'Votre encaisse suffit, sans prêt'
+      return 'Votre encaisse suffit'
   }
 }
 

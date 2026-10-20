@@ -82,7 +82,7 @@ describe('tripBoard', () => {
           schedule: `Départ 10${S}h · retour 11${S}h${S}20`,
           closesTruck: true,
           chosen: false,
-          refusal: 'Votre encaisse suffit, sans prêt',
+          refusal: 'Votre encaisse suffit',
         },
         {
           id: 'meunerie',
@@ -104,7 +104,7 @@ describe('tripBoard', () => {
           schedule: null,
           closesTruck: true,
           chosen: false,
-          refusal: "Rien à déposer pour l'instant",
+          refusal: 'Rien à déposer',
         },
         {
           id: 'fournil',
@@ -190,7 +190,7 @@ describe('tripBoard', () => {
         },
         'caisse',
       ).refusal,
-    ).toBe('Mme Prudhomme vous a déjà reçu cette année')
+    ).toBe('Déjà reçu cette année')
     const lent = resolveEvent(
       {
         ...short,
@@ -210,7 +210,7 @@ describe('tripBoard', () => {
         },
         'caisse',
       ).refusal,
-    ).toBe("Un prêt d'urgence est déjà en cours")
+    ).toBe('Un prêt déjà en cours')
   })
 })
 
@@ -236,10 +236,10 @@ describe('a trip a card booked', () => {
     expect(
       board.rows.map(({ id, chosen, refusal }) => [id, chosen, refusal]),
     ).toEqual([
-      ['caisse', false, "Déplacement obligatoire aujourd'hui"],
-      ['meunerie', false, "Déplacement obligatoire aujourd'hui"],
-      ['bureauPermis', true, "Déplacement obligatoire aujourd'hui"],
-      ['fournil', false, "Déplacement obligatoire aujourd'hui"],
+      ['caisse', false, 'Déplacement obligatoire'],
+      ['meunerie', false, 'Déplacement obligatoire'],
+      ['bureauPermis', true, 'Déplacement obligatoire'],
+      ['fournil', false, 'Déplacement obligatoire'],
     ])
     expect(enRouteLine(BOOKED)).toBe('En route vers le Bureau des permis')
   })
