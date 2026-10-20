@@ -20,7 +20,7 @@ import { CROWD, type CrowdSettings } from './crowdSettings.ts'
 import { placeCard, type Point } from './customerCard.ts'
 import { startCustomers } from './customers.ts'
 import { TITLE_FONT_ASSET } from './fonts.ts'
-import { fitScene } from './layout.ts'
+import { fitStreet } from './layout.ts'
 import type { GameState } from '../engine/types.ts'
 import { ASSETS, LINES } from './manifest.ts'
 import type { WorldApp } from './mountWorld.ts'
@@ -150,13 +150,7 @@ export async function startStreet(
     const fit = () => {
       const { width, height } = app.screen
       if (width === fitted.width && height === fitted.height) return
-      const design = manifest.designSize
-      const { scale, x, y } = fitScene(
-        width,
-        height,
-        design.width,
-        design.height,
-      )
+      const { scale, x, y } = fitStreet(width, height, manifest)
       fitted = { width, height, scale, x, y }
       for (const layer of [scene.root, customers.labels]) {
         layer.scale.set(scale)

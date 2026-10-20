@@ -468,7 +468,7 @@ const citySchema = z.strictObject({
    * show, is fitted into the room right of the panel, `gap` from it and
    * from the window's right edge, between the top bar's `top` and the
    * dock's `bottom`. In a window narrower than `narrow` the panel comes
-   * down from the top, and the whole design is fitted as the street is.
+   * down from the top, and the whole design is fitted as `fitScene` fits it.
    */
   frame: z.strictObject({
     island: z.strictObject({
@@ -740,6 +740,23 @@ export const assetManifestSchema = z
     designSize: z.strictObject({
       width: z.int().positive(),
       height: z.int().positive(),
+    }),
+    /**
+     * How the street is framed in a window narrower than `narrow`, a
+     * phone's: `focus`, the part of the design that must show, is fitted
+     * between the top bar's `top` and the dock's `bottom`, standing on the
+     * dock. Wider windows show the whole design, on the window's bottom.
+     */
+    frame: z.strictObject({
+      focus: z.strictObject({
+        x: z.number(),
+        y: z.number(),
+        width: size,
+        height: size,
+      }),
+      top: z.number().nonnegative(),
+      bottom: z.number().nonnegative(),
+      narrow: size,
     }),
     /**
      * How many pixels an SVG image is drawn at per logical pixel of its own
