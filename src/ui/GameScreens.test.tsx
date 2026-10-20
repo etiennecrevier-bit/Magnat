@@ -204,7 +204,7 @@ describe('GameScreens', () => {
   )
 
   it.each([
-    ['manage', 'manage', 'Camion'],
+    ['manage', 'manage', 'Le camion'],
     ['staff', 'staff', 'Équipe'],
     ['trip', 'trip', 'Ville'],
     ['dream', 'dream', 'Améliorations'],

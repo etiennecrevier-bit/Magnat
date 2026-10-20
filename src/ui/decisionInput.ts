@@ -11,7 +11,7 @@ import { cents, type Cents } from '../engine/money.ts'
 import { STAFF } from '../engine/staff.ts'
 import { formatMoney } from './formatMoney.ts'
 
-// What the player types in the « Gérer le camion » and « Qui fait quoi »
+// What the player types in the « Le camion » and « Qui fait quoi »
 // panels, read into the engine's decision changes. The limits are the engine's own, from the
 // content, so a value is turned down here, in French, before it could make
 // applyDecision() throw.

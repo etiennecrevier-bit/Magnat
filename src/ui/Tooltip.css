@@ -120,3 +120,11 @@
   outline: 3px solid #2186eb;
   outline-offset: 2px;
 }
+
+/* A row that starts a part of its own, such as a card's segments, under a
+   thin cream line. */
+.tip__row--divider > * {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgb(255 247 232 / 30%);
+}

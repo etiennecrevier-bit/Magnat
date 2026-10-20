@@ -4,61 +4,180 @@
   --panel-width: 64rem;
 }
 
+/* Five tabs: narrower pills keep « ✕ » on the title's line at the frame's
+   760 px. */
+.manage .dock-frame__tabs .tab {
+  padding: 0 10px;
+}
+
+/* « Les changements s'appliquent demain matin. », the reference's amber
+   strip under the tab. */
 .manage__note {
-  margin: 0 0 1rem;
-  padding: 0.5rem 0.75rem;
-  border-left: 4px solid #2b2622;
-  background: #fbe7c2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 1rem 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fbefd5;
+  font-size: 0.8125rem;
+  font-weight: 800;
+}
+
+.manage__note .icon {
+  flex: none;
+  color: #c27a00;
+}
+
+/* The products side by side, one under the other on a narrow screen. */
+.manage__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 600px) {
+  .manage__cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A product's card, from `product_card` in ui_concepts.py: white, an ink
+   border, its glyph and name, the stepper, the status line. */
+.product-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 2px solid #2b2622;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.product-card:hover,
+.product-card:focus-within {
+  outline: 3px solid #2f6fb0;
+  outline-offset: 3px;
+}
+
+.product-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+}
+
+.product-card__name {
+  margin: 0;
+  font-family: Fredoka, sans-serif;
+  font-size: 1.1875rem;
   font-weight: 600;
 }
 
-.manage__sections {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.25rem 2rem;
-  align-items: start;
+.product-card__info {
+  display: inline-flex;
+  margin-left: auto;
+  color: #6b625a;
 }
 
-/* Two columns once the facts table fits beside the fields: the facts sit
-   beside the prices and the orders. */
-@media (min-width: 900px) {
-  .manage__sections {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas:
-      'prices facts'
-      'orders facts'
-      'days days'
-      'pay marketing'
-      'bakery bakery';
-  }
+.product-glyph {
+  flex: none;
+}
 
-  .manage__prices {
-    grid-area: prices;
-  }
+.product-card .field {
+  margin: 0;
+}
 
-  .manage__orders {
-    grid-area: orders;
-  }
+.product-card .field__control {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
 
-  .manage__facts {
-    grid-area: facts;
-  }
+/* On « Stocks », a rule's fields are its label over the stepper; « unités »
+   stays in each field's description, out of sight, so the stepper fits. */
+.product-card--stock .field__label {
+  margin: 0 0 0.25rem;
+}
 
-  .manage__days {
-    grid-area: days;
-  }
+.product-card--stock .field__unit {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
-  .manage__pay {
-    grid-area: pay;
-  }
+.product-card--stock .field__input {
+  width: 5rem;
+  text-align: center;
+}
 
-  .manage__marketing {
-    grid-area: marketing;
-  }
+/* On « Menu », the cards share their rows, so each stepper and status
+   line sits level with its neighbours' when a name wraps. */
+.manage__cards > .product-card:not(.product-card--stock) {
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: 10px;
+}
 
-  .manage__bakery {
-    grid-area: bakery;
-  }
+/* The price reads as the reference's stepper value, in Fredoka. */
+.manage__cards > .product-card > .field .field__input {
+  width: 5.5rem;
+  font-family: Fredoka, sans-serif;
+  font-size: 1.375rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* A card's one status line: a 9 px dot, then the words. */
+.status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 7px;
+  margin: 0;
+  color: #6b625a;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.status-line__dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 5px;
+}
+
+.status-line__dot--ok {
+  background: #2e7d4f;
+}
+
+.status-line__dot--warn {
+  background: #c27a00;
+}
+
+.status-line__dot--bad {
+  background: #b3261e;
+}
+
+.status-line__dot--off {
+  background: #6b625a;
+}
+
+/* « Demain : … », the line's second part, on a line of its own. */
+.status-line__tomorrow {
+  flex-basis: 100%;
+  color: #2b2622;
+}
+
+.manage__pay-marketing {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1.25rem 2rem;
 }
 
 .manage__rule {
@@ -87,25 +206,6 @@
   border-color: #c9b48f;
   color: #7b6f63;
   cursor: not-allowed;
-}
-
-.manage__scroll {
-  overflow-x: auto;
-}
-
-.manage__scroll:focus-visible {
-  outline: 3px solid #2186eb;
-  outline-offset: 2px;
-}
-
-.manage__facts thead th[scope='colgroup'] {
-  text-align: center;
-}
-
-.manage__facts tfoot th,
-.manage__facts tfoot td {
-  border-top: 2px solid #2b2622;
-  font-weight: 700;
 }
 
 .field {
@@ -176,20 +276,15 @@
   font-weight: 600;
 }
 
-/* Why a Défi locks the section, under its title. */
+/* Why a Défi locks the tab's decisions, at its top. */
 .manage__locked {
   margin: 0 0 0.5rem;
   color: #5c5048;
   font-weight: 600;
 }
 
-/* The bakery, under a rule of its own: its buttons in a row that wraps,
-   its costs as a plain list. */
-.manage__bakery {
-  padding-top: 1rem;
-  border-top: 2px solid #2b2622;
-}
-
+/* The bakery: its buttons in a row that wraps, its costs as a plain
+   list. */
 .manage__bakery p {
   margin: 0 0 0.5rem;
 }

@@ -9,7 +9,7 @@ import { NumberField } from './NumberField.tsx'
 // French puts a no-break space (U+00A0) before a colon.
 const COLON = ' :'
 
-/** The id of « Fournil », which the panel scrolls to when asked. */
+/** The id of the title « Fournil », which labels the section. */
 export const BAKERY_TITLE_ID = 'manage-bakery'
 
 const OVEN_NAMES: Readonly<Record<OvenTerms, string>> = {
@@ -47,7 +47,7 @@ function tomorrowText(status: BakeryStatus): string {
 }
 
 /**
- * « Fournil », in « Gérer le camion »: where the bakery stands today and
+ * « Fournil », a tab of « Le camion »: where the bakery stands today and
  * tomorrow, how to open or close it, what it costs, the unit cost of a
  * croissant bought and made side by side with its fixed costs on a line of
  * their own, then where the croissants come from and how many it makes.

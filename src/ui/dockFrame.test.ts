@@ -4,6 +4,7 @@ import {
   drawerEscape,
   financesTabs,
   JOURNAL_TABS,
+  TRUCK_TABS,
   nextTab,
   tabId,
 } from './dockFrame.ts'
@@ -61,6 +62,16 @@ describe('drawerEscape', () => {
 })
 
 describe('the tabs', () => {
+  it('of « Le camion »: the menu, the stocks, the days, the pay and marketing, the bakery', () => {
+    expect(TRUCK_TABS.map(({ id, label }) => [id, label])).toEqual([
+      ['menu', 'Menu'],
+      ['stocks', 'Stocks'],
+      ['schedule', 'Horaire'],
+      ['payMarketing', 'Salaire et marketing'],
+      ['bakery', 'Fournil'],
+    ])
+  })
+
   it('of « Ville »: « Aller à… » and « Contrats »', () => {
     expect(CITY_TABS.map(({ label }) => label)).toEqual([
       'Aller à…',
