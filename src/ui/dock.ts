@@ -159,7 +159,7 @@ export type DockBadges = Partial<Record<DockItemId, number>>
 
 /** What the dock's counts read. */
 export interface BadgeFacts {
-  /** The reports that only slid in since the player last read one. */
+  /** The reports that only slid in since the player last opened one. */
   readonly unreadReports: number
   /** The encaisse now. */
   readonly cash: Cents
@@ -170,7 +170,7 @@ export interface BadgeFacts {
 }
 
 /**
- * The counts on the dock: on « Journal » the reports not read; on «
+ * The counts on the dock: on « Journal » the reports not opened; on «
  * Finances » the owner's movements left unpaid in the month « Vos finances
  * » shows, and one more while the encaisse is below zero.
  */

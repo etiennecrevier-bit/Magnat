@@ -238,7 +238,7 @@ function eventResult(
  * Escape once the result shows, closes it, and the game resumes at the
  * speed from before the card. A notice, such as Mme Prudhomme's letters,
  * closes as soon as its one choice is made, with no result to read: the
- * card keeps its choice until it is gone, and the Journal des événements
+ * card keeps its choice until it is gone, and « Événements » in « Journal »
  * keeps what came of it.
  */
 export default function EventCard() {

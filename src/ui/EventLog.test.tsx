@@ -19,33 +19,57 @@ afterEach(() => {
   gameStore.setState(gameStore.getInitialState(), true)
 })
 
-// French puts a no-break space (U+00A0) before a colon.
-const S = ' '
+const ENTRIES = [
+  { key: '31-b', day: 31, title: 'B', choice: 'Oui', result: 'Fait.' },
+  { key: '0-a', day: 0, title: 'A', choice: 'Non', result: 'Rien.' },
+]
+
+/** A closed row of `entry`: its date, title and choice on its button. */
+function closedRow(key: string, date: string, title: string, choice: string) {
+  const id = `event-log-${key}`
+  return (
+    `<li class="journal-row"><button type="button" id="${id}-button" class="journal-row__button" aria-expanded="false" aria-controls="${id}-region">` +
+    '<span class="journal-row__marker" aria-hidden="true">▸</span>' +
+    `<span class="journal-row__line"><span class="journal-row__muted">${date}</span> <span class="journal-row__title">${title}</span> <span class="journal-row__muted">${choice}</span></span>` +
+    `</button><div id="${id}-region" class="journal-row__body" role="region" aria-labelledby="${id}-button" hidden=""></div></li>`
+  )
+}
 
 describe('EventLogView', () => {
-  it('lists each event with its date, the choice made and what came of it', () => {
-    const html = renderToStaticMarkup(
-      <EventLogView
-        entries={[
-          { day: 31, title: 'B', choice: 'Oui', result: 'Fait.' },
-          { day: 0, title: 'A', choice: 'Non', result: 'Rien.' },
-        ]}
-      />,
-    )
+  it('lists each event as one line, newest first: its date, title and choice, closed', () => {
+    const html = renderToStaticMarkup(<EventLogView entries={ENTRIES} />)
     expect(html).toBe(
-      `<section class="event-log"><h1>Journal des événements</h1><ol class="event-log__entries"><li class="event-log__entry"><h2>B</h2><p class="event-log__date">1er juin, an 1</p><p>Choix${S}: Oui</p><p>Fait.</p></li><li class="event-log__entry"><h2>A</h2><p class="event-log__date">1er mai, an 1</p><p>Choix${S}: Non</p><p>Rien.</p></li></ol></section>`,
+      '<section class="event-log"><ol class="journal-rows">' +
+        closedRow('31-b', '1er juin, an 1', 'B', 'Oui') +
+        closedRow('0-a', '1er mai, an 1', 'A', 'Non') +
+        '</ol></section>',
     )
+    expect(html).not.toContain('Fait.')
+  })
+
+  it('opens an event to what came of it', () => {
+    const html = renderToStaticMarkup(
+      <EventLogView entries={ENTRIES} openKeys={new Set(['0-a'])} />,
+    )
+    expect(html).toContain(closedRow('31-b', '1er juin, an 1', 'B', 'Oui'))
+    expect(html).toContain(
+      'aria-expanded="true" aria-controls="event-log-0-a-region"><span class="journal-row__marker" aria-hidden="true">▾</span>',
+    )
+    expect(html).toContain(
+      '<div id="event-log-0-a-region" class="journal-row__body" role="region" aria-labelledby="event-log-0-a-button"><p class="event-log__result">Rien.</p></div>',
+    )
+    expect(html).not.toContain('Fait.')
   })
 
   it('says so when no event came up in a year', () => {
     expect(renderToStaticMarkup(<EventLogView entries={[]} />)).toBe(
-      '<section class="event-log"><h1>Journal des événements</h1><p>Aucun événement depuis un an.</p></section>',
+      '<section class="event-log"><p>Aucun événement depuis un an.</p></section>',
     )
   })
 })
 
 describe('EventLog', () => {
-  it("lists the app store's events", () => {
+  it("lists the app store's events, closed", () => {
     const game = createInitialState(1)
     gameStore.getState().startGame({
       ...game,
@@ -65,7 +89,12 @@ describe('EventLog', () => {
     })
     const html = renderToStaticMarkup(<EventLog />)
     expect(html).toContain(
-      `<h2>La carte d&#x27;essai</h2><p class="event-log__date">4 mai, an 1</p><p>Choix${S}: Ne rien faire</p>`,
+      closedRow(
+        '3-essai',
+        '4 mai, an 1',
+        'La carte d&#x27;essai',
+        'Ne rien faire',
+      ),
     )
   })
 })

@@ -828,7 +828,7 @@ describe('the accordions of « Finances »', () => {
 })
 
 describe('the reports unread', () => {
-  it('count each report that only slides in, until « Journal » opens', () => {
+  it('count each report that only slides in, until one opens in « Bilans »', () => {
     const store = createGameStore(playedTo(34), NO_EVENTS, REPORT_AT_FIRST)
     store.getState().advance(1)
     expect(store.getState()).toMatchObject({ slideIn: 28, unreadReports: 1 })
@@ -836,8 +836,39 @@ describe('the reports unread', () => {
     expect(store.getState()).toMatchObject({ slideIn: 35, unreadReports: 2 })
     store.getState().openDrawer('finances')
     expect(store.getState().unreadReports).toBe(2)
+    store.getState().closeDrawer()
     store.getState().openDrawer('journal')
+    expect(store.getState()).toMatchObject({
+      drawer: 'journal',
+      unreadReports: 2,
+    })
+    store.getState().readReports()
     expect(store.getState().unreadReports).toBe(0)
+  })
+
+  it('open « Journal » on « Bilans », unless a tab is asked', () => {
+    const store = createGameStore(createInitialState(1))
+    store.setState({ unreadReports: 1 })
+    store.getState().openDrawer('journal', 'events')
+    expect(store.getState().drawerTabs.journal).toBe('events')
+    store.getState().closeDrawer()
+    store.getState().openDrawer('journal')
+    expect(store.getState().drawerTabs.journal).toBe('reports')
+  })
+
+  it('leave « Journal » on its tab when none is unread', () => {
+    const store = createGameStore(createInitialState(1))
+    store.getState().openDrawer('journal', 'events')
+    store.getState().closeDrawer()
+    store.getState().openDrawer('journal')
+    expect(store.getState().drawerTabs.journal).toBe('events')
+  })
+
+  it('stay read when none is unread', () => {
+    const store = createGameStore(createInitialState(1))
+    const before = store.getState()
+    store.getState().readReports()
+    expect(store.getState()).toBe(before)
   })
 
   it('are read once the full report opens from the card', () => {

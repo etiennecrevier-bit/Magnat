@@ -1,0 +1,63 @@
+/* The rows of « Journal », in the colours of the accordions of « Finances »
+   (FinancesCompany.css). Muted text keeps at least 4.5:1 on cream. */
+.journal-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.journal-row {
+  border-top: 2px solid #e3d6bf;
+}
+
+.journal-row__button {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 4px;
+  border: 0;
+  background: transparent;
+  color: #2b2622;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.journal-row__button:focus-visible {
+  outline: 3px solid #2f6fb0;
+  outline-offset: 2px;
+}
+
+.journal-row__marker {
+  flex: none;
+  width: 14px;
+}
+
+/* A narrow drawer wraps the line rather than hiding any of it. */
+.journal-row__line {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.journal-row__title {
+  font-weight: 800;
+}
+
+.journal-row__muted {
+  color: #6b625a;
+}
+
+.journal-row__body {
+  padding: 0 4px 12px 26px;
+}
+
+/* An amount closes the line, at its right. */
+.journal-row__end {
+  margin-left: auto;
+}

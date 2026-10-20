@@ -137,17 +137,19 @@ describe('Dock', () => {
     expect(html).not.toContain('dock-ameliorations')
   })
 
-  it('counts the reports not read on « Journal », and shows the drawer open', () => {
+  it('counts the reports not read on « Journal », until one opens, and shows the drawer open', () => {
+    const badge =
+      '<span class="dock__badge">3<span class="visually-hidden"> en attente</span></span>'
     gameStore.setState({ unreadReports: 3 })
-    expect(renderToStaticMarkup(<Dock />)).toContain(
-      '<span class="dock__badge">3<span class="visually-hidden"> en attente</span></span>',
-    )
+    expect(renderToStaticMarkup(<Dock />)).toContain(badge)
     gameStore.getState().openDrawer('journal')
     const html = renderToStaticMarkup(<Dock />)
-    expect(html).not.toContain('dock__badge')
+    expect(html).toContain(badge)
     expect(html).toContain(
       'id="dock-journal" class="dock__button dock__button--open" aria-haspopup="dialog" aria-expanded="true"',
     )
+    gameStore.getState().readReports()
+    expect(renderToStaticMarkup(<Dock />)).not.toContain('dock__badge')
   })
 
   it('shows the panel open as open', () => {
