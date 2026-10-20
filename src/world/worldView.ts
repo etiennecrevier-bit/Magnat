@@ -12,14 +12,15 @@ export type StartScene = (app: WorldApp) => Promise<() => void>
 export type Scenes = Readonly<Record<WorldView, StartScene>>
 
 /**
- * Draws the view of the world the player picked in the top bar, « La rue »
- * or « La ville » (`settings.worldView`), and swaps to the other as soon as
- * they pick it: it stops the scene that runs, then starts the other. A pick
- * while a scene is still starting waits for it, then swaps, so only the
- * last pick ever shows, and a scene is never started twice at once.
+ * Draws the view of the world in `settings.worldView`, the city while «
+ * Ville » is open and the street otherwise, and swaps to the other as soon
+ * as it changes: it stops the scene that runs, then starts the other. A
+ * change while a scene is still starting waits for it, then swaps, so only
+ * the last view asked for ever shows, and a scene is never started twice
+ * at once.
  *
  * A scene that fails to start warns and leaves the world blank until the
- * player picks another view, which starts as usual; picking it again tries
+ * view changes, and the other starts as usual; asking for it again tries
  * once more. Resolves once the first scene has started, or failed to.
  * Returns the function that takes the world down, which does nothing the
  * second time: it stops the scene that runs, and one still starting as

@@ -14,6 +14,8 @@ import {
 } from '../engine/places.ts'
 import { streetOn } from '../engine/street.ts'
 import type { GameState } from '../engine/types.ts'
+import type { StatusLine } from './productFacts.ts'
+import type { TipContent, TipRow } from './tooltip.ts'
 
 // What the « Aller à… » panel shows (#164): each place in town, how long
 // the trip takes, whether the truck closes meanwhile, and whether the owner
@@ -166,4 +168,37 @@ function refusalLine(game: GameState, refusal: TripRefusal): string {
     case 'noNeed':
       return 'Votre encaisse suffit, sans prêt'
   }
+}
+
+/**
+ * What a place's tooltip says: what the owner does there, what it gives
+ * and when they leave and come back.
+ */
+export function placeTip({
+  name,
+  does,
+  gives,
+  schedule,
+}: PlaceRow): TipContent {
+  const rows: TipRow[] = []
+  if (gives !== null) rows.push({ label: 'Ce que ça donne', value: gives })
+  if (schedule !== null) rows.push({ label: 'Horaire', value: schedule })
+  return { title: name, text: does, rows }
+}
+
+/**
+ * A place's one status line: why the owner cannot go, or, when they can,
+ * that nobody serves at the truck meanwhile.
+ */
+export function placeLine({ refusal, closesTruck }: PlaceRow): StatusLine {
+  if (refusal !== null) {
+    return { fact: { tone: 'off', text: refusal }, tomorrow: null }
+  }
+  if (closesTruck) {
+    return {
+      fact: { tone: 'warn', text: 'Fermé pendant ce temps' },
+      tomorrow: null,
+    }
+  }
+  return { fact: null, tomorrow: null }
 }

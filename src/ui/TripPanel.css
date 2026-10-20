@@ -1,70 +1,111 @@
-/* The card itself is the shared .panel (panel.css). Text colours keep at
-   least 4.5:1 against its cream #fff7e8. */
-.trip {
-  --panel-width: 52rem;
+/* « Ville »: the card itself is the shared .panel (panel.css) in the
+   dock's frame (DockFrame.css). Text colours keep at least 4.5:1 against
+   its cream #fff7e8 and the rows' white.
+
+   The city shows behind it, and its buildings open the tabs, so the panel
+   leaves them in sight. They stand in the right half of the city, which is
+   fitted to the window, centred across and standing on the bottom edge
+   (src/world/layout.ts): the panel keeps to the left half, above the dock. */
+.panel.dock-frame.trip {
+  left: 1rem;
+  width: min(560px, calc(50% - 2rem));
+  transform: none;
 }
 
-/* The places side by side, as long as they fit. */
+/* On a phone the city is as wide as the window and stands on its bottom
+   edge: the panel comes down from the top and stops above it, and the dock
+   and the ticker, which the panel makes out of reach anyway, go, so the
+   shops behind them show. --city-ratio is the city's height over its width
+   (TripPanel.tsx). */
+@media (max-width: 699px) {
+  .panel.dock-frame.trip {
+    inset: 0 0 auto;
+    width: 100%;
+    height: auto;
+    max-height: max(
+      45dvh,
+      calc(100dvh - 100vw * var(--city-ratio, 0.625) - 0.5rem)
+    );
+    border-bottom: 3px solid #2b2622;
+    border-radius: 0 0 18px 18px;
+  }
+
+  body:has(.trip.dock-panel[open]) .dock,
+  body:has(.trip.dock-panel[open]) .ticker {
+    visibility: hidden;
+  }
+}
+
+/* The places, one row each. */
 .trip__places {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  gap: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* A place: its name, its time and its status line, then its button, under
+   them when the row is narrow. */
 .trip__place {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.5rem 0.75rem 0.75rem;
-  border: 1px solid #c9b48f;
-  border-radius: 8px;
-}
-
-.trip__place h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.trip__place p {
-  margin: 0;
-}
-
-/* Today's trip stands out with a thicker border, and a word says so. */
-.trip__place--chosen {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
   border: 2px solid #2b2622;
+  border-radius: 14px;
+  background: #ffffff;
 }
 
-.trip__status {
-  color: #5c5048;
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-transform: uppercase;
+.trip__place:hover,
+.trip__place:focus-within {
+  outline: 3px solid #2f6fb0;
+  outline-offset: 2px;
 }
 
-.trip__gives {
+/* Today's trip, on the cream of a chip. */
+.trip__place--chosen {
+  background: #fbefd5;
+}
+
+.trip__about {
+  display: flex;
+  flex: 1 1 12rem;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.trip__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.trip__name {
+  margin: 0;
+  font-family: Fredoka, system-ui, sans-serif;
+  font-size: 1.0625rem;
   font-weight: 600;
 }
 
 .trip__time {
+  margin: 0;
+  color: #5c5048;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
 
-.trip__closed {
-  color: #a61b1b;
-  font-weight: 600;
-}
-
-.trip__refusal {
-  color: #5c5048;
-  font-size: 0.9375rem;
-}
-
 .trip__place .button {
-  align-self: flex-start;
-  margin-top: 0.25rem;
+  flex: none;
+}
+
+/* The dot stays beside its words as they wrap. */
+.trip__place .status-line {
+  flex-wrap: nowrap;
 }
 
 .trip .button:disabled {

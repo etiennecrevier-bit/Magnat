@@ -1,13 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CandidateId, StaffRoleId } from '../content/schema.ts'
 import type { DecisionChange } from '../engine/decisions.ts'
-import { cents } from '../engine/money.ts'
+import { STAFF } from '../engine/staff.ts'
 import { wageChange } from './decisionInput.ts'
+import { describedBy } from './describedBy.ts'
 import { DockPanel } from './DockFrame.tsx'
 import { useFieldDialog } from './fieldDialog.ts'
 import { formatAmount, formatMoney } from './formatMoney.ts'
 import { NumberField } from './NumberField.tsx'
+import { portraitUrl } from './portraits.ts'
+import { StatusLineView } from './ProductCard.tsx'
+import { Silhouette } from './Silhouette.tsx'
 import {
+  memberLine,
+  memberTip,
+  ownerTip,
+  roleTip,
   staffBoard,
   TASK_NAMES,
   type MemberRow,
@@ -17,12 +25,16 @@ import {
   type Task,
 } from './staffBoard.ts'
 import { useGame } from './store.ts'
+import type { TipActions } from './Tooltip.tsx'
+import Tooltip from './Tooltip.tsx'
 import './panel.css'
 import './ManagePanel.css'
 import './StaffPanel.css'
 
-const TITLE_ID = 'staff-title'
 const FULL_ID = 'staff-full'
+
+/** The size of a portrait on a row, in CSS pixels. */
+const PORTRAIT_SIZE = 48
 
 type OnChange = (change: DecisionChange) => void
 
@@ -35,20 +47,13 @@ interface StaffPanelViewProps {
   confirming: CandidateId | null
   onConfirmingChange: (candidate: CandidateId | null) => void
   onChange: OnChange
-  onClose: () => void
-}
-
-/** What someone does today, or « Congé » when nothing. */
-function tasksText(tasks: readonly Task[]): string {
-  return tasks.length === 0
-    ? 'Congé'
-    : tasks.map((task) => TASK_NAMES[task]).join(', ')
 }
 
 /**
- * « Qui fait quoi »: the owner and each employee with their role, their
- * wage and what they do today, then « Embaucher » with the roles and the
- * candidates. « Congédier » asks to confirm, with the notice it costs.
+ * « Qui fait quoi »: a row for the owner and for each employee, with what
+ * they do today, then « Embaucher » with the roles and the candidates.
+ * What a row leaves out, such as the training or the notice, is in its
+ * tooltip. « Congédier » asks to confirm.
  */
 export function StaffPanelView({
   board,
@@ -57,34 +62,24 @@ export function StaffPanelView({
   confirming,
   onConfirmingChange,
   onChange,
-  onClose,
 }: StaffPanelViewProps) {
   const offer = board.roles.find((option) => option.role === role)
   return (
     <div className="panel__content">
-      {/* Fermer comes first so it has the focus when the panel opens. */}
-      <div className="panel__header">
-        <button type="button" className="toggle" onClick={onClose}>
-          Fermer
-        </button>
-        <h2 id={TITLE_ID}>Qui fait quoi</h2>
-      </div>
       <p className="manage__note">Les changements s'appliquent demain matin</p>
-      <section aria-labelledby="staff-team">
-        <h3 id="staff-team">L'équipe</h3>
-        <ul className="staff__team">
-          <OwnerCard owner={board.owner} />
-          {board.members.map((member) => (
-            <MemberCard
-              key={member.candidate}
-              member={member}
-              confirming={confirming === member.candidate}
-              onConfirmingChange={onConfirmingChange}
-              onChange={onChange}
-            />
-          ))}
-        </ul>
-      </section>
+      <ul className="staff__team" aria-label="L'équipe">
+        <OwnerRowView owner={board.owner} />
+        {board.members.map((member) => (
+          <MemberRowView
+            key={member.candidate}
+            member={member}
+            hours={hoursOf(board, member.role)}
+            confirming={confirming === member.candidate}
+            onConfirmingChange={onConfirmingChange}
+            onChange={onChange}
+          />
+        ))}
+      </ul>
       <section aria-labelledby="staff-hire">
         <h3 id="staff-hire">Embaucher</h3>
         {board.full && (
@@ -128,104 +123,222 @@ export function StaffPanelView({
   )
 }
 
-function OwnerCard({ owner }: { owner: OwnerRow }) {
+/** The hours a week of `role`. */
+function hoursOf(board: StaffBoard, role: StaffRoleId): number {
+  return board.roles.find((offer) => offer.role === role)?.hoursPerWeek ?? 0
+}
+
+/**
+ * Today's work as chips, one per task, « Congé » when none, or «
+ * Ailleurs » for the owner away all day.
+ */
+function TaskChips({
+  tasks,
+  away = false,
+}: {
+  tasks: readonly Task[]
+  away?: boolean
+}) {
+  const words = away
+    ? ['Ailleurs']
+    : tasks.length === 0
+      ? ['Congé']
+      : tasks.map((task) => TASK_NAMES[task])
+  const idle = away || tasks.length === 0
   return (
-    <li className="staff__member">
-      <h4>Vous</h4>
-      <p>Propriétaire · {formatMoney(owner.weeklyPay)} par semaine</p>
-      <p>
-        Aujourd'hui&nbsp;:{' '}
-        {owner.away ? 'ailleurs toute la journée' : tasksText(owner.tasks)}
-      </p>
+    <ul className="staff__tasks" aria-label="Aujourd'hui">
+      {words.map((word) => (
+        <li key={word} className={idle ? 'chip chip--off' : 'chip'}>
+          {word}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** A portrait, or a silhouette for someone without one. */
+function Portrait({ url }: { url: string | null }) {
+  return url === null ? (
+    <Silhouette
+      className="staff__portrait staff__silhouette"
+      size={PORTRAIT_SIZE}
+    />
+  ) : (
+    <img
+      className="staff__portrait"
+      src={url}
+      alt=""
+      width={PORTRAIT_SIZE}
+      height={PORTRAIT_SIZE}
+    />
+  )
+}
+
+function OwnerRowView({ owner }: { owner: OwnerRow }) {
+  return (
+    <li>
+      <Tooltip content={ownerTip(owner)}>
+        {(anchor) => (
+          <div className="staff__row" tabIndex={0} {...anchor}>
+            <Portrait url={null} />
+            <div className="staff__who">
+              <h3 className="staff__name">Vous</h3>
+              <p className="staff__role">Propriétaire</p>
+            </div>
+            <TaskChips tasks={owner.tasks} away={owner.away} />
+            <p className="staff__pay">
+              {formatMoney(owner.weeklyPay)} par semaine
+            </p>
+          </div>
+        )}
+      </Tooltip>
     </li>
   )
 }
 
-function MemberCard({
+/**
+ * An employee's row, the anchor of their tooltip. Someone leaving tomorrow
+ * has no control left, so their row takes the focus itself.
+ */
+function MemberRowView({
   member,
+  hours,
   confirming,
   onConfirmingChange,
   onChange,
 }: {
   member: MemberRow
+  hours: number
   confirming: boolean
   onConfirmingChange: (candidate: CandidateId | null) => void
   onChange: OnChange
 }) {
   const { candidate, name, role, roleName, hourlyWage, status } = member
+  const statusId = `staff-${candidate}-status`
+  const line = memberLine(member)
+  const shown = line.fact === null ? undefined : statusId
   const fire = () => {
     onConfirmingChange(null)
     onChange({ kind: 'fire', candidate })
   }
+  const portrait = portraitUrl(STAFF.candidates[candidate].portrait)
   return (
-    <li className="staff__member">
-      <h4>{name}</h4>
-      <p>
-        {roleName} · {formatMoney(member.weeklyWage)} par semaine
-      </p>
-      <p>
-        {status === 'atWork' && (
-          <>Aujourd'hui&nbsp;: {tasksText(member.tasks)}</>
-        )}
-        {status === 'startsTomorrow' && (
-          <>
-            Commence demain · Formation&nbsp;:{' '}
-            {formatMoney(member.training ?? cents(0))}
-          </>
-        )}
-        {status === 'leavesTomorrow' && (
-          <>Aujourd'hui&nbsp;: {tasksText(member.tasks)} · Part demain</>
-        )}
-      </p>
-      {status !== 'leavesTomorrow' && (
-        <NumberField
-          id={`staff-wage-${candidate}`}
-          label="Salaire horaire"
-          unit="$ de l'heure"
-          inputMode="decimal"
-          value={formatAmount(hourlyWage)}
-          read={(text) => wageChange(candidate, role, text, hourlyWage)}
-          onChange={onChange}
-        />
-      )}
-      {status === 'startsTomorrow' && (
-        <button type="button" className="button" onClick={fire}>
-          Annuler l'embauche · sans frais
-        </button>
-      )}
-      {status === 'atWork' &&
-        (confirming ? (
-          <div className="staff__confirm">
-            <p role="alert">
-              Congédier {name}? Préavis&nbsp;:{' '}
-              {formatMoney(member.fireCost ?? cents(0))}
-            </p>
-            <button
-              type="button"
-              className="button button--primary"
-              onClick={fire}
+    <li>
+      <Tooltip content={memberTip(member, hours)}>
+        {(anchor, tip) => {
+          const described = describedBy(shown, anchor['aria-describedby'])
+          return (
+            <div
+              className="staff__row"
+              tabIndex={status === 'leavesTomorrow' ? 0 : undefined}
+              {...anchor}
             >
-              Confirmer
-            </button>{' '}
-            <button
-              type="button"
-              className="button"
-              onClick={() => onConfirmingChange(null)}
-            >
-              Annuler
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="button"
-            aria-label={`Congédier ${name}`}
-            onClick={() => onConfirmingChange(candidate)}
-          >
-            Congédier
-          </button>
-        ))}
+              <Portrait url={portrait} />
+              <div className="staff__who">
+                <h3 className="staff__name">{name}</h3>
+                <p className="staff__role">{roleName}</p>
+                <StatusLineView id={statusId} line={line} />
+              </div>
+              {status !== 'startsTomorrow' && (
+                <TaskChips tasks={member.tasks} />
+              )}
+              {status === 'leavesTomorrow' ? (
+                <p className="staff__pay">
+                  {formatMoney(hourlyWage)} de l'heure
+                </p>
+              ) : (
+                <NumberField
+                  id={`staff-wage-${candidate}`}
+                  label="Salaire horaire"
+                  unit="$ de l'heure"
+                  inputMode="decimal"
+                  value={formatAmount(hourlyWage)}
+                  read={(text) => wageChange(candidate, role, text, hourlyWage)}
+                  onChange={onChange}
+                  describedBy={described}
+                />
+              )}
+              <div className="staff__actions">
+                {status === 'startsTomorrow' && (
+                  <button
+                    type="button"
+                    className="button"
+                    aria-describedby={described}
+                    onClick={fire}
+                  >
+                    Annuler l'embauche · sans frais
+                  </button>
+                )}
+                {status === 'atWork' &&
+                  (confirming ? (
+                    <ConfirmFire
+                      name={name}
+                      tip={tip}
+                      describedBy={described}
+                      onConfirm={fire}
+                      onCancel={() => onConfirmingChange(null)}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="button"
+                      aria-label={`Congédier ${name}`}
+                      aria-describedby={described}
+                      onClick={() => onConfirmingChange(candidate)}
+                    >
+                      Congédier
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )
+        }}
+      </Tooltip>
     </li>
+  )
+}
+
+/**
+ * « Congédier {name}? » with « Confirmer » and « Annuler ». As it shows,
+ * « Confirmer » takes the focus and the row's tooltip opens, with the
+ * notice firing costs: through `tip`, since a focus that follows a press
+ * does not open it.
+ */
+function ConfirmFire({
+  name,
+  tip,
+  describedBy: described,
+  onConfirm,
+  onCancel,
+}: {
+  name: string
+  tip: TipActions
+  describedBy: string | undefined
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const confirm = useRef<HTMLButtonElement>(null)
+  const { open } = tip
+  useEffect(() => {
+    confirm.current?.focus()
+    open()
+  }, [open])
+  return (
+    <div className="staff__confirm">
+      <p role="alert">Congédier {name}?</p>
+      <button
+        ref={confirm}
+        type="button"
+        className="button button--primary"
+        aria-describedby={described}
+        onClick={onConfirm}
+      >
+        Confirmer
+      </button>{' '}
+      <button type="button" className="button" onClick={onCancel}>
+        Annuler
+      </button>
+    </div>
   )
 }
 
@@ -238,24 +351,21 @@ function RoleOption({
   pressed: boolean
   onPress: () => void
 }) {
-  const detailsId = `staff-role-${offer.role}`
   return (
     <li>
-      <button
-        type="button"
-        className="toggle"
-        aria-pressed={pressed}
-        aria-describedby={detailsId}
-        onClick={onPress}
-      >
-        {offer.name}
-      </button>{' '}
-      <span id={detailsId} className="staff__role-details">
-        {offer.hoursPerWeek}&nbsp;h par semaine ·{' '}
-        {formatMoney(offer.hourlyWage)} de l'heure ·{' '}
-        {formatMoney(offer.weeklyWage)} par semaine · Formation&nbsp;:{' '}
-        {formatMoney(offer.training)}
-      </span>
+      <Tooltip content={roleTip(offer)}>
+        {(anchor) => (
+          <button
+            type="button"
+            className="toggle"
+            aria-pressed={pressed}
+            onClick={onPress}
+            {...anchor}
+          >
+            {offer.name}
+          </button>
+        )}
+      </Tooltip>
     </li>
   )
 }
@@ -292,7 +402,6 @@ export default function StaffPanel() {
         confirming={confirming}
         onConfirmingChange={setConfirming}
         onChange={onChange}
-        onClose={close}
       />
     </DockPanel>
   )

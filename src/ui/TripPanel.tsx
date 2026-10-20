@@ -1,59 +1,63 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, type CSSProperties } from 'react'
 import type { DecisionChange } from '../engine/decisions.ts'
+import { CITY } from '../world/cityPicker.ts'
+import { ASSETS } from '../world/manifest.ts'
+import { showCity } from './cityLinks.ts'
 import ContractsScreen from './ContractsScreen.tsx'
 import { DockPanel } from './DockFrame.tsx'
-import { CITY_TABS, type CityTab } from './dockFrame.ts'
+import { CITY_TABS, type BackdropPicks } from './dockFrame.ts'
+import { describedBy } from './describedBy.ts'
 import { useFieldDialog } from './fieldDialog.ts'
+import { StatusLineView } from './ProductCard.tsx'
+import { settingsStore, type SettingsStore } from './settings.ts'
 import { useGame } from './store.ts'
-import { tripBoard, type PlaceRow, type TripBoard } from './tripBoard.ts'
+import Tooltip from './Tooltip.tsx'
+import {
+  placeLine,
+  placeTip,
+  tripBoard,
+  type PlaceRow,
+  type TripBoard,
+} from './tripBoard.ts'
 import './panel.css'
 import './TripPanel.css'
 
-const TITLE_ID = 'trip-title'
-
 // French puts a no-break space (U+00A0) before a colon.
-const COLON = '\u00a0:'
+const COLON = ' :'
+
+/**
+ * The city's height over its width, which TripPanel.css reads to keep the
+ * panel above the city on a phone.
+ */
+const CITY_RATIO = {
+  '--city-ratio': ASSETS.city.designSize.height / ASSETS.city.designSize.width,
+} as CSSProperties
 
 interface TripPanelViewProps {
   board: TripBoard
   onChange: (change: DecisionChange) => void
-  onClose: () => void
 }
 
 /**
- * « Aller à… »: each place in town, what the owner does there and what it
- * gives, how long the trip takes and when they leave and come back, and «
- * Fermé pendant ce temps » when nobody else serves at the truck. « Y aller
- * » sends the owner today; the day's trip shows « Annuler ». It explains
- * nothing.
+ * « Aller à… »: a row for each place in town, with how long the trip takes,
+ * « Y aller » or, for the day's trip, « Annuler ».
  */
-export function TripPanelView({
-  board,
-  onChange,
-  onClose,
-}: TripPanelViewProps) {
+export function TripPanelView({ board, onChange }: TripPanelViewProps) {
   return (
-    <div className="panel__content">
-      {/* Fermer comes first so it has the focus when the panel opens. */}
-      <div className="panel__header">
-        <button type="button" className="toggle" onClick={onClose}>
-          Fermer
-        </button>
-        <h2 id={TITLE_ID}>Aller à…</h2>
-      </div>
-      <ul className="trip__places">
-        {board.rows.map((row) => (
-          <PlaceCard key={row.id} row={row} onChange={onChange} />
-        ))}
-      </ul>
-    </div>
+    <ul className="trip__places">
+      {board.rows.map((row) => (
+        <PlaceCard key={row.id} row={row} onChange={onChange} />
+      ))}
+    </ul>
   )
 }
 
 /**
- * A place: « Y aller », disabled with the reason when the owner cannot go,
- * or « Annuler » for the day's trip, disabled with the reason when a card
- * booked it.
+ * A place: its name, « Aujourd'hui » on the day's trip, the trip's time,
+ * its status line, then « Y aller », disabled with the reason when the
+ * owner cannot go, or « Annuler » for the day's trip, disabled with the
+ * reason when a card booked it. The row is the anchor of its tooltip, and
+ * takes the focus itself when its button cannot.
  */
 export function PlaceCard({
   row,
@@ -62,47 +66,61 @@ export function PlaceCard({
   row: PlaceRow
   onChange: (change: DecisionChange) => void
 }) {
-  const { id, name, does, gives, time, schedule, closesTruck, chosen } = row
-  const { refusal } = row
-  const refusalId = `trip-${id}-refusal`
-  const describedBy = refusal === null ? undefined : refusalId
+  const { id, name, time, chosen, refusal } = row
+  const line = placeLine(row)
+  const lineId = refusal === null ? `trip-${id}-status` : `trip-${id}-refusal`
+  const shown = line.fact === null ? undefined : lineId
   return (
-    <li className={chosen ? 'trip__place trip__place--chosen' : 'trip__place'}>
-      <h3>{name}</h3>
-      {chosen && <p className="trip__status">Aujourd'hui</p>}
-      <p>{does}</p>
-      {gives !== null && <p className="trip__gives">{gives}</p>}
-      <p className="trip__time">{time}</p>
-      {schedule !== null && <p className="trip__time">{schedule}</p>}
-      {closesTruck && <p className="trip__closed">Fermé pendant ce temps</p>}
-      {chosen ? (
-        <button
-          type="button"
-          className="button"
-          aria-label={`Annuler${COLON} ${name}`}
-          aria-describedby={describedBy}
-          disabled={refusal !== null}
-          onClick={() => onChange({ kind: 'goTo', place: null })}
-        >
-          Annuler
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="button button--primary"
-          aria-label={`Y aller${COLON} ${name}`}
-          aria-describedby={describedBy}
-          disabled={refusal !== null}
-          onClick={() => onChange({ kind: 'goTo', place: id })}
-        >
-          Y aller
-        </button>
-      )}
-      {refusal !== null && (
-        <p id={refusalId} className="trip__refusal">
-          {refusal}
-        </p>
-      )}
+    <li>
+      <Tooltip content={placeTip(row)}>
+        {(anchor) => (
+          <div
+            className={
+              chosen ? 'trip__place trip__place--chosen' : 'trip__place'
+            }
+            tabIndex={refusal === null ? undefined : 0}
+            {...anchor}
+          >
+            <div className="trip__about">
+              <div className="trip__head">
+                <h3 className="trip__name">{name}</h3>
+                {chosen && <span className="chip">Aujourd'hui</span>}
+              </div>
+              <p className="trip__time">{time}</p>
+              <StatusLineView id={lineId} line={line} />
+            </div>
+            {chosen ? (
+              <button
+                type="button"
+                className="button"
+                aria-label={`Annuler${COLON} ${name}`}
+                aria-describedby={describedBy(
+                  shown,
+                  anchor['aria-describedby'],
+                )}
+                disabled={refusal !== null}
+                onClick={() => onChange({ kind: 'goTo', place: null })}
+              >
+                Annuler
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="button button--primary"
+                aria-label={`Y aller${COLON} ${name}`}
+                aria-describedby={describedBy(
+                  shown,
+                  anchor['aria-describedby'],
+                )}
+                disabled={refusal !== null}
+                onClick={() => onChange({ kind: 'goTo', place: id })}
+              >
+                Y aller
+              </button>
+            )}
+          </div>
+        )}
+      </Tooltip>
     </li>
   )
 }
@@ -110,19 +128,26 @@ export function PlaceCard({
 /**
  * « Ville », the panel wired to the app store, in the dock's frame, a modal
  * dialog (see `useFieldDialog`): « Aller à… », where a trip shows at once,
- * as it is for the day under way, and the « Contrats » with the grocers,
- * which it opens on when the store asks for that section.
+ * as it is for the day under way, and « Contrats », with the grocers. The
+ * world shows the city while it is open, beside it, and a press on a
+ * building there goes to `city` through the backdrop, which opens its tab.
  */
-export default function TripPanel() {
+export default function TripPanel({
+  settings = settingsStore,
+  city = CITY,
+}: {
+  settings?: Pick<SettingsStore, 'getState'>
+  city?: BackdropPicks
+}) {
   const game = useGame((state) => state.game)
   const decide = useGame((state) => state.decide)
   const closePanel = useGame((state) => state.closePanel)
-  const section = useGame((state) => state.panelSection)
+  const tab = useGame((state) => state.cityTab)
+  const setTab = useGame((state) => state.setCityTab)
   const board = useMemo(() => tripBoard(game), [game])
-  const [tab, setTab] = useState<CityTab>(
-    section === 'contracts' ? 'contracts' : 'trip',
-  )
   const { dialogRef, onChange, close, onCancel } = useFieldDialog(decide)
+
+  useEffect(() => showCity(settings), [settings])
 
   return (
     <DockPanel
@@ -135,11 +160,13 @@ export default function TripPanel() {
       onCancel={onCancel}
       onClose={closePanel}
       onDismiss={close}
+      backdrop={city}
+      style={CITY_RATIO}
     >
       {tab === 'trip' ? (
-        <TripPanelView board={board} onChange={onChange} onClose={close} />
+        <TripPanelView board={board} onChange={onChange} />
       ) : (
-        <ContractsScreen />
+        <ContractsScreen followsCity />
       )}
     </DockPanel>
   )

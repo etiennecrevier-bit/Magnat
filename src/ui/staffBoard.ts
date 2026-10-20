@@ -20,11 +20,17 @@ import { cents, mulInt, type Cents } from '../engine/money.ts'
 import { STAFF, crewOf, weeklyWage, type Doer } from '../engine/staff.ts'
 import { streetOn } from '../engine/street.ts'
 import type { Employee, GameState, Hire } from '../engine/types.ts'
+import { formatMoney } from './formatMoney.ts'
+import type { StatusLine } from './productFacts.ts'
+import type { TipContent } from './tooltip.ts'
 
 // What the « Qui fait quoi » panel shows (#163): the owner and the
 // employees, what each does today, and who may be hired. The engine plays
 // the day (src/engine/day.ts); today's work is read from its own helpers,
 // on the morning as it starts the day.
+
+// A no-break space (U+00A0) goes between a number and its unit.
+const NBSP = '\u00a0'
 
 /** A job of the day. */
 export type Task = 'truck' | 'deliveries' | 'bakery'
@@ -310,4 +316,60 @@ function todayStaff(started: GameState): Employee[] {
       started.staff.find(({ candidate }) => candidate === hire.candidate)
         ?.hiredOnDay ?? started.day,
   }))
+}
+
+/** What the owner's tooltip says: their role and their pay. */
+export function ownerTip(owner: OwnerRow): TipContent {
+  return {
+    title: 'Vous',
+    rows: [
+      { label: 'Rôle', value: 'Propriétaire' },
+      { label: 'Salaire par semaine', value: formatMoney(owner.weeklyPay) },
+    ],
+  }
+}
+
+/**
+ * What an employee's tooltip says: their role, hours and pay, the training
+ * of a hire who has not started and the notice firing one at work costs.
+ */
+export function memberTip(member: MemberRow, hours: number): TipContent {
+  const { name, roleName, weeklyWage, status, training, fireCost } = member
+  const rows = [
+    { label: 'Rôle', value: roleName },
+    { label: 'Heures par semaine', value: `${hours}${NBSP}h` },
+    { label: 'Salaire par semaine', value: formatMoney(weeklyWage) },
+  ]
+  if (status === 'startsTomorrow' && training !== null) {
+    rows.push({ label: 'Formation', value: formatMoney(training) })
+  }
+  if (status === 'atWork' && fireCost !== null) {
+    rows.push({ label: 'Préavis si congédié', value: formatMoney(fireCost) })
+  }
+  return { title: name, rows }
+}
+
+/** An employee's one status line: starting or leaving tomorrow, if so. */
+export function memberLine({ status }: MemberRow): StatusLine {
+  switch (status) {
+    case 'startsTomorrow':
+      return { fact: { tone: 'warn', text: 'Commence demain' }, tomorrow: null }
+    case 'leavesTomorrow':
+      return { fact: { tone: 'off', text: 'Part demain' }, tomorrow: null }
+    case 'atWork':
+      return { fact: null, tomorrow: null }
+  }
+}
+
+/** What a role's tooltip says: its hours, its wage and the training. */
+export function roleTip(offer: RoleOffer): TipContent {
+  return {
+    title: offer.name,
+    rows: [
+      { label: 'Heures par semaine', value: `${offer.hoursPerWeek}${NBSP}h` },
+      { label: 'Salaire horaire', value: formatMoney(offer.hourlyWage) },
+      { label: 'Salaire par semaine', value: formatMoney(offer.weeklyWage) },
+      { label: 'Formation', value: formatMoney(offer.training) },
+    ],
+  }
 }

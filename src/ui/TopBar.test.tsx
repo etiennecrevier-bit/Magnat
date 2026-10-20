@@ -17,7 +17,6 @@ import type { TopAlert } from './alerts.ts'
 import { sparklinePoints } from './cashChip.ts'
 import { cashAtCloses } from './cashHistory.ts'
 import { createMessageStack } from './messageStack.ts'
-import { createSettingsStore, SETTINGS_KEY } from './settings.ts'
 import { gameStore, newChallenge, type GameStoreState } from './store.ts'
 import TopBar, { TopBarView } from './TopBar.tsx'
 
@@ -242,49 +241,9 @@ describe('TopBarView', () => {
 })
 
 describe('the switch between the street and the city', () => {
-  const VIEWS =
-    '<div class="top-bar__views" role="group" aria-label="Vue">' +
-    '<button type="button" class="top-bar__view" aria-pressed="true">La rue</button>' +
-    '<button type="button" class="top-bar__view" aria-pressed="false">La ville</button>' +
-    '</div><div class="top-bar__speeds"'
-
-  it('names both views before the speeds, the one shown pressed', () => {
-    const html = renderToStaticMarkup(
-      <TopBarView
-        businessName="Le P'tit Camion"
-        day={0}
-        cash={cents(1_000_000)}
-        fixedCosts={cents(175_000)}
-        energy={100}
-        avatar="homme"
-        speed={1}
-        onSpeedChange={() => {}}
-        view="street"
-        onViewChange={() => {}}
-        defiLabel={null}
-        defiEnergy={null}
-        onDefi={() => {}}
-        onSettings={() => {}}
-      />,
-    )
-    expect(html).toContain(VIEWS)
-  })
-
-  it('is left out without a way to change the view', () => {
+  it('is gone: the dock’s « Ville » shows the city', () => {
     expect(render(0, 1)).not.toContain('top-bar__views')
-  })
-
-  it('shows the view the player picked, which the settings keep', () => {
-    // A static render reads the store's first state: the one stored.
-    const stored = JSON.stringify({ worldView: 'city' })
-    const settings = createSettingsStore({
-      getItem: (key) => (key === SETTINGS_KEY ? stored : null),
-      setItem: () => {},
-    })
-    expect(renderToStaticMarkup(<TopBar settings={settings} />)).toContain(
-      '<button type="button" class="top-bar__view" aria-pressed="false">La rue</button>' +
-        '<button type="button" class="top-bar__view" aria-pressed="true">La ville</button>',
-    )
+    expect(renderToStaticMarkup(<TopBar />)).not.toContain('La ville')
   })
 })
 

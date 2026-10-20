@@ -184,7 +184,7 @@ describe('GameScreens', () => {
     expect(html).not.toContain('>Contrats</button>')
     gameStore.getState().startGame(newChallenge('?seed=7', 'travauxSaintDenis'))
     gameStore.getState().openDrawer('finances', 'contracts')
-    expect(render()).toContain('<section class="contracts"><h1>Contrats</h1>')
+    expect(render()).toContain('<section class="contracts">')
   })
 
   it.each([
@@ -218,7 +218,7 @@ describe('GameScreens', () => {
       const html = render()
       expect(html).toMatch(
         new RegExp(
-          `<dialog class="panel dock-frame dock-panel ${className}" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\\1" class="dock-frame__title">${title}</h2>.*</dialog>$`,
+          `<dialog class="panel dock-frame dock-panel ${className}" aria-labelledby="([^"]+)"(?: style="[^"]*")?><div class="dock-frame__header"><h2 id="\\1" class="dock-frame__title">${title}</h2>.*</dialog>$`,
         ),
       )
       expect(speed()).toBe(PAUSED)

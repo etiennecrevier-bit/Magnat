@@ -36,6 +36,71 @@
   font-size: 1.125rem;
 }
 
+/* A card's one status line: a 9 px dot, then the words. */
+.status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 7px;
+  margin: 0;
+  color: #6b625a;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.status-line__dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 5px;
+}
+
+.status-line__dot--ok {
+  background: #2e7d4f;
+}
+
+.status-line__dot--warn {
+  background: #c27a00;
+}
+
+.status-line__dot--bad {
+  background: #b3261e;
+}
+
+.status-line__dot--off {
+  background: #6b625a;
+}
+
+/* « Demain : … », the line's second part, on a line of its own. */
+.status-line__tomorrow {
+  flex-basis: 100%;
+  color: #2b2622;
+}
+
+/* A chip: a word on a small cream pill with an ink border, such as what
+   someone does today on « Équipe ». */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border: 2px solid #2b2622;
+  border-radius: 999px;
+  background: #fbefd5;
+  color: #2b2622;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* A chip for nothing to do: dashed and grey. */
+.chip--off {
+  border-style: dashed;
+  border-color: #6b625a;
+  background: transparent;
+  color: #5c5048;
+}
+
 /* On a phone a panel takes the whole screen. */
 @media (max-width: 559px) {
   .panel {

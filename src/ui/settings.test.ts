@@ -47,7 +47,6 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
-      worldView: 'street',
     })
     expect(readSettings(null)).toEqual(DEFAULT_SETTINGS)
     expect(readSettings(memory())).toEqual(DEFAULT_SETTINGS)
@@ -64,7 +63,6 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
-      worldView: 'street',
     })
     expect(createSettingsStore(storage).getState().visualEffects).toBe('simple')
   })
@@ -78,7 +76,6 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
-      worldView: 'street',
     })
     expect(createSettingsStore(storage).getState().openReportEveryWeek).toBe(
       true,
@@ -94,7 +91,6 @@ describe('the settings', () => {
       reportCadence: 'month',
       bestMedals: {},
       screensFolded: false,
-      worldView: 'street',
     })
     expect(createSettingsStore(storage).getState().reportCadence).toBe('month')
   })
@@ -109,7 +105,6 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: true,
-      worldView: 'street',
     })
     const reloaded = createSettingsStore(storage)
     expect(reloaded.getState().screensFolded).toBe(true)
@@ -121,24 +116,33 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
-      worldView: 'street',
     })
     expect(createSettingsStore(storage).getState().screensFolded).toBe(false)
   })
 
-  it('keep the view of the world the player picks, the street or the city, after a reload', () => {
+  it('show the city while asked to, but never keep it, so a reload starts on the street', () => {
     const storage = memory()
+    const store = createSettingsStore(storage)
+    expect(store.getState().worldView).toBe('street')
+    store.getState().setWorldView('city')
+    expect(store.getState().worldView).toBe('city')
+    expect(storage.items[SETTINGS_KEY]).toBeUndefined()
+    store.getState().setScreensFolded(true)
+    expect(JSON.parse(storage.items[SETTINGS_KEY]!)).not.toHaveProperty(
+      'worldView',
+    )
     expect(createSettingsStore(storage).getState().worldView).toBe('street')
-    createSettingsStore(storage).getState().setWorldView('city')
-    expect(JSON.parse(storage.items[SETTINGS_KEY]!).worldView).toBe('city')
-    expect(createSettingsStore(storage).getState().worldView).toBe('city')
   })
 
-  it('show the street for a view this version does not know', () => {
+  it('start on the street even when an older version kept the city', () => {
     const storage = memory({
-      [SETTINGS_KEY]: JSON.stringify({ worldView: 'map', screensFolded: true }),
+      [SETTINGS_KEY]: JSON.stringify({
+        worldView: 'city',
+        screensFolded: true,
+      }),
     })
-    expect(readSettings(storage)).toMatchObject({
+    expect(readSettings(storage)).not.toHaveProperty('worldView')
+    expect(createSettingsStore(storage).getState()).toMatchObject({
       worldView: 'street',
       screensFolded: true,
     })
@@ -163,7 +167,6 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
-      worldView: 'street',
     })
 
     createSettingsStore(storage).getState().setVisualEffects('full')
@@ -173,7 +176,6 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
-      worldView: 'street',
     })
     createSettingsStore(storage).getState().setOpenReportEveryWeek(false)
     expect(readSettings(storage)).toEqual({
@@ -182,7 +184,6 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
-      worldView: 'street',
     })
     createSettingsStore(storage).getState().setReportCadence('month')
     createSettingsStore(storage).getState().setVisualEffects('simple')
@@ -192,7 +193,6 @@ describe('the settings', () => {
       reportCadence: 'month',
       bestMedals: {},
       screensFolded: false,
-      worldView: 'street',
     })
   })
 
@@ -206,7 +206,6 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
-      worldView: 'street',
     })
   })
 
@@ -219,7 +218,6 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: false,
-        worldView: 'street',
       },
     ],
     [
@@ -230,7 +228,6 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: false,
-        worldView: 'street',
       },
     ],
     [
@@ -241,7 +238,6 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: false,
-        worldView: 'street',
       },
     ],
     [
@@ -252,7 +248,6 @@ describe('the settings', () => {
         reportCadence: 'month',
         bestMedals: {},
         screensFolded: false,
-        worldView: 'street',
       },
     ],
     [
@@ -263,7 +258,6 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: false,
-        worldView: 'street',
       },
     ],
     [
@@ -274,7 +268,6 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: true,
-        worldView: 'street',
       },
     ],
   ])('keep a valid setting beside an invalid one: %j', (stored, settings) => {
@@ -319,7 +312,6 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: false,
-        worldView: 'city',
       }),
     ).toBe(false)
     const store = createSettingsStore(BLOCKED)
@@ -346,7 +338,6 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: { travauxSaintDenis: 'bronze', zeroGaspillage: 'argent' },
       screensFolded: false,
-      worldView: 'street',
     })
     expect(createSettingsStore(storage).getState().bestMedals).toEqual({
       travauxSaintDenis: 'bronze',
@@ -442,7 +433,6 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: { travauxSaintDenis: 'or' },
         screensFolded: false,
-        worldView: 'street',
       })
       expect(a.getState().bestMedals).toEqual({ travauxSaintDenis: 'or' })
     })
@@ -509,7 +499,6 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: kept,
         screensFolded: false,
-        worldView: 'street',
       })
     },
   )

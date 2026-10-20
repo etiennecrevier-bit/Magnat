@@ -615,6 +615,65 @@ describe('the tab of « Le camion »', () => {
   })
 })
 
+describe('the tab of « Ville » and the grocer the city picked', () => {
+  it('opens on « Aller à… », or on « Contrats » for that section, with no grocer', () => {
+    const store = createGameStore()
+    expect(store.getState()).toMatchObject({ cityTab: 'trip', cityPick: null })
+    store.getState().openPanel('trip', 'contracts')
+    expect(store.getState().cityTab).toBe('contracts')
+    store.getState().setCityTab('trip')
+    expect(store.getState().cityTab).toBe('trip')
+    store.getState().closePanel()
+    store.getState().openPanel('trip')
+    expect(store.getState().cityTab).toBe('trip')
+  })
+
+  it('moves to « Contrats » on the grocer picked, counting each pick, until « Ville » opens again', () => {
+    const store = createGameStore()
+    store.getState().openPanel('trip')
+    store.getState().pickGrocer('chezNormand')
+    expect(store.getState()).toMatchObject({
+      cityTab: 'contracts',
+      cityPick: { grocer: 'chezNormand', count: 1, pending: true },
+    })
+    store.getState().setCityTab('trip')
+    store.getState().pickGrocer('chezNormand')
+    expect(store.getState()).toMatchObject({
+      cityTab: 'contracts',
+      cityPick: { grocer: 'chezNormand', count: 2, pending: true },
+    })
+    store.getState().pickGrocer('depanneur2424')
+    expect(store.getState().cityPick).toEqual({
+      grocer: 'depanneur2424',
+      count: 3,
+      pending: true,
+    })
+    store.getState().closePanel()
+    store.getState().openPanel('trip')
+    expect(store.getState()).toMatchObject({ cityTab: 'trip', cityPick: null })
+  })
+  it('brings each pick into view once: settled, its card stays, until the next pick', () => {
+    const store = createGameStore()
+    store.getState().openPanel('trip')
+    store.getState().pickGrocer('depanneur2424')
+    store.getState().settleCityPick(1)
+    expect(store.getState().cityPick).toEqual({
+      grocer: 'depanneur2424',
+      count: 1,
+      pending: false,
+    })
+    store.getState().pickGrocer('depanneur2424')
+    store.getState().settleCityPick(1)
+    expect(store.getState().cityPick).toEqual({
+      grocer: 'depanneur2424',
+      count: 2,
+      pending: true,
+    })
+    store.getState().settleCityPick(2)
+    expect(store.getState().cityPick?.pending).toBe(false)
+  })
+})
+
 describe('the drawers', () => {
   it('start closed, each on its first tab, with no report unread', () => {
     expect(createGameStore().getState()).toMatchObject({

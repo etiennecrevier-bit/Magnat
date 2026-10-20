@@ -6,7 +6,7 @@ import { cents } from '../engine/money.ts'
 import type { GameState } from '../engine/types.ts'
 import ContractsScreen, { ContractsScreenView } from './ContractsScreen.tsx'
 import { contractsBoard, type ContractsBoard } from './contractsBoard.ts'
-import { gameStore, type GameStoreState } from './store.ts'
+import { gameStore, type CityPick, type GameStoreState } from './store.ts'
 
 // A static render reads a Zustand store's initial state, so the connected
 // screen reads the app store's current state through this stand-in.
@@ -26,15 +26,23 @@ afterEach(() => {
 // Every space in an amount is a no-break space (U+00A0).
 const S = '\u00a0'
 
-function render(board: ContractsBoard) {
-  return renderToStaticMarkup(<ContractsScreenView board={board} />)
+function render(board: ContractsBoard, pick: CityPick | null = null) {
+  return renderToStaticMarkup(<ContractsScreenView board={board} pick={pick} />)
 }
 
-/** The text of each paragraph and list item, in order, tags removed. */
-function lines(html: string): string[] {
-  return [...html.matchAll(/<(p|li)\b[^>]*>(.*?)<\/\1>/g)].map(([, , text]) =>
-    (text ?? '').replace(/<[^>]*>/g, ''),
-  )
+/** Each card's class and text, tags removed, its parts apart by « | ». */
+function cards(html: string): { className: string; text: string }[] {
+  return [
+    ...html.matchAll(
+      /<article id="[^"]*" class="([^"]*)"[^>]*>(.*?)<\/article>/g,
+    ),
+  ].map(([, className, inner]) => ({
+    className: className ?? '',
+    text: (inner ?? '')
+      .replace(/<\/(h3|p)>/g, '|')
+      .replace(/<[^>]*>/g, '')
+      .replace(/\|+$/, ''),
+  }))
 }
 
 /**
@@ -58,76 +66,90 @@ function delivered(): GameState {
 describe('ContractsScreenView', () => {
   it('says so before the first contract', () => {
     expect(render({ grocers: [], owedTotal: cents(0) })).toBe(
-      '<section class="contracts"><h1>Contrats</h1><p>Aucun contrat pour l&#x27;instant.</p></section>',
+      '<section class="contracts"><p class="contracts__empty">Aucun contrat pour l&#x27;instant.</p></section>',
     )
   })
 
-  it('shows each grocer in plain lines, then what they owe in all', () => {
+  it('shows a card per grocer with this week’s delivery, then what they owe in all', () => {
     const html = render(contractsBoard(delivered()))
-    expect(html).toMatch(/^<section class="contracts"><h1>Contrats<\/h1>/)
-    expect(
-      [...html.matchAll(/<h2>([^<]*)<\/h2>/g)].map(([, name]) => name),
-    ).toEqual(['Épicerie Chez Normand', 'Marché Bio-Logique'])
-    expect(lines(html)).toEqual([
-      'Normand',
-      `750 croissants par semaine à 2,10${S}$`,
-      `11 semaines restantes · Livraisons manquées${S}: 0 sur 3`,
-      `Cette semaine${S}: 750 croissants livrés lundi, 1${S}575,00${S}$`,
-      `À recevoir${S}: 1${S}575,00${S}$`,
-      `1${S}575,00${S}$ le 7 juillet`,
-      'Solange Tremblay-Lévesque',
-      `1${S}250 croissants par semaine à 2,25${S}$ · +0,40${S}$ par croissant du fournil`,
-      `11 semaines restantes · Livraisons manquées${S}: 0 sur 3`,
-      `Cette semaine${S}: 1${S}250 croissants livrés lundi, 2${S}812,50${S}$`,
-      `À recevoir${S}: 2${S}812,50${S}$`,
-      `2${S}812,50${S}$ le 7 juillet`,
-      `Total à recevoir des épiceries${S}: 4${S}387,50${S}$`,
+    expect(cards(html)).toEqual([
+      {
+        className: 'contracts__card',
+        text: `Épicerie Chez Normand|750 croissants livrés lundi, 1${S}575,00${S}$`,
+      },
+      {
+        className: 'contracts__card',
+        text: `Marché Bio-Logique|1${S}250 croissants livrés lundi, 2${S}812,50${S}$`,
+      },
     ])
-  })
-
-  it('says when the delivery is due, missed, or the first is to come', () => {
-    const board = contractsBoard(delivered())
-    const [line] = board.grocers
-    if (line?.contract == null) throw new Error('No contract')
-    const withWeek = (week: NonNullable<typeof line.contract>['week']) =>
-      lines(
-        render({
-          ...board,
-          grocers: [{ ...line, contract: { ...line.contract!, week } }],
-        }),
-      ).find((text) => text.startsWith('Cette semaine'))
-    expect(withWeek({ kind: 'due', day: 14 })).toBe(
-      `Cette semaine${S}: livraison lundi`,
+    expect(html).toContain(
+      '<article id="contracts-chezNormand" class="contracts__card" tabindex="0" aria-labelledby="contracts-chezNormand-name" aria-describedby=',
     )
-    expect(withWeek({ kind: 'missed', day: 7 })).toBe(
-      `Cette semaine${S}: livraison manquée lundi`,
+    expect(html).toContain(
+      '<p id="contracts-chezNormand-status" class="status-line"><span class="status-line__dot status-line__dot--ok" aria-hidden="true"></span>',
     )
-    expect(withWeek({ kind: 'first', day: 14 })).toBe(
-      `Cette semaine${S}: aucune livraison, la première le 15 mai`,
+    expect(html).toMatch(
+      new RegExp(
+        `<p class="contracts__total">Total à recevoir des épiceries${S}: <strong>4${S}387,50${S}\\$</strong></p></section>$`,
+      ),
     )
   })
 
-  it('says « 1 semaine restante » for the last one', () => {
+  it('puts the rest in each card’s tooltip', () => {
+    const html = render(contractsBoard(delivered()))
+    expect(html).toContain('role="tooltip"')
+    expect(html).toContain('<p class="tip__title">Épicerie Chez Normand</p>')
+  })
+
+  it('shows the grocer the city picked, with no contract, beside the others', () => {
     const board = contractsBoard(delivered())
-    const [line] = board.grocers
-    if (line?.contract == null) throw new Error('No contract')
-    const html = render({
-      ...board,
-      grocers: [{ ...line, contract: { ...line.contract, weeksLeft: 1 } }],
+    const html = render(board, {
+      grocer: 'depanneur2424',
+      count: 1,
+      pending: true,
     })
-    expect(html).toContain('1 semaine restante · ')
+    expect(cards(html).map(({ className, text }) => [className, text])).toEqual(
+      [
+        ['contracts__card', expect.stringMatching(/^Épicerie Chez Normand\|/)],
+        ['contracts__card', expect.stringMatching(/^Marché Bio-Logique\|/)],
+        [
+          'contracts__card contracts__card--picked',
+          'Dépanneur 24/24|Aucun contrat en cours',
+        ],
+      ],
+    )
+    expect(html).toContain(
+      `Total à recevoir des épiceries${S}: <strong>4${S}387,50${S}$`,
+    )
   })
 
-  it('shows « Aucun contrat en cours » for a grocer who only owes', () => {
-    const board = contractsBoard(delivered())
-    const [line] = board.grocers
-    if (line === undefined) throw new Error('No grocer')
-    const html = render({ ...board, grocers: [{ ...line, contract: null }] })
-    expect(lines(html).slice(0, 3)).toEqual([
-      'Normand',
-      'Aucun contrat en cours',
-      `À recevoir${S}: 1${S}575,00${S}$`,
+  it('marks a grocer the city picked who already has a card, once', () => {
+    const html = render(contractsBoard(delivered()), {
+      grocer: 'marcheBioLogique',
+      count: 2,
+      pending: true,
+    })
+    expect(cards(html).map(({ className }) => className)).toEqual([
+      'contracts__card',
+      'contracts__card contracts__card--picked',
     ])
+  })
+
+  it('keeps « Aucun contrat pour l’instant. » under a picked grocer before the first contract', () => {
+    const html = render(
+      { grocers: [], owedTotal: cents(0) },
+      { grocer: 'chezNormand', count: 1, pending: true },
+    )
+    expect(cards(html)).toEqual([
+      {
+        className: 'contracts__card contracts__card--picked',
+        text: 'Épicerie Chez Normand|Aucun contrat en cours',
+      },
+    ])
+    expect(html).toContain(
+      '<p class="contracts__empty">Aucun contrat pour l&#x27;instant.</p></section>',
+    )
+    expect(html).not.toContain('Total à recevoir')
   })
 })
 
@@ -135,9 +157,31 @@ describe('ContractsScreen', () => {
   it("shows the app store's contracts", () => {
     gameStore.getState().startGame(delivered())
     const html = renderToStaticMarkup(<ContractsScreen />)
-    expect(html).toContain('<h2>Épicerie Chez Normand</h2>')
+    expect(html).toContain(
+      '<h3 id="contracts-chezNormand-name" class="contracts__name">Épicerie Chez Normand</h3>',
+    )
     expect(html).toContain(
       `Total à recevoir des épiceries${S}: <strong>4${S}387,50${S}$</strong>`,
+    )
+  })
+
+  it('keeps the card of a pick brought into view once, for a return to the tab', () => {
+    gameStore.getState().openPanel('trip')
+    gameStore.getState().pickGrocer('depanneur2424')
+    gameStore.getState().settleCityPick(1)
+    expect(renderToStaticMarkup(<ContractsScreen followsCity />)).toContain(
+      '<article id="contracts-depanneur2424" class="contracts__card contracts__card--picked"',
+    )
+  })
+
+  it('shows the grocer the city picked in « Ville », and only there', () => {
+    gameStore.getState().openPanel('trip')
+    gameStore.getState().pickGrocer('depanneur2424')
+    expect(renderToStaticMarkup(<ContractsScreen followsCity />)).toContain(
+      'class="contracts__card contracts__card--picked"',
+    )
+    expect(renderToStaticMarkup(<ContractsScreen />)).toBe(
+      '<section class="contracts"><p class="contracts__empty">Aucun contrat pour l&#x27;instant.</p></section>',
     )
   })
 })

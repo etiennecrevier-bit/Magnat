@@ -16,12 +16,10 @@ export type VisualEffects = 'full' | 'simple'
 export const VISUAL_EFFECTS: readonly VisualEffects[] = ['full', 'simple']
 
 /**
- * What the world shows behind the panels: « La rue », the truck on its
- * street, or « La ville », the block of the Plateau around it.
+ * What the world shows behind the panels: the truck on its street, or the
+ * block of the Plateau around it while « Ville » is open.
  */
 export type WorldView = 'street' | 'city'
-
-export const WORLD_VIEWS: readonly WorldView[] = ['street', 'city']
 
 /**
  * How often the « Bilan » comes once the first weeks of a game are over:
@@ -48,11 +46,6 @@ export interface Settings {
    * room. Set from the screens themselves, not in « Réglages ».
    */
   readonly screensFolded: boolean
-  /**
-   * What the world shows, the street or the city. Set from the top bar,
-   * not in « Réglages ».
-   */
-  readonly worldView: WorldView
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -61,7 +54,6 @@ export const DEFAULT_SETTINGS: Settings = {
   reportCadence: 'week',
   bestMedals: {},
   screensFolded: false,
-  worldView: 'street',
 }
 
 /** The localStorage key the settings are kept under. */
@@ -72,6 +64,11 @@ export type SettingsStorage = Pick<Storage, 'getItem' | 'setItem'>
 
 /** The settings and the way to change them. */
 export interface SettingsState extends Settings {
+  /**
+   * What the world shows: the city while « Ville » is open, else the
+   * street. Never kept, so a game always starts on the street.
+   */
+  readonly worldView: WorldView
   setVisualEffects: (visualEffects: VisualEffects) => void
   setOpenReportEveryWeek: (openReportEveryWeek: boolean) => void
   setReportCadence: (reportCadence: ReportCadence) => void
@@ -114,7 +111,6 @@ export function readSettings(storage: SettingsStorage | null): Settings {
     reportCadence,
     bestMedals,
     screensFolded,
-    worldView,
   } = stored as Record<string, unknown>
   return {
     visualEffects: VISUAL_EFFECTS.includes(visualEffects as VisualEffects)
@@ -132,9 +128,6 @@ export function readSettings(storage: SettingsStorage | null): Settings {
       typeof screensFolded === 'boolean'
         ? screensFolded
         : DEFAULT_SETTINGS.screensFolded,
-    worldView: WORLD_VIEWS.includes(worldView as WorldView)
-      ? (worldView as WorldView)
-      : DEFAULT_SETTINGS.worldView,
   }
 }
 
@@ -205,7 +198,6 @@ export function createSettingsStore(
         openReportEveryWeek,
         reportCadence,
         screensFolded,
-        worldView,
       } = get()
       writeSettings(storage, {
         visualEffects,
@@ -213,17 +205,17 @@ export function createSettingsStore(
         reportCadence,
         bestMedals,
         screensFolded,
-        worldView,
       })
     }
     return {
       ...readSettings(storage),
+      worldView: 'street',
       setVisualEffects: (visualEffects) => change({ visualEffects }),
       setOpenReportEveryWeek: (openReportEveryWeek) =>
         change({ openReportEveryWeek }),
       setReportCadence: (reportCadence) => change({ reportCadence }),
       setScreensFolded: (screensFolded) => change({ screensFolded }),
-      setWorldView: (worldView) => change({ worldView }),
+      setWorldView: (worldView) => set({ worldView }),
       recordMedal: (defiId, medal) => {
         const { bestMedals } = get()
         const best = bestMedals[defiId]

@@ -26,12 +26,6 @@ import { formatGameDate } from './formatGameDate.ts'
 import { Icon } from './icons.tsx'
 import { messageStack, type MessageStack } from './messageStack.ts'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
-import {
-  settingsStore,
-  WORLD_VIEWS,
-  type SettingsStore,
-  type WorldView,
-} from './settings.ts'
 import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
 import { keepRoomUnder } from './tickerRoom.ts'
 import { todayNumbers, type TodayNumbers } from './todayNumbers.ts'
@@ -60,12 +54,6 @@ function speedText(speed: number): ReactNode {
       <rect x="8.5" y="1" width="3.5" height="12" rx="1" fill="currentColor" />
     </svg>
   )
-}
-
-/** The views of the world, as the switch names them. */
-const VIEW_NAMES: Readonly<Record<WorldView, string>> = {
-  street: 'La rue',
-  city: 'La ville',
 }
 
 const CASH = '1000' satisfies AccountCode
@@ -101,10 +89,6 @@ interface TopBarViewProps {
   avatar: Avatar
   speed: number
   onSpeedChange: (speed: number) => void
-  /** What the world shows behind the panels, the street or the city. */
-  view?: WorldView
-  /** Shows the other view; null hides the switch. */
-  onViewChange?: ((view: WorldView) => void) | null
   /** « En route vers la Caisse » on a day with a trip; null shows none. */
   enRoute?: string | null
   /** The chip of the Défi played, « Défi · semaine 2 de 3 »; null if none. */
@@ -144,8 +128,6 @@ export function TopBarView({
   avatar,
   speed,
   onSpeedChange,
-  view = 'street',
-  onViewChange = null,
   enRoute = null,
   defiLabel,
   defiEnergy,
@@ -197,21 +179,6 @@ export function TopBarView({
         </div>
       </div>
       <div className="top-bar__right">
-        {onViewChange !== null && (
-          <div className="top-bar__views" role="group" aria-label="Vue">
-            {WORLD_VIEWS.map((option) => (
-              <button
-                key={option}
-                type="button"
-                className="top-bar__view"
-                aria-pressed={option === view}
-                onClick={() => onViewChange(option)}
-              >
-                {VIEW_NAMES[option]}
-              </button>
-            ))}
-          </div>
-        )}
         <div
           className="top-bar__speeds"
           role="group"
@@ -275,19 +242,14 @@ function keepRoom(bar: HTMLElement | null) {
 
 /**
  * The top bar wired to the app store, with the Space shortcut. In a Défi,
- * the chip under the date opens the Défi's panel. The switch between « La
- * rue » and « La ville » keeps the player's pick in `settings`, which the
- * world follows. The chips at the right read the grocers' missed deliveries
- * and the messages in `stack`.
+ * the chip under the date opens the Défi's panel. The chips at the right
+ * read the grocers' missed deliveries and the messages in `stack`.
  */
 export default function TopBar({
-  settings = settingsStore,
   stack = messageStack,
 }: {
-  settings?: SettingsStore
   stack?: MessageStack
 }) {
-  const view = useStore(settings, (state) => state.worldView)
   const messages = useStore(stack, (state) => state.messages.length)
   const businessName = useGame((state) => state.game.profile.businessName)
   const avatar = useGame((state) => state.game.profile.avatar)
@@ -379,8 +341,6 @@ export default function TopBar({
       avatar={avatar}
       speed={speed}
       onSpeedChange={setSpeed}
-      view={view}
-      onViewChange={(next) => settings.getState().setWorldView(next)}
       enRoute={enRouteLine({ day, events, town })}
       defiLabel={defiLabel}
       defiEnergy={defiEnergy}

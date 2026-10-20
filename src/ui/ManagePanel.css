@@ -133,47 +133,6 @@
   text-align: center;
 }
 
-/* A card's one status line: a 9 px dot, then the words. */
-.status-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 7px;
-  margin: 0;
-  color: #6b625a;
-  font-size: 0.8125rem;
-  font-weight: 700;
-}
-
-.status-line__dot {
-  flex: none;
-  width: 9px;
-  height: 9px;
-  border-radius: 5px;
-}
-
-.status-line__dot--ok {
-  background: #2e7d4f;
-}
-
-.status-line__dot--warn {
-  background: #c27a00;
-}
-
-.status-line__dot--bad {
-  background: #b3261e;
-}
-
-.status-line__dot--off {
-  background: #6b625a;
-}
-
-/* « Demain : … », the line's second part, on a line of its own. */
-.status-line__tomorrow {
-  flex-basis: 100%;
-  color: #2b2622;
-}
-
 .manage__pay-marketing {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));

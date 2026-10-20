@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  backdropPoint,
   CITY_TABS,
   drawerEscape,
   financesTabs,
@@ -102,5 +103,24 @@ describe('the tabs', () => {
 
   it('each with an id its tab panel names', () => {
     expect(tabId('body', 'trip')).toBe('body-tab-trip')
+  })
+})
+
+describe('backdropPoint', () => {
+  const dialog = { tagName: 'DIALOG' }
+  const box = { left: 16, top: 80, right: 576, bottom: 600 }
+  const press = (target: unknown, clientX: number, clientY: number) =>
+    backdropPoint({ target, clientX, clientY }, dialog, box)
+
+  it('hands on a press on the backdrop: on the dialog itself, outside its box', () => {
+    expect(press(dialog, 900, 400)).toEqual({ x: 900, y: 400 })
+    expect(press(dialog, 300, 20)).toEqual({ x: 300, y: 20 })
+    expect(press(dialog, 300, 700)).toEqual({ x: 300, y: 700 })
+  })
+
+  it('keeps a press inside the panel, on its padding or on anything in it', () => {
+    expect(press(dialog, 300, 400)).toBeNull()
+    expect(press(dialog, 576, 600)).toBeNull()
+    expect(press({ tagName: 'BUTTON' }, 900, 400)).toBeNull()
   })
 })

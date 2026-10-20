@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from 'react'
-import type { FinancesTab, JournalTab, TruckTab } from './store.ts'
+import type { CityTab, FinancesTab, JournalTab, TruckTab } from './store.ts'
 import { isInside } from './pauseShortcut.ts'
 
 // The frame of the dock's panels and drawers (DockFrame.tsx): its tabs, its
@@ -29,8 +29,6 @@ export const TRUCK_TABS: readonly FrameTab<TruckTab>[] = [
 ]
 
 /** The tabs of « Ville »: where the owner goes, and whom they deliver to. */
-export type CityTab = 'trip' | 'contracts'
-
 export const CITY_TABS: readonly FrameTab<CityTab>[] = [
   { id: 'trip', label: 'Aller à…' },
   { id: 'contracts', label: 'Contrats' },
@@ -93,6 +91,56 @@ export function nextTab<T>(
     default:
       return null
   }
+}
+
+/** A point on the page, in CSS pixels from the window's top left. */
+export interface PagePoint {
+  readonly x: number
+  readonly y: number
+}
+
+/**
+ * What a panel's backdrop hands its presses to, as « Ville » hands them to
+ * the city drawn behind it: `at` for a press, `over` for whether the
+ * pointer shows over what is there.
+ */
+export interface BackdropPicks {
+  readonly at: (point: PagePoint) => void
+  readonly over: (point: PagePoint) => boolean
+}
+
+/** The parts of a PointerEvent `backdropPoint` reads. */
+export interface PointerLike {
+  readonly target: unknown
+  readonly clientX: number
+  readonly clientY: number
+}
+
+/** The box of an element on the page, as `getBoundingClientRect` gives it. */
+export interface PageBox {
+  readonly left: number
+  readonly top: number
+  readonly right: number
+  readonly bottom: number
+}
+
+/**
+ * Where `event` lands on the backdrop of the modal `dialog`: the point,
+ * when it lands on the dialog itself, as the browser reports a press on
+ * the backdrop, and outside `box`, the dialog's own box; null when it
+ * lands in the dialog.
+ */
+export function backdropPoint(
+  event: PointerLike,
+  dialog: unknown,
+  box: PageBox,
+): PagePoint | null {
+  if (event.target !== dialog) return null
+  const x = event.clientX
+  const y = event.clientY
+  const inside =
+    x >= box.left && x <= box.right && y >= box.top && y <= box.bottom
+  return inside ? null : { x, y }
 }
 
 /** The parts of a KeyboardEvent the drawer's Escape reads. */

@@ -298,7 +298,7 @@ describe('startCity', () => {
       picker.at(onWall('chez-normand'))
       picker.at(onWall('caisse'))
       picker.at(onWall('triplex-west-1'))
-      expect(opened).toEqual(['fournil', 'contracts', 'trip'])
+      expect(opened).toEqual(['fournil', { grocer: 'chezNormand' }, 'trip'])
     })
 
     it('finds the building on a window of another size', async () => {
