@@ -175,8 +175,7 @@ export function SettingsPanelView({
         </label>
         {cadence === 'month' && (
           <p className="settings-panel__hint">
-            Le bilan reste hebdomadaire les {pacing.fullReportWeeks} premières
-            semaines.
+            Bilan hebdomadaire les {pacing.fullReportWeeks} premières semaines.
           </p>
         )}
       </fieldset>
