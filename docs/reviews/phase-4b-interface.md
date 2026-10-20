@@ -6,7 +6,7 @@ Checked on 2026-10-20 against `main` at [`518853e`](https://github.com/etiennecr
 
 ## Status
 - **Four of the seven items pass** (2, 5, 6, 7). Item 4 misses at both sizes, and so does item 1 through its rule 4. Item 3 misses on a phone only.
-- **8 misses**, each to be filed as a `bug` + `phase-4b` issue (M1 to M8 below). Four are about item 4, one about item 3. M1 to M3 are defects found while playing: the dock after Escape, « Hier »'s tab and the Finances drawer's scroll. Nothing is fixed in this branch: the card asks for issues.
+- **8 misses**, each filed as a `bug` + `phase-4b` issue: M1 to M8 below, #226 to #233. Four are about item 4, one about item 3. M1 to M3 are defects found while playing: the dock after Escape, « Hier »'s tab and the Finances drawer's scroll. Nothing is fixed in this branch: the card asks for issues.
 - **9 observations**: borderline or design questions, not filed.
 
 | # | Item (#210) | Result |
@@ -33,59 +33,59 @@ Checked on 2026-10-20 against `main` at [`518853e`](https://github.com/etiennecr
   931 audits in all: 620 at 1440 × 900 (454 of them at a new game day) and 311 at 390 × 844 (263 at a new game day). The first 2 minutes on the desktop ran at 1440 × 700 by mistake (35 audits, no overlap) and are not counted. The line counts and headings are diagnostics: each hit was read on the screenshot before it counted.
 - **Screenshots.** On the unmerged branch [`screenshots/issue-210`](https://github.com/etiennecrevier-bit/Magnat/tree/screenshots/issue-210/issue-210), outside this diff. Below, « Shot » names a file there.
 
-## Misses (to file)
-Each is to be filed as one issue labelled `bug` and `phase-4b`. All are at seed 42, Moyen.
+## Misses
+Each is filed as one issue labelled `bug` and `phase-4b`. All are at seed 42, Moyen.
 
-### M1 · After Escape, a dock button's tooltip covers its neighbours and swallows the next click
+### M1 · After Escape, a dock button's tooltip covers its neighbours and swallows the next click (#226)
 - **Where:** the dock, 1440 × 900.
 - **Steps:** click « Camion » in the dock, press Escape, click « Équipe ».
 - **Expected:** « Équipe » opens.
 - **Actual:** nothing opens. Escape gives the focus back to « Camion », and since the last input was a key, its tooltip « Camion · Touche C » shows at once (#201's focus rule). The tooltip sits over « Équipe » and « Ville », and it takes the click (`elementFromPoint` there is `.tip__body`). It happens after every panel or drawer closed with Escape: Équipe then Ville, Finances then Améliorations. Closing with ✕ by mouse does not show the tooltip.
 - **Shot:** `bug-01-tooltip-after-escape.png`.
 
-### M2 · « Hier » opens « Le camion » on the last tab, not on « Menu »
+### M2 · « Hier » opens « Le camion » on the last tab, not on « Menu » (#227)
 - **Where:** « Hier », 1440 × 900.
 - **Steps:** open « Le camion », go to « Fournil », close it, click « Hier ».
 - **Expected:** « Le camion » on « Menu » (#202, Do 6: « A click opens Camion on its Menu tab »).
 - **Actual:** it opens on « Fournil ». `Yesterday.tsx` calls `openPanel('manage')` with no tab. #218 left it so because « Menu » came only with 4B-06, and #219 added the tab memory without wiring « Hier » to it.
 - **Shot:** `bug-02-hier-opens-last-tab.png`.
 
-### M3 · Finances keeps its scroll between tabs: « Personnel » opens past « Solde »
+### M3 · Finances keeps its scroll between tabs: « Personnel » opens past « Solde » (#228)
 - **Where:** the Finances drawer, 1440 × 900.
 - **Steps:** open Finances on « Entreprise », scroll down to the accordions, click « Personnel ».
 - **Expected:** « Personnel » from the top: « Solde », the month, then the movements.
 - **Actual:** the body keeps its scroll (`scrollTop` 90 here), so « Solde » and the month are above the fold and the drawer starts mid-table. The tour's first « Personnel » screenshot came out this way.
 - **Shot:** `bug-03-personnel-opens-scrolled.png`.
 
-### M4 · On a phone, the street is not visible with nothing open
+### M4 · On a phone, the street is not visible with nothing open (#229)
 - **Where:** the street, 390 × 844.
 - **Steps:** start a game on a phone, close everything.
 - **Expected:** the street shows between the top bar and the dock (#202 rule 4; #210 item 4).
 - **Actual:** the world fills the width, so the street is scaled to about a quarter and sits at the bottom of the canvas. The dock (top at 669 px) and the ticker (732 px) cover it: only sky shows, with the roofs' tops under the dock. The truck and the people are not visible. #218's own phone screenshot (`screenshots/issue-202`, `07-390x844-closed.png`) shows the same.
 - **Shot:** `bug-04-phone-street-hidden.png`.
 
-### M5 · On a phone, the report slide-in covers the dock and the messages
+### M5 · On a phone, the report slide-in covers the dock and the messages (#230)
 - **Where:** the slide-in, 390 × 844.
 - **Steps:** play past the first four weeks at ×3 or ×10.
 - **Expected:** the slide-in sits above « Hier » and never covers the dock (#202, Do 8).
 - **Actual:** it is 352 px wide and covers the dock by 35 to 59 px, on 157 of the 263 game days audited on the phone. When messages show, it also covers them by 201 px. While it shows, it sits over the dock's buttons.
 - **Shots:** `bug-05-phone-slide-in-over-dock.png`, `phone-19-week-report.png`.
 
-### M6 · At ×10, the street's tally contradicts « Hier » and stays after a pause
+### M6 · At ×10, the street's tally contradicts « Hier » and stays after a pause (#231)
 - **Where:** the street at ×10, 1440 × 900 (P4's badge in `src/world/customers.ts`).
 - **Steps:** play at ×10 on an open day, then pause.
 - **Expected:** one way to say yesterday's losses on screen (#202 rules 2 and 4).
 - **Actual:** a large badge over the right-hand building says « 80 clients servis » and « 29 clients perdus », while « Hier » says « Clients servis 80 » and « Ventes perdues 0 ». The badge counts the visitors who left without buying; « Hier » counts the units missing in a stock-out. Two numbers with nearly the same name disagree on the same screen. The badge stays after a pause from ×10, and the message stack slides over it.
 - **Shots:** `bug-06-x10-tally-vs-hier.png`, `bug-07-messages-stay.png` (the badge under the messages).
 
-### M7 · Messages never leave the street
+### M7 · Messages never leave the street (#232)
 - **Where:** the messages, 1440 × 900.
 - **Steps:** hire someone and play on without closing the message.
-- **Expected:** nothing stays open on the street by default except the top bar, the dock, « Hier » and the ticker (#202 rule 4).
+- **Expected:** nothing stays open on the street by default except the top bar, the dock, « Hier » and the ticker (#202 rule 4), and a message that waits shows as a small chip top right (#202 Do 3). #202 Do 8 puts up to 3 messages top centre but says nothing about when they leave, so how they leave (after some days, or into the chip) is a design choice for this issue to settle.
 - **Actual:** Amélie Gagnon's message of `3 juin, an 1` was still on the street on `15 mai, an 3`. With three messages the stack is 290 px tall, over the top centre of the street, and it shows behind the Finances and Journal drawers. The « N messages » chip already tells that something waits.
 - **Shot:** `bug-07-messages-stay.png`.
 
-### M8 · On a phone, status lines and hints under controls wrap to two lines
+### M8 · On a phone, status lines and hints under controls wrap to two lines (#233)
 - **Where:** 390 × 844.
 - **Expected:** at most one status line under a control; anything longer in its tooltip (#202 rule 3; #210 item 3).
 - **Actual:**
@@ -190,7 +190,7 @@ Not seen: the Défi's energy floor, which « La semaine des 1 000 $ » did not s
 
 ## Screenshots
 On [`screenshots/issue-210`](https://github.com/etiennecrevier-bit/Magnat/tree/screenshots/issue-210/issue-210):
-- `desk-01` to `desk-35`: every screen at 1440 × 900;
+- `desk-01` to `desk-35`: every screen at 1440 × 900. There is no `desk-27`: the desktop cash-chip tooltip was read by the driver (item 2), but its screenshot missed; `phone-17-cash-tip-with-hier.png` shows the tooltip;
 - `phone-00` to `phone-19`: every screen at 390 × 844;
 - `bug-01` to `bug-08`: one per miss;
 - `00-RueLumiere-reference.png` and `00-VilleLumiere-reference.png`, to compare.
