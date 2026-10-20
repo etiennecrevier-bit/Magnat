@@ -26,6 +26,7 @@ import {
   type GrocerContent,
   type PlacesContent,
   type StaffContent,
+  type TutorialContent,
 } from '../content/schema.ts'
 import { isAccountCode, type AccountCode } from '../finance/accounts.ts'
 import {
@@ -110,6 +111,7 @@ import { PLACES, noTrips, takesTheDay } from './places.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
 import { STAFF } from './staff.ts'
+import { TUTORIAL, isProtected, tutorialDay, tutorialStep } from './tutorial.ts'
 import type {
   BakeryPlan,
   BakeryState,
@@ -289,6 +291,12 @@ const stafflessDaySummarySchema = z.strictObject({
   sold: unitsPerProduct,
   revenue: money,
   lostSales: unitsPerProduct,
+  // A save from before the « trop cher » by product (#236) has none.
+  pricedOut: unitsPerProduct.default(() => ({
+    cafe: 0,
+    chocolat: 0,
+    croissant: 0,
+  })),
   spoiled: unitsPerProduct,
   segments: z.record(
     segmentIdSchema,
@@ -604,6 +612,15 @@ const townSchema = z.strictObject({
   discount: z.number().min(0).lt(1),
 })
 
+// `checkTutorial()` checks the step and the days against the content.
+const tutorialSchema = z.strictObject({
+  step: z.string().nullable(),
+  startedDay: gameDay,
+  endsDay: gameDay,
+  done: z.boolean(),
+  skipped: z.boolean(),
+})
+
 const saveSchema = z.strictObject({
   saveVersion: z.literal(SAVE_VERSION),
   day: gameDay,
@@ -632,6 +649,8 @@ const saveSchema = z.strictObject({
   ended: endedSchema.nullable(),
   dream: dreamSchema,
   town: townSchema,
+  // Absent in a game without a tutorial, so a save from before one loads.
+  tutorial: tutorialSchema.optional(),
 })
 
 // The week under way, and an older save's financing, may come from the
@@ -666,7 +685,7 @@ type Dreamless = Omit<Townless, 'saveVersion' | 'dream'> & {
 
 /** A version 18 save: no trip in town. */
 const townlessSchema = saveSchema
-  .omit({ town: true })
+  .omit({ town: true, tutorial: true })
   .extend({ saveVersion: z.literal(TOWNLESS_VERSION) })
 
 /** A version 17 save: nothing of « Le rêve » either. */
@@ -776,6 +795,8 @@ export function serialize(state: GameState): string {
     ended: state.ended,
     dream: state.dream,
     town: state.town,
+    // JSON.stringify leaves it out of a game without a tutorial.
+    tutorial: state.tutorial,
   } satisfies Record<keyof Save, unknown>)
 }
 
@@ -834,8 +855,11 @@ export function serialize(state: GameState): string {
  * `grocers`; the staff passes `checkStaff()` against `staff`; the
  * financing passes `checkFinancing()` against `financing`; the last week's
  * net worth, if any, passes `checkNetWorth()`; the end of
- * the game, if it ended, passes `checkEnded()` against `financing`; and the
- * trips in town pass `checkTown()` against `places`.
+ * the game, if it ended, passes `checkEnded()` against `financing`; the
+ * trips in town pass `checkTown()` against `places`; and the tutorial, if
+ * any, passes `checkTutorial()` against `tutorial`. A save without a
+ * tutorial loads as a game without one, and a last day without its «
+ * trop cher » by product loads with none.
  *
  * The products, limits, restock kinds, `awarenessDays` and the truck's
  * price are those of `content` as it is now, the events, choices, outcomes
@@ -858,6 +882,7 @@ export function deserialize(
   financing: FinancingContent = FINANCING,
   dream: DreamContent = DREAM,
   places: PlacesContent = PLACES,
+  tutorial: TutorialContent = TUTORIAL,
 ): GameState {
   const loaded = parsed(text, bakery)
   const journal = rebuilt(loaded.journal)
@@ -916,6 +941,7 @@ export function deserialize(
   checkNetWorth(save, journal, dream)
   checkEnded(save, financing)
   checkTown(save, places)
+  checkTutorial(save, tutorial)
   // Field by field, so a GameState field the save lacks fails the type check.
   return {
     day: save.day,
@@ -944,6 +970,7 @@ export function deserialize(
     ended: save.ended,
     dream: save.dream,
     town: save.town,
+    ...(save.tutorial === undefined ? {} : { tutorial: save.tutorial }),
   }
 }
 
@@ -2932,6 +2959,48 @@ function checkEnded(save: Save, rules: FinancingContent): void {
       endOfMonth(ended.day) === ended.day
         ? `the game ended in ${ended.reason} on day ${ended.day} after ${months} whole months below zero, not ${rules.bankruptcy.months}`
         : `the game ended on day ${ended.day}, not the last day of a month`,
+    )
+  }
+}
+
+/**
+ * The tutorial, if the game has one: never in a Défi; its step one of
+ * `content`'s, or none; its days `content`'s days apart; done once its
+ * protection ended, and with no step left; skipped only when done; and,
+ * while it protects the game, the game not ended and its step not due
+ * before the save's day, since `tick()` plays no day with a step left.
+ */
+function checkTutorial(save: Save, content: TutorialContent): void {
+  const { tutorial, challenge, day, ended } = save
+  if (tutorial === undefined) return
+  const { step, startedDay, endsDay, done, skipped } = tutorial
+  if (challenge !== null) {
+    invalid(`the Défi ${challenge.id} has a tutorial`)
+  }
+  const due =
+    step === null
+      ? null
+      : attempt('tutorial.step', () => tutorialStep(step, content))
+  if (endsDay - startedDay !== content.days) {
+    invalid(
+      `the tutorial runs from day ${startedDay} to day ${endsDay}, not ${content.days} days`,
+    )
+  }
+  if (!done && day >= endsDay) {
+    invalid(`the tutorial ended on day ${endsDay}, yet it is not done`)
+  }
+  if (skipped && !done) invalid('the tutorial is skipped, yet not done')
+  if (done && step !== null) {
+    invalid(`the tutorial is done, yet its step is ${step}`)
+  }
+  if (!isProtected(save)) return
+  if (ended !== null) {
+    invalid(`the game ended on day ${ended.day} during the tutorial`)
+  }
+  const today = tutorialDay(save) ?? 0
+  if (due !== null && due.day < today) {
+    invalid(
+      `the tutorial's step ${due.id} of day ${due.day} is not done on its day ${today}`,
     )
   }
 }

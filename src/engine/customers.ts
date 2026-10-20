@@ -103,6 +103,11 @@ export interface Served {
   readonly sold: PerProduct
   /** Units customers wanted after the product had sold out. */
   readonly lost: PerProduct
+  /**
+   * Customers who found each product too expensive: they would have wanted
+   * one at their reference price, but not at the day's, above it.
+   */
+  readonly pricedOut: PerProduct
   /** Units botched at the counter and thrown out. */
   readonly botched: PerProduct
   /**
@@ -207,7 +212,9 @@ export const NO_CHANGES: CrowdChanges = {
  *    appeal for the product × the street's, and their segment's reference
  *    price × the street's willingness for it, rounded to the cent. One who
  *    does not want it, at a price above their reference, but whose draw is
- *    below what they would buy at the reference, found it too expensive.
+ *    below what they would buy at the reference, found it too expensive:
+ *    the day's `pricedOut` counts them by product, those who find the
+ *    truck closed aside.
  * 3. Then each extra customer draws the same way, but for their segment by
  *    the extra crowd's share. So the extra crowd leaves the base customers'
  *    draws as they would be without it.
@@ -311,6 +318,7 @@ export function serveWalkIns(
   const left: Record<ProductId, number> = { ...available }
   const sold = perProduct(() => 0) as Record<ProductId, number>
   const lost = perProduct(() => 0) as Record<ProductId, number>
+  const pricedOut = perProduct(() => 0) as Record<ProductId, number>
   const botched = perProduct(() => 0) as Record<ProductId, number>
   const withdrawals = noWithdrawals()
   /** Takes one unit of `product` from the stock, sold or botched. */
@@ -339,9 +347,11 @@ export function serveWalkIns(
   let reachedCounter = 0
   let totalWait = 0
   let longestWait = 0
-  for (const { arrivalMinute, segment, wanted, tooExpensive } of arrivals) {
+  for (const { arrivalMinute, segment, wanted, tooDear } of arrivals) {
     // Nobody at the counter: they find the truck closed and never stop.
     if (!line.isOpen(arrivalMinute * SECONDS_PER_MINUTE)) continue
+    for (const product of tooDear) pricedOut[product] += 1
+    const tooExpensive = tooDear.length > 0
     const bought = perProduct(() => 0) as Record<ProductId, number>
     let outcome: VisitOutcome = tooExpensive ? 'tooExpensive' : 'browsed'
     let servedMinute: number | null = null
@@ -412,6 +422,7 @@ export function serveWalkIns(
     segments: tally,
     sold,
     lost,
+    pricedOut,
     botched,
     withdrawals,
     leftLine,
@@ -501,18 +512,18 @@ function drawArrivals(
     )
     const segment = SEGMENTS[pickSegment(who)[0]] as SegmentId
     const wanted: ProductId[] = []
-    let tooExpensive = false
+    const tooDear: ProductId[] = []
     for (const { product, wants, wouldAtReference } of odds[segment]) {
       const [draw, after] = next(state)
       state = after
       if (draw < wants) wanted.push(product)
-      else if (draw < wouldAtReference) tooExpensive = true
+      else if (draw < wouldAtReference) tooDear.push(product)
     }
     arrivals.push({
       arrivalMinute: opensAtMinute + slot * arrivalSlotMinutes + minute,
       segment,
       wanted,
-      tooExpensive,
+      tooDear,
     })
   }
   return { arrivals, rngState: state }
@@ -524,8 +535,11 @@ interface Arrival {
   segment: SegmentId
   /** The products they want one unit of, in `PRODUCTS` order. */
   wanted: ProductId[]
-  /** Whether a price above their reference kept them from wanting one. */
-  tooExpensive: boolean
+  /**
+   * The products a price above their reference kept them from wanting, in
+   * `PRODUCTS` order.
+   */
+  tooDear: ProductId[]
 }
 
 interface Odds {

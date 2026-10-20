@@ -86,6 +86,7 @@ import { credit, debit, depreciate, pay, post } from './posting.ts'
 import { servers } from './service.ts'
 import { STAFF, crewOf, payWages, staffMorning } from './staff.ts'
 import { inEffect, streetOn } from './street.ts'
+import { isProtected } from './tutorial.ts'
 import type { Day, Decisions, GameState, Lot } from './types.ts'
 import { recordDay } from './week.ts'
 
@@ -312,7 +313,8 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * owner's personal account, their energy, the events, without the changes
  * whose last day it was, the financing with Encaisse at the close (see
  * `closingFinancing`), the game ended if that close ends it, by
- * `financing`'s rules (see `endAtClose`), the receivables brought up to the
+ * `financing`'s rules (see `endAtClose`), unless a tutorial protects the
+ * game (see `isProtected`), the receivables brought up to the
  * close, `dream.magnatOn` set at the first close whose net worth reaches the
  * last title, outside a Défi (see `crowned`), the discount waiting for the
  * next restock (see `discountAtClose`), the day added to the week under
@@ -566,6 +568,7 @@ export function playDay(
       sold: served.sold,
       revenue,
       lostSales: served.lost,
+      pricedOut: served.pricedOut,
       spoiled: expired.spoiled,
       segments: served.segments,
       visits: served.visits,
@@ -605,7 +608,7 @@ export function playDay(
   const ending = {
     ...closing,
     dream: magnat,
-    ended: endAtClose(closing, financing),
+    ended: isProtected(closing) ? null : endAtClose(closing, financing),
   }
   const recorded = {
     ...ending,
@@ -705,6 +708,7 @@ function closed(rngState: number): Served {
     })),
     sold: none,
     lost: none,
+    pricedOut: none,
     botched: none,
     withdrawals: noWithdrawals(),
     leftLine: 0,

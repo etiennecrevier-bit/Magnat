@@ -79,7 +79,8 @@ export function noEvents(): EventsState {
  *    rest of a story, such as a payment due that morning, keeps its day.
  * 2. Otherwise nothing new comes before `pacing.firstDay`, nor with a
  *    `pacing.dailyChance` of 0. The events that may come are those with a
- *    weight above 0, not `followUpOnly`, whose conditions all hold that
+ *    weight above 0, neither `followUpOnly` nor `tutorialOnly`, whose
+ *    conditions all hold that
  *    morning (see `conditionsHold`). At a difficulty of `adaptiveDraw`, but
  *    in a Défi, an event's weight is its `weightByStanding` for the
  *    player's standing that morning against `percentiles` (see
@@ -123,6 +124,7 @@ export function drawEvent(
   const seen = lastSeen(events.history)
   const weightOf = weighing(state, content, percentiles)
   const mayCome = (event: EventCard) =>
+    event.tutorialOnly !== true &&
     event.conditions?.followUpOnly !== true &&
     conditionsHold(event, state, seen, grocers) &&
     weightOf(event) > 0

@@ -28,6 +28,7 @@ import { GROCERS, grocerAway, noContracts, startContract } from './contracts.ts'
 import {
   createInitialState,
   startChallenge,
+  startTutorial,
   tick,
   toCalendar,
 } from './clock.ts'
@@ -56,6 +57,7 @@ import { goTo, noTrips, wentTo } from './places.ts'
 import { PROFILE_CONTENT } from './profile.ts'
 import { SAVE_VERSION, deserialize, serialize } from './save.ts'
 import { STAFF } from './staff.ts'
+import { completeStep, skipTutorial, tutorialStepOf } from './tutorial.ts'
 import type { GameState, Profile } from './types.ts'
 
 const SEED = 42
@@ -5013,5 +5015,135 @@ describe('the trips in town', () => {
     expectInvalid(withValue('town.discount', 0.05, serialize(defi)), [
       `the Défi ${defi.challenge?.id} has a discount waiting`,
     ])
+  })
+})
+
+describe('a tutorial (#236)', () => {
+  /** One morning played with the shipped cards, the tutorial's story among them. */
+  function step(state: GameState): GameState {
+    return tick(
+      state,
+      FOOD_TRUCK,
+      CUSTOMERS,
+      DIFFICULTIES,
+      PERSONAL,
+      ENERGY,
+      EVENTS,
+    )
+  }
+
+  /** `state` with every tutorial step due that morning done. */
+  function stepsDone(state: GameState): GameState {
+    let done = state
+    for (let due = tutorialStepOf(done); due !== null;) {
+      done = applyDecision(done, { kind: 'tutorialStep', step: due.id })
+      due = tutorialStepOf(done)
+    }
+    return done
+  }
+
+  /** `from` played on to the morning of `day`, the story taken. */
+  function tutorialUntil(day: number, from = startTutorial()): GameState {
+    let state = from
+    while (state.day < day) {
+      if (state.events.pending !== null) {
+        state = resolveEvent(state, 'avecPlaisir')
+      }
+      state = step(stepsDone(state))
+    }
+    return state
+  }
+
+  const START = startTutorial()
+  const STORY = tutorialUntil(3)
+  const HALFWAY = completeStep(resolveEvent(STORY, 'nonMerci'), 'evenement')
+  const DONE = tutorialUntil(10)
+  const START_SAVE = serialize(START)
+
+  it('gives back the tutorial on its first morning, with its story waiting, halfway and done', () => {
+    expect(STORY.events.pending?.event).toBe('tutoStory')
+    expect(DONE.tutorial?.done).toBe(true)
+    for (const state of [START, STORY, HALFWAY, DONE]) {
+      expect(reloaded(state)).toStrictEqual(state)
+    }
+  })
+
+  it('gives back a tutorial skipped', () => {
+    const skipped = playDay(skipTutorial(START))
+    expect(reloaded(skipped)).toStrictEqual(skipped)
+  })
+
+  it('writes no tutorial for a game without one, which loads without one', () => {
+    expect(JSON.parse(SAVED)).not.toHaveProperty('tutorial')
+    expect(reloaded(FORTNIGHT)).not.toHaveProperty('tutorial')
+  })
+
+  it('loads a last day from before the « trop cher » by product with none', () => {
+    const loaded = deserialize(without('lastDay.pricedOut'))
+    expect(loaded.lastDay?.pricedOut).toEqual({
+      cafe: 0,
+      chocolat: 0,
+      croissant: 0,
+    })
+  })
+
+  it('rejects a tutorial in a version 18 save', () => {
+    const save = JSON.parse(v18(FORTNIGHT)) as Json
+    expectInvalid(
+      JSON.stringify({ ...save, tutorial: JSON.parse(START_SAVE).tutorial }),
+      ['tutorial'],
+    )
+  })
+
+  it.each([
+    [
+      'an unknown step',
+      'tutorial.step',
+      'inconnu',
+      'Unknown tutorial step: inconnu',
+    ],
+    [
+      'days other than the tutorial’s',
+      'tutorial.endsDay',
+      9,
+      'the tutorial runs from day 0 to day 9, not 7 days',
+    ],
+    [
+      'skipped, yet not done',
+      'tutorial.skipped',
+      true,
+      'the tutorial is skipped, yet not done',
+    ],
+  ])('rejects %s', (_, path, value, reason) => {
+    expectInvalid(withValue(path, value, START_SAVE), [reason])
+  })
+
+  it('rejects a tutorial done with a step left', () => {
+    const done = serialize(skipTutorial(START))
+    expectInvalid(withValue('tutorial.step', 'bienvenue', done), [
+      'the tutorial is done, yet its step is bienvenue',
+    ])
+  })
+
+  it('rejects a tutorial not done once its protection ended', () => {
+    expectInvalid(withValue('tutorial.done', false, serialize(DONE)), [
+      'the tutorial ended on day 7, yet it is not done',
+    ])
+  })
+
+  it('rejects a step left from a day before the save’s', () => {
+    const tuesday = serialize(tutorialUntil(1))
+    expectInvalid(withValue('tutorial.step', 'changerPrix', tuesday), [
+      "the tutorial's step changerPrix of day 1 is not done on its day 2",
+    ])
+  })
+
+  it('rejects a tutorial in a Défi', () => {
+    const defi = serialize(startChallenge('payeDans60Jours', SEED))
+    const save = JSON.parse(defi) as Json
+    expectInvalid(
+      JSON.stringify({ ...save, tutorial: JSON.parse(START_SAVE).tutorial }),
+      ['has a tutorial'],
+    )
   })
 })

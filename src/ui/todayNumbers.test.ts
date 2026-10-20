@@ -27,6 +27,7 @@ const DAY: DaySummary = {
   sold: { cafe: 2, chocolat: 0, croissant: 0 },
   revenue: cents(123_456),
   lostSales: { cafe: 1, chocolat: 3, croissant: 6 },
+  pricedOut: NONE,
   spoiled: NONE,
   segments: {
     aubaine: { visits: 1, buyers: 0, tooExpensive: 0, soldOut: 0 },
