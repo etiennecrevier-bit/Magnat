@@ -127,4 +127,13 @@ describe('the message stack', () => {
     ])
     stop()
   })
+
+  it('shows a message again for 3 days from the day the chip brings it back', () => {
+    const messages = [RENT]
+    expect(streetMessages(messages, 33)).toEqual([RENT])
+    expect(streetMessages(messages, 34)).toEqual([])
+    expect(streetMessages(messages, 40, 40)).toEqual([RENT])
+    expect(streetMessages(messages, 42, 40)).toEqual([RENT])
+    expect(streetMessages(messages, 43, 40)).toEqual([])
+  })
 })
