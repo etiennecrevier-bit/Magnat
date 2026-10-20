@@ -11,7 +11,7 @@ import {
   type FilterInstruction,
   type InstructionSet,
   type Renderer,
-  type Text,
+  Text,
   type Ticker,
   type ViewContainer,
 } from 'pixi.js'
@@ -24,6 +24,7 @@ import { next, seedRng } from '../engine/rng.ts'
 import type { StreetModifier, Visit } from '../engine/types.ts'
 import { createSettingsStore } from '../ui/settings.ts'
 import { createGameStore, type GameStore } from '../ui/store.ts'
+import { todayNumbers } from '../ui/todayNumbers.ts'
 import type {
   EventContent,
   SegmentId,
@@ -508,6 +509,53 @@ describe('startStreet: the customers', () => {
     expect(served).toBe(
       `${replayOf(store.getState().game)!.served} clients servis`,
     )
+  })
+
+  it('says nothing at x10 that contradicts « Hier » (#231)', async () => {
+    const app = createFakeApp()
+    const store = wednesdayStore(true)
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    store.getState().setSpeed(10)
+    // Days on until one where visitors left without buying while no unit
+    // ran out, as on #231's day: « 29 clients perdus », « Ventes perdues 0 ».
+    for (let day = 0; day < 30; day += 1) {
+      const { lastDay } = store.getState().game
+      const lost = replayOf(store.getState().game)?.lost ?? 0
+      if (lastDay !== null && lost !== todayNumbers(lastDay).lostSales) break
+      store.getState().advance(1)
+    }
+    app.frame(16)
+    const numbers = todayNumbers(store.getState().game.lastDay!)
+    expect(replayOf(store.getState().game)!.lost).not.toBe(numbers.lostSales)
+
+    // Every count the street shows by « Hier » is the one « Hier » shows.
+    const tally = piece(app, 'tally')
+    const shown = tally.visible
+      ? tally.children
+          .filter((c): c is Text => c instanceof Text && c.visible)
+          .map(({ text }) => text)
+      : []
+    for (const text of shown.filter((t) => /perdu/.test(t))) {
+      expect(text).toMatch(new RegExp(`^${numbers.lostSales}\\D`))
+    }
+    for (const text of shown.filter((t) => /servi/.test(t))) {
+      expect(text).toMatch(new RegExp(`^${numbers.customersServed}\\D`))
+    }
+  })
+
+  it('takes the x10 tally down when the game pauses (#231)', async () => {
+    const app = createFakeApp()
+    const store = wednesdayStore(true)
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    store.getState().setSpeed(10)
+    play(app, store, 1000)
+    const tally = piece(app, 'tally')
+    expect(tally.visible).toBe(true)
+
+    // Paused, the badge goes with the speed that showed it.
+    store.getState().setSpeed(0)
+    play(app, store, 1000)
+    expect(tally.visible).toBe(false)
   })
 
   it.each([
