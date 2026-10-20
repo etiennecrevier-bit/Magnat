@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="152" height="65" viewBox="630 58 152 65">
+<defs>
+<filter id="rl-soft2" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2"></feGaussianBlur></filter>
+</defs>
+<g opacity="0.95">
+<ellipse cx="706" cy="103.0" rx="70.0" ry="14.0" fill="#d9e6ec" filter="url(#rl-soft2)"></ellipse>
+<circle cx="658.0" cy="97.4" r="21.0" fill="#fbfdfd"></circle>
+<circle cx="686.0" cy="86.2" r="28.0" fill="#fbfdfd"></circle>
+<circle cx="721.0" cy="91.8" r="23.799999999999997" fill="#fbfdfd"></circle>
+<circle cx="749.0" cy="100.2" r="16.799999999999997" fill="#fbfdfd"></circle>
+<ellipse cx="700" cy="104.4" rx="67.19999999999999" ry="9.799999999999999" fill="#e3edf1"></ellipse>
+</g>
+</svg>

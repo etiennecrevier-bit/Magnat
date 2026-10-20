@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="184" viewBox="0 716 1440 184">
+<defs>
+<linearGradient id="rl-dropDown" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#34404f" stop-opacity="0.55"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0"></stop>
+</linearGradient>
+<linearGradient id="rl-asphalt" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#46423f"></stop><stop offset="0.18" stop-color="#5c5752"></stop><stop offset="1" stop-color="#625d57"></stop>
+</linearGradient>
+</defs>
+<rect x="0.0" y="716.0" width="1440.0" height="184.0" fill="url(#rl-asphalt)"></rect>
+<rect x="0.0" y="716.0" width="1440.0" height="26.0" fill="url(#rl-dropDown)" opacity="0.55"></rect>
+<rect x="40.0" y="806.0" width="120.0" height="8.0" fill="#e9e2d0" opacity="0.85"></rect>
+<rect x="110.0" y="806.0" width="18.0" height="8.0" fill="#625d57" opacity="0.6"></rect>
+<rect x="280.0" y="806.0" width="120.0" height="8.0" fill="#e9e2d0" opacity="0.85"></rect>
+<rect x="350.0" y="806.0" width="18.0" height="8.0" fill="#625d57" opacity="0.6"></rect>
+<rect x="520.0" y="806.0" width="120.0" height="8.0" fill="#e9e2d0" opacity="0.85"></rect>
+<rect x="590.0" y="806.0" width="18.0" height="8.0" fill="#625d57" opacity="0.6"></rect>
+<rect x="760.0" y="806.0" width="120.0" height="8.0" fill="#e9e2d0" opacity="0.85"></rect>
+<rect x="830.0" y="806.0" width="18.0" height="8.0" fill="#625d57" opacity="0.6"></rect>
+<rect x="1000.0" y="806.0" width="120.0" height="8.0" fill="#e9e2d0" opacity="0.85"></rect>
+<rect x="1070.0" y="806.0" width="18.0" height="8.0" fill="#625d57" opacity="0.6"></rect>
+<rect x="1240.0" y="806.0" width="120.0" height="8.0" fill="#e9e2d0" opacity="0.85"></rect>
+<rect x="1310.0" y="806.0" width="18.0" height="8.0" fill="#625d57" opacity="0.6"></rect>
+<ellipse cx="1290" cy="770" rx="34" ry="9" fill="#4a4642"></ellipse><ellipse cx="1290" cy="769" rx="28" ry="6.5" fill="none" stroke="#6b655e" stroke-width="2"></ellipse>
+<path d="M 120 760 l 30 6 l 22 -3 l 26 9" fill="none" stroke="#3f3b38" stroke-width="2" opacity="0.6"></path>
+</svg>
