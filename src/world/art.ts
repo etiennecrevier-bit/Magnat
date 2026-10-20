@@ -1,5 +1,4 @@
 import type { Texture } from 'pixi.js'
-import type { AssetManifest } from '../content/assets.ts'
 
 const ART_FOLDER = './art/'
 
@@ -23,17 +22,17 @@ export const ART_URLS: ReadonlyMap<string, string> = new Map(
 export type LoadTexture = (url: string) => Promise<Texture>
 
 /**
- * Loads the image of every piece that names one, each file once, and
- * returns the textures by image path. An image with no file under
- * src/world/art/, or that fails to load, is left out with a warning, and its
- * pieces keep their placeholders.
+ * Loads the image of every piece of a scene that names one, the street's
+ * or the city's, each file once, and returns the textures by image path. An
+ * image with no file under src/world/art/, or that fails to load, is left
+ * out with a warning, and its pieces keep their placeholders.
  */
 export async function loadArt(
-  manifest: AssetManifest,
+  pieces: readonly { readonly image?: string }[],
   loadTexture: LoadTexture,
   urls: ReadonlyMap<string, string> = ART_URLS,
 ): Promise<ReadonlyMap<string, Texture>> {
-  const images = new Set(manifest.pieces.flatMap((piece) => piece.image ?? []))
+  const images = new Set(pieces.flatMap((piece) => piece.image ?? []))
   const textures = new Map<string, Texture>()
   await Promise.all(
     [...images].map(async (image) => {

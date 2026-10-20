@@ -94,6 +94,14 @@ export interface Shadows {
     height: number,
   ) => Graphics
   /**
+   * Adds the shadow `owner` casts as the shape through `points`, which
+   * already reaches away from the sun, as a box's in the city does.
+   */
+  castShape: (
+    owner: string,
+    points: readonly (readonly [number, number])[],
+  ) => Graphics
+  /**
    * Adds the contact shadow `width` wide under `owner`, of `kind`,
    * centred on `x`, `y`.
    */
@@ -205,6 +213,12 @@ export function createShadows(
           .fill(light.slate),
       )
     },
+    castShape: (owner, points) =>
+      cast.addChild(
+        new Graphics({ label: `cast:${owner}` })
+          .poly(points.flatMap(([x, y]) => [x, y]))
+          .fill(light.slate),
+      ),
     contactShadow: (owner, x, y, width, kind) => {
       const sprite = new Sprite({
         texture: spot,

@@ -40,7 +40,8 @@ export interface StreetLoaders {
   makeFilters?: MakeFilters
 }
 
-const PIXI_LOADERS: StreetLoaders = {
+/** Pixi's loaders, which the city shares. */
+export const PIXI_LOADERS: StreetLoaders = {
   loadFont: (asset) => Assets.load(asset),
   loadTexture: (url) => Assets.load<Texture>(url),
 }
@@ -87,7 +88,7 @@ export async function startStreet(
 ): Promise<() => void> {
   const [, textures] = await Promise.all([
     loadTitleFont(loaders.loadFont),
-    loadArt(manifest, loaders.loadTexture),
+    loadArt(manifest.pieces, loaders.loadTexture),
   ])
   const scene = buildScene(
     manifest,
@@ -213,7 +214,8 @@ export async function startStreet(
   }
 }
 
-async function loadTitleFont(
+/** Loads Fredoka, or warns and leaves the system font, as the city does too. */
+export async function loadTitleFont(
   loadFont: StreetLoaders['loadFont'],
 ): Promise<void> {
   try {

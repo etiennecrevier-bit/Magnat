@@ -1,0 +1,344 @@
+import { Container, Sprite, Texture, type Filter, type Ticker } from 'pixi.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AssetManifest } from '../content/assets.ts'
+import { createInitialState, startChallenge, tick } from '../engine/clock.ts'
+import { FOOD_TRUCK } from '../engine/day.ts'
+import { NO_EVENTS } from '../engine/events.ts'
+import { wentTo } from '../engine/places.ts'
+import type { Day, GameState } from '../engine/types.ts'
+import { createSettingsStore } from '../ui/settings.ts'
+import { createGameStore, type GameStore } from '../ui/store.ts'
+import { startCity } from './city.ts'
+import { createCityPicker, type CityLink } from './cityPicker.ts'
+import { boxCorners, type Vec } from './iso.ts'
+import { ASSETS } from './manifest.ts'
+import type { ShadowFilters } from './shadows.ts'
+import type { StreetLoaders } from './street.ts'
+
+const { city } = ASSETS
+const { walkIns } = FOOD_TRUCK
+const MS_PER_DAY = 4000
+
+/** A Pixi app with a real stage, a screen the test resizes and a ticker it runs. */
+function createFakeApp(width = 1440, height = 900) {
+  const frames = new Set<(ticker: Ticker) => void>()
+  return {
+    stage: new Container(),
+    screen: { width, height },
+    renderer: { type: 1, resolution: 1, backBuffer: { useBackBuffer: false } },
+    ticker: {
+      add: vi.fn((onFrame: (ticker: Ticker) => void) => frames.add(onFrame)),
+      remove: vi.fn((onFrame: (ticker: Ticker) => void) =>
+        frames.delete(onFrame),
+      ),
+    },
+    frames,
+    /** Runs one frame, `deltaMS` after the last. */
+    frame(deltaMS = 16) {
+      for (const onFrame of frames) onFrame({ deltaMS } as Ticker)
+    },
+  }
+}
+
+function createLoaders(): StreetLoaders & { asked: ShadowFilters[] } {
+  const asked: ShadowFilters[] = []
+  return {
+    loadFont: vi.fn(async () => undefined),
+    loadTexture: vi.fn(async () => Texture.EMPTY),
+    measureWidth: () => 40,
+    makeFilters: (wanted) => {
+      asked.push(wanted)
+      return [{ ...wanted, destroy: () => {} }] as unknown as Filter[]
+    },
+    asked,
+  }
+}
+
+function playedTo(state: GameState, day: Day): GameState {
+  let game = state
+  while (game.day < day) game = tick(game)
+  return game
+}
+
+/** A Wednesday, open, the day before replayed, the owner off to the Caisse. */
+function tripStore(): GameStore {
+  const wednesday = playedTo(createInitialState(42), 2)
+  return createGameStore(wentTo(wednesday, 'caisse'), NO_EVENTS)
+}
+
+/** The milliseconds at ×1 into the day replayed to reach `minute`. */
+function msAt(minute: number): number {
+  const { opensAtMinute: opens, closesAtMinute: closes } = walkIns
+  return ((minute - opens) / (closes - opens)) * MS_PER_DAY
+}
+
+function find(app: ReturnType<typeof createFakeApp>, label: string): Container {
+  const found = app.stage.getChildByLabel(label, true)
+  if (found === null) throw new Error(`Nothing labelled ${label}`)
+  return found
+}
+
+/** Starts the city on `app`, its people and clicks the test's own. */
+async function start(
+  app: ReturnType<typeof createFakeApp>,
+  store: GameStore,
+  options: {
+    loaders?: StreetLoaders
+    onOpen?: ((link: CityLink) => void) | null
+    manifest?: AssetManifest
+  } = {},
+) {
+  const picker = createCityPicker()
+  const settings = createSettingsStore(null)
+  const stop = await startCity(app, {
+    store,
+    loaders: options.loaders ?? createLoaders(),
+    manifest: options.manifest,
+    settings,
+    picker,
+    onOpen: () => options.onOpen ?? null,
+  })
+  return { stop, picker, settings }
+}
+
+describe('startCity', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('draws the city, the atmosphere over it, then the trip’s words, fitted to the screen', async () => {
+    const app = createFakeApp(1280, 800)
+    await start(app, tripStore())
+    expect(app.stage.children.map((layer) => layer.label)).toEqual([
+      'city',
+      'atmosphere',
+      'labels',
+    ])
+    const [root, , labels] = app.stage.children
+    expect(root?.scale.x).toBeCloseTo(1280 / 1440)
+    expect(labels?.scale.x).toBe(root?.scale.x)
+    expect(labels?.position).toMatchObject({ x: root?.x, y: root?.y })
+    expect(labels?.getChildByLabel('tripLabel')).not.toBeNull()
+  })
+
+  it('loads an image only a city piece names, and keeps the placeholder of one that fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const texture = new Texture()
+    const loaders = createLoaders()
+    loaders.loadTexture = vi.fn(async (url: string) => {
+      if (url.endsWith('dummy.png')) return texture
+      throw new Error('404')
+    })
+    const manifest: AssetManifest = {
+      ...ASSETS,
+      city: {
+        ...city,
+        pieces: city.pieces.map((p) =>
+          p.id === 'caisse'
+            ? { ...p, image: 'dummy.png' }
+            : p.id === 'mill'
+              ? { ...p, image: 'city/mill.png' }
+              : p,
+        ),
+      },
+    }
+    const app = createFakeApp()
+    await start(app, tripStore(), { loaders, manifest })
+    expect(loaders.loadTexture).toHaveBeenCalledExactlyOnceWith(
+      expect.stringMatching(/dummy\.png$/),
+    )
+    const caisse = find(app, 'caisse').children[0] as Sprite
+    expect(caisse.texture).toBe(texture)
+    expect(find(app, 'mill').children[0]?.label).toBe('placeholder')
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('src/world/art/city/mill.png'),
+    )
+  })
+
+  describe('through a trip with nobody at the truck, the game unchanged', () => {
+    it('opens the hatch, shuts it while the owner is away, then opens it again', async () => {
+      const app = createFakeApp()
+      const store = tripStore()
+      await start(app, store)
+      const hatch = find(app, 'truck-hatch')
+      const shutter = find(app, 'truck-shutter')
+      const line = () =>
+        find(app, 'layer:block').children.filter(
+          (n) => n.label.startsWith('customer:') && n.visible,
+        ).length
+      const game = store.getState().game
+
+      app.frame(msAt(595))
+      expect(hatch.visible).toBe(true)
+      expect(shutter.visible).toBe(false)
+      expect(line()).toBeGreaterThan(0)
+      expect(find(app, 'bust').visible).toBe(true)
+
+      app.frame(msAt(640) - msAt(595))
+      expect(hatch.visible).toBe(false)
+      expect(shutter.visible).toBe(true)
+      expect(line()).toBe(0)
+      expect(find(app, 'owner').visible).toBe(true)
+
+      app.frame(msAt(700) - msAt(640))
+      expect(hatch.visible).toBe(true)
+      expect(shutter.visible).toBe(false)
+      expect(find(app, 'owner').visible).toBe(false)
+      expect(store.getState().game).toBe(game)
+    })
+
+    it('walks the owner back behind the truck across the avenue, then in front of it at the hatch', async () => {
+      const app = createFakeApp()
+      await start(app, tripStore())
+      const owner = find(app, 'owner')
+      const truck = find(app, 'truck')
+
+      // At the Caisse's door, then on the way back, crossing the avenue past
+      // the truck's far end, then a step from the hatch.
+      const door = city.routes.caisse.at(-1)!
+      app.frame(msAt(640))
+      expect(owner.position).toMatchObject({ x: door[0], y: door[1] })
+      app.frame(msAt(673) - msAt(640))
+      expect(owner.visible).toBe(true)
+      expect(owner.zIndex).toBeLessThan(truck.zIndex)
+      app.frame(msAt(679.8) - msAt(673))
+      expect(owner.visible).toBe(true)
+      expect(owner.zIndex).toBeGreaterThan(truck.zIndex)
+    })
+  })
+
+  it('moves everyone three times faster at ×3, and freezes them paused', async () => {
+    const app = createFakeApp()
+    const store = tripStore()
+    await start(app, store)
+    const owner = find(app, 'owner')
+
+    // At ×1, the owner is still serving after the first 600 ms.
+    app.frame(msAt(600) / 3)
+    expect(owner.visible).toBe(false)
+
+    const slow = createFakeApp()
+    const fast = tripStore()
+    fast.getState().setSpeed(3)
+    await start(slow, fast)
+    slow.frame(msAt(612) / 3)
+    const there = find(slow, 'owner')
+    expect(there.visible).toBe(true)
+    const position = { ...there.position }
+
+    fast.getState().setSpeed(0)
+    slow.frame(1000)
+    expect(there.position).toMatchObject(position)
+  })
+
+  it('empties the line at ×10, as the street replays nobody', async () => {
+    const app = createFakeApp()
+    const store = tripStore()
+    store.getState().setSpeed(10)
+    await start(app, store)
+    // At ×1 two stand in line at 9 h 55 (see above).
+    app.frame(msAt(595) / 10)
+    const inLine = find(app, 'layer:block').children.filter(
+      (n) => n.label.startsWith('customer:') && n.visible,
+    )
+    expect(inLine).toEqual([])
+  })
+
+  it('starts the day again on a new day', async () => {
+    const app = createFakeApp()
+    const store = tripStore()
+    await start(app, store)
+    app.frame(msAt(640))
+    expect(find(app, 'owner').visible).toBe(true)
+    store.getState().advance(1)
+    app.frame(16)
+    expect(find(app, 'owner').visible).toBe(false)
+    expect(find(app, 'truck-hatch').visible).toBe(true)
+  })
+
+  describe('a click', () => {
+    /** The page's pixel on the middle of `id`'s lit wall, at 1440 × 900. */
+    const onWall = (id: string) => {
+      const piece = city.pieces.find((p) => p.id === id)!
+      const { left, front, wall } = boxCorners(piece)
+      const point: Vec = [
+        (left[0] + front[0]) / 2,
+        (left[1] + front[1]) / 2 - wall / 2,
+      ]
+      return { x: point[0], y: point[1] }
+    }
+
+    it('reports what the building opens, and shows the pointer over it', async () => {
+      const opened: CityLink[] = []
+      const { picker } = await start(createFakeApp(), tripStore(), {
+        onOpen: (link) => opened.push(link),
+      })
+      expect(picker.over(onWall('bakery'))).toBe(true)
+      expect(picker.over(onWall('triplex-west-1'))).toBe(false)
+      picker.at(onWall('bakery'))
+      picker.at(onWall('chez-normand'))
+      picker.at(onWall('caisse'))
+      picker.at(onWall('triplex-west-1'))
+      expect(opened).toEqual(['fournil', 'contracts', 'trip'])
+    })
+
+    it('finds the building on a window of another size', async () => {
+      const opened: CityLink[] = []
+      const app = createFakeApp(1280, 720)
+      const { picker } = await start(app, tripStore(), {
+        onOpen: (link) => opened.push(link),
+      })
+      const { x, y } = onWall('bakery')
+      // Scaled by 0.8 and centred across, standing on the bottom.
+      picker.at({ x: x * 0.8 + 64, y: y * 0.8 })
+      expect(opened).toEqual(['fournil'])
+    })
+
+    it('opens no trip in a Défi, as the top bar hides « Aller à… »', async () => {
+      const opened: CityLink[] = []
+      const store = createGameStore(startChallenge('travauxSaintDenis', 42))
+      const { picker } = await start(createFakeApp(), store, {
+        onOpen: (link) => opened.push(link),
+      })
+      expect(picker.over(onWall('caisse'))).toBe(false)
+      picker.at(onWall('caisse'))
+      picker.at(onWall('bakery'))
+      expect(opened).toEqual(['fournil'])
+    })
+
+    it('opens nothing while the page cannot, as before a game starts', async () => {
+      const { picker } = await start(createFakeApp(), tripStore(), {
+        onOpen: null,
+      })
+      expect(picker.over(onWall('bakery'))).toBe(false)
+      expect(() => picker.at(onWall('bakery'))).not.toThrow()
+    })
+  })
+
+  it('follows the visual effects the player picks', async () => {
+    const app = createFakeApp()
+    const loaders = createLoaders()
+    const { settings } = await start(app, tripStore(), { loaders })
+    expect(app.renderer.backBuffer.useBackBuffer).toBe(true)
+    settings.getState().setVisualEffects('simple')
+    expect(app.renderer.backBuffer.useBackBuffer).toBe(false)
+    expect(loaders.asked.at(-1)).toMatchObject({ blur: 0 })
+    expect(find(app, 'grain').visible).toBe(false)
+  })
+
+  it('takes everything down when it stops, once', async () => {
+    const app = createFakeApp()
+    const opened: CityLink[] = []
+    const { stop, picker, settings } = await start(app, tripStore(), {
+      onOpen: (link) => opened.push(link),
+    })
+    stop()
+    stop()
+    expect(app.stage.children).toEqual([])
+    expect(app.frames.size).toBe(0)
+    expect(app.ticker.remove).toHaveBeenCalledTimes(1)
+    picker.at({ x: 1090, y: 470 })
+    expect(opened).toEqual([])
+    expect(() => settings.getState().setVisualEffects('simple')).not.toThrow()
+  })
+})
