@@ -1,5 +1,7 @@
 # Magnat: game design brief
 
+Visual design: the approved mockups and the numbers the cards read are in [`design/reference/`](design/reference/README.md).
+
 ## Vision
 Single-player browser tycoon game in French (Quebec). The player grows a coffee-and-croissant food truck into a business empire. They learn finance and operations without ever being taught: every business concept is a mechanic that can hurt them, never a lesson card. Target player: someone who plays Sim Companies for fun and doesn't know they're learning.
 
