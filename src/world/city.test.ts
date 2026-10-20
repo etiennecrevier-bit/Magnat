@@ -66,6 +66,23 @@ function tripStore(): GameStore {
   return createGameStore(wentTo(wednesday, 'caisse'), NO_EVENTS)
 }
 
+/** Counts the listeners `store` holds that have not let go yet. */
+function listeners<L>(store: {
+  subscribe: (listener: L) => () => void
+}): () => number {
+  const subscribe = store.subscribe
+  let count = 0
+  store.subscribe = (listener) => {
+    count += 1
+    const off = subscribe(listener)
+    return () => {
+      count -= 1
+      off()
+    }
+  }
+  return () => count
+}
+
 /** The milliseconds at ×1 into the day replayed to reach `minute`. */
 function msAt(minute: number): number {
   const { opensAtMinute: opens, closesAtMinute: closes } = walkIns
@@ -324,6 +341,39 @@ describe('startCity', () => {
     expect(app.renderer.backBuffer.useBackBuffer).toBe(false)
     expect(loaders.asked.at(-1)).toMatchObject({ blur: 0 })
     expect(find(app, 'grain').visible).toBe(false)
+  })
+
+  it('takes down what it set up when its start fails halfway, as on an app no longer there', async () => {
+    const app = createFakeApp()
+    const added = vi.spyOn(app.stage, 'addChild')
+    app.ticker.add.mockImplementation(() => {
+      throw new Error('No ticker')
+    })
+    const store = tripStore()
+    const settings = createSettingsStore(null)
+    const listening = { store: listeners(store), settings: listeners(settings) }
+    const picker = createCityPicker()
+
+    await expect(
+      startCity(app, {
+        store,
+        loaders: createLoaders(),
+        settings,
+        picker,
+        onOpen: () => () => {},
+      }),
+    ).rejects.toThrow('No ticker')
+    const layers = added.mock.calls[0] as Container[]
+    expect(layers.map((layer) => layer.label)).toEqual([
+      'city',
+      'atmosphere',
+      'labels',
+    ])
+    expect(layers.every((layer) => layer.destroyed)).toBe(true)
+    expect(app.stage.children).toEqual([])
+    expect(listening.store()).toBe(0)
+    expect(listening.settings()).toBe(0)
+    expect(picker.over({ x: 1090, y: 470 })).toBe(false)
   })
 
   it('takes everything down when it stops, once', async () => {

@@ -40,9 +40,12 @@ export interface WorldApp {
 
 /**
  * Draws on an app once it is ready. Returns the function that takes the
- * drawing down, which `mountWorld` calls before destroying the app.
+ * drawing down, which `mountWorld` calls before destroying the app. While
+ * some of the drawing is still starting, as a scene the player just picked,
+ * it returns a promise that settles once that is down too: the app is
+ * destroyed only then, so nothing ever draws on a destroyed app.
  */
-export type StartWorld = (app: WorldApp) => Promise<() => void>
+export type StartWorld = (app: WorldApp) => Promise<() => void | Promise<void>>
 
 /**
  * The options the world starts Pixi with: the sky, on an antialiased canvas
@@ -65,7 +68,8 @@ export function worldOptions(view: Window): Partial<ApplicationOptions> {
 /**
  * Starts a Pixi application, draws on it with `start`, then adds its canvas
  * to `container`. Returns the function that takes it down: it stops the
- * drawing, then destroys the app, and does nothing the second time.
+ * drawing, then destroys the app once the drawing is down, a part of it
+ * still starting too (see `StartWorld`), and does nothing the second time.
  *
  * Pixi's `init()` is async and its `destroy()` throws until `init()` has
  * finished. So an unmount that comes first, as when React StrictMode unmounts
@@ -100,7 +104,7 @@ export function mountWorld(
       return
     }
 
-    let stop: () => void
+    let stop: () => void | Promise<void>
     try {
       stop = await start(app)
     } catch (error) {
@@ -112,8 +116,9 @@ export function mountWorld(
       return
     }
     takeDown = () => {
-      stop()
-      destroy()
+      const down = stop()
+      if (down === undefined) destroy()
+      else void down.finally(destroy)
     }
     if (unmounted) takeDown()
     else container.append(app.canvas)

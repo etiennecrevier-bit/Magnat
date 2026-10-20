@@ -23,13 +23,15 @@ export type Scenes = Readonly<Record<WorldView, StartScene>>
  * once more. Resolves once the first scene has started, or failed to.
  * Returns the function that takes the world down, which does nothing the
  * second time: it stops the scene that runs, and one still starting as
- * soon as it has.
+ * soon as it has. While one is, it returns a promise that settles once that
+ * one is down too, which the app waits for before it is destroyed (see
+ * `StartWorld`): a scene draws on the app until it stops.
  */
 export async function startWorld(
   app: WorldApp,
   scenes: Scenes,
   settings: Pick<SettingsStore, 'getState' | 'subscribe'> = settingsStore,
-): Promise<() => void> {
+): Promise<() => Promise<void> | undefined> {
   let wanted = settings.getState().worldView
   let running: { readonly view: WorldView; readonly stop: () => void } | null =
     null
@@ -78,10 +80,11 @@ export async function startWorld(
   await kick()
 
   return () => {
-    if (stopped) return
+    if (stopped) return undefined
     stopped = true
     unsubscribe()
     running?.stop()
     running = null
+    return settling ?? undefined
   }
 }

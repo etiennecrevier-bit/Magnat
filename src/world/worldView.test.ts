@@ -1,6 +1,16 @@
+import { Container, Texture, type Filter, type Ticker } from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createInitialState } from '../engine/clock.ts'
+import { NO_EVENTS } from '../engine/events.ts'
 import { createSettingsStore, type WorldView } from '../ui/settings.ts'
-import type { WorldApp } from './mountWorld.ts'
+import { createGameStore } from '../ui/store.ts'
+import { startCity } from './city.ts'
+import { createCityPicker } from './cityPicker.ts'
+import { CROWD } from './crowdSettings.ts'
+import { ASSETS } from './manifest.ts'
+import { mountWorld, type WorldApp } from './mountWorld.ts'
+import { createPicker } from './picker.ts'
+import { startStreet, type StreetLoaders } from './street.ts'
 import { startWorld } from './worldView.ts'
 
 /** A scene's start the test finishes when it wants, and its stop. */
@@ -126,8 +136,9 @@ describe('startWorld', () => {
     const world = startWorld(APP, scenes, settings)
     await starts[0]!.finish()
     const stop = await world
-    stop()
-    stop()
+    // Nothing starting, the app can go at once.
+    expect(stop()).toBeUndefined()
+    expect(stop()).toBeUndefined()
     expect(starts[0]!.stop).toHaveBeenCalledTimes(1)
     settings.getState().setWorldView('city')
     await flush()
@@ -143,13 +154,34 @@ describe('startWorld', () => {
 
     settings.getState().setWorldView('city')
     await flush()
-    stop()
+    // The app waits until the city that is starting is down too.
+    let down = false
+    void stop()?.then(() => {
+      down = true
+    })
     expect(starts[0]!.stop).toHaveBeenCalledTimes(1)
+    await flush()
+    expect(down).toBe(false)
     await starts[1]!.finish()
     expect(starts[1]!.stop).toHaveBeenCalledTimes(1)
+    expect(down).toBe(true)
     settings.getState().setWorldView('street')
     await flush()
     expect(starts).toHaveLength(2)
+  })
+
+  it('lets the app go once a scene still starting when taken down fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { scenes, starts } = fakeScenes()
+    const settings = settingsOn('street')
+    const world = startWorld(APP, scenes, settings)
+    await starts[0]!.finish()
+    const stop = await world
+    settings.getState().setWorldView('city')
+    await flush()
+    const down = stop()
+    await starts[1]!.fail(new Error('no city'))
+    await expect(down).resolves.toBeUndefined()
   })
 
   it('leaves the world blank after a failed start, until the player picks a view', async () => {
@@ -192,5 +224,158 @@ describe('startWorld', () => {
     expect(starts.map((s) => s.view)).toEqual(['street', 'city', 'street'])
     await starts[2]!.finish()
     expect(starts[2]!.stop).not.toHaveBeenCalled()
+  })
+})
+
+/** Lets every callback waiting on a settled promise run, however many. */
+const settle = () => new Promise<void>((done) => setTimeout(done, 0))
+
+/**
+ * A Pixi app that is gone once destroyed, as Pixi's is: its stage destroyed,
+ * then it, the ticker and the renderer unset. It notes what the stage still
+ * held then.
+ */
+function createDestroyableApp() {
+  const frames = new Set<(ticker: Ticker) => void>()
+  const app = {
+    canvas: {} as HTMLCanvasElement,
+    stage: new Container() as Container | null,
+    screen: { width: 1440, height: 900 },
+    renderer: {
+      type: 1,
+      resolution: 1,
+      backBuffer: { useBackBuffer: false },
+    } as WorldApp['renderer'] | null,
+    ticker: {
+      add: (onFrame: (ticker: Ticker) => void) => frames.add(onFrame),
+      remove: (onFrame: (ticker: Ticker) => void) => frames.delete(onFrame),
+    } as WorldApp['ticker'] | null,
+    init: vi.fn(async () => {}),
+    destroy: vi.fn(() => {
+      app.leftOnStage = app.stage?.children.map((layer) => layer.label) ?? []
+      app.stage?.destroy({ children: true })
+      app.stage = null
+      app.ticker = null
+      app.renderer = null
+    }),
+    frames,
+    leftOnStage: null as string[] | null,
+  }
+  return app
+}
+
+/**
+ * The street and the city, as `WorldCanvas` starts them, under `mountWorld`
+ * on an app that is gone once destroyed. Each title font they load waits
+ * for the test.
+ */
+function realWorld(view: WorldView) {
+  const warn = vi.spyOn(console, 'warn')
+  const app = createDestroyableApp()
+  const fonts: (() => void)[] = []
+  const loaders: StreetLoaders = {
+    loadFont: () => new Promise<void>((resolve) => fonts.push(resolve)),
+    loadTexture: async () => Texture.EMPTY,
+    measureWidth: () => 40,
+    makeFilters: (wanted) =>
+      [{ ...wanted, destroy: () => {} }] as unknown as Filter[],
+  }
+  const store = createGameStore(createInitialState(42), NO_EVENTS)
+  const settings = settingsOn(view)
+  const street = createPicker()
+  const city = createCityPicker()
+  const unmount = mountWorld(
+    { append: vi.fn() },
+    {},
+    (world) =>
+      startWorld(
+        world,
+        {
+          street: (scene) =>
+            startStreet(
+              scene,
+              store,
+              loaders,
+              ASSETS,
+              { settings: CROWD, random: () => 0.5 },
+              street,
+              settings,
+            ),
+          city: (scene) =>
+            startCity(scene, {
+              store,
+              loaders,
+              settings,
+              picker: city,
+              onOpen: () => () => {},
+            }),
+        },
+        settings,
+      ),
+    () => app as unknown as WorldApp,
+  )
+  return {
+    app,
+    settings,
+    street,
+    city,
+    unmount,
+    warn,
+    /** Lets the title font asked for `n`th, from 0, load, and the start go on. */
+    loadFont: async (n: number) => {
+      await settle()
+      fonts[n]!()
+      await settle()
+    },
+  }
+}
+
+describe('startWorld, its real scenes under mountWorld', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // On the city, over the mill, which opens « Aller à… ».
+  const MILL = { x: 1090, y: 470 }
+
+  it('destroys the app only once the city still starting has started and stopped', async () => {
+    const world = realWorld('street')
+    await world.loadFont(0)
+    expect(world.street.view().live).toBe(true)
+
+    world.settings.getState().setWorldView('city')
+    await settle()
+    expect(world.street.view().live).toBe(false)
+    // The city waits for its font when the page takes the world down.
+    world.unmount()
+    await settle()
+    expect(world.app.destroy).not.toHaveBeenCalled()
+
+    await world.loadFont(1)
+    expect(world.warn).not.toHaveBeenCalled()
+    expect(world.app.destroy).toHaveBeenCalledTimes(1)
+    expect(world.app.leftOnStage).toEqual([])
+    expect(world.app.frames.size).toBe(0)
+    expect(world.city.over(MILL)).toBe(false)
+  })
+
+  it('destroys the app only once the street still starting has started and stopped', async () => {
+    const world = realWorld('city')
+    await world.loadFont(0)
+    expect(world.city.over(MILL)).toBe(true)
+
+    world.settings.getState().setWorldView('street')
+    await settle()
+    expect(world.city.over(MILL)).toBe(false)
+    world.unmount()
+    await settle()
+    expect(world.app.destroy).not.toHaveBeenCalled()
+
+    await world.loadFont(1)
+    expect(world.warn).not.toHaveBeenCalled()
+    expect(world.app.destroy).toHaveBeenCalledTimes(1)
+    expect(world.app.leftOnStage).toEqual([])
+    expect(world.app.frames.size).toBe(0)
+    expect(world.street.view().live).toBe(false)
   })
 })
