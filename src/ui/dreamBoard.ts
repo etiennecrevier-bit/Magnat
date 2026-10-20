@@ -29,18 +29,20 @@ import {
   soldBy,
   titleOf,
 } from '../engine/dream.ts'
-import type { Cents } from '../engine/money.ts'
+import { sub, type Cents } from '../engine/money.ts'
 import { netWorth } from '../engine/netWorth.ts'
 import { STAFF } from '../engine/staff.ts'
 import type { GameState } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
 import { formatMoney } from './formatMoney.ts'
+import type { TipContent, TipRow } from './tooltip.ts'
 
-// What the « Le rêve » panel shows (#162): the owner's ladder and the
-// company's, each rung with where it stands and what it gives in plain
-// facts, how close the next rung is, and the owner's title. The engine
-// buys (src/engine/dream.ts); this only reads the game.
+// What the « Améliorations » panel shows (#162, #207): the owner's ladder
+// and the company's, each rung with where it stands, its bonus in a few
+// words and what it gives in plain facts, how close the next rung is, and
+// the owner's title. The engine buys (src/engine/dream.ts); this only
+// reads the game.
 
 const CASH = '1000' satisfies AccountCode
 
@@ -55,6 +57,12 @@ const PERCENT = '\u00a0%'
  */
 export type RungStatus = 'owned' | 'sold' | 'next' | 'locked' | 'comingSoon'
 
+/** A fact about a rung: what it changes, and by how much. */
+export interface RungFact {
+  readonly label: string
+  readonly value: string
+}
+
 /** A rung, as the panel shows it. */
 export interface RungRow {
   readonly id: RungId
@@ -64,15 +72,17 @@ export interface RungRow {
   readonly status: RungStatus
   /** Whether the engine buys it this morning. */
   readonly buyable: boolean
+  /** What it gives, in a few words on its card; null for nothing yet. */
+  readonly chip: string | null
   /** What it gives, and what buying it changes, in plain facts. */
-  readonly lines: readonly string[]
+  readonly facts: readonly RungFact[]
+  /** The name of the rung it comes after, while it is locked; else null. */
+  readonly after: string | null
 }
 
 /** One ladder, as the panel shows it. */
 export interface LadderRow {
   readonly ladder: Ladder
-  /** « Personnel » or « Entreprise ». */
-  readonly title: string
   /** « Payé par vous » or « Payé par l'entreprise ». */
   readonly payer: string
   /** The cash the ladder is paid from: the owner's own, or Encaisse. */
@@ -105,7 +115,7 @@ export interface TitleRow {
   } | null
 }
 
-/** What the « Le rêve » panel shows. */
+/** What the « Améliorations » panel shows. */
 export interface DreamBoard {
   readonly personal: LadderRow
   readonly company: LadderRow
@@ -113,7 +123,7 @@ export interface DreamBoard {
   readonly titles: TitleRow
 }
 
-/** The board of `game` on its morning, with `content` as « Le rêve ». */
+/** The board of `game` on its morning, with `content` as its ladders. */
 export function dreamBoard(
   game: GameState,
   content: DreamContent = DREAM,
@@ -140,8 +150,10 @@ function ladderRow(
 ): LadderRow {
   const owned = new Set(ownedRungs(game.dream, content).map(({ id }) => id))
   const coming = nextRung(game.dream, ladder, content)
-  const rungs = rungsOf(ladder, content).map((rung): RungRow => {
+  const ladderRungs = rungsOf(ladder, content)
+  const rungs = ladderRungs.map((rung, index): RungRow => {
     const status = statusOf(game, rung, owned, coming)
+    const before = ladderRungs[index - 1]
     return {
       id: rung.id,
       name: rung.name,
@@ -149,7 +161,9 @@ function ladderRow(
       status,
       // Only the next rung may be for sale, so only it asks the engine.
       buyable: status === 'next' && buys(game, rung.id, content),
-      lines: rungLines(game, rung, content),
+      chip: bonusChip(rung, content),
+      facts: rungFacts(game, rung, content),
+      after: status === 'locked' && before !== undefined ? before.name : null,
     }
   })
   const next = rungs.find(({ status }) => status === 'next') ?? null
@@ -157,7 +171,6 @@ function ladderRow(
     coming === null || next === null ? null : cashNeeded(coming, content)
   return {
     ladder,
-    title: ladder === 'personal' ? 'Personnel' : 'Entreprise',
     payer: ladder === 'personal' ? 'Payé par vous' : "Payé par l'entreprise",
     cash,
     rungs,
@@ -232,64 +245,136 @@ function titleRow(worth: Cents, content: DreamContent): TitleRow {
  * content's numbers: each bonus, then the home's payment and what it
  * replaces, the rung it sells back, and the old truck taken back.
  */
-export function rungLines(
+export function rungFacts(
   game: GameState,
   rung: Rung,
   content: DreamContent = DREAM,
-): string[] {
-  const lines = rung.bonuses.map(bonusLine)
+): RungFact[] {
+  const facts = rung.bonuses.map(bonusFact)
   if (isPersonal(rung) && rung.housing !== undefined) {
     const { label, monthlyCents } = rung.housing
-    lines.push(`${label}${COLON} ${formatMoney(monthlyCents)} par mois`)
-    const sold = soldBy(rung, content)
-    const before =
-      sold !== null && isPersonal(sold) && sold.housing !== undefined
-        ? sold.housing
-        : { label: 'Loyer', monthlyCents: PERSONAL.rentCents }
-    lines.push(
-      `Remplace${COLON} ${before.label} (${formatMoney(before.monthlyCents)} par mois)`,
-    )
+    facts.push({ label, value: `${formatMoney(monthlyCents)} par mois` })
+    const before = replacedHousing(rung, content)
+    facts.push({
+      label: 'Remplace',
+      value: `${before.label} (${formatMoney(before.monthlyCents)} par mois)`,
+    })
   }
   const sold = soldBy(rung, content)
   if (sold !== null) {
-    lines.push(`Revend${COLON} ${sold.name} (${formatMoney(sold.priceCents)})`)
+    facts.push({
+      label: 'Revend',
+      value: `${sold.name} (${formatMoney(sold.priceCents)})`,
+    })
   }
-  if (isCompany(rung)) lines.push(...truckLines(game, rung))
-  return lines
+  if (isCompany(rung)) facts.push(...truckFacts(game, rung))
+  return facts
+}
+
+/** A fact as one line: « label : value ». */
+export function factLine({ label, value }: RungFact): string {
+  return `${label}${COLON} ${value}`
+}
+
+/**
+ * What a home replaces: the housing of the rung it sells back, or the
+ * rent.
+ */
+function replacedHousing(
+  rung: Rung,
+  content: DreamContent,
+): { label: string; monthlyCents: Cents; rent: boolean } {
+  const sold = soldBy(rung, content)
+  return sold !== null && isPersonal(sold) && sold.housing !== undefined
+    ? { ...sold.housing, rent: false }
+    : { label: 'Loyer', monthlyCents: PERSONAL.rentCents, rent: true }
 }
 
 /** What a truck that replaces the old one changes. */
-function truckLines(game: GameState, rung: CompanyRung): string[] {
+function truckFacts(game: GameState, rung: CompanyRung): RungFact[] {
   if (rung.replacesTruck !== true) return []
   const { truck } = DIFFICULTIES.difficulties[game.profile.difficulty]
   if (truck.kind === 'lease') {
     return [
-      `Fin de la location du camion${COLON} ${formatMoney(truck.monthlyLeaseCents)} par mois`,
+      {
+        label: 'Fin de la location du camion',
+        value: `${formatMoney(truck.monthlyLeaseCents)} par mois`,
+      },
     ]
   }
   const books = truckOnBooks(game.journal, game.day, game.profile.difficulty)
   return books === null
     ? []
     : [
-        `L'ancien camion repris à sa valeur comptable${COLON} ${formatMoney(books.bookValue)}`,
+        {
+          label: "L'ancien camion repris à sa valeur comptable",
+          value: formatMoney(books.bookValue),
+        },
       ]
 }
 
 /** A bonus, as a plain fact. */
-export function bonusLine(bonus: DreamBonus): string {
+export function bonusFact(bonus: DreamBonus): RungFact {
   switch (bonus.kind) {
     case 'travelTime':
-      return `Déplacements en ville${COLON} ${percent(bonus.factor)} de temps`
+      return {
+        label: 'Déplacements en ville',
+        value: `${percent(bonus.factor)} de temps`,
+      }
     case 'serviceTime':
-      return `Service au comptoir${COLON} ${percent(bonus.factor)} de temps`
+      return {
+        label: 'Service au comptoir',
+        value: `${percent(bonus.factor)} de temps`,
+      }
     case 'line':
-      return `File d'attente${COLON} ${percent(bonus.factor)} de clients`
+      return {
+        label: "File d'attente",
+        value: `${percent(bonus.factor)} de clients`,
+      }
     case 'stock':
-      return `Stock par produit${COLON} ${percent(bonus.factor)}`
+      return { label: 'Stock par produit', value: percent(bonus.factor) }
     case 'walkIns':
-      return `${CUSTOMERS.segments[bonus.segment].name}${COLON} ${percent(bonus.factor)} de passants`
+      return {
+        label: CUSTOMERS.segments[bonus.segment].name,
+        value: `${percent(bonus.factor)} de passants`,
+      }
     case 'closedDayRecovery':
-      return `Jour de congé${COLON} +${bonus.extra} d'énergie`
+      return { label: 'Jour de congé', value: `+${bonus.extra} d'énergie` }
+  }
+}
+
+/**
+ * What `rung` gives, in a few words on its card: its first bonus, or what
+ * a home replaces; null when it gives nothing yet.
+ */
+export function bonusChip(
+  rung: Rung,
+  content: DreamContent = DREAM,
+): string | null {
+  const [bonus] = rung.bonuses
+  if (bonus !== undefined) return chipOf(bonus)
+  if (isPersonal(rung) && rung.housing !== undefined) {
+    return replacedHousing(rung, content).rent
+      ? 'Loyer remplacé'
+      : 'Hypothèque remplacée'
+  }
+  return null
+}
+
+function chipOf(bonus: DreamBonus): string {
+  switch (bonus.kind) {
+    case 'travelTime':
+      return `${percent(bonus.factor)} de trajet`
+    case 'serviceTime':
+      return `${percent(bonus.factor)} de service`
+    case 'line':
+      return `${percent(bonus.factor)} de file`
+    case 'stock':
+      return `${percent(bonus.factor)} de stock`
+    case 'walkIns':
+      return `${percent(bonus.factor)} de ${CUSTOMERS.segments[bonus.segment].name.toLowerCase()}`
+    case 'closedDayRecovery':
+      return `+${bonus.extra} d'énergie par congé`
   }
 }
 
@@ -302,4 +387,24 @@ function percent(factor: number): string {
 /** What the rung `id` costs and who pays, as the confirmation reads it. */
 export function priceLine(row: LadderRow, rung: RungRow): string {
   return `${formatMoney(rung.price)}, ${row.payer.toLowerCase()}`
+}
+
+/**
+ * The tooltip of `rung`'s card: its name, its price and who pays, its
+ * facts, and on the next rung, the cash still missing in amber.
+ */
+export function rungTip(row: LadderRow, rung: RungRow): TipContent {
+  const rows: TipRow[] = rung.facts.map(({ label, value }) => ({
+    label,
+    value,
+  }))
+  const { cash, needed } = row
+  if (rung.status === 'next' && needed !== null && cash < needed) {
+    rows.push({
+      label: 'Il vous manque',
+      value: formatMoney(sub(needed, cash)),
+      warn: true,
+    })
+  }
+  return { title: rung.name, text: priceLine(row, rung), rows }
 }

@@ -322,7 +322,7 @@ interface WeeklyReportViewProps {
    */
   percentile?: number | null
   /**
-   * The title of « Le rêve » the owner's net worth earned at the close of
+   * The title of « Améliorations » the owner's net worth earned at the close of
    * the week; null shows none.
    */
   title?: string | null

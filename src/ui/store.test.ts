@@ -616,6 +616,20 @@ describe('the tab of « Le camion »', () => {
   })
 })
 
+describe('the tab of « Améliorations »', () => {
+  it('starts on « Vie personnelle », keeps the tab last shown, and starts again with a new game', () => {
+    const store = createGameStore()
+    expect(store.getState().dreamTab).toBe('personal')
+    store.getState().openPanel('dream')
+    store.getState().setDreamTab('company')
+    store.getState().closePanel()
+    store.getState().openPanel('dream')
+    expect(store.getState().dreamTab).toBe('company')
+    store.getState().startGame(createInitialState(2))
+    expect(store.getState().dreamTab).toBe('personal')
+  })
+})
+
 describe('the tab of « Ville » and the grocer the city picked', () => {
   it('opens on « Aller à… », or on « Contrats » for that section, with no grocer', () => {
     const store = createGameStore()

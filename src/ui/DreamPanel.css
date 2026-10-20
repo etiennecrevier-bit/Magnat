@@ -1,134 +1,283 @@
-/* The card itself is the shared .panel (panel.css). Text colours keep at
-   least 4.5:1 against its cream #fff7e8. */
-.dream {
-  --panel-width: 64rem;
+/* « Améliorations », from U_MODAL and upgrade_card in docs/design/
+   reference/ui_concepts.py: an ink ribbon with the title, then the rungs of
+   one ladder as white cards. Text keeps at least 4.5:1 against what it sits
+   on; the chip's green is darkened from the reference's #2e7d4f for that. */
+
+/* Wider than the other panels, for three cards of about 300 px a row, and
+   as tall whichever tab shows, so the tabs stay under the pointer. On a
+   phone the frame's full-screen rule (DockFrame.css) applies instead. */
+@media (min-width: 700px) {
+  .panel.dock-frame.dream {
+    --panel-width: 1040px;
+    width: min(1040px, calc(100% - 2rem));
+    height: min(740px, calc(100dvh - var(--frame-top) - var(--frame-bottom)));
+    max-height: min(
+      740px,
+      calc(100dvh - var(--frame-top) - var(--frame-bottom))
+    );
+  }
 }
 
-.dream__titles,
-.dream__ladder {
-  margin: 0 0 1.25rem;
+.dream__board {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* The title and the next one; wraps on a narrow frame. */
+.dream__ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: #2b2622;
+  color: #fff7e8;
+}
+
+.dream__ribbon .icon {
+  flex: none;
+  color: #e8c547;
 }
 
 .dream__title {
-  margin: 0 0 0.25rem;
-  font-size: 1.125rem;
-  font-weight: 700;
-}
-
-.dream__payer {
-  margin: 0 0 0.5rem;
-  color: #5c5048;
+  margin: 0;
+  font-family: Fredoka, system-ui, sans-serif;
+  font-size: 17px;
   font-weight: 600;
 }
 
-.dream__progress {
-  max-width: 32rem;
-  margin: 0 0 0.75rem;
+.dream__ribbon-bar {
+  display: block;
+  flex: 1 1 8rem;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #4a423c;
 }
 
-.dream__progress p {
-  margin: 0 0 0.25rem;
+.dream__ribbon-bar .dream__fill {
+  background: #e8c547;
+}
+
+.dream__worth {
+  margin: 0;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
-/* The bar toward the next rung or title; its text says how far, so the
-   fill is never the only signal. */
+/* Three cards a row in the full frame, fewer as it narrows. */
+.dream__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: 20px 26px;
+  margin: 0;
+  padding: 0 0 5px;
+  list-style: none;
+}
+
+.dream__card {
+  display: flex;
+  min-width: 0;
+}
+
+.dream__anchor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 3px solid #2b2622;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 5px 0 #2b2622;
+}
+
+.dream__anchor:hover,
+.dream__anchor:focus-within {
+  outline: 3px solid #2f6fb0;
+  outline-offset: 3px;
+}
+
+.dream__art {
+  position: relative;
+}
+
+.dream__art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 1;
+}
+
+/* A rung that waits for an earlier one: its picture faded under a cream
+   veil, a padlock in the corner. */
+.dream__card--locked .dream__art img,
+.dream__card--comingSoon .dream__art img {
+  filter: grayscale(40%);
+}
+
+.dream__card--locked .dream__art::after,
+.dream__card--comingSoon .dream__art::after {
+  position: absolute;
+  inset: 0;
+  background: rgb(255 247 232 / 55%);
+  content: '';
+}
+
+.dream__lock {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #2b2622;
+  color: #fff7e8;
+}
+
+.dream__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+}
+
+.dream__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.dream__head h3 {
+  margin: 0;
+  font-family: Fredoka, system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.dream__price {
+  margin: 0 0 0 auto;
+  font-family: Fredoka, system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dream__chip {
+  align-self: flex-start;
+  margin: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #e3efe5;
+  color: #256b42;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* Where the rung stands, at the bottom of its card. */
+.dream__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  margin-top: auto;
+}
+
+.dream__note {
+  margin: 0;
+  color: #6b625a;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.dream__progress {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* The bar toward the next rung; its text says how far, so the fill is never
+   the only signal. */
 .dream__bar {
   display: block;
-  height: 0.75rem;
+  height: 8px;
   overflow: hidden;
-  border: 1px solid #2b2622;
-  border-radius: 999px;
-  background: #ffffff;
+  border-radius: 4px;
+  background: #e3d6bf;
 }
 
 .dream__fill {
   display: block;
   height: 100%;
-  background: #2f8132;
-}
-
-/* The rungs of a ladder in a row, in order, as long as they fit. */
-.dream__rungs {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  gap: 0.75rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.dream__rung {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.5rem 0.75rem 0.75rem;
-  border: 1px solid #c9b48f;
-  border-radius: 8px;
-}
-
-.dream__rung h4 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.dream__rung p {
-  margin: 0;
-}
-
-.dream__price {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  border-radius: inherit;
+  background: #2e7d4f;
 }
 
 .dream__status {
-  color: #5c5048;
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-/* The next rung stands out with a thicker border, and a word says so. */
-.dream__rung--next {
-  border: 2px solid #2b2622;
-}
-
-.dream__rung--owned {
-  background: #e8f3e3;
-}
-
-.dream__rung--owned .dream__status {
-  color: #1f5f22;
-}
-
-.dream__rung--sold,
-.dream__rung--comingSoon {
-  border-style: dashed;
-}
-
-.dream__lines {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
-  padding-left: 1.25rem;
-  font-size: 0.9375rem;
+  font-size: 13px;
+  font-weight: 800;
 }
 
-.dream__rung .button {
-  align-self: flex-start;
-  margin-top: 0.25rem;
+.dream__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dream__status--owned {
+  color: #256b42;
+}
+
+.dream__status--owned .dream__dot {
+  background: #2e7d4f;
+}
+
+.dream__status--sold {
+  color: #6b625a;
+}
+
+.dream__status--sold .dream__dot {
+  background: #a39a90;
+}
+
+/* `.btn.dark` of the reference. */
+.dream__buy {
+  border: 2px solid #2b2622;
+  border-radius: 10px;
+  background: #2b2622;
+  color: #fff7e8;
+  font-weight: 800;
+}
+
+.dream__buy:hover {
+  background: #4a423c;
+}
+
+.dream__confirm {
+  flex: 1;
 }
 
 .dream__confirm p {
-  font-weight: 600;
+  margin: 0 0 4px;
+  font-weight: 700;
 }
 
-.dream__confirm .dream__lines {
-  margin: 0.25rem 0 0.5rem;
-  font-weight: 400;
-}
-
-.dream .button:disabled {
-  border-color: #c9b48f;
-  background: transparent;
-  color: #7b6f63;
-  cursor: not-allowed;
+.dream__facts {
+  margin: 0 0 8px;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
 }

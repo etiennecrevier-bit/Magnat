@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from 'react'
+import type { Ladder } from '../content/schema.ts'
 import type { CityTab, FinancesTab, JournalTab, TruckTab } from './store.ts'
 import { isInside } from './pauseShortcut.ts'
 
@@ -49,6 +50,12 @@ export function financesTabs(
   if (inChallenge) tabs.push({ id: 'contracts', label: 'Contrats' })
   return tabs
 }
+
+/** The tabs of « Améliorations »: the owner's ladder and the company's. */
+export const DREAM_TABS: readonly FrameTab<Ladder>[] = [
+  { id: 'personal', label: 'Vie personnelle' },
+  { id: 'company', label: 'Entreprise' },
+]
 
 export const JOURNAL_TABS: readonly FrameTab<JournalTab>[] = [
   { id: 'events', label: 'Événements' },

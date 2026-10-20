@@ -1636,7 +1636,7 @@ export const financingContentSchema = z
 export type FinancingContent = z.output<typeof financingContentSchema>
 
 /**
- * The rungs of « Le rêve » (#162), by id: the owner's own ladder (`velo`
+ * The rungs of « Améliorations » (#162), by id: the owner's own ladder (`velo`
  * to `chalet`), then the company's (`espresso` to `deuxiemeCamion`).
  */
 export const rungIdSchema = z.enum([
@@ -1653,7 +1653,7 @@ export const rungIdSchema = z.enum([
 
 export type RungId = z.infer<typeof rungIdSchema>
 
-/** The two ladders of « Le rêve »: the owner's and the company's. */
+/** The two ladders of « Améliorations »: the owner's and the company's. */
 export const ladderSchema = z.enum(['personal', 'company'])
 
 export type Ladder = z.infer<typeof ladderSchema>
@@ -1733,7 +1733,7 @@ const dreamTitleSchema = z.strictObject({
 export type DreamTitle = z.output<typeof dreamTitleSchema>
 
 /**
- * « Le rêve » (#162): the two ladders, each climbed in order, and the
+ * « Améliorations » (#162): the two ladders, each climbed in order, and the
  * titles of the owner's net worth, the last one crowning the « Magnat ».
  */
 export const dreamContentSchema = z
@@ -2622,7 +2622,7 @@ export function loadFinancingContent(
 }
 
 /**
- * Validates « Le rêve » and returns it typed, with money as `Cents`. Throws
+ * Validates « Améliorations » and returns it typed, with money as `Cents`. Throws
  * an Error naming every invalid field: besides each field, every rung is in
  * one ladder once, a rung coming soon comes after every rung for sale in its
  * ladder, a rung `sells` an earlier personal rung with housing, one company

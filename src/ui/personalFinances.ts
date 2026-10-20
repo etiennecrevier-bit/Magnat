@@ -13,7 +13,7 @@ export interface MonthMovement extends PersonalMovement {
  * The movements of `account` in the calendar month of `lastPlayed`, newest
  * first. The account stands as of the close of the last day played, so on
  * the morning of the 1st it still shows the month just ended. Each « Loyer »,
- * or payment of a home of « Le rêve », on one of the account's `unpaidRents`
+ * or payment of a home of « Améliorations », on one of the account's `unpaidRents`
  * is `unpaid`. Empty before any day
  * is played, when `lastPlayed` is null.
  */

@@ -96,7 +96,7 @@ interface ManagePanelViewProps {
   bakery: BakeryBoard
   /**
    * The units a restock rule may name: the content's, unless the rungs of
-   * « Le rêve » owned allow more.
+   * « Améliorations » owned allow more.
    */
   units?: { readonly min: number; readonly max: number }
   onChange: OnChange
