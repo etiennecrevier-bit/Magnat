@@ -124,7 +124,9 @@
 }
 
 /* On a phone the dock is a bar of icons the width of the window, just
-   above the band; the words stay for screen readers. */
+   above the band; the words stay for screen readers. The seven buttons
+   share the width, each at least 44 px wide down to a 320 px window, the
+   tiles up to 48 px and a little narrower than their button. */
 @media (max-width: 699px) {
   :root {
     --dock-bottom: var(--ticker-height, 2.75rem);
@@ -135,7 +137,7 @@
     right: 0;
     bottom: var(--ticker-height, 2.75rem);
     left: 0;
-    padding: 6px 8px;
+    padding: 6px 4px;
     border-width: 3px 0 0;
     border-radius: 0;
     box-shadow: none;
@@ -143,28 +145,37 @@
   }
 
   .dock__items {
-    justify-content: space-around;
-    gap: 2px;
+    gap: 0;
   }
 
   .dock__item {
-    flex: 1;
-    justify-content: center;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  /* The divider's 2 px come on top of its button's share. */
+  .dock__item--divided {
+    flex-basis: 2px;
   }
 
   .dock__item--divided::before {
+    flex: none;
     height: 44px;
-    margin: 4px 2px 0;
+    margin: 4px 0 0;
   }
 
   .dock__button {
+    flex: 1 1 0;
     width: auto;
-    min-width: 44px;
+    min-width: 0;
+    min-height: 44px;
+    justify-content: center;
   }
 
   .dock__tile {
-    width: 48px;
-    height: 48px;
+    width: min(48px, calc(100% - 4px));
+    height: auto;
+    aspect-ratio: 1;
     border-width: 2px;
     border-radius: 14px;
     box-shadow: 0 3px 0 #2b2622;

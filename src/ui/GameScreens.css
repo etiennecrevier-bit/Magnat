@@ -1,14 +1,21 @@
-/* The notice and the messages, top centre under the top bar, over the
-   street; at most three messages come at once (messageTriggers.ts). The
-   region lets clicks through where it has nothing. */
+/* The notice and the messages, top centre 12 px under the top bar, over
+   the street; at most three messages come at once (messageTriggers.ts).
+   TopBar.tsx keeps --top-bar-room at where the bar ends, however many rows
+   it wraps onto, so a message never covers its buttons; nor do they reach
+   the dock, scrolling instead. The region lets clicks through where it has
+   nothing. */
 .shell__notices {
   position: fixed;
-  top: 6.5rem;
+  top: calc(var(--top-bar-room, 5.75rem) + 12px);
   left: 50%;
   z-index: 1;
   display: grid;
   gap: 0.5rem;
   width: min(30rem, calc(100% - 2rem));
+  max-height: calc(
+    100dvh - var(--top-bar-room, 5.75rem) - var(--dock-room, 10rem) - 24px
+  );
+  overflow-y: auto;
   transform: translateX(-50%);
   pointer-events: none;
 }
@@ -24,11 +31,4 @@
   border-radius: 12px;
   background: #fffbea;
   color: #2b2622;
-}
-
-/* On a phone the top bar wraps onto more rows. */
-@media (max-width: 699px) {
-  .shell__notices {
-    top: 9.5rem;
-  }
 }

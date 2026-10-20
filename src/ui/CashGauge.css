@@ -60,3 +60,15 @@
   background: #b3261e;
   color: #ffffff;
 }
+
+/* On a phone as narrow as 320 px, the chip keeps to the window: what does
+   not fit goes onto a second row instead of past the edge. */
+@media (max-width: 699px) {
+  .cash-chip {
+    flex-wrap: wrap;
+    row-gap: 2px;
+    max-width: 100%;
+    padding: 4px 12px;
+    border-radius: 22px;
+  }
+}

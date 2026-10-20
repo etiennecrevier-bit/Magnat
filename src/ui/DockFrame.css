@@ -2,12 +2,12 @@
    ui_concepts.py: the cream `.card` with its 3 px ink border and hard
    shadow, anchored bottom centre above the dock (Dock.css sets
    --dock-room), at most 760 x 520 and as tall as the room between the top
-   bar and the dock, scrolling inside. The street shows around it. A drawer
+   bar (TopBar.tsx sets --top-bar-room) and the dock, scrolling inside. The street shows around it. A drawer
    comes after the dock and « Hier » on the page, so at the same z-index it
    covers them where they meet, and stays under the street's customer card
    (WorldCanvas.css). */
 .dock-frame {
-  --frame-top: 5.5rem;
+  --frame-top: calc(var(--top-bar-room, 4.75rem) + 12px);
   --frame-bottom: var(--dock-room, 10rem);
   position: fixed;
   inset: auto auto var(--frame-bottom) 50%;

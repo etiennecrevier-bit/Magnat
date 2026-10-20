@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode, type Ref } from 'react'
 import { useStore } from 'zustand'
 import pacing from '../content/pacing.json'
 import type { Avatar } from '../content/schema.ts'
@@ -33,6 +33,7 @@ import {
   type WorldView,
 } from './settings.ts'
 import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
+import { keepRoomUnder } from './tickerRoom.ts'
 import { todayNumbers, type TodayNumbers } from './todayNumbers.ts'
 import { enRouteLine } from './tripBoard.ts'
 import { useMediaQuery } from './useMediaQuery.ts'
@@ -120,6 +121,8 @@ interface TopBarViewProps {
   onAlert?: (id: AlertId) => void
   /** Opens « Réglages ». */
   onSettings: () => void
+  /** Takes the bar once it shows, to measure it. */
+  barRef?: Ref<HTMLElement>
 }
 
 /**
@@ -150,9 +153,10 @@ export function TopBarView({
   alerts = [],
   onAlert = () => {},
   onSettings,
+  barRef,
 }: TopBarViewProps) {
   return (
-    <header className="top-bar">
+    <header ref={barRef} className="top-bar">
       <div className="top-bar__left">
         <div className="top-bar__title">
           <p className="top-bar__name">{businessName}</p>
@@ -259,6 +263,14 @@ export function TopBarView({
       </div>
     </header>
   )
+}
+
+/**
+ * Keeps room on the page under the bar while it shows, for the messages and
+ * the dock's panels (see tickerRoom.ts).
+ */
+function keepRoom(bar: HTMLElement | null) {
+  return bar === null ? undefined : keepRoomUnder(bar, document.body)
 }
 
 /**
@@ -376,6 +388,7 @@ export default function TopBar({
       alerts={alerts}
       onAlert={(id) => followAlert(id, stack)}
       onSettings={() => openPanel('settings')}
+      barRef={keepRoom}
     />
   )
 }
