@@ -357,7 +357,9 @@ export function DockDrawer<T extends string>({
         bodyId={bodyId}
         onDismiss={onClose}
       />
-      <FrameBody bodyId={bodyId} tabs={tabs} tab={tab}>
+      {/* A body of its own per tab, which scrolls, so each tab opens from its
+          top rather than where the last one was scrolled (#228). */}
+      <FrameBody key={tab} bodyId={bodyId} tabs={tabs} tab={tab}>
         {children}
       </FrameBody>
     </section>
