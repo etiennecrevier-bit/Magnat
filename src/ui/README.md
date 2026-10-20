@@ -96,7 +96,7 @@ The engine sends the owner into town (#164, `src/engine/places.ts`); the UI read
 ## The street's spots
 
 - **A click on a spot of the street** (#208) comes from the world as a link, `{ dock, tab? }`, which `streetLinks.ts` opens as that dock button would, on « Camion »'s tab when it names one: nothing while a panel is open, nor « Ville » in a Défi. `openCityLink` passes street links on to it, so the world reports both kinds through one `onOpen`.
-- **The legend** « Cliquez sur la rue » shows in the player's first game only, for its first three days. `streetLegend.ts`, started by `GameScreens.tsx`, keeps in the settings (`streetLegend`, not the save) which game that is, by its seed: `unseen`, then that game's seed, then `done` once it is past its days or another game plays, or straight away for a save already past them.
+- **The legend** « Cliquez sur la rue » shows in the player's first game only, for its first three days. `streetLegend.ts`, started by `GameScreens.tsx`, keeps in the settings (`streetLegend`, not the save) which game that is, by its seed: `unseen`, then that game's seed, then `done` once it is past its days, a new game starts (`isNewGame` in `store.ts`: a seed alone cannot tell two games of the same `?seed=` apart) or a loaded game of another seed plays, or straight away for a save already past them. Continuing the first game from its save keeps it.
 
 ## Starting and saving a game
 
