@@ -1,0 +1,122 @@
+/* The game's one tooltip, from `.tip` in docs/design/reference/ui_concepts.py:
+   ink #2b2622 with cream #fff7e8 text, amber #f3c27a for what to look at.
+   Tooltip.tsx sets its width, most height, place and side while it is open. */
+.tip {
+  display: none;
+  position: fixed;
+  inset: auto;
+  z-index: 50;
+  /* The width Tooltip.tsx places it at is its border box. */
+  box-sizing: border-box;
+  flex-direction: column;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: visible;
+  border: 0;
+  border-radius: 12px;
+  background: #2b2622;
+  color: #fff7e8;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+}
+
+.tip[data-open] {
+  display: flex;
+}
+
+/* Taller than the window allows, its text scrolls; the arrow stays out. */
+.tip__body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.tip__body p {
+  margin: 0;
+}
+
+.tip__body .tip__title {
+  margin-bottom: 4px;
+  font-family: Fredoka, sans-serif;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.tip__rows {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 14px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Each label and its value fill one line of the grid. */
+.tip__row {
+  display: contents;
+}
+
+.tip__rows dd {
+  margin: 0;
+}
+
+.tip__value--warn,
+.tip__link {
+  color: #f3c27a;
+}
+
+.tip__body .tip__link {
+  margin-top: 6px;
+}
+
+/* A turned ink square half out of the edge facing the anchor, its centre at
+   --tip-arrow along that edge. */
+.tip__arrow {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: #2b2622;
+  transform: rotate(45deg);
+}
+
+.tip[data-side='right'] .tip__arrow {
+  top: calc(var(--tip-arrow, 50%) - 8px);
+  left: -8px;
+}
+
+.tip[data-side='left'] .tip__arrow {
+  top: calc(var(--tip-arrow, 50%) - 8px);
+  right: -8px;
+}
+
+.tip[data-side='above'] .tip__arrow {
+  bottom: -8px;
+  left: calc(var(--tip-arrow, 50%) - 8px);
+}
+
+/* The « (i) » button: the ink icon on nothing, with a finger's room. */
+.info-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #2b2622;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.info-button:hover {
+  background: rgb(43 38 34 / 8%);
+}
+
+.info-button:focus-visible {
+  outline: 3px solid #2186eb;
+  outline-offset: 2px;
+}
