@@ -87,3 +87,26 @@ describe('CoachBubbleView', () => {
     }
   })
 })
+
+describe('CoachBubbleView on a screen that cannot hover', () => {
+  it('says the touch words where the step has them, its text elsewhere', () => {
+    const step = TUTORIAL.steps.find(({ id }) => id === 'tropCher')!
+    const view = { ...first, text: step.text, touchText: step.touchText! }
+    const touched = renderToStaticMarkup(
+      <CoachBubbleView
+        view={view}
+        touch
+        portrait={null}
+        confirming={false}
+        onButton={() => {}}
+        onSkip={() => {}}
+        onConfirmSkip={() => {}}
+        onCancelSkip={() => {}}
+      />,
+    )
+    expect(touched).toContain('Touche-le pour voir.')
+    expect(touched).not.toContain('souris')
+    expect(render(view)).toContain('souris')
+    expect(buttons(render({ ...first }))).toContain('Allons-y')
+  })
+})

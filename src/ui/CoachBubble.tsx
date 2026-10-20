@@ -31,8 +31,13 @@ import './CoachBubble.css'
 
 const { coach } = TUTORIAL
 
+/** A screen that cannot hover, as a phone's: Réal says `touchText`. */
+const TOUCH_QUERY = '(hover: none)'
+
 interface CoachBubbleViewProps {
   readonly view: StepView
+  /** Whether the screen cannot hover, as on a phone: `touchText` shows. */
+  readonly touch?: boolean
   /** The URL of Réal's portrait; null shows the silhouette. */
   readonly portrait: string | null
   /** Whether « Passer la visite » asks to confirm. */
@@ -45,12 +50,13 @@ interface CoachBubbleViewProps {
 
 /**
  * The bubble's content: Réal's portrait, 64 px and round, his name, what he
- * says, the step's one button if it has one, and the small link « Passer la
+ * says, in its touch words where the screen cannot hover, the step's one button if it has one, and the small link « Passer la
  * visite », which asks once to confirm. A dialog that is not modal, named
  * by Réal's name and described by his text.
  */
 export function CoachBubbleView({
   view,
+  touch = false,
   portrait,
   confirming,
   onButton,
@@ -60,6 +66,7 @@ export function CoachBubbleView({
 }: CoachBubbleViewProps) {
   const nameId = useId()
   const textId = useId()
+  const text = touch ? (view.touchText ?? view.text) : view.text
   return (
     <section
       className="coach__bubble"
@@ -85,7 +92,7 @@ export function CoachBubbleView({
         </p>
       </div>
       <p id={textId} className="coach__text">
-        {view.text}
+        {text}
       </p>
       {confirming ? (
         <div className="coach__confirm">
@@ -252,8 +259,8 @@ function place(element: HTMLElement | null, box: Box): void {
 /**
  * Lays out the layer of `view` each frame: the hole around the target the
  * player can reach, the four blocks around it, and the bubble beside it.
- * With no anchor, the hole closes to nothing at the middle, dimming the
- * whole window, and the bubble is centred. With anchors but none in
+ * With no anchor, the whole window dims, one block covers it, and the
+ * bubble is centred. With anchors but none in
  * reach, as when something the player opened covers it, nothing dims or
  * blocks, and the bubble waits at the top, so the player can always close
  * what covers it. A step whose gesture is the bubble's button only shows
@@ -292,7 +299,8 @@ function useLayout(
       bubble.style.width = `${width}px`
       const size = { width, height: bubble.getBoundingClientRect().height }
       const free = !centred && found === null
-      layer.toggleAttribute('data-dim', !free)
+      layer.toggleAttribute('data-dim', !free && !centred)
+      layer.toggleAttribute('data-centred', centred)
       let shown: Box | null = null
       if (found !== null) shown = holeBox(found.box, page)
       const middle = { left: page.width / 2, top: page.height / 2 }
@@ -405,6 +413,7 @@ function CoachLayer({
   const [container, setContainer] = useState<Element>(() => document.body)
   const [confirming, setConfirming] = useState(false)
   const phone = useMediaQuery(NARROW_QUERY)
+  const touch = useMediaQuery(TOUCH_QUERY)
   const layerRef = useRef<HTMLDivElement>(null)
   const holeRef = useRef<HTMLDivElement>(null)
   const blockRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -449,6 +458,7 @@ function CoachLayer({
       <div ref={bubbleRef} className="coach__spot">
         <CoachBubbleView
           view={view}
+          touch={touch}
           portrait={portraitUrl(coach.character)}
           confirming={confirming}
           onButton={() => completeTutorialStep(view.id)}
@@ -472,6 +482,7 @@ export default function CoachBubble({
   signals?: TutorialSignals
 }) {
   const game = useGame((state) => state.game)
+  const touch = useMediaQuery(TOUCH_QUERY)
   const view = useMemo(
     () => (game.challenge === null ? stepView(game) : null),
     [game],
@@ -486,7 +497,9 @@ export default function CoachBubble({
   return (
     <>
       <p className="visually-hidden" aria-live="polite">
-        {view === null ? '' : `${coach.name}\u00a0: ${view.text}`}
+        {view === null
+          ? ''
+          : `${coach.name}\u00a0: ${touch ? (view.touchText ?? view.text) : view.text}`}
       </p>
       {view !== null && (
         <CoachLayer key={view.id} view={view} signals={signals} />

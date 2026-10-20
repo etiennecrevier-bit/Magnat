@@ -30,6 +30,11 @@
   box-shadow: 0 0 0 100vmax rgb(43 38 34 / 35%);
 }
 
+/* With nothing to point at, the whole window dims. */
+.coach[data-centred] {
+  background: rgb(43 38 34 / 35%);
+}
+
 /* What keeps every press outside the hole from the game. */
 .coach__block {
   position: fixed;

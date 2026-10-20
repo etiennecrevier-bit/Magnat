@@ -22,6 +22,8 @@ export interface StepView {
   /** What completes it: `next` when its fallback shows. */
   readonly gesture: TutorialGesture
   readonly text: string
+  /** What Réal says instead where the screen cannot hover; null for the same. */
+  readonly touchText: string | null
   /** The bubble's one button; null when the gesture is elsewhere. */
   readonly button: string | null
   /** What it points at, by `data-tuto`, the first the player reaches winning. */
@@ -54,6 +56,7 @@ export function stepView(
       id: step.id,
       gesture: 'next',
       text: fallback.text,
+      touchText: null,
       button: fallback.button,
       anchors: step.anchors,
       tipAnchors: [],
@@ -64,6 +67,7 @@ export function stepView(
     id: step.id,
     gesture: step.gesture,
     text: step.text,
+    touchText: step.touchText ?? null,
     button: step.button ?? null,
     anchors: step.anchors,
     tipAnchors: step.tipAnchors ?? [],

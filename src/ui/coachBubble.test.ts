@@ -91,7 +91,7 @@ describe('placeBubble', () => {
     })
   })
 
-  it('on a phone, goes above its target or below, full width less 16 px', () => {
+  it('on a phone, goes below its target or above, full width less 16 px', () => {
     const width = bubbleWidth(PHONE, true)
     expect(width).toBe(390 - 16)
     const size = { width, height: 150 }
@@ -101,6 +101,9 @@ describe('placeBubble', () => {
     expect(dock.left + dock.arrow).toBe(50)
     const bar = placeBubble(box(200, 10, 60, 40), size, PHONE, true)
     expect(bar).toMatchObject({ side: 'below', top: 50 + COACH.gap })
+    // Room both ways: below, so what leads to the target shows.
+    const choices = placeBubble(box(16, 340, 358, 210), size, PHONE, true)
+    expect(choices).toMatchObject({ side: 'below', top: 550 + COACH.gap })
   })
 
   it('keeps its width on a wide window, and narrows on a narrow one', () => {

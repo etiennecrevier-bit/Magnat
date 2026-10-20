@@ -53,7 +53,7 @@ export function bubbleWidth(page: Size, phone: boolean): number {
  * Where the bubble of `size` goes beside `target`, in a window of `page`:
  * right of it, else left, else above, else below, always inside the
  * window's margins, with its arrow toward the target's middle. On a phone,
- * above it or below, full width less the margins. With no side free, it
+ * below it or above, full width less the margins. With no side free, it
  * goes on the side with the most room, slid inside the window. With no
  * target, it is centred.
  */
@@ -103,8 +103,10 @@ export function placeBubble(
     above: () => across('above', target.top - gap - height),
     below: () => across('below', target.bottom + gap),
   }
+  // On a phone, below first: it covers what follows the target, not what
+  // leads to it, such as an event card's situation above its choices.
   const sides = phone
-    ? (['above', 'below'] as const)
+    ? (['below', 'above'] as const)
     : (['right', 'left', 'above', 'below'] as const)
   const fits = (side: (typeof sides)[number]) =>
     room[side] >= (side === 'right' || side === 'left' ? width : height)

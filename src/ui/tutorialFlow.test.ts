@@ -284,6 +284,7 @@ describe('signalDone', () => {
       id: 's',
       gesture,
       text: '',
+      touchText: null,
       button: null,
       anchors: [],
       tipAnchors,

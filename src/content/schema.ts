@@ -2783,7 +2783,8 @@ const TOOLTIP_GESTURES: readonly TutorialGesture[] = [
 
 /**
  * One step of the tutorial: what the player is asked to do on its day, and
- * what the UI's bubble shows for it (#238): Réal's `text`, the `button` a
+ * what the UI's bubble shows for it (#238): Réal's `text`, its
+ * `touchText` where the screen cannot hover, the `button` a
  * step that waits for one shows, the `anchors` it points at, the first one
  * the player can reach winning, none centring the bubble, the `tipAnchors`
  * whose tooltip opening completes it, and the `fallback` it shows in its
@@ -2795,6 +2796,8 @@ const tutorialStepSchema = z.strictObject({
   day: z.int().positive(),
   gesture: tutorialGestureSchema,
   text: z.string().min(1),
+  /** What Réal says instead where the screen cannot hover, as on a phone. */
+  touchText: z.string().min(1).optional(),
   button: z.string().min(1).optional(),
   anchors: z.array(tutorialAnchorSchema),
   tipAnchors: z.array(tutorialAnchorSchema).min(1).optional(),
