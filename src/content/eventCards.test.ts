@@ -997,13 +997,16 @@ describe('the cards of #155', () => {
     expect(coughs(choose(morning, 'camionVoisin', 'stock'))).toBe(true)
   })
 
-  it('volCaisse: « Prendre le risque » brings the theft back 30 days later at 30 %, though it comes once a game', () => {
+  it('volCaisse: « Prendre le risque » brings the theft back 30 days later at 35 %, though it comes once a game', () => {
     const morning = firstMorning('volCaisse')
     const { day } = morning
     const risk = (test: (value: number) => boolean) =>
       choose({ ...morning, rngState: seedWhere(test) }, 'volCaisse', 'risque')
     expect(cardOf('volCaisse').conditions?.oncePerGame).toBe(true)
-    expect(risk((value) => value >= 0.3).events.followUps).toEqual([])
+    expect(risk((value) => value >= 0.35).events.followUps).toEqual([])
+    expect(
+      risk((value) => value >= 0.3 && value < 0.35).events.followUps,
+    ).toEqual([{ day: day + 30, event: 'volCaisse' }])
     const again = risk((value) => value < 0.3)
     expect(again.events.followUps).toEqual([
       { day: day + 30, event: 'volCaisse' },
