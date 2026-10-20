@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { postcardIdSchema } from '../content/schema.ts'
 import { createInitialState } from '../engine/clock.ts'
+import type { GameState } from '../engine/types.ts'
 import {
   createMessageStack,
   startMessageStack,
@@ -25,6 +27,12 @@ const TIRED: Message = {
   text: 'Mon café a besoin d’un café.',
   day: 33,
 }
+
+/** `game` with every postcard of Réal's shown, so only the game's messages come. */
+const SENT_ALL = (game: GameState): GameState => ({
+  ...game,
+  postcardsShown: postcardIdSchema.options,
+})
 
 function render(messages: readonly Message[]) {
   return renderToStaticMarkup(
@@ -79,7 +87,7 @@ describe('the message stack', () => {
   })
 
   it('fills from the game, and empties as a new game starts it again', () => {
-    const START = createInitialState(42)
+    const START = SENT_ALL(createInitialState(42))
     const game = createGameStore({ ...START, day: 31 })
     const stack = createMessageStack()
     stack.getState().receive(RENT)
@@ -104,7 +112,7 @@ describe('the message stack', () => {
   // #232: the street shows a message for 3 game days, then it folds into
   // the « N messages » chip: still in the stack, which the chip counts.
   it('takes a message off the street 3 days on, and keeps it for the chip', () => {
-    const START = createInitialState(42)
+    const START = SENT_ALL(createInitialState(42))
     const game = createGameStore({ ...START, day: 31 })
     const stack = createMessageStack()
     const stop = startMessageStack(game, stack)
@@ -135,5 +143,58 @@ describe('the message stack', () => {
     expect(streetMessages(messages, 40, 40)).toEqual([RENT])
     expect(streetMessages(messages, 42, 40)).toEqual([RENT])
     expect(streetMessages(messages, 43, 40)).toEqual([])
+  })
+})
+
+describe('a postcard from Réal (#239)', () => {
+  const CARD: Message = {
+    id: 9,
+    kind: 'postcard',
+    from: 'Réal, Fort Lauderdale',
+    text: 'La ville est à toi. Clique sur Ville.',
+    day: 33,
+    postcard: { id: 'ville', target: 'ville' },
+  }
+
+  it('shows his portrait, the sender, the day, the sentence, the stamp and « Merci! »', () => {
+    const html = renderToStaticMarkup(
+      <MessagesView
+        messages={[CARD]}
+        onDismiss={() => {}}
+        postcard={{ portrait: '/real.png', thanks: 'Merci!' }}
+      />,
+    )
+    expect(html).toContain(
+      '<article id="message-card-9" class="message message--postcard" tabindex="-1">' +
+        '<img class="message__portrait" src="/real.png" alt="" width="44" height="44"/>' +
+        '<p class="message__from" id="message-9">Réal, Fort Lauderdale <span class="message__day">3 juin</span></p>' +
+        '<p class="message__text">La ville est à toi. Clique sur Ville.</p>' +
+        '<span class="message__stamp"><svg class="stamp"',
+    )
+    expect(html).toMatch(/<svg class="stamp"[^>]*aria-hidden="true"/)
+    expect(html).toContain(
+      '<button type="button" class="toggle message__close" aria-describedby="message-9">Merci!</button></article>',
+    )
+  })
+
+  it('shows the silhouette while Réal has no portrait, and the content’s « Merci! » by default', () => {
+    const html = render([CARD])
+    expect(html).toContain('class="message__portrait message__silhouette"')
+    expect(html).toContain('>Merci!</button>')
+  })
+
+  it('is put away with « Merci! »', () => {
+    const dismissed: number[] = []
+    const view = MessagesView({
+      messages: [CARD, RENT],
+      onDismiss: (id) => dismissed.push(id),
+    })
+    const [card] = view.props.children as {
+      props: { children: { props?: { onClick?: () => void } }[] }
+    }[]
+    card!.props.children
+      .find((child) => child?.props?.onClick)
+      ?.props?.onClick?.()
+    expect(dismissed).toEqual([CARD.id])
   })
 })

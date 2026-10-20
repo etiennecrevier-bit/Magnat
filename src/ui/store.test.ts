@@ -2111,3 +2111,37 @@ describe('the tutorial in the store (#238)', () => {
     expect(store.getState().keepsSave).toBe(false)
   })
 })
+
+describe('Réal’s postcards in the store (#239)', () => {
+  it('notes the postcards shown after the others, each once', () => {
+    const store = createGameStore(createInitialState(1))
+    store.getState().markPostcardsShown(['ville'])
+    store.getState().markPostcardsShown(['ville', 'rouge', 'rouge'])
+    expect(store.getState().game.postcardsShown).toEqual(['ville', 'rouge'])
+    const listener = vi.fn()
+    store.subscribe(listener)
+    store.getState().markPostcardsShown(['rouge'])
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('keeps them as the days are played', () => {
+    const store = createGameStore(createInitialState(1))
+    store.getState().markPostcardsShown(['ville'])
+    store.getState().advance(3)
+    expect(store.getState().game.postcardsShown).toEqual(['ville'])
+  })
+
+  it('hands each morning advance plays to the watchers, before it notifies once', () => {
+    const store = createGameStore(createInitialState(1))
+    const mornings: number[] = []
+    const notified: number[] = []
+    store.subscribe(({ game }) => notified.push(game.day))
+    const stop = store.getState().watchMornings(({ day }) => mornings.push(day))
+    store.getState().advance(4)
+    expect(mornings).toEqual([1, 2, 3, 4])
+    expect(notified).toEqual([4])
+    stop()
+    store.getState().advance(1)
+    expect(mornings).toEqual([1, 2, 3, 4])
+  })
+})

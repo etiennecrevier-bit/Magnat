@@ -96,6 +96,30 @@ describe('DockView', () => {
     expect(render()).not.toContain('dock__badge')
   })
 
+  it('pulses the buttons a postcard points at (#239)', () => {
+    const html = renderToStaticMarkup(
+      <DockView
+        items={dockItems(false)}
+        isOpen={(item) => item.id === 'finances'}
+        badges={{}}
+        pulses={['ville', 'finances']}
+        onActivate={() => {}}
+      />,
+    )
+    const pulsing = buttons(html).filter((tag) =>
+      tag.includes('dock__button--pulse'),
+    )
+    expect(pulsing).toEqual([
+      expect.stringContaining(
+        'id="dock-ville" data-tuto="dock.ville" class="dock__button dock__button--pulse"',
+      ),
+      expect.stringContaining(
+        'class="dock__button dock__button--open dock__button--pulse"',
+      ),
+    ])
+    expect(render()).not.toContain('dock__button--pulse')
+  })
+
   it('calls onActivate with the button pressed', () => {
     const onActivate = vi.fn()
     const items = dockItems(false)

@@ -1,5 +1,10 @@
 import { createStore, useStore, type StoreApi } from 'zustand'
-import type { EventContent, GrocerId, Ladder } from '../content/schema.ts'
+import type {
+  EventContent,
+  GrocerId,
+  Ladder,
+  PostcardId,
+} from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
 import {
   createInitialState,
@@ -407,6 +412,18 @@ export interface GameStoreState {
    * game the browser saved (see `keepsSave`).
    */
   startGame: (game: GameState, options?: { keepsSave?: boolean }) => void
+  /**
+   * Notes that Réal's postcards `ids` came (#239), after those already
+   * shown, each once: a memory of what the player saw, kept in the game
+   * for the save, which no rule reads and no journal entry follows.
+   */
+  markPostcardsShown: (ids: readonly PostcardId[]) => void
+  /**
+   * Hands `watcher` each morning `advance` plays, as it plays it: those it
+   * goes through before it notifies once, on the last, as well. Returns a
+   * function that stops it.
+   */
+  watchMornings: (watcher: (game: GameState) => void) => () => void
 }
 
 export type GameStore = StoreApi<GameStoreState>
@@ -588,6 +605,7 @@ export function createGameStore(
   events: EventContent = EVENTS,
   weeklyReport: WeeklyReportOptions | null = null,
 ): GameStore {
+  const mornings = new Set<(game: GameState) => void>()
   return createStore<GameStoreState>()((set, get) => ({
     ...playing(game),
     gamesStarted: 0,
@@ -662,6 +680,7 @@ export function createGameStore(
           ENERGY,
           events,
         )
+        for (const watcher of mornings) watcher(next)
         crowned = before.dream.magnatOn === null && next.dream.magnatOn !== null
         const closed = newWeekOf(before, next)
         if (closed !== null) weekReports = keepWeekReport(weekReports, closed)
@@ -946,6 +965,23 @@ export function createGameStore(
         ...playing(next, options?.keepsSave ?? false),
         gamesStarted: get().gamesStarted + 1,
       }),
+    markPostcardsShown: (ids) => {
+      const { game: current } = get()
+      const shown = current.postcardsShown ?? []
+      const added = ids.filter(
+        (id, i) => !shown.includes(id) && ids.indexOf(id) === i,
+      )
+      if (added.length === 0) return
+      set({ game: { ...current, postcardsShown: [...shown, ...added] } })
+    },
+    watchMornings: (watcher) => {
+      // Wrapped, so the same function watching twice stops each on its own.
+      const watch = (morning: GameState) => watcher(morning)
+      mornings.add(watch)
+      return () => {
+        mornings.delete(watch)
+      }
+    },
   }))
 }
 

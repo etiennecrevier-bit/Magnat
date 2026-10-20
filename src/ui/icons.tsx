@@ -105,3 +105,50 @@ export function Icon({
     </svg>
   )
 }
+
+/**
+ * The palm-tree stamp in the corner of Réal's postcards (#239): a cream
+ * stamp with a perforated edge, a sun and a palm, hidden from screen
+ * readers.
+ */
+export function PalmStamp({ size = 36 }: { readonly size?: number }) {
+  return (
+    <svg
+      className="stamp"
+      width={size}
+      height={size}
+      viewBox="0 0 44 44"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect
+        x="2"
+        y="2"
+        width="40"
+        height="40"
+        rx="2"
+        fill="#fff7e8"
+        stroke="#2b2622"
+        strokeWidth="2"
+        strokeDasharray="3 2"
+      />
+      <rect x="7" y="7" width="30" height="30" fill="#f6c48a" />
+      <circle cx="29" cy="14" r="4" fill="#f08a3e" />
+      <path d="M7 31h30v6H7z" fill="#5fa8c9" />
+      <path
+        d="M20 32c0-7 1-12 3-17"
+        fill="none"
+        stroke="#6b4a2b"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M23 15c-3-3-8-3-10 0M23 15c3-3 8-2 9 1M23 15c-1-3-4-5-7-4M23 15c2-3 6-4 8-2"
+        fill="none"
+        stroke="#2f7a3d"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
