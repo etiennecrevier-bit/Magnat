@@ -66,6 +66,7 @@ describe('WorldCanvas', () => {
       isOver: () => found,
       pickNext: () => found,
       unpick: () => {},
+      hover: () => {},
     })
     return connection
   }
@@ -115,6 +116,53 @@ describe('WorldCanvas', () => {
     )
     expect(markup).toContain(
       `<p class="world-picker__status" role="status">${saying(CARD)}</p>`,
+    )
+  })
+
+  it('outlines the spot under the pointer with its label, over the world and hidden from screen readers', () => {
+    connect(true).mark({
+      spot: {
+        left: 908,
+        top: 516,
+        width: 89,
+        height: 105,
+        label: 'Menu',
+        detail: 'prix du jour',
+        below: false,
+      },
+      legend: null,
+    })
+    const markup = renderToStaticMarkup(<WorldCanvas />)
+    expect(markup.indexOf('<div class="world-marks"')).toBe(
+      '<div class="world" aria-hidden="true"></div>'.length,
+    )
+    expect(markup).toContain(
+      '<div class="world-marks" aria-hidden="true">' +
+        '<div class="street-spot" style="left:908px;top:516px;width:89px;height:105px">' +
+        '<p class="street-spot__label">Menu<span class="street-spot__detail"> · prix du jour</span></p>' +
+        '</div></div>',
+    )
+  })
+
+  it('puts the label under the spot when it says so, and shows the legend at its foot', () => {
+    connect(true).mark({
+      spot: {
+        left: 616,
+        top: 444,
+        width: 68,
+        height: 89,
+        label: 'Vous',
+        detail: 'horaire, salaire',
+        below: true,
+      },
+      legend: { text: 'Cliquez sur la rue', at: { x: 649, y: 354 } },
+    })
+    const markup = renderToStaticMarkup(<WorldCanvas />)
+    expect(markup).toContain(
+      '<p class="street-spot__label street-spot__label--below">Vous',
+    )
+    expect(markup).toContain(
+      '<p class="street-legend" style="left:649px;top:354px">Cliquez sur la rue</p>',
     )
   })
 
@@ -217,6 +265,27 @@ describe('the panels over the street', () => {
       margin: '0',
       'border-width': '0 0 2px',
       'border-radius': '0',
+    })
+  })
+})
+
+describe("the street's marks", () => {
+  const layer = declarations(worldCss, '.world-marks')
+
+  it('sit over the world and under the panels, and let presses through', () => {
+    // After the world's layer at the same z-index, so over it; under main,
+    // which is not positioned, and the top bar.
+    expect(layer).toMatchObject({
+      position: 'fixed',
+      'z-index': '-1',
+      'pointer-events': 'none',
+    })
+  })
+
+  it('outline the spot in dashed cream, rounded 14 px', () => {
+    expect(declarations(worldCss, '.street-spot')).toMatchObject({
+      border: '3px dashed #fff7e8',
+      'border-radius': '14px',
     })
   })
 })

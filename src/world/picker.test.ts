@@ -5,6 +5,7 @@ import {
   createPicker,
   isCloseKey,
   listenForPicks,
+  NO_MARKS,
   NOBODY_THERE,
   whereLands,
   type KeyLike,
@@ -12,6 +13,7 @@ import {
   type PickPage,
   type PickTarget,
   type PointerLike,
+  type StreetMarks,
 } from './picker.ts'
 
 const CARD: CustomerCard = {
@@ -32,7 +34,22 @@ function fakeStreet(found = true) {
     isOver: () => found,
     pickNext: vi.fn<PickTarget['pickNext']>(() => found),
     unpick: vi.fn<PickTarget['unpick']>(),
+    hover: vi.fn<PickTarget['hover']>(),
   } satisfies PickTarget
+}
+
+/** The menu's spot outlined, and the legend near the truck. */
+const MARKS: StreetMarks = {
+  spot: {
+    left: 908,
+    top: 516,
+    width: 89,
+    height: 105,
+    label: 'Menu',
+    detail: 'prix du jour',
+    below: false,
+  },
+  legend: { text: 'Cliquez sur la rue', at: { x: 649, y: 354 } },
 }
 
 describe('createPicker', () => {
@@ -41,7 +58,12 @@ describe('createPicker', () => {
     picker.at({ x: 1, y: 2 })
     picker.close()
     expect(picker.over({ x: 1, y: 2 })).toBe(false)
-    expect(picker.view()).toEqual({ live: false, open: null, said: '' })
+    expect(picker.view()).toEqual({
+      live: false,
+      open: null,
+      said: '',
+      marks: NO_MARKS,
+    })
   })
 
   it('is live while a street holds it', () => {
@@ -83,6 +105,7 @@ describe('createPicker', () => {
       live: true,
       open: open(),
       said: saying(CARD),
+      marks: NO_MARKS,
     })
     expect(listener).toHaveBeenCalledTimes(1)
 
@@ -95,7 +118,12 @@ describe('createPicker', () => {
     expect(listener).toHaveBeenCalledTimes(2)
 
     connection.show(null)
-    expect(picker.view()).toEqual({ live: true, open: null, said: '' })
+    expect(picker.view()).toEqual({
+      live: true,
+      open: null,
+      said: '',
+      marks: NO_MARKS,
+    })
     expect(listener).toHaveBeenCalledTimes(3)
   })
 
@@ -106,6 +134,7 @@ describe('createPicker', () => {
       live: false,
       open: null,
       said: NOBODY_THERE,
+      marks: NO_MARKS,
     })
 
     picker.close()
@@ -115,6 +144,7 @@ describe('createPicker', () => {
       live: true,
       open: null,
       said: NOBODY_THERE,
+      marks: NO_MARKS,
     })
   })
 
@@ -130,7 +160,12 @@ describe('createPicker', () => {
     connection.show(open())
 
     expect(street.pickAt).not.toHaveBeenCalled()
-    expect(picker.view()).toEqual({ live: false, open: null, said: '' })
+    expect(picker.view()).toEqual({
+      live: false,
+      open: null,
+      said: '',
+      marks: NO_MARKS,
+    })
   })
 
   it('keeps the newer street when an older one stops late', () => {
@@ -153,6 +188,62 @@ describe('createPicker', () => {
 
     fromB.show(open(CARD, 160))
     expect(picker.view().open?.place.left).toBe(160)
+  })
+
+  it('hands where the pointer is to the street that holds it', () => {
+    const picker = createPicker()
+    const older = fakeStreet()
+    const newer = fakeStreet()
+    picker.connect(older)
+    picker.connect(newer)
+
+    picker.hover({ x: 3, y: 4 })
+    picker.hover(null)
+
+    expect(newer.hover.mock.calls).toEqual([[{ x: 3, y: 4 }], [null]])
+    expect(older.hover).not.toHaveBeenCalled()
+  })
+
+  it("shows the street's marks once, and clears them when the street goes", () => {
+    const picker = createPicker()
+    const connection = picker.connect(fakeStreet())
+    const listener = vi.fn()
+    picker.subscribe(listener)
+
+    connection.mark(MARKS)
+    expect(picker.view().marks).toEqual(MARKS)
+    expect(listener).toHaveBeenCalledOnce()
+
+    // Equal marks, made anew each frame, change nothing.
+    connection.mark(structuredClone(MARKS))
+    expect(listener).toHaveBeenCalledOnce()
+    // Closing the card keeps them.
+    picker.close()
+    expect(picker.view().marks).toEqual(MARKS)
+
+    connection.mark({ ...MARKS, spot: null })
+    expect(picker.view().marks).toEqual({ ...MARKS, spot: null })
+    expect(listener).toHaveBeenCalledTimes(2)
+
+    connection.mark({ spot: null, legend: null })
+    expect(picker.view().marks).toBe(NO_MARKS)
+    connection.mark(MARKS)
+    connection.disconnect()
+    expect(picker.view().marks).toBe(NO_MARKS)
+  })
+
+  it('ignores the marks of a street that no longer holds it', () => {
+    const picker = createPicker()
+    const fromOlder = picker.connect(fakeStreet())
+    fromOlder.mark(MARKS)
+    const fromNewer = picker.connect(fakeStreet())
+    expect(picker.view().marks).toBe(NO_MARKS)
+
+    fromOlder.mark(MARKS)
+    expect(picker.view().marks).toBe(NO_MARKS)
+    fromNewer.disconnect()
+    fromOlder.mark(MARKS)
+    expect(picker.view().marks).toEqual(MARKS)
   })
 
   it('goes back to the older street when one that started late stops', () => {
@@ -422,12 +513,42 @@ describe('listenForPicks', () => {
     expect(empty.onPointing.mock.calls).toEqual([[false]])
   })
 
+  it('tells the street where the pointer is on it, and null elsewhere', () => {
+    const { dom, fire, street } = setUp()
+    fire('pointermove', press(dom.canvas, { clientX: 70, clientY: 80 }))
+    fire('pointermove', press(dom.body))
+    fire('pointermove', press(dom.main))
+    fire('pointermove', press(dom.card))
+    expect(street.hover.mock.calls).toEqual([
+      [{ x: 70, y: 80 }],
+      [{ x: 30, y: 40 }],
+      [null],
+      [null],
+    ])
+  })
+
+  it('tells the street the pointer left once it leaves the window', () => {
+    const { dom, fire, street, onPointing } = setUp()
+    fire('pointermove', press(dom.canvas))
+    // Out of one element into another: still on the page.
+    fire('pointerout', press(dom.canvas, { relatedTarget: dom.main }))
+    expect(street.hover).toHaveBeenCalledOnce()
+
+    fire('pointerout', press(dom.canvas, { relatedTarget: null }))
+    expect(street.hover).toHaveBeenLastCalledWith(null)
+    expect(onPointing).toHaveBeenLastCalledWith(false)
+  })
+
   it('stops listening, and stops pointing', () => {
     const { dom, fire, count, street, onPointing, stop } = setUp()
-    expect(count()).toBe(3)
+    expect(count()).toBe(4)
     stop()
     expect(count()).toBe(0)
     expect(onPointing).toHaveBeenLastCalledWith(false)
+    expect(street.hover).toHaveBeenLastCalledWith(null)
+    street.hover.mockClear()
+    fire('pointermove', press(dom.canvas))
+    expect(street.hover).not.toHaveBeenCalled()
     fire('pointerdown', press(dom.body))
     expect(street.pickAt).not.toHaveBeenCalled()
   })

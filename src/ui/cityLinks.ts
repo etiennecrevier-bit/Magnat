@@ -1,6 +1,7 @@
-import type { CityLink } from '../world/cityPicker.ts'
+import type { WorldLink } from '../world/streetSpots.ts'
 import { settingsStore, type SettingsStore } from './settings.ts'
 import { gameStore, type GameStore } from './store.ts'
+import { openStreetLink } from './streetLinks.ts'
 
 // What a click on a building of the city opens (#165). The world reports
 // the link; this opens what the dock opens, so the city is only another
@@ -26,14 +27,19 @@ export function openContracts(store: GameStore = gameStore): void {
  * in place of « Ville » when it is open, as the street then comes back;
  * the « Contrats » for a grocer (see `openContracts`), with « Ville » on
  * the grocer's card when it names one. Another panel already open stays,
- * as with the dock's buttons.
+ * as with the dock's buttons. The world reports the street's spots here
+ * too, which open what their dock button does (see `openStreetLink`).
  */
 export function openCityLink(
-  link: CityLink,
+  link: WorldLink,
   store: GameStore = gameStore,
 ): void {
   const { openPanel, closePanel, setCityTab, pickGrocer, panel, game } =
     store.getState()
+  if (typeof link === 'object' && 'dock' in link) {
+    openStreetLink(link, store)
+    return
+  }
   if (typeof link === 'object') {
     openContracts(store)
     if (store.getState().panel === 'trip') pickGrocer(link.grocer)

@@ -808,6 +808,7 @@ describe("the street's art", () => {
       'lamp-post',
       'tree-1',
       'tree-2',
+      'chalkboard',
       'truck',
       'espresso-machine',
       'croissant-rack',

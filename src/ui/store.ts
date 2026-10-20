@@ -397,6 +397,23 @@ export function seedFromSearch(search: string): number | null {
   return Number.isSafeInteger(seed) ? seed : null
 }
 
+/** The games `newGame` and `newChallenge` made, as against those loaded. */
+const madeGames = new WeakSet<GameState>()
+
+function made(game: GameState): GameState {
+  madeGames.add(game)
+  return game
+}
+
+/**
+ * Whether `game` is one `newGame` or `newChallenge` made, before any day
+ * played, rather than one loaded from a save or a file. Seeds cannot tell
+ * them apart: every game a `?seed=` address starts has the same.
+ */
+export function isNewGame(game: GameState): boolean {
+  return madeGames.has(game)
+}
+
 /**
  * A new game for `profile` on the seed `search` names (see
  * `seedFromSearch`), or on a random one when it names none or one the
@@ -409,12 +426,12 @@ export function newGame(
   const seed = seedFromSearch(search)
   if (seed !== null) {
     try {
-      return createInitialState(seed, FOOD_TRUCK, profile)
+      return made(createInitialState(seed, FOOD_TRUCK, profile))
     } catch (error) {
       if (!(error instanceof RangeError)) throw error
     }
   }
-  return createInitialState(randomSeed(), FOOD_TRUCK, profile)
+  return made(createInitialState(randomSeed(), FOOD_TRUCK, profile))
 }
 
 /**
@@ -431,7 +448,7 @@ export function newChallenge(
   // only one that falls back to a random seed.
   defiById(DEFIS, defiId)
   const start = (seed: number) =>
-    startChallenge(defiId, seed, FOOD_TRUCK, DEFIS, DIFFICULTIES, profile)
+    made(startChallenge(defiId, seed, FOOD_TRUCK, DEFIS, DIFFICULTIES, profile))
   const seed = seedFromSearch(search)
   if (seed !== null) {
     try {

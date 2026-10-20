@@ -4,13 +4,23 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from 'react'
+import { settingsStore } from '../ui/settings.ts'
+import { gameStore } from '../ui/store.ts'
 import { startCity } from './city.ts'
-import { CITY, worldPicks, type CityLink } from './cityPicker.ts'
+import { CITY, worldPicks } from './cityPicker.ts'
 import { MOOD_COLORS, MOOD_WORDS, quoted } from './customerCard.ts'
 import { ASSETS } from './manifest.ts'
 import { mountWorld, worldOptions } from './mountWorld.ts'
-import { listenForPicks, PICKER, type OpenCard } from './picker.ts'
-import { startStreet } from './street.ts'
+import { openLater } from './openLater.ts'
+import {
+  listenForPicks,
+  NO_MARKS,
+  PICKER,
+  type OpenCard,
+  type StreetMarks,
+} from './picker.ts'
+import { PIXI_LOADERS, startStreet, STREET_CROWD } from './street.ts'
+import type { WorldLink } from './streetSpots.ts'
 import { startWorld } from './worldView.ts'
 import './WorldCanvas.css'
 
@@ -19,14 +29,16 @@ import './WorldCanvas.css'
  * or the city, the city while « Ville » is open (see `startWorld`). While the
  * street runs, the button that picks a customer from the keyboard, hidden
  * until it has focus, and the card of the customer the player picked, over
- * the panels. A click on a building of the city reports its link to
- * `onOpen`, which opens it; without one, as before a game starts, the
- * buildings open nothing.
+ * the panels. A click on a building of the city, or on a spot of the
+ * street, reports its link to `onOpen`, which opens it; without one, as
+ * before a game starts, nothing opens, and the street marks nothing. Over
+ * the world and under the panels, the street's marks: the spot under the
+ * pointer, outlined with its label, and the legend while it shows.
  */
 export default function WorldCanvas({
   onOpen = null,
 }: {
-  onOpen?: ((link: CityLink) => void) | null
+  onOpen?: ((link: WorldLink) => void) | null
 }) {
   const ref = useRef<HTMLDivElement>(null)
   // The world starts once; it asks for the latest at each press.
@@ -34,7 +46,7 @@ export default function WorldCanvas({
   useEffect(() => {
     opener.current = onOpen
   }, [onOpen])
-  const { live, open, said } = useSyncExternalStore(
+  const { live, open, said, marks } = useSyncExternalStore(
     PICKER.subscribe,
     PICKER.view,
     PICKER.view,
@@ -51,7 +63,17 @@ export default function WorldCanvas({
     )
     const unmount = mountWorld(world, worldOptions(window), (app) =>
       startWorld(app, {
-        street: (scene) => startStreet(scene),
+        street: (scene) =>
+          startStreet(
+            scene,
+            gameStore,
+            PIXI_LOADERS,
+            ASSETS,
+            STREET_CROWD,
+            PICKER,
+            settingsStore,
+            () => openLater(opener),
+          ),
         city: (scene) => startCity(scene, { onOpen: () => openLater(opener) }),
       }),
     )
@@ -70,6 +92,7 @@ export default function WorldCanvas({
   return (
     <>
       <div className="world" aria-hidden="true" ref={ref} />
+      {marks !== NO_MARKS && <StreetMarksView marks={marks} />}
       {live && (
         <div className="world-picker" data-world-control="">
           <button
@@ -90,17 +113,46 @@ export default function WorldCanvas({
 }
 
 /**
- * Opens a building's link once the press that clicked it is over: the
- * press moves the focus after its listeners run, so a panel opened in one
- * would lose the focus it gives « Fermer ». Null while nothing opens links.
+ * The street's marks, over the world and under the panels. Presses go
+ * through them to the street. Screen readers skip them, as they skip the
+ * world: the dock reaches every panel a spot opens.
  */
-function openLater(opener: {
-  readonly current: ((link: CityLink) => void) | null
-}): ((link: CityLink) => void) | null {
-  if (opener.current === null) return null
-  return (link) => {
-    window.setTimeout(() => opener.current?.(link), 0)
-  }
+function StreetMarksView({ marks }: { marks: StreetMarks }) {
+  const { spot, legend } = marks
+  return (
+    <div className="world-marks" aria-hidden="true">
+      {spot !== null && (
+        <div
+          className="street-spot"
+          style={{
+            left: spot.left,
+            top: spot.top,
+            width: spot.width,
+            height: spot.height,
+          }}
+        >
+          <p
+            className={
+              spot.below
+                ? 'street-spot__label street-spot__label--below'
+                : 'street-spot__label'
+            }
+          >
+            {spot.label}
+            <span className="street-spot__detail">{` · ${spot.detail}`}</span>
+          </p>
+        </div>
+      )}
+      {legend !== null && (
+        <p
+          className="street-legend"
+          style={{ left: legend.at.x, top: legend.at.y }}
+        >
+          {legend.text}
+        </p>
+      )}
+    </div>
+  )
 }
 
 /**

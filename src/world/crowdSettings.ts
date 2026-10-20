@@ -79,6 +79,19 @@ export interface CrowdSettings {
     readonly hair: string
   }
   /**
+   * The employee at the truck (#208), who stands still on the sidewalk on
+   * open days while one works at it: where their feet are, which way they
+   * face, and their colours. The staff's shirt is the city's, mustard.
+   */
+  readonly employee: {
+    readonly x: number
+    readonly feetY: number
+    readonly facing: 1 | -1
+    readonly height: number
+    readonly skin: string
+    readonly hair: string
+  }
+  /**
    * How the owner's fatigue shows: the avatar's slower reach, yawns, slump
    * and dark circles, and the spill a botched unit leaves on the counter.
    */
@@ -246,6 +259,14 @@ export const CROWD: CrowdSettings = {
   edgeMargin: 60,
   bob: { height: 3, stride: 28 },
   avatar: { x: 730, feetY: 638, height: 130, skin: '#C98E62', hair: '#3B2A20' },
+  employee: {
+    x: 1166,
+    feetY: 690,
+    facing: -1,
+    height: 118,
+    skin: '#7C4B2C',
+    hair: '#2B2622',
+  },
   fatigue: AVATAR_FATIGUE,
   fans: ASSETS.fans,
   tally: { x: 850, y: 176, width: 330, height: 96, fontSize: 30 },

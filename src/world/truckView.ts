@@ -3,6 +3,7 @@ import type {
   EventEffect,
   ProductId,
   RestockRule,
+  StaffRoleId,
   StreetModifierKind,
 } from '../content/schema.ts'
 import { toCalendar } from '../engine/clock.ts'
@@ -49,6 +50,17 @@ export function opensToday(game: GameState): boolean {
     !streetOn(modifiersToday(game), game.day).closed
   )
 }
+
+/**
+ * The employees who serve at the truck on day `game.day` (#208), as the
+ * city counts them, open or not.
+ */
+export function staffAtTruck(game: GameState): number {
+  return game.decisions.staff.filter(({ role }) => role === AT_TRUCK).length
+}
+
+/** The role of the employees who serve at the truck. */
+const AT_TRUCK: StaffRoleId = 'camion'
 
 /**
  * The changes to the street in effect on day `game.day`, in the order the

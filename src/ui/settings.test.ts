@@ -47,6 +47,7 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
+      streetLegend: 'unseen',
     })
     expect(readSettings(null)).toEqual(DEFAULT_SETTINGS)
     expect(readSettings(memory())).toEqual(DEFAULT_SETTINGS)
@@ -63,6 +64,7 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
+      streetLegend: 'unseen',
     })
     expect(createSettingsStore(storage).getState().visualEffects).toBe('simple')
   })
@@ -76,6 +78,7 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
+      streetLegend: 'unseen',
     })
     expect(createSettingsStore(storage).getState().openReportEveryWeek).toBe(
       true,
@@ -91,6 +94,7 @@ describe('the settings', () => {
       reportCadence: 'month',
       bestMedals: {},
       screensFolded: false,
+      streetLegend: 'unseen',
     })
     expect(createSettingsStore(storage).getState().reportCadence).toBe('month')
   })
@@ -105,6 +109,7 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: true,
+      streetLegend: 'unseen',
     })
     const reloaded = createSettingsStore(storage)
     expect(reloaded.getState().screensFolded).toBe(true)
@@ -116,6 +121,7 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
+      streetLegend: 'unseen',
     })
     expect(createSettingsStore(storage).getState().screensFolded).toBe(false)
   })
@@ -148,6 +154,22 @@ describe('the settings', () => {
     })
   })
 
+  it("keep the street's legend in this browser: the first game's seed, then done", () => {
+    const storage = memory()
+    expect(createSettingsStore(storage).getState().streetLegend).toBe('unseen')
+    createSettingsStore(storage).getState().setStreetLegend({ seed: 42 })
+    expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toMatchObject({
+      streetLegend: { seed: 42 },
+    })
+    const reloaded = createSettingsStore(storage)
+    expect(reloaded.getState().streetLegend).toEqual({ seed: 42 })
+    reloaded.getState().setVisualEffects('simple')
+    expect(readSettings(storage).streetLegend).toEqual({ seed: 42 })
+
+    reloaded.getState().setStreetLegend('done')
+    expect(createSettingsStore(storage).getState().streetLegend).toBe('done')
+  })
+
   it('tell those listening when the screens fold', () => {
     const store = createSettingsStore(memory())
     const heard: boolean[] = []
@@ -167,6 +189,7 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
+      streetLegend: 'unseen',
     })
 
     createSettingsStore(storage).getState().setVisualEffects('full')
@@ -176,6 +199,7 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
+      streetLegend: 'unseen',
     })
     createSettingsStore(storage).getState().setOpenReportEveryWeek(false)
     expect(readSettings(storage)).toEqual({
@@ -184,6 +208,7 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
+      streetLegend: 'unseen',
     })
     createSettingsStore(storage).getState().setReportCadence('month')
     createSettingsStore(storage).getState().setVisualEffects('simple')
@@ -193,6 +218,7 @@ describe('the settings', () => {
       reportCadence: 'month',
       bestMedals: {},
       screensFolded: false,
+      streetLegend: 'unseen',
     })
   })
 
@@ -206,6 +232,7 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: {},
       screensFolded: false,
+      streetLegend: 'unseen',
     })
   })
 
@@ -218,6 +245,7 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: false,
+        streetLegend: 'unseen',
       },
     ],
     [
@@ -228,6 +256,7 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: false,
+        streetLegend: 'unseen',
       },
     ],
     [
@@ -238,6 +267,7 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: false,
+        streetLegend: 'unseen',
       },
     ],
     [
@@ -248,6 +278,7 @@ describe('the settings', () => {
         reportCadence: 'month',
         bestMedals: {},
         screensFolded: false,
+        streetLegend: 'unseen',
       },
     ],
     [
@@ -258,6 +289,7 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: false,
+        streetLegend: 'unseen',
       },
     ],
     [
@@ -268,6 +300,29 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: true,
+        streetLegend: 'unseen',
+      },
+    ],
+    [
+      { screensFolded: true, streetLegend: { seed: 'quarante-deux' } },
+      {
+        visualEffects: 'full',
+        openReportEveryWeek: false,
+        reportCadence: 'week',
+        bestMedals: {},
+        screensFolded: true,
+        streetLegend: 'unseen',
+      },
+    ],
+    [
+      { screensFolded: true, streetLegend: 'vu' },
+      {
+        visualEffects: 'full',
+        openReportEveryWeek: false,
+        reportCadence: 'week',
+        bestMedals: {},
+        screensFolded: true,
+        streetLegend: 'unseen',
       },
     ],
   ])('keep a valid setting beside an invalid one: %j', (stored, settings) => {
@@ -312,6 +367,7 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: {},
         screensFolded: false,
+        streetLegend: 'unseen',
       }),
     ).toBe(false)
     const store = createSettingsStore(BLOCKED)
@@ -338,6 +394,7 @@ describe('the settings', () => {
       reportCadence: 'week',
       bestMedals: { travauxSaintDenis: 'bronze', zeroGaspillage: 'argent' },
       screensFolded: false,
+      streetLegend: 'unseen',
     })
     expect(createSettingsStore(storage).getState().bestMedals).toEqual({
       travauxSaintDenis: 'bronze',
@@ -433,6 +490,7 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: { travauxSaintDenis: 'or' },
         screensFolded: false,
+        streetLegend: 'unseen',
       })
       expect(a.getState().bestMedals).toEqual({ travauxSaintDenis: 'or' })
     })
@@ -499,6 +557,7 @@ describe('the settings', () => {
         reportCadence: 'week',
         bestMedals: kept,
         screensFolded: false,
+        streetLegend: 'unseen',
       })
     },
   )

@@ -25,6 +25,7 @@ import {
   createGameStore,
   FIRST_FINANCE_SECTIONS,
   gameStore,
+  isNewGame,
   newChallenge,
   newGame,
   seedFromSearch,
@@ -1608,6 +1609,18 @@ function playedOut(defiId: string, seed: number): GameState {
   while (game.challenge?.status === 'enCours') game = tick(game)
   return game
 }
+
+describe('isNewGame', () => {
+  it('knows the games newGame and newChallenge made from loaded ones of the same seed', () => {
+    const made = newGame('?seed=42')
+    const defi = newChallenge('?seed=42', 'travauxSaintDenis')
+    expect(isNewGame(made)).toBe(true)
+    expect(isNewGame(defi)).toBe(true)
+    expect(isNewGame(deserialize(serialize(made)))).toBe(false)
+    expect(isNewGame(createInitialState(42))).toBe(false)
+    expect(isNewGame(tick(made))).toBe(false)
+  })
+})
 
 describe('newChallenge', () => {
   it('starts the Défi on the seed the page names, without drawing one', () => {

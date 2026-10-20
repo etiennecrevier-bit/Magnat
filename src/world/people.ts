@@ -755,6 +755,43 @@ export interface AvatarArt {
   readonly yawn: Container
 }
 
+/**
+ * Draws an employee who serves at the truck (#208), feet at 0, 0, as a
+ * customer is drawn: in the staff's mustard shirt, as the city draws them,
+ * with a cream apron like the owner's, carrying nothing. Turned to `facing`
+ * by mirroring, lit on the side that shows on the screen's left.
+ */
+export function drawEmployee(
+  look: CrowdSettings['employee'],
+  style: PeopleStyle,
+  trousers: string,
+): Container {
+  const u = look.height / REFERENCE
+  const root = new Container({ label: 'employee' })
+  const sun: Side = look.facing === 1 ? 'left' : 'right'
+  const shirt = style.palette.mustard
+  const apron = new Graphics({ label: 'apron' })
+    .roundRect(-11 * u, -72 * u, 22 * u, 40 * u, 4 * u)
+    .fill(style.palette.cream)
+  drawPerson(
+    root,
+    {
+      height: look.height,
+      skin: look.skin,
+      clothes: shirt,
+      sleeves: shirt,
+      trousers,
+      hair: look.hair,
+      headwear: 'hair',
+    },
+    style,
+    sun,
+    { behind: [], over: [apron], held: {} },
+  )
+  root.scale.x = look.facing
+  return root
+}
+
 /** How tall the reference draws the owner, from the feet the counter hides. */
 const OWNER = 130
 

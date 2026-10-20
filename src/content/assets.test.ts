@@ -258,6 +258,32 @@ describe('assets.json', () => {
     piece(raw, 'counter').image = 'counter-2.webp'
     expect(() => loadAssetManifest(raw)).not.toThrow()
   })
+
+  it('stands the chalkboard on the sidewalk on open days, behind the road sign', () => {
+    const { pieces } = loadAssetManifest()
+    const chalkboard = pieces.find(({ id }) => id === 'chalkboard')
+    expect(chalkboard).toMatchObject({
+      layer: 'furniture',
+      image: 'street/chalkboard.svg',
+      shows: 'open',
+    })
+    const order = pieces.map(({ id }) => id)
+    expect(order.indexOf('chalkboard')).toBeLessThan(order.indexOf('road-sign'))
+  })
+
+  it('gives each spot a box, what it opens and its label in French', () => {
+    const { spots, streetLegend } = loadAssetManifest()
+    expect(spots.map(({ id, piece, shows }) => ({ id, piece, shows }))).toEqual(
+      [
+        { id: 'menu', piece: 'chalkboard', shows: undefined },
+        { id: 'stocks', piece: 'croissant-rack', shows: undefined },
+        { id: 'owner', piece: undefined, shows: 'open' },
+        { id: 'employee', piece: undefined, shows: undefined },
+        { id: 'city', piece: 'far', shows: undefined },
+      ],
+    )
+    expect(streetLegend).toMatchObject({ days: 3, text: 'Cliquez sur la rue' })
+  })
 })
 
 describe('loadAssetManifest', () => {
@@ -278,6 +304,58 @@ describe('loadAssetManifest', () => {
       piece(raw, 'tree-2').id = 'tree-1'
     },
     /duplicate piece id: tree-1/,
+  )
+  rejects(
+    'a spot following a piece the manifest lacks',
+    (raw) => {
+      ;(raw.spots as Record<string, unknown>[])[0]!.piece = 'ardoise'
+    },
+    /unknown piece: ardoise/,
+  )
+  rejects(
+    'a duplicate spot id',
+    (raw) => {
+      ;(raw.spots as Record<string, unknown>[])[1]!.id = 'menu'
+    },
+    /duplicate spot id: menu/,
+  )
+  rejects(
+    'a spot with an unknown key',
+    (raw) => {
+      ;(raw.spots as Record<string, unknown>[])[0]!.hover = true
+    },
+    /spots\[0\]/,
+  )
+  rejects(
+    'a spot opening a tab of a panel other than « Le camion »',
+    (raw) => {
+      ;(raw.spots as Record<string, unknown>[])[3]!.opens = {
+        dock: 'ville',
+        tab: 'menu',
+      }
+    },
+    /spots\[3\]\.opens/,
+  )
+  rejects(
+    'a spot following both a piece and its own days',
+    (raw) => {
+      ;(raw.spots as Record<string, unknown>[])[0]!.shows = 'open'
+    },
+    /a spot follows its piece, its own shows or the staff, one only/,
+  )
+  rejects(
+    'a spot following both the staff and its own days',
+    (raw) => {
+      ;(raw.spots as Record<string, unknown>[])[3]!.shows = 'open'
+    },
+    /a spot follows its piece, its own shows or the staff, one only/,
+  )
+  rejects(
+    'a legend shown no day',
+    (raw) => {
+      ;(raw.streetLegend as Record<string, unknown>).days = 0
+    },
+    /streetLegend\.days/,
   )
   rejects(
     'a duplicate layer',
