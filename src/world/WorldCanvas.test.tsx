@@ -80,6 +80,12 @@ describe('WorldCanvas', () => {
     )
   })
 
+  it('renders the same layer with a way to open the city’s links', () => {
+    expect(renderToStaticMarkup(<WorldCanvas onOpen={() => {}} />)).toBe(
+      '<div class="world" aria-hidden="true"></div>',
+    )
+  })
+
   it('adds the picker while a street runs, outside the hidden layer', () => {
     connect(true)
     expect(renderToStaticMarkup(<WorldCanvas />)).toBe(

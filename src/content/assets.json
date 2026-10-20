@@ -21,7 +21,8 @@
     "glass": "#9CC7DA",
     "steel": "#B9C1C6",
     "coneOrange": "#E2701F",
-    "heatSky": "#F3D9A4"
+    "heatSky": "#F3D9A4",
+    "lamplight": "#F6C76B"
   },
   "outlineWidth": 3,
   "steamPuff": { "periodMs": 1600, "rise": 26 },
@@ -455,5 +456,535 @@
       "height": 54,
       "color": "ink"
     }
-  ]
+  ],
+  "city": {
+    "_note": "The city (#165): the block of the Plateau seen at an angle, in 2:1 isometric, lit by the street's `light` and drawn in its `palette`. Positions and sizes are logical pixels of the `designSize` design, which the world fits to the window as it fits the street. A box (the ground, the park, the buildings and the truck) is `x`, `y`, `width` and `height` on screen; `depth` is how wide its lit wall is across, from its left corner to its front corner, the one nearest the viewer, and its shaded wall takes the rest of `width`; its walls stand `height` − `width` / 2 tall, so the ground and the streets, flat, are half as tall as wide. A piece on a wall (`on`: the box listed before it whose lit wall it is painted on) is the top of its left edge at `x`, `y`, `width` across and `height` tall, and runs down the wall by half its width, as the wall does; it is drawn with its box. In the layers under `light.shadowLayer`, the pieces are drawn in the order listed; in those over it, the boxes are drawn from the farthest to the nearest, the people walking among them. `image` replaces a placeholder as on the street, stretched to the piece's size. `shows` keeps a piece to some times: `truckOpen` or `truckClosed`, the minute the truck serves or not, on a closed day or while the owner is away with nobody at the truck; `bakeryRuns` or `bakeryForRent`, the days the bakery runs, through its notice, or not; `{ \"contract\": <grocer> }` while that grocer's contract runs. `opens` is what a click on it opens: `{ \"trip\": <place> }` « Aller à… », `fournil` the « Fournil » of « Gérer le camion », `contracts` the « Contrats » screen; nothing opens a trip in a Défi. `place` is the place in town it is, one building each, and `grocer` the grocer whose shop it is, one each. `text` is a sign's or a building's board. `routes` are each place's way from `truck.counter` to its door; `deliveries` the van's way out from where it starts (`from`: the bakery when it runs, or else the truck) and back, its stop at each grocer, when it drives as shares of the day replayed, and its size; `truck.window` where the owner, then each employee at the truck, serves in the hatch; `truck.line` where the line stands, `max` at most, each customer for `minutes` of the day after they came; `bakers` where the bakers stand while the bakery runs, and `deliveries.deliverers` where the deliverers stand by the van parked, each one a `step` after the one before. `figure` sizes and colours the tiny people, `path` the dashes of the day's trip, and `label` the « En route vers… » over its door, `rise` above it. The `light.shadowLayer` holds no piece.",
+    "designSize": { "width": 1440, "height": 900 },
+    "layers": ["ground", "shadows", "block"],
+    "pieces": [
+      {
+        "id": "ground",
+        "kind": "ground",
+        "layer": "ground",
+        "x": -1800,
+        "y": -910,
+        "width": 5320,
+        "height": 2660,
+        "depth": 2660,
+        "color": "sidewalk"
+      },
+      {
+        "id": "avenue",
+        "kind": "ground",
+        "layer": "ground",
+        "x": -584,
+        "y": -226,
+        "width": 2736,
+        "height": 1368,
+        "depth": 2660,
+        "color": "asphalt"
+      },
+      {
+        "id": "cross-street",
+        "kind": "ground",
+        "layer": "ground",
+        "x": -371.2,
+        "y": -195.6,
+        "width": 2728.4,
+        "height": 1364.2,
+        "depth": 68.4,
+        "color": "asphalt"
+      },
+      {
+        "id": "back-lane",
+        "kind": "ground",
+        "layer": "ground",
+        "x": -234.4,
+        "y": -389.4,
+        "width": 2713.2,
+        "height": 1356.6,
+        "depth": 2660,
+        "color": "asphalt"
+      },
+      {
+        "id": "west-street",
+        "kind": "ground",
+        "layer": "ground",
+        "x": -796.8,
+        "y": -408.4,
+        "width": 2720.8,
+        "height": 1360.4,
+        "depth": 60.8,
+        "color": "asphalt"
+      },
+      {
+        "id": "south-street",
+        "kind": "ground",
+        "layer": "ground",
+        "x": -827.2,
+        "y": -96.8,
+        "width": 2720.8,
+        "height": 1360.4,
+        "depth": 2660,
+        "color": "asphalt"
+      },
+      {
+        "id": "park",
+        "kind": "park",
+        "layer": "ground",
+        "x": 761.2,
+        "y": 545.6,
+        "width": 524.4,
+        "height": 296.2,
+        "depth": 380,
+        "color": "foliage"
+      },
+      {
+        "id": "triplex-north-1",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 677.6,
+        "y": 99.2,
+        "width": 182.4,
+        "height": 199.2,
+        "depth": 76,
+        "color": "brickDark"
+      },
+      {
+        "id": "triplex-north-2",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 761.2,
+        "y": 147,
+        "width": 190,
+        "height": 197,
+        "depth": 83.6,
+        "color": "brickRed"
+      },
+      {
+        "id": "silo",
+        "kind": "silo",
+        "layer": "block",
+        "x": 886.6,
+        "y": 110,
+        "width": 98.8,
+        "height": 245.4,
+        "depth": 49.4,
+        "color": "steel",
+        "opens": { "trip": "meunerie" }
+      },
+      {
+        "id": "mill",
+        "kind": "mill",
+        "layer": "block",
+        "x": 913.2,
+        "y": 178.8,
+        "width": 205.2,
+        "height": 252.6,
+        "depth": 106.4,
+        "color": "brickLight",
+        "text": "Meunerie",
+        "opens": { "trip": "meunerie" },
+        "place": "meunerie"
+      },
+      {
+        "id": "triplex-north-3",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 586.4,
+        "y": 164,
+        "width": 152,
+        "height": 180,
+        "depth": 76,
+        "color": "brickLight"
+      },
+      {
+        "id": "triplex-north-4",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 670,
+        "y": 211.8,
+        "width": 144.4,
+        "height": 170.2,
+        "depth": 68.4,
+        "color": "brickDark"
+      },
+      {
+        "id": "permits-office",
+        "kind": "building",
+        "layer": "block",
+        "x": 746,
+        "y": 235.8,
+        "width": 159.6,
+        "height": 191.8,
+        "depth": 83.6,
+        "color": "sidewalk",
+        "text": "Permis",
+        "opens": { "trip": "bureauPermis" },
+        "place": "bureauPermis"
+      },
+      {
+        "id": "caisse",
+        "kind": "building",
+        "layer": "block",
+        "x": 837.2,
+        "y": 297.4,
+        "width": 167.2,
+        "height": 179.6,
+        "depth": 91.2,
+        "color": "brickRed",
+        "text": "Caisse populaire",
+        "opens": { "trip": "caisse" },
+        "place": "caisse"
+      },
+      {
+        "id": "triplex-east-1",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 1103.2,
+        "y": 311.8,
+        "width": 197.6,
+        "height": 210.8,
+        "depth": 83.6,
+        "color": "brickDark"
+      },
+      {
+        "id": "triplex-east-2",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 1194.4,
+        "y": 365.4,
+        "width": 197.6,
+        "height": 202.8,
+        "depth": 83.6,
+        "color": "brickRed"
+      },
+      {
+        "id": "triplex-east-3",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 1285.6,
+        "y": 405,
+        "width": 197.6,
+        "height": 208.8,
+        "depth": 83.6,
+        "color": "brickLight"
+      },
+      {
+        "id": "triplex-east-4",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 1376.8,
+        "y": 460.6,
+        "width": 197.6,
+        "height": 198.8,
+        "depth": 83.6,
+        "color": "brickRed"
+      },
+      {
+        "id": "bakery",
+        "kind": "bakery",
+        "layer": "block",
+        "x": 1019.6,
+        "y": 404.4,
+        "width": 144.4,
+        "height": 156.2,
+        "depth": 76,
+        "color": "brickLight",
+        "opens": "fournil",
+        "place": "fournil"
+      },
+      {
+        "id": "chez-normand",
+        "kind": "grocer",
+        "layer": "block",
+        "x": 1103.2,
+        "y": 458.2,
+        "width": 136.8,
+        "height": 140.4,
+        "depth": 68.4,
+        "color": "brickRed",
+        "trim": "dangerRed",
+        "opens": "contracts",
+        "grocer": "chezNormand"
+      },
+      {
+        "id": "marche-bio-logique",
+        "kind": "grocer",
+        "layer": "block",
+        "x": 1179.2,
+        "y": 490.2,
+        "width": 144.4,
+        "height": 150.2,
+        "depth": 76,
+        "color": "brickDark",
+        "trim": "moneyGreen",
+        "opens": "contracts",
+        "grocer": "marcheBioLogique"
+      },
+      {
+        "id": "depanneur-24-24",
+        "kind": "grocer",
+        "layer": "block",
+        "x": 1262.8,
+        "y": 544,
+        "width": 121.6,
+        "height": 126.8,
+        "depth": 53.2,
+        "color": "brickLight",
+        "trim": "playerBlue",
+        "opens": "contracts",
+        "grocer": "depanneur2424"
+      },
+      {
+        "id": "triplex-west-1",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 373.6,
+        "y": 259,
+        "width": 174.8,
+        "height": 191.4,
+        "depth": 76,
+        "color": "brickRed"
+      },
+      {
+        "id": "triplex-west-2",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 457.2,
+        "y": 294.8,
+        "width": 182.4,
+        "height": 201.2,
+        "depth": 83.6,
+        "color": "brickDark"
+      },
+      {
+        "id": "triplex-west-3",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 548.4,
+        "y": 350.4,
+        "width": 174.8,
+        "height": 187.4,
+        "depth": 76,
+        "color": "brickLight"
+      },
+      {
+        "id": "triplex-west-4",
+        "kind": "triplex",
+        "layer": "block",
+        "x": 632,
+        "y": 386.2,
+        "width": 182.4,
+        "height": 197.2,
+        "depth": 83.6,
+        "color": "brickRed"
+      },
+      {
+        "id": "truck",
+        "kind": "truck",
+        "layer": "block",
+        "x": 932.2,
+        "y": 513.2,
+        "width": 125.4,
+        "height": 98.7,
+        "depth": 91.2,
+        "color": "cream",
+        "trim": "mustard"
+      },
+      {
+        "id": "truck-hatch",
+        "kind": "hatch",
+        "layer": "block",
+        "on": "truck",
+        "x": 955,
+        "y": 547.7,
+        "width": 53.2,
+        "height": 18,
+        "color": "mustard",
+        "shows": "truckOpen"
+      },
+      {
+        "id": "truck-shutter",
+        "kind": "shutter",
+        "layer": "block",
+        "on": "truck",
+        "x": 955,
+        "y": 547.7,
+        "width": 53.2,
+        "height": 18,
+        "color": "steel",
+        "shows": "truckClosed"
+      },
+      {
+        "id": "bakery-for-rent",
+        "kind": "sign",
+        "layer": "block",
+        "on": "bakery",
+        "x": 1027.2,
+        "y": 454.4,
+        "width": 53.2,
+        "height": 14,
+        "color": "cream",
+        "text": "À louer",
+        "shows": "bakeryForRent"
+      },
+      {
+        "id": "bakery-sign",
+        "kind": "sign",
+        "layer": "block",
+        "on": "bakery",
+        "x": 1027.2,
+        "y": 454.4,
+        "width": 53.2,
+        "height": 14,
+        "color": "mustard",
+        "text": "Fournil",
+        "shows": "bakeryRuns"
+      },
+      {
+        "id": "bakery-lamplight",
+        "kind": "windows",
+        "layer": "block",
+        "on": "bakery",
+        "x": 1065.2,
+        "y": 501.4,
+        "width": 22.8,
+        "height": 30,
+        "color": "lamplight",
+        "shows": "bakeryRuns"
+      },
+      {
+        "id": "chez-normand-contract",
+        "kind": "contractSign",
+        "layer": "block",
+        "on": "chez-normand",
+        "x": 1123.7,
+        "y": 554.7,
+        "width": 19,
+        "height": 16,
+        "color": "mustard",
+        "shows": { "contract": "chezNormand" }
+      },
+      {
+        "id": "marche-bio-logique-contract",
+        "kind": "contractSign",
+        "layer": "block",
+        "on": "marche-bio-logique",
+        "x": 1202,
+        "y": 593.8,
+        "width": 19,
+        "height": 16,
+        "color": "mustard",
+        "shows": { "contract": "marcheBioLogique" }
+      },
+      {
+        "id": "depanneur-24-24-contract",
+        "kind": "contractSign",
+        "layer": "block",
+        "on": "depanneur-24-24",
+        "x": 1278.8,
+        "y": 632.2,
+        "width": 19,
+        "height": 16,
+        "color": "mustard",
+        "shows": { "contract": "depanneur2424" }
+      }
+    ],
+    "truck": {
+      "counter": [932.2, 581.5],
+      "window": { "first": [968.3, 584.3], "step": [13.7, 6.8] },
+      "line": {
+        "first": [958.8, 602.4],
+        "step": [-16, -8],
+        "max": 6,
+        "minutes": 20
+      }
+    },
+    "routes": {
+      "caisse": [
+        [932.2, 581.5],
+        [907.5, 569.2],
+        [1000.6, 522.6],
+        [888.5, 466.6],
+        [897.2, 462.2]
+      ],
+      "meunerie": [
+        [932.2, 581.5],
+        [907.5, 569.2],
+        [1000.6, 522.6],
+        [926.5, 485.6],
+        [1088, 404.8],
+        [1081.2, 401.4]
+      ],
+      "bureauPermis": [
+        [932.2, 581.5],
+        [907.5, 569.2],
+        [1000.6, 522.6],
+        [797.3, 421],
+        [806, 416.6]
+      ],
+      "fournil": [
+        [932.2, 581.5],
+        [907.5, 569.2],
+        [1000.6, 522.6],
+        [1040.5, 542.6],
+        [1049.2, 538.2]
+      ]
+    },
+    "deliveries": {
+      "from": {
+        "bakery": [[1027.2, 560.6]],
+        "truck": [
+          [1070.9, 618.6],
+          [1126, 610]
+        ]
+      },
+      "deliverers": {
+        "first": { "bakery": [1103.2, 573.9], "truck": [1042.4, 632.8] },
+        "step": [13.3, 6.65]
+      },
+      "stops": {
+        "chezNormand": [1103.2, 598.6],
+        "marcheBioLogique": [1183, 638.5],
+        "depanneur2424": [1255.2, 674.6]
+      },
+      "window": { "from": 0.05, "to": 0.45 },
+      "van": {
+        "width": 68.4,
+        "height": 56.2,
+        "depth": 45.6,
+        "color": "cream",
+        "stripe": "moneyGreen"
+      }
+    },
+    "bakers": { "first": [1065.2, 553], "step": [13.3, 6.65] },
+    "figure": {
+      "height": 22,
+      "width": 9,
+      "shirt": "playerBlue",
+      "apron": "cream",
+      "staffShirt": "mustard",
+      "coats": [
+        "moneyGreen",
+        "brickDark",
+        "steel",
+        "wood",
+        "playerBlue",
+        "coneOrange"
+      ],
+      "skins": ["#F1C7A5", "#C98E62", "#8D5A3B", "#5C3A26"],
+      "hair": "#3B2A20"
+    },
+    "path": { "dash": 10, "gap": 7, "width": 3, "color": "playerBlue" },
+    "label": {
+      "fontSize": 15,
+      "paddingX": 9,
+      "paddingY": 4,
+      "rise": 44,
+      "color": "ink",
+      "background": "cream"
+    },
+    "sign": { "fontSize": 11, "color": "ink" }
+  }
 }

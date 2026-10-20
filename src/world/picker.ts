@@ -229,17 +229,18 @@ export interface PickPage {
 
 /**
  * Listens on `page` for the player picking customers on the street drawn in
- * `world`. A primary press on the street picks the customer there, or
- * closes the card when no one is; a press anywhere else on the page closes
- * it; a press on the world's own controls does neither. Escape closes it
- * (see `isCloseKey`). Moving over a customer calls `onPointing(true)`, and
- * anywhere else `onPointing(false)`. Returns the function that stops
+ * `world`, or the buildings of the city (see `worldPicks`). A primary press
+ * on the world picks the customer there, or closes the card when no one is;
+ * a press anywhere else on the page closes it; a press on the world's own
+ * controls does neither. Escape closes it (see `isCloseKey`). Moving over a
+ * customer, or a building that opens something, calls `onPointing(true)`,
+ * and anywhere else `onPointing(false)`. Returns the function that stops
  * listening.
  */
 export function listenForPicks(
   page: PickPage,
   world: unknown,
-  picker: Picker,
+  picker: Pick<Picker, 'at' | 'over' | 'close'>,
   onPointing: (pointing: boolean) => void,
 ): () => void {
   const pointAt = (event: PointerLike) => ({

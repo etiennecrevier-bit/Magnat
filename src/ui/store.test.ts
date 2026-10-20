@@ -540,6 +540,64 @@ describe('openPanel and closePanel', () => {
   })
 })
 
+describe('a panel opened at a section', () => {
+  it('opens « Gérer le camion » at « Fournil », then forgets it on close', () => {
+    const store = createGameStore()
+    expect(store.getState().panelSection).toBeNull()
+    store.getState().openPanel('manage', 'bakery')
+    expect(store.getState()).toMatchObject({
+      panel: 'manage',
+      panelSection: 'bakery',
+      speed: PAUSED,
+    })
+    store.getState().closePanel()
+    expect(store.getState().panelSection).toBeNull()
+    store.getState().openPanel('manage')
+    expect(store.getState().panelSection).toBeNull()
+  })
+
+  it('keeps the section of the panel open when another is asked for', () => {
+    const store = createGameStore()
+    store.getState().openPanel('manage', 'bakery')
+    store.getState().openPanel('trip')
+    expect(store.getState()).toMatchObject({
+      panel: 'manage',
+      panelSection: 'bakery',
+    })
+  })
+
+  it('forgets it when the event card takes the panel’s place', () => {
+    const game = createInitialState(1)
+    const store = createGameStore(game)
+    store.getState().openPanel('manage', 'bakery')
+    store.setState({
+      game: {
+        ...game,
+        events: {
+          ...game.events,
+          pending: { event: 'essai', followUp: false },
+        },
+      },
+    })
+    store.getState().closePanel()
+    expect(store.getState()).toMatchObject({
+      panel: 'event',
+      panelSection: null,
+    })
+  })
+})
+
+describe('showScreen', () => {
+  it('shows a screen, which stays as a new game starts', () => {
+    const store = createGameStore()
+    expect(store.getState().screen).toBe('today')
+    store.getState().showScreen('contracts')
+    expect(store.getState().screen).toBe('contracts')
+    store.getState().startGame(createInitialState(2))
+    expect(store.getState().screen).toBe('contracts')
+  })
+})
+
 describe('decide', () => {
   it('leaves the change waiting for the next morning', () => {
     const start = createInitialState(1)

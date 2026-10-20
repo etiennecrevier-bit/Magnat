@@ -24,7 +24,7 @@ const settle = () => new Promise<void>((done) => setTimeout(done, 0))
 /** A fake Pixi app whose `init()` and drawing the test settles. */
 function createFakeWorld() {
   const init = deferred<void>()
-  const started = deferred<() => void>()
+  const started = deferred<() => void | Promise<void>>()
   const calls: string[] = []
   const app = {
     canvas: {} as HTMLCanvasElement,
@@ -36,7 +36,7 @@ function createFakeWorld() {
       calls.push('destroy')
     }),
   } satisfies WorldApp
-  const stop = vi.fn(() => {
+  const stop = vi.fn((): void | Promise<void> => {
     calls.push('stop')
   })
   const start = vi.fn(() => started.promise)
@@ -132,6 +132,28 @@ describe('mountWorld', () => {
     unmount()
     expect(world.container.append).not.toHaveBeenCalled()
     expect(world.calls).toEqual(['stop', 'destroy'])
+  })
+
+  it('waits for a drawing still starting to be down before it destroys the app', async () => {
+    const world = createFakeWorld()
+    const down = deferred<void>()
+    world.stop.mockImplementation(() => {
+      world.calls.push('stop')
+      return down.promise
+    })
+    const unmount = world.mount()
+    await world.resolveInit()
+    await world.resolveStart()
+
+    unmount()
+    expect(world.calls).toEqual(['stop'])
+    await settle()
+    expect(world.app.destroy).not.toHaveBeenCalled()
+    down.resolve()
+    await settle()
+    unmount()
+    expect(world.calls).toEqual(['stop', 'destroy'])
+    expect(world.app.destroy).toHaveBeenCalledExactlyOnceWith(...DESTROY_ARGS)
   })
 
   it('leaves the world blank when the app cannot start', async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createCityPicker, worldPicks } from './cityPicker.ts'
 import { saying, type CustomerCard } from './customerCard.ts'
 import {
   createPicker,
@@ -351,6 +352,26 @@ describe('listenForPicks', () => {
     const stop = listenForPicks(page, dom.world, picker, onPointing)
     return { dom, fire, count, street, onPointing, stop }
   }
+
+  it('hands a press on the world to the city too, and points over its buildings', () => {
+    const dom = fakeDom()
+    const { page, fire } = fakePage()
+    const city = createCityPicker()
+    const buildings = { openAt: vi.fn(), isOver: vi.fn(() => true) }
+    city.connect(buildings)
+    const onPointing = vi.fn()
+    listenForPicks(
+      page,
+      dom.world,
+      worldPicks(createPicker(), city),
+      onPointing,
+    )
+    fire('pointerdown', press(dom.canvas, { clientX: 70, clientY: 80 }))
+    fire('pointerdown', press(dom.panelButton))
+    expect(buildings.openAt.mock.calls).toEqual([[{ x: 70, y: 80 }]])
+    fire('pointermove', press(dom.canvas))
+    expect(onPointing).toHaveBeenLastCalledWith(true)
+  })
 
   it('picks where the player presses the street', () => {
     const { dom, fire, street } = setUp()

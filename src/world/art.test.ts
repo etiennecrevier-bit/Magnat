@@ -34,7 +34,7 @@ describe('loadArt', () => {
 
   it('loads nothing for the shipped manifest, which is all placeholders', async () => {
     const loadTexture = vi.fn(async () => Texture.EMPTY)
-    expect(await loadArt(ASSETS, loadTexture)).toEqual(new Map())
+    expect(await loadArt(ASSETS.pieces, loadTexture)).toEqual(new Map())
     expect(loadTexture).not.toHaveBeenCalled()
   })
 
@@ -43,7 +43,7 @@ describe('loadArt', () => {
     const loadTexture = vi.fn(async () => texture)
     const manifest = withImages({ truck: 'dummy.png', counter: 'dummy.png' })
 
-    const textures = await loadArt(manifest, loadTexture)
+    const textures = await loadArt(manifest.pieces, loadTexture)
 
     expect(loadTexture).toHaveBeenCalledExactlyOnceWith(
       ART_URLS.get('dummy.png'),
@@ -56,7 +56,7 @@ describe('loadArt', () => {
     const loadTexture = vi.fn(async () => Texture.EMPTY)
 
     const textures = await loadArt(
-      withImages({ truck: 'truck/body.png' }),
+      withImages({ truck: 'truck/body.png' }).pieces,
       loadTexture,
     )
 
@@ -73,7 +73,7 @@ describe('loadArt', () => {
     const loadTexture = vi.fn(async () => Promise.reject<Texture>(error))
 
     const textures = await loadArt(
-      withImages({ truck: 'dummy.png' }),
+      withImages({ truck: 'dummy.png' }).pieces,
       loadTexture,
     )
 
@@ -87,7 +87,7 @@ describe('loadArt', () => {
   it('resolves paths against the URLs it is given', async () => {
     const loadTexture = vi.fn(async () => Texture.EMPTY)
     await loadArt(
-      withImages({ truck: 'truck.webp' }),
+      withImages({ truck: 'truck.webp' }).pieces,
       loadTexture,
       new Map([['truck.webp', '/assets/truck-1a2b3c.webp']]),
     )

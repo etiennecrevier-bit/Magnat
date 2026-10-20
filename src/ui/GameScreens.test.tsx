@@ -266,6 +266,12 @@ describe('GameScreens', () => {
     )
   })
 
+  it('shows the screen the store names, as a click on a grocer in the city sets it', () => {
+    gameStore.getState().showScreen('contracts')
+    const html = renderToStaticMarkup(<GameScreens onMenu={() => {}} />)
+    expect(html.startsWith(render('contracts'))).toBe(true)
+  })
+
   it('shows the « Faillite » over them once the game went bankrupt (#160)', () => {
     // Seed 7 at Difficile, its owner paying themself 3 000 $ a week.
     let game: GameState = applyDecision(

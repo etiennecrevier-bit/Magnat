@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import assetsJson from './assets.json'
 import { colorNameSchema, loadAssetManifest, type Shows } from './assets.ts'
-import { loadEventContent } from './schema.ts'
+import {
+  loadEventContent,
+  loadGrocerContent,
+  loadPlacesContent,
+  loadStaffContent,
+  type GrocerId,
+} from './schema.ts'
 
 /** A deep copy of the shipped manifest to break, one field at a time. */
 function shipped() {
@@ -506,4 +512,338 @@ describe('loadAssetManifest', () => {
       [...colorNameSchema.options].sort(),
     )
   })
+})
+
+type Vec = readonly [number, number]
+
+/**
+ * The corners of a city box on the ground, as the manifest's note defines
+ * them: its lit wall `depth` across from the left corner to the front one.
+ */
+function boxCorners(p: {
+  x: number
+  y: number
+  width: number
+  height: number
+  depth?: number
+}) {
+  const d = p.depth ?? p.width / 2
+  const foot = p.y + p.height
+  return {
+    left: [p.x, foot - d / 2] as Vec,
+    front: [p.x + d, foot] as Vec,
+    right: [p.x + p.width, foot - (p.width - d) / 2] as Vec,
+  }
+}
+
+/** A deep copy of the shipped city to break, one field at a time. */
+function shippedCity() {
+  const raw = shipped() as ReturnType<typeof shipped> & {
+    city: {
+      layers: string[]
+      pieces: Record<string, unknown>[]
+      routes: Record<string, unknown>
+      deliveries: { window: { from: number; to: number } } & Record<
+        string,
+        unknown
+      >
+    }
+  }
+  const cityPiece = (id: string) => {
+    const found = raw.city.pieces.find((p) => p.id === id)
+    if (found === undefined) throw new Error(`No city piece ${id}`)
+    return found
+  }
+  return { raw, cityPiece }
+}
+
+describe('the city in assets.json', () => {
+  const { city, light } = loadAssetManifest()
+  const places = loadPlacesContent()
+  const grocers = loadGrocerContent()
+  const named = <K extends 'place' | 'grocer'>(key: K, id: string) =>
+    city.pieces.filter((p) => p[key] === id)
+
+  it('lays the ground, the shadows, then the block, in the 1440 × 900 design', () => {
+    expect(city.designSize).toEqual({ width: 1440, height: 900 })
+    expect(city.layers).toEqual(['ground', 'shadows', 'block'])
+    expect(city.layers).toContain(light.shadowLayer)
+    for (const p of city.pieces) expect(city.layers).toContain(p.layer)
+    expect(city.pieces.filter((p) => p.layer === light.shadowLayer)).toEqual([])
+  })
+
+  it('draws the block the card asks for', () => {
+    const count = (kind: string) =>
+      city.pieces.filter((p) => p.kind === kind).length
+    expect(count('triplex')).toBeGreaterThanOrEqual(8)
+    for (const kind of ['park', 'mill', 'silo', 'bakery', 'truck']) {
+      expect(count(kind), kind).toBeGreaterThan(0)
+    }
+    expect(named('place', 'caisse')[0]?.text).toBe('Caisse populaire')
+    expect(named('place', 'bureauPermis')[0]?.kind).toBe('building')
+    expect(named('place', 'meunerie')[0]?.kind).toBe('mill')
+  })
+
+  it('has one building for each place in town, with its way there', () => {
+    for (const { id } of places.places) {
+      expect(named('place', id), id).toHaveLength(1)
+      expect(city.routes[id]?.[0], id).toEqual(city.truck.counter)
+    }
+  })
+
+  it('ends each way at the door of its place', () => {
+    for (const { id } of places.places) {
+      const building = named('place', id)[0]!
+      const corners = boxCorners(building)
+      const door = city.routes[id].at(-1)!
+      // At the foot of one of its two walls, within a step of the sidewalk.
+      const foot = (a: Vec, b: Vec) => {
+        const t = (door[0] - a[0]) / (b[0] - a[0])
+        return t >= 0 && t <= 1
+          ? Math.abs(a[1] + (b[1] - a[1]) * t - door[1])
+          : Infinity
+      }
+      const off = Math.min(
+        foot(corners.left, corners.front),
+        foot(corners.front, corners.right),
+      )
+      expect(off, id).toBeLessThan(4)
+    }
+  })
+
+  it('makes the bakery the fournil, which a click opens in « Gérer le camion »', () => {
+    const [bakery] = named('place', 'fournil')
+    expect(bakery?.kind).toBe('bakery')
+    expect(bakery?.opens).toBe('fournil')
+    const on = city.pieces.filter((p) => p.on === bakery?.id)
+    expect(on.map((p) => [p.kind, p.text, p.shows])).toEqual([
+      ['sign', 'À louer', 'bakeryForRent'],
+      ['sign', 'Fournil', 'bakeryRuns'],
+      ['windows', undefined, 'bakeryRuns'],
+    ])
+    expect(on.find((p) => p.kind === 'windows')?.color).toBe('lamplight')
+  })
+
+  it('opens « Aller à… » from every other place', () => {
+    for (const { id } of places.places) {
+      if (id === 'fournil') continue
+      expect(named('place', id)[0]?.opens, id).toEqual({ trip: id })
+    }
+  })
+
+  it('has one shop for each grocer, with a stop for the van and a sign for its contract', () => {
+    for (const grocer of Object.keys(grocers.grocers)) {
+      const shops = named('grocer', grocer)
+      expect(shops, grocer).toHaveLength(1)
+      expect(shops[0]?.opens).toBe('contracts')
+      expect(city.deliveries.stops[grocer as GrocerId], grocer).toBeDefined()
+      const signs = city.pieces.filter((p) => p.on === shops[0]?.id)
+      expect(
+        signs.map((p) => [p.kind, p.shows]),
+        grocer,
+      ).toEqual([['contractSign', { contract: grocer }]])
+    }
+  })
+
+  it('opens the hatch while the truck serves, and shuts it otherwise', () => {
+    const truck = city.pieces.find((p) => p.kind === 'truck')
+    const on = city.pieces.filter((p) => p.on === truck?.id)
+    expect(on.map((p) => [p.kind, p.shows])).toEqual([
+      ['hatch', 'truckOpen'],
+      ['shutter', 'truckClosed'],
+    ])
+    expect(truck?.opens).toBeUndefined()
+  })
+
+  it('puts every building that opens something where the panels leave it in sight at 1280 × 720', () => {
+    // The panels' card covers the window's left 688 pixels; at 1280 × 720
+    // the design is scaled by 0.8 and centred, so that is its first 780.
+    const scale = Math.min(1280 / 1440, 720 / 900)
+    const covered = (688 - (1280 - 1440 * scale) / 2) / scale
+    expect(covered).toBeCloseTo(780)
+    for (const p of city.pieces.filter((p) => p.opens !== undefined)) {
+      const { front } = boxCorners(p)
+      expect(front[0], p.id).toBeGreaterThan(covered)
+    }
+  })
+
+  it('parks the van at the start of each of its ways out', () => {
+    const { from, window } = city.deliveries
+    expect(from.bakery.length).toBeGreaterThan(0)
+    expect(from.truck.length).toBeGreaterThan(0)
+    expect(window.from).toBeLessThan(window.to)
+  })
+
+  it('stands every baker and deliverer apart at the bakery, however the employees split', () => {
+    const { maxEmployees } = loadStaffContent()
+    const { width, height } = city.figure
+    const { deliverers } = city.deliveries
+    const row = (
+      first: readonly number[],
+      step: readonly number[],
+      n: number,
+    ) =>
+      Array.from({ length: n }, (_, i) => [
+        first[0]! + step[0]! * i,
+        first[1]! + step[1]! * i,
+      ])
+    for (let bakers = 0; bakers <= maxEmployees; bakers += 1) {
+      const spots = [
+        ...row(city.bakers.first, city.bakers.step, bakers),
+        ...row(deliverers.first.bakery, deliverers.step, maxEmployees - bakers),
+      ]
+      spots.forEach(([x, y], i) =>
+        spots.slice(i + 1).forEach(([u, v]) => {
+          // Two figures overlap when they are less than a figure apart both
+          // across and up.
+          const apart =
+            Math.abs(x! - u!) >= width || Math.abs(y! - v!) >= height
+          expect(apart, `${bakers} bakers: ${i}`).toBe(true)
+        }),
+      )
+    }
+  })
+
+  it('writes the signs in French', () => {
+    const texts = city.pieces.flatMap((p) => p.text ?? [])
+    expect(texts).toEqual(
+      expect.arrayContaining(['À louer', 'Fournil', 'Meunerie']),
+    )
+  })
+})
+
+describe('loadAssetManifest, the city', () => {
+  const rejects = (
+    name: string,
+    breakIt: (city: ReturnType<typeof shippedCity>) => void,
+    message: RegExp,
+  ) =>
+    it(`rejects ${name}`, () => {
+      const broken = shippedCity()
+      breakIt(broken)
+      expect(() => loadAssetManifest(broken.raw)).toThrow(message)
+    })
+
+  rejects(
+    'a duplicate piece id',
+    ({ cityPiece }) => {
+      cityPiece('caisse').id = 'mill'
+    },
+    /duplicate piece id: mill/,
+  )
+  rejects(
+    'a piece in the shadow layer',
+    ({ cityPiece }) => {
+      cityPiece('caisse').layer = 'shadows'
+    },
+    /the shadow layer holds no piece/,
+  )
+  rejects(
+    'a city without the shadow layer',
+    ({ raw }) => {
+      raw.city.layers = ['ground', 'block']
+    },
+    /the city has no layer shadows/,
+  )
+  rejects(
+    'a sign on no box',
+    ({ cityPiece }) => {
+      delete cityPiece('bakery-sign').on
+    },
+    /sign pieces go on a box listed before them/,
+  )
+  rejects(
+    'a sign on a box listed after it',
+    ({ raw, cityPiece }) => {
+      const sign = cityPiece('bakery-sign')
+      raw.city.pieces.splice(raw.city.pieces.indexOf(sign), 1)
+      raw.city.pieces.unshift(sign)
+    },
+    /sign pieces go on a box listed before them/,
+  )
+  rejects(
+    'a box without a depth',
+    ({ cityPiece }) => {
+      delete cityPiece('caisse').depth
+    },
+    /building pieces need a depth/,
+  )
+  rejects(
+    'a box less than half as tall as wide',
+    ({ cityPiece }) => {
+      cityPiece('caisse').height = 50
+    },
+    /a box is at least half as tall as wide/,
+  )
+  rejects(
+    'a second building for a place',
+    ({ cityPiece }) => {
+      cityPiece('permits-office').place = 'caisse'
+    },
+    /exactly one building for caisse, found 2/,
+  )
+  rejects(
+    'a place without a building',
+    ({ cityPiece }) => {
+      delete cityPiece('bakery').place
+    },
+    /exactly one building for fournil, found 0/,
+  )
+  rejects(
+    'a place without a way there',
+    ({ raw }) => {
+      delete raw.city.routes.meunerie
+    },
+    /routes/,
+  )
+  rejects(
+    'a trip to no place',
+    ({ cityPiece }) => {
+      cityPiece('caisse').opens = { trip: 'banque' }
+    },
+    /opens/,
+  )
+  rejects(
+    'a grocer without a shop',
+    ({ cityPiece }) => {
+      cityPiece('depanneur-24-24').kind = 'building'
+      delete cityPiece('depanneur-24-24').grocer
+    },
+    /exactly one shop for depanneur2424, found 0/,
+  )
+  rejects(
+    'a contract with no grocer',
+    ({ cityPiece }) => {
+      cityPiece('chez-normand-contract').shows = { contract: 'iga' }
+    },
+    /shows/,
+  )
+  rejects(
+    'a link on a wall',
+    ({ cityPiece }) => {
+      cityPiece('bakery-sign').opens = 'fournil'
+    },
+    /a click opens a box, not what is on its wall/,
+  )
+  rejects(
+    'text on the truck',
+    ({ cityPiece }) => {
+      cityPiece('truck').text = 'Le P’tit Camion'
+    },
+    /truck pieces write no text/,
+  )
+  rejects(
+    'a van that drives before it starts',
+    ({ raw }) => {
+      raw.city.deliveries.window = { from: 0.5, to: 0.2 }
+    },
+    /the van drives after it starts/,
+  )
+  rejects(
+    'a second truck',
+    ({ raw, cityPiece }) => {
+      raw.city.pieces.push({ ...cityPiece('truck'), id: 'truck-2' })
+    },
+    /expected exactly one truck piece, found 2/,
+  )
 })

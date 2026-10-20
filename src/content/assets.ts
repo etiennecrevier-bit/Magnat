@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import assetsJson from './assets.json'
-import { productIdSchema } from './schema.ts'
+import {
+  grocerIdSchema,
+  placeIdSchema,
+  productIdSchema,
+  type GrocerId,
+  type PlaceId,
+} from './schema.ts'
 
 // The world's asset manifest: every piece of the street and the truck, where
 // it sits and what it looks like. Every object is strict, so a mistyped key
@@ -31,6 +37,7 @@ export const colorNameSchema = z.enum([
   'steel',
   'coneOrange',
   'heatSky',
+  'lamplight',
 ])
 
 export type ColorName = z.infer<typeof colorNameSchema>
@@ -270,6 +277,360 @@ const pieceSchema = z.strictObject({
 
 export type Piece = z.output<typeof pieceSchema>
 
+// The city (#165): the block of the Plateau seen at an angle, in 2:1
+// isometric. The sun is the street's, from the upper left: of a building's
+// two walls, the one facing the lower left is lit and the one facing the
+// lower right is in shade, and shadows fall to the lower right.
+
+/** A point of the city's design, `[x, y]` in its logical pixels. */
+const pointSchema = z.tuple([z.number(), z.number()])
+
+export type CityPoint = z.output<typeof pointSchema>
+
+/** What a piece of the city is, which picks its placeholder. */
+export const cityPieceKindSchema = z.enum([
+  'ground',
+  'park',
+  'triplex',
+  'building',
+  'mill',
+  'silo',
+  'grocer',
+  'bakery',
+  'truck',
+  'hatch',
+  'shutter',
+  'sign',
+  'windows',
+  'contractSign',
+])
+
+export type CityPieceKind = z.infer<typeof cityPieceKindSchema>
+
+/**
+ * The pieces painted on the lit wall of another (`on`), which the world
+ * draws with it. Every other piece is a box standing on the ground.
+ */
+export const WALL_KINDS: readonly CityPieceKind[] = [
+  'hatch',
+  'shutter',
+  'sign',
+  'windows',
+  'contractSign',
+]
+
+/** The pieces that write their `text`; a sign must have one. */
+const CITY_WRITTEN: readonly CityPieceKind[] = ['sign', 'building', 'mill']
+
+/**
+ * When a piece of the city shows: while the truck serves or is closed, a
+ * minute at a time; on the days the bakery runs, or those it is for rent;
+ * or while a grocer's contract runs.
+ */
+const cityShowsSchema = z.union([
+  z.enum(['truckOpen', 'truckClosed', 'bakeryRuns', 'bakeryForRent']),
+  z.strictObject({ contract: grocerIdSchema }),
+])
+
+export type CityShows = z.output<typeof cityShowsSchema>
+
+/**
+ * What a click on a piece opens: « Aller à… », for a trip to the place it
+ * names; « Fournil », in « Gérer le camion »; or the « Contrats » screen.
+ */
+const cityOpensSchema = z.union([
+  z.enum(['fournil', 'contracts']),
+  z.strictObject({ trip: placeIdSchema }),
+])
+
+export type CityOpens = z.output<typeof cityOpensSchema>
+
+const cityPieceSchema = z.strictObject({
+  id: z.string().min(1),
+  kind: cityPieceKindSchema,
+  /** One of the city's `layers`. */
+  layer: z.string().min(1),
+  /**
+   * A box: the top-left corner and the size of the box that holds it on
+   * screen, in logical pixels of the design. A piece on a wall: the top of
+   * its left edge, how wide it is across and how tall that edge is; it runs
+   * down the wall by half its width.
+   */
+  x: z.number(),
+  y: z.number(),
+  width: size,
+  height: size,
+  /**
+   * A box's lit wall, how wide across from its left corner to its front
+   * corner; its shaded wall takes the rest of `width`. Its walls stand
+   * `height` − `width` / 2 tall, so a flat piece is half as tall as wide.
+   * Pieces on a wall have none.
+   */
+  depth: size.optional(),
+  /** The placeholder's main colour, also shown when the image fails. */
+  color: colorNameSchema,
+  /** A second colour: a grocer's awning, the truck's stripe. */
+  trim: colorNameSchema.optional(),
+  /** A file path under src/world/art/, such as `city/caisse.png`. */
+  image: z
+    .string()
+    .regex(IMAGE_PATH, 'expected a file path under src/world/art/')
+    .optional(),
+  /** What a sign or a building's board says, in French. */
+  text: z
+    .string()
+    .regex(/^\S(.*\S)?$/, 'expected text without spaces at its ends')
+    .optional(),
+  /** Shows the piece only at some times; always without it. */
+  shows: cityShowsSchema.optional(),
+  /** What a click on it opens; nothing without it. */
+  opens: cityOpensSchema.optional(),
+  /** The place in town it is: the owner's trip there ends at its door. */
+  place: placeIdSchema.optional(),
+  /** The grocer whose shop it is: the van stops there. */
+  grocer: grocerIdSchema.optional(),
+  /** The id of the box whose lit wall it is painted on, listed before it. */
+  on: z.string().min(1).optional(),
+})
+
+export type CityPiece = z.output<typeof cityPieceSchema>
+
+const citySchema = z.strictObject({
+  _note: z.string().optional(),
+  /** The logical size the city is designed at, before it is scaled. */
+  designSize: z.strictObject({
+    width: z.int().positive(),
+    height: z.int().positive(),
+  }),
+  /**
+   * Layer ids, back to front. They hold the light's shadow layer, which no
+   * piece goes in. The layers under it draw their pieces in the order
+   * listed; in those over it, the boxes and the people walking are drawn
+   * from the farthest to the nearest.
+   */
+  layers: z.array(z.string().min(1)).min(1),
+  pieces: z.array(cityPieceSchema),
+  /** Where the truck's people stand. */
+  truck: z.strictObject({
+    /** Where the owner steps out to walk to a place, and comes back to. */
+    counter: pointSchema,
+    /**
+     * Who serves, in the hatch: the owner at `first`, then each employee
+     * at the truck one `step` further.
+     */
+    window: z.strictObject({ first: pointSchema, step: pointSchema }),
+    /** The line: the first customer at `first`, each next one a `step` on. */
+    line: z.strictObject({
+      first: pointSchema,
+      step: pointSchema,
+      /** The most in line at once. */
+      max: z.int().positive(),
+      /**
+       * A customer stands in line for this many minutes of the day after
+       * they came, as the day replays.
+       */
+      minutes: z.int().positive(),
+    }),
+  }),
+  /** Each place's way from `truck.counter` to its door, in order. */
+  routes: z.record(placeIdSchema, z.array(pointSchema).min(2)),
+  /** Monday's delivery van. */
+  deliveries: z.strictObject({
+    /**
+     * The van's way out from where it starts, the bakery when it runs or
+     * else the truck, to the street the grocers are on: it parks at the
+     * first point, and comes back the same way.
+     */
+    from: z.strictObject({
+      bakery: z.array(pointSchema).min(1),
+      truck: z.array(pointSchema).min(1),
+    }),
+    /**
+     * Where the deliverers stand by the van parked at the bakery or the
+     * truck: the first at `first`, each next one a `step` on.
+     */
+    deliverers: z.strictObject({
+      first: z.strictObject({ bakery: pointSchema, truck: pointSchema }),
+      step: pointSchema,
+    }),
+    /** Where it stops for each grocer. */
+    stops: z.record(grocerIdSchema, pointSchema),
+    /** When it drives, as shares of the day replayed. */
+    window: z.strictObject({ from: share, to: share }),
+    /** The van, a box centred on its point, as a box piece is sized. */
+    van: z.strictObject({
+      width: size,
+      height: size,
+      depth: size,
+      color: colorNameSchema,
+      stripe: colorNameSchema,
+    }),
+  }),
+  /**
+   * Where the bakers stand while the bakery runs: the first at `first`,
+   * each next one a `step` on.
+   */
+  bakers: z.strictObject({ first: pointSchema, step: pointSchema }),
+  /** The tiny people: the owner, the employees and the customers. */
+  figure: z.strictObject({
+    height: size,
+    width: size,
+    /** The owner's shirt and apron, as on the street. */
+    shirt: colorNameSchema,
+    apron: colorNameSchema,
+    /** The employees' shirt. */
+    staffShirt: colorNameSchema,
+    /** The customers' coats, one after the other in line. */
+    coats: z.array(colorNameSchema).min(1),
+    skins: z.array(hexColor).min(1),
+    hair: hexColor,
+  }),
+  /** The dashed way of the day's trip, on the ground. */
+  path: z.strictObject({
+    dash: size,
+    gap: size,
+    width: size,
+    color: colorNameSchema,
+  }),
+  /** « En route vers la Caisse », over its door. */
+  label: z.strictObject({
+    fontSize: size,
+    paddingX: z.number().nonnegative(),
+    paddingY: z.number().nonnegative(),
+    /** How far over the door the label's foot is. */
+    rise: z.number().nonnegative(),
+    color: colorNameSchema,
+    background: colorNameSchema,
+  }),
+  /** The words a building's board and a sign are written in. */
+  sign: z.strictObject({ fontSize: size, color: colorNameSchema }),
+})
+
+export type CityManifest = z.output<typeof citySchema>
+
+/** Checks the city's pieces against its layers, the places and the grocers. */
+function checkCity(
+  city: CityManifest,
+  shadowLayer: string,
+  ctx: z.RefinementCtx,
+): void {
+  const layers = new Set(city.layers)
+  if (layers.size !== city.layers.length) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'duplicate layer',
+      path: ['city', 'layers'],
+    })
+  }
+  if (!layers.has(shadowLayer)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `the city has no layer ${shadowLayer}`,
+      path: ['city', 'layers'],
+    })
+  }
+  const boxes = new Map<string, CityPiece>()
+  const ids = new Set<string>()
+  const places = new Map<PlaceId, number>()
+  const grocers = new Map<GrocerId, number>()
+  city.pieces.forEach((piece, index) => {
+    const at = (key: string) => ['city', 'pieces', index, key]
+    const issue = (key: string, message: string) =>
+      ctx.addIssue({ code: 'custom', message, path: at(key) })
+    if (ids.has(piece.id)) issue('id', `duplicate piece id: ${piece.id}`)
+    ids.add(piece.id)
+    if (!layers.has(piece.layer))
+      issue('layer', `unknown layer: ${piece.layer}`)
+    if (piece.layer === shadowLayer) {
+      issue('layer', 'the shadow layer holds no piece')
+    }
+    const onWall = WALL_KINDS.includes(piece.kind)
+    if (onWall) {
+      const host = piece.on === undefined ? undefined : boxes.get(piece.on)
+      if (host === undefined) {
+        issue('on', `${piece.kind} pieces go on a box listed before them`)
+      } else if (host.layer !== piece.layer) {
+        issue('layer', `expected the layer of ${host.id}`)
+      }
+      if (piece.depth !== undefined) issue('depth', 'a wall has no depth')
+    } else {
+      if (piece.on !== undefined)
+        issue('on', `${piece.kind} pieces stand alone`)
+      if (piece.depth === undefined) {
+        issue('depth', `${piece.kind} pieces need a depth`)
+      } else if (piece.depth >= piece.width) {
+        issue('depth', 'the lit wall is narrower than the box')
+      }
+      if (piece.height < piece.width / 2) {
+        issue('height', 'a box is at least half as tall as wide')
+      }
+      boxes.set(piece.id, piece)
+    }
+    const written = CITY_WRITTEN.includes(piece.kind)
+    if (piece.kind === 'sign' && piece.text === undefined) {
+      issue('text', 'sign pieces need a text')
+    }
+    if (!written && piece.text !== undefined) {
+      issue('text', `${piece.kind} pieces write no text`)
+    }
+    if (piece.place !== undefined) {
+      if (onWall) issue('place', 'a place is a box')
+      places.set(piece.place, (places.get(piece.place) ?? 0) + 1)
+    }
+    if (piece.grocer !== undefined) {
+      if (piece.kind !== 'grocer') issue('grocer', 'only a grocer is a shop')
+      grocers.set(piece.grocer, (grocers.get(piece.grocer) ?? 0) + 1)
+    }
+    if (piece.kind === 'grocer' && piece.grocer === undefined) {
+      issue('grocer', 'a grocer names its grocer')
+    }
+    if (piece.opens !== undefined && onWall) {
+      issue('opens', 'a click opens a box, not what is on its wall')
+    }
+  })
+
+  // The trip to each place ends at its building, and the van stops at each
+  // grocer's shop: one each.
+  for (const place of placeIdSchema.options) {
+    const count = places.get(place) ?? 0
+    if (count !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `expected exactly one building for ${place}, found ${count}`,
+        path: ['city', 'pieces'],
+      })
+    }
+  }
+  for (const grocer of grocerIdSchema.options) {
+    const count = grocers.get(grocer) ?? 0
+    if (count !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `expected exactly one shop for ${grocer}, found ${count}`,
+        path: ['city', 'pieces'],
+      })
+    }
+  }
+  // The world puts the people at the one truck and shows the one bakery.
+  for (const kind of ['truck', 'bakery'] as const) {
+    const count = city.pieces.filter((piece) => piece.kind === kind).length
+    if (count !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `expected exactly one ${kind} piece, found ${count}`,
+        path: ['city', 'pieces'],
+      })
+    }
+  }
+  if (city.deliveries.window.from >= city.deliveries.window.to) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'the van drives after it starts',
+      path: ['city', 'deliveries', 'window'],
+    })
+  }
+}
+
 export const assetManifestSchema = z
   .strictObject({
     _note: z.string().optional(),
@@ -311,8 +672,12 @@ export const assetManifestSchema = z
     /** Layer ids, back to front. */
     layers: z.array(z.string().min(1)).min(1),
     pieces: z.array(pieceSchema),
+    /** The city, drawn with the same palette and light. */
+    city: citySchema,
   })
   .superRefine((manifest, ctx) => {
+    checkCity(manifest.city, manifest.light.shadowLayer, ctx)
+
     const layers = new Set<string>()
     manifest.layers.forEach((layer, index) => {
       if (layers.has(layer)) {

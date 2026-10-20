@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { decisionKindSchema, type DecisionKind } from '../content/schema.ts'
 import { isLocked } from '../engine/challenge.ts'
 import { CUSTOMERS, DEFIS, FOOD_TRUCK } from '../engine/day.ts'
@@ -7,7 +7,7 @@ import { dreamBonuses, dreamLimits } from '../engine/dream.ts'
 import { PRODUCTS } from '../engine/inventory.ts'
 import type { DaySummary, Decisions, GameState } from '../engine/types.ts'
 import { bakeryBoard, type BakeryBoard } from './bakeryBoard.ts'
-import { BakerySection } from './BakerySection.tsx'
+import { BAKERY_TITLE_ID, BakerySection } from './BakerySection.tsx'
 import {
   PRICE_STEP_TEXT,
   RESTOCK_LABELS,
@@ -435,7 +435,17 @@ export default function ManagePanel() {
   )
   const decide = useGame((state) => state.decide)
   const closePanel = useGame((state) => state.closePanel)
+  const section = useGame((state) => state.panelSection)
   const { dialogRef, onChange, close, onCancel } = useFieldDialog(decide)
+
+  // Opened from the bakery in the city, the panel shows « Fournil » at
+  // once; the focus stays on Fermer, as the dialog gave it.
+  useEffect(() => {
+    if (section !== 'bakery') return
+    dialogRef.current
+      ?.querySelector(`#${BAKERY_TITLE_ID}`)
+      ?.scrollIntoView({ block: 'start' })
+  }, [section, dialogRef])
 
   return (
     <dialog

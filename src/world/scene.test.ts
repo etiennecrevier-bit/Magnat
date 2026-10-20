@@ -138,7 +138,7 @@ describe('buildScene', () => {
     const manifest = withImages({ truck: 'dummy.png' })
     const loadTexture = vi.fn(async () => texture)
 
-    const scene = build(manifest, await loadArt(manifest, loadTexture))
+    const scene = build(manifest, await loadArt(manifest.pieces, loadTexture))
 
     expect(loadTexture).toHaveBeenCalledExactlyOnceWith(
       ART_URLS.get('dummy.png'),

@@ -4,21 +4,36 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from 'react'
+import { startCity } from './city.ts'
+import { CITY, worldPicks, type CityLink } from './cityPicker.ts'
 import { MOOD_COLORS, MOOD_WORDS, quoted } from './customerCard.ts'
 import { ASSETS } from './manifest.ts'
 import { mountWorld, worldOptions } from './mountWorld.ts'
 import { listenForPicks, PICKER, type OpenCard } from './picker.ts'
 import { startStreet } from './street.ts'
+import { startWorld } from './worldView.ts'
 import './WorldCanvas.css'
 
 /**
- * The street, drawn behind the panels, which screen readers skip; while it
- * runs, the button that picks a customer from the keyboard, hidden until it
- * has focus; and the card of the customer the player picked, over the
- * panels.
+ * The world, drawn behind the panels, which screen readers skip: the street
+ * or the city, as the top bar's switch picks (see `startWorld`). While the
+ * street runs, the button that picks a customer from the keyboard, hidden
+ * until it has focus, and the card of the customer the player picked, over
+ * the panels. A click on a building of the city reports its link to
+ * `onOpen`, which opens it; without one, as before a game starts, the
+ * buildings open nothing.
  */
-export default function WorldCanvas() {
+export default function WorldCanvas({
+  onOpen = null,
+}: {
+  onOpen?: ((link: CityLink) => void) | null
+}) {
   const ref = useRef<HTMLDivElement>(null)
+  // The world starts once; it asks for the latest at each press.
+  const opener = useRef(onOpen)
+  useEffect(() => {
+    opener.current = onOpen
+  }, [onOpen])
   const { live, open, said } = useSyncExternalStore(
     PICKER.subscribe,
     PICKER.view,
@@ -28,11 +43,17 @@ export default function WorldCanvas() {
   useEffect(() => {
     const world = ref.current
     if (world === null) return
-    const stopListening = listenForPicks(window, world, PICKER, (pointing) =>
-      world.classList.toggle('world--pointing', pointing),
+    const stopListening = listenForPicks(
+      window,
+      world,
+      worldPicks(PICKER, CITY),
+      (pointing) => world.classList.toggle('world--pointing', pointing),
     )
     const unmount = mountWorld(world, worldOptions(window), (app) =>
-      startStreet(app),
+      startWorld(app, {
+        street: (scene) => startStreet(scene),
+        city: (scene) => startCity(scene, { onOpen: () => openLater(opener) }),
+      }),
     )
     return () => {
       stopListening()
@@ -66,6 +87,20 @@ export default function WorldCanvas() {
       {open !== null && <CustomerCardView open={open} />}
     </>
   )
+}
+
+/**
+ * Opens a building's link once the press that clicked it is over: the
+ * press moves the focus after its listeners run, so a panel opened in one
+ * would lose the focus it gives « Fermer ». Null while nothing opens links.
+ */
+function openLater(opener: {
+  readonly current: ((link: CityLink) => void) | null
+}): ((link: CityLink) => void) | null {
+  if (opener.current === null) return null
+  return (link) => {
+    window.setTimeout(() => opener.current?.(link), 0)
+  }
 }
 
 /**

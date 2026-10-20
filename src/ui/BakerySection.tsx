@@ -9,6 +9,9 @@ import { NumberField } from './NumberField.tsx'
 // French puts a no-break space (U+00A0) before a colon.
 const COLON = ' :'
 
+/** The id of « Fournil », which the panel scrolls to when asked. */
+export const BAKERY_TITLE_ID = 'manage-bakery'
+
 const OVEN_NAMES: Readonly<Record<OvenTerms, string>> = {
   louer: 'four loué',
   acheter: 'four acheté',
@@ -61,8 +64,8 @@ export function BakerySection({
   const perMonth = (amount: BakeryBoard['monthlyRent']) =>
     `${formatMoney(amount)} par mois`
   return (
-    <section className="manage__bakery" aria-labelledby="manage-bakery">
-      <h3 id="manage-bakery">Fournil</h3>
+    <section className="manage__bakery" aria-labelledby={BAKERY_TITLE_ID}>
+      <h3 id={BAKERY_TITLE_ID}>Fournil</h3>
       <p className="manage__bakery-status">{todayText(today)}</p>
       {tomorrow !== null && <p>Demain&nbsp;: {tomorrowText(tomorrow)}</p>}
       <div className="manage__bakery-actions">

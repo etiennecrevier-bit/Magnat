@@ -58,6 +58,18 @@ export type Panel =
 /** The panels that end a game, which only open on their own. */
 type EndPanel = Extract<Panel, 'defiEnd' | 'bankruptcy'>
 
+/**
+ * The part of a panel to show as it opens: « Fournil » in « Gérer le
+ * camion », as a click on the bakery in the city opens it.
+ */
+export type PanelSection = 'bakery'
+
+/**
+ * The screens under the top bar: « Aujourd'hui », « États financiers »,
+ * « Journal des événements », « Bilans » and « Contrats ».
+ */
+export type Screen = 'today' | 'statements' | 'events' | 'reports' | 'contracts'
+
 /** How the store shows the « Bilan » of the week or the month. */
 export interface WeeklyReportOptions {
   /**
@@ -96,6 +108,13 @@ export interface GameStoreState {
    * was open when the event came up, until it closes.
    */
   panel: Panel | null
+  /** The part of the open panel it showed as it opened; null for its top. */
+  panelSection: PanelSection | null
+  /**
+   * The screen shown under the top bar, which stays as a new game starts,
+   * as it stays when the screens fold.
+   */
+  screen: Screen
   /**
    * The game from just before the player's choice, while the event card
    * shows what it did; null otherwise.
@@ -169,12 +188,18 @@ export interface GameStoreState {
    */
   advance: (days: number) => void
   /**
-   * Opens `panel`: remembers the speed, even `PAUSED`, and pauses. Does
-   * nothing if a panel is already open, so that panel and the speed it
-   * remembered stay. The event card, « Magnat » and the end of a game only
-   * open on their own. The report takes the card sliding in away.
+   * Opens `panel`, at its `section` if given: remembers the speed, even
+   * `PAUSED`, and pauses. Does nothing if a panel is already open, so that
+   * panel and the speed it remembered stay. The event card, « Magnat » and
+   * the end of a game only open on their own. The report takes the card
+   * sliding in away.
    */
-  openPanel: (panel: Exclude<Panel, 'event' | 'magnat' | EndPanel>) => void
+  openPanel: (
+    panel: Exclude<Panel, 'event' | 'magnat' | EndPanel>,
+    section?: PanelSection,
+  ) => void
+  /** Shows `screen` under the top bar. */
+  showScreen: (screen: Screen) => void
   /**
    * Closes the panel and resumes at the speed it remembered. Once the game
    * is over, its end opens, or stays, in place, and the game stays paused.
@@ -309,6 +334,7 @@ function playing(game: GameState) {
     lastSpeed: NORMAL_SPEED,
     resumeSpeed: waiting ? NORMAL_SPEED : null,
     panel,
+    panelSection: null,
     eventBefore: null,
     reportWaiting: false,
     magnatWaiting: false,
@@ -333,6 +359,7 @@ export function createGameStore(
   return createStore<GameStoreState>()((set, get) => ({
     ...playing(game),
     gamesStarted: 0,
+    screen: 'today',
     setSpeed: (speed) => {
       if (get().resumeSpeed !== null) return
       set(speed > PAUSED ? { speed, lastSpeed: speed } : { speed })
@@ -491,16 +518,18 @@ export function createGameStore(
         })
       }
     },
-    openPanel: (panel) => {
+    openPanel: (panel, section) => {
       const { speed, resumeSpeed, slideIn } = get()
       if (resumeSpeed !== null) return
       set({
         resumeSpeed: speed,
         speed: PAUSED,
         panel,
+        panelSection: section ?? null,
         slideIn: panel === 'report' ? null : slideIn,
       })
     },
+    showScreen: (screen) => set({ screen }),
     closePanel: () => {
       const {
         resumeSpeed,
@@ -515,6 +544,7 @@ export function createGameStore(
         if (panel !== ending) {
           set({
             panel: ending,
+            panelSection: null,
             reportWaiting: false,
             magnatWaiting: false,
             eventBefore: null,
@@ -523,21 +553,22 @@ export function createGameStore(
         return
       }
       if (magnatWaiting) {
-        set({ panel: 'magnat', magnatWaiting: false })
+        set({ panel: 'magnat', panelSection: null, magnatWaiting: false })
         return
       }
       if (reportWaiting) {
-        set({ panel: 'report', reportWaiting: false })
+        set({ panel: 'report', panelSection: null, reportWaiting: false })
         return
       }
       if (current.events.pending !== null) {
-        if (panel !== 'event') set({ panel: 'event' })
+        if (panel !== 'event') set({ panel: 'event', panelSection: null })
         return
       }
       set({
         speed: resumeSpeed,
         resumeSpeed: null,
         panel: null,
+        panelSection: null,
         eventBefore: null,
       })
     },

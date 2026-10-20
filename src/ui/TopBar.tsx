@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react'
+import { useStore } from 'zustand'
 import pacing from '../content/pacing.json'
 import type { Avatar } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
@@ -24,6 +25,12 @@ import { NetWorthGaugeView } from './NetWorthGauge.tsx'
 import { blockSpaceClick, handlePauseKey } from './pauseShortcut.ts'
 import ReportPanel from './ReportPanel.tsx'
 import SettingsPanel from './SettingsPanel.tsx'
+import {
+  settingsStore,
+  WORLD_VIEWS,
+  type SettingsStore,
+  type WorldView,
+} from './settings.ts'
 import StaffPanel from './StaffPanel.tsx'
 import { NORMAL_SPEED, PAUSED, useGame } from './store.ts'
 import TripPanel from './TripPanel.tsx'
@@ -43,6 +50,12 @@ function speedText(speed: number): string {
 
 // The gear of « Réglages », in its text form too.
 const GEAR = '⚙︎'
+
+/** The views of the world, as the switch names them. */
+const VIEW_NAMES: Readonly<Record<WorldView, string>> = {
+  street: 'La rue',
+  city: 'La ville',
+}
 
 const CASH = '1000' satisfies AccountCode
 
@@ -69,6 +82,10 @@ interface TopBarViewProps {
   avatar: Avatar
   speed: number
   onSpeedChange: (speed: number) => void
+  /** What the world shows behind the panels, the street or the city. */
+  view?: WorldView
+  /** Shows the other view; null hides the switch. */
+  onViewChange?: ((view: WorldView) => void) | null
   /** Opens the « Gérer le camion » panel. */
   onManage: () => void
   /** Opens the « Qui fait quoi » panel. */
@@ -106,6 +123,8 @@ export function TopBarView({
   avatar,
   speed,
   onSpeedChange,
+  view = 'street',
+  onViewChange = null,
   onManage,
   onStaff,
   onFinances,
@@ -195,6 +214,21 @@ export function TopBarView({
           </button>
         )}
       </div>
+      {onViewChange !== null && (
+        <div className="top-bar__views" role="group" aria-label="Vue">
+          {WORLD_VIEWS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className="top-bar__view"
+              aria-pressed={option === view}
+              onClick={() => onViewChange(option)}
+            >
+              {VIEW_NAMES[option]}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="top-bar__speeds" role="group" aria-label="Vitesse du jeu">
         {pacing.speeds.map((option) => (
           <button
@@ -227,9 +261,15 @@ export function TopBarView({
  * The top bar wired to the app store, with the Space shortcut, and the
  * panel open: one it opened, « Réglages » from the gear at its right end
  * included, the event card or the weekly report. In a Défi, the chip under
- * the date opens the Défi's panel.
+ * the date opens the Défi's panel. The switch between « La rue » and « La
+ * ville » keeps the player's pick in `settings`, which the world follows.
  */
-export default function TopBar() {
+export default function TopBar({
+  settings = settingsStore,
+}: {
+  settings?: SettingsStore
+}) {
+  const view = useStore(settings, (state) => state.worldView)
   const businessName = useGame((state) => state.game.profile.businessName)
   const avatar = useGame((state) => state.game.profile.avatar)
   const difficulty = useGame((state) => state.game.profile.difficulty)
@@ -305,6 +345,8 @@ export default function TopBar() {
         avatar={avatar}
         speed={speed}
         onSpeedChange={setSpeed}
+        view={view}
+        onViewChange={(next) => settings.getState().setWorldView(next)}
         onManage={() => openPanel('manage')}
         onStaff={() => openPanel('staff')}
         onFinances={() => openPanel('finances')}

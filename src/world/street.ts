@@ -27,6 +27,7 @@ import type { WorldApp } from './mountWorld.ts'
 import { PICKER, type Picker } from './picker.ts'
 import { buildScene, type MeasureWidth } from './scene.ts'
 import { filtersFor, type MakeFilters } from './shadows.ts'
+import { setUpOrUndo } from './teardown.ts'
 import { truckView } from './truckView.ts'
 
 /**
@@ -40,7 +41,8 @@ export interface StreetLoaders {
   makeFilters?: MakeFilters
 }
 
-const PIXI_LOADERS: StreetLoaders = {
+/** Pixi's loaders, which the city shares. */
+export const PIXI_LOADERS: StreetLoaders = {
   loadFont: (asset) => Assets.load(asset),
   loadTexture: (url) => Assets.load<Texture>(url),
 }
@@ -74,7 +76,9 @@ export type StreetSettings = Pick<SettingsStore, 'getState' | 'subscribe'>
  * their card follows them on the page each frame, paused or not.
  *
  * A font or an image that fails to load warns and falls back to the system
- * font or the piece's placeholder, so the street still shows.
+ * font or the piece's placeholder, so the street still shows. A start that
+ * fails once loaded, as on an app no longer there, takes down what it set
+ * up before it throws.
  */
 export async function startStreet(
   app: Pick<WorldApp, 'stage' | 'screen' | 'ticker' | 'renderer'>,
@@ -87,133 +91,140 @@ export async function startStreet(
 ): Promise<() => void> {
   const [, textures] = await Promise.all([
     loadTitleFont(loaders.loadFont),
-    loadArt(manifest, loaders.loadTexture),
+    loadArt(manifest.pieces, loaders.loadTexture),
   ])
-  const scene = buildScene(
-    manifest,
-    textures,
-    loaders.measureWidth,
-    loaders.makeFilters ?? filtersFor(app.renderer?.type),
-  )
-  const atmosphere = createAtmosphere(manifest.light, manifest.palette)
-  const customers = startCustomers({
-    street: scene.root,
-    style: scene.style,
-    shadows: scene.shadows,
-    crowd: people.settings,
-    walkIns: FOOD_TRUCK.walkIns,
-    msPerDay: pacing.msPerDayAtNormalSpeed,
-    lines: LINES,
-    energy: ENERGY,
-    random: people.random,
-  })
-  scene.root.addChild(customers.root)
-
-  // The screen follows the window; each frame refits the scene if it moved.
-  let fitted = { width: -1, height: -1, scale: 1 }
-  // The part of the design on screen, where customers come and go.
-  let span: Span = { left: 0, right: manifest.designSize.width }
-  const fit = () => {
-    const { width, height } = app.screen
-    if (width === fitted.width && height === fitted.height) return
-    const design = manifest.designSize
-    const { scale, x, y } = fitScene(width, height, design.width, design.height)
-    fitted = { width, height, scale }
-    for (const layer of [scene.root, customers.labels]) {
-      layer.scale.set(scale)
-      layer.position.set(x, y)
-    }
-    atmosphere.fit(width, height)
-    span = { left: -x / scale, right: (width - x) / scale }
-  }
-  const showEffects = (effects: VisualEffects) => {
-    scene.setEffects(effects)
-    atmosphere.setEffects(effects)
-    // Only the grain and the unevenness blend with the back buffer, which
-    // costs a copy of the screen each frame. Both it and the canvas, which
-    // Pixi starts without it, antialias.
-    const backBuffer = app.renderer?.backBuffer
-    if (backBuffer !== undefined) backBuffer.useBackBuffer = effects === 'full'
-  }
-
-  // The canvas fills the page from its top-left corner, so the stage's
-  // pixels are the page's.
-  const showCard = () => {
-    const picked = customers.picked()
-    connection.show(
-      picked === null
-        ? null
-        : {
-            card: picked.card,
-            place: placeCard(picked.box, app.screen, people.settings.card),
-          },
+  return setUpOrUndo((undo) => {
+    const scene = buildScene(
+      manifest,
+      textures,
+      loaders.measureWidth,
+      loaders.makeFilters ?? filtersFor(app.renderer?.type),
     )
-  }
-  const connection = picker.connect({
-    pickAt: (point) => {
-      customers.pickAt(point)
-      showCard()
-    },
-    isOver: (point) => customers.isOver(point),
-    pickNext: () => {
-      const found = customers.pickNext(span)
-      showCard()
-      return found
-    },
-    unpick: () => {
-      customers.unpick()
-      showCard()
-    },
-  })
-
-  const onFrame = (ticker: Ticker) => {
-    fit()
-    scene.animate(ticker.deltaMS)
-    customers.frame(ticker.deltaMS, store.getState().speed, span)
-    // Where the cast shadows show through one texture, its pixels are the
-    // screen's.
-    scene.shadows.redraw(fitted.scale * (app.renderer?.resolution ?? 1))
-    showCard()
-  }
-
-  const show = (game: GameState) => {
-    scene.update(truckView(game))
-    customers.onGame(game)
-  }
-  show(store.getState().game)
-  showEffects(settings.getState().visualEffects)
-  fit()
-  app.stage.addChild(scene.root, atmosphere.root, customers.labels)
-  const unsubscribe = store.subscribe((state, previous) => {
-    if (state.game !== previous.game) show(state.game)
-  })
-  const unsubscribeSettings = settings.subscribe((state, previous) => {
-    if (state.visualEffects !== previous.visualEffects) {
-      showEffects(state.visualEffects)
-    }
-  })
-  app.ticker.add(onFrame)
-
-  let stopped = false
-  return () => {
-    if (stopped) return
-    stopped = true
-    unsubscribe()
-    unsubscribeSettings()
-    app.ticker.remove(onFrame)
-    connection.disconnect()
-    for (const layer of [scene.root, atmosphere.root, customers.labels]) {
-      layer.removeFromParent()
-    }
-    customers.destroy()
-    atmosphere.destroy()
     // Frees the textures the street made, and leaves the art's to Pixi's
     // Assets cache, which the next start reuses.
-    scene.destroy()
-  }
+    undo(() => scene.destroy())
+    const atmosphere = createAtmosphere(manifest.light, manifest.palette)
+    undo(() => atmosphere.destroy())
+    const customers = startCustomers({
+      street: scene.root,
+      style: scene.style,
+      shadows: scene.shadows,
+      crowd: people.settings,
+      walkIns: FOOD_TRUCK.walkIns,
+      msPerDay: pacing.msPerDayAtNormalSpeed,
+      lines: LINES,
+      energy: ENERGY,
+      random: people.random,
+    })
+    undo(() => customers.destroy())
+    scene.root.addChild(customers.root)
+
+    // The screen follows the window; each frame refits the scene if it moved.
+    let fitted = { width: -1, height: -1, scale: 1 }
+    // The part of the design on screen, where customers come and go.
+    let span: Span = { left: 0, right: manifest.designSize.width }
+    const fit = () => {
+      const { width, height } = app.screen
+      if (width === fitted.width && height === fitted.height) return
+      const design = manifest.designSize
+      const { scale, x, y } = fitScene(
+        width,
+        height,
+        design.width,
+        design.height,
+      )
+      fitted = { width, height, scale }
+      for (const layer of [scene.root, customers.labels]) {
+        layer.scale.set(scale)
+        layer.position.set(x, y)
+      }
+      atmosphere.fit(width, height)
+      span = { left: -x / scale, right: (width - x) / scale }
+    }
+    const showEffects = (effects: VisualEffects) => {
+      scene.setEffects(effects)
+      atmosphere.setEffects(effects)
+      // Only the grain and the unevenness blend with the back buffer, which
+      // costs a copy of the screen each frame. Both it and the canvas, which
+      // Pixi starts without it, antialias.
+      const backBuffer = app.renderer?.backBuffer
+      if (backBuffer !== undefined) {
+        backBuffer.useBackBuffer = effects === 'full'
+      }
+    }
+
+    // The canvas fills the page from its top-left corner, so the stage's
+    // pixels are the page's.
+    const showCard = () => {
+      const picked = customers.picked()
+      connection.show(
+        picked === null
+          ? null
+          : {
+              card: picked.card,
+              place: placeCard(picked.box, app.screen, people.settings.card),
+            },
+      )
+    }
+    const connection = picker.connect({
+      pickAt: (point) => {
+        customers.pickAt(point)
+        showCard()
+      },
+      isOver: (point) => customers.isOver(point),
+      pickNext: () => {
+        const found = customers.pickNext(span)
+        showCard()
+        return found
+      },
+      unpick: () => {
+        customers.unpick()
+        showCard()
+      },
+    })
+    undo(connection.disconnect)
+
+    const onFrame = (ticker: Ticker) => {
+      fit()
+      scene.animate(ticker.deltaMS)
+      customers.frame(ticker.deltaMS, store.getState().speed, span)
+      // Where the cast shadows show through one texture, its pixels are the
+      // screen's.
+      scene.shadows.redraw(fitted.scale * (app.renderer?.resolution ?? 1))
+      showCard()
+    }
+
+    const show = (game: GameState) => {
+      scene.update(truckView(game))
+      customers.onGame(game)
+    }
+    show(store.getState().game)
+    showEffects(settings.getState().visualEffects)
+    fit()
+    const layers = [scene.root, atmosphere.root, customers.labels]
+    undo(() => {
+      for (const layer of layers) layer.removeFromParent()
+    })
+    app.stage.addChild(...layers)
+    undo(
+      store.subscribe((state, previous) => {
+        if (state.game !== previous.game) show(state.game)
+      }),
+    )
+    undo(
+      settings.subscribe((state, previous) => {
+        if (state.visualEffects !== previous.visualEffects) {
+          showEffects(state.visualEffects)
+        }
+      }),
+    )
+    app.ticker.add(onFrame)
+    undo(() => app.ticker.remove(onFrame))
+  })
 }
 
-async function loadTitleFont(
+/** Loads Fredoka, or warns and leaves the system font, as the city does too. */
+export async function loadTitleFont(
   loadFont: StreetLoaders['loadFont'],
 ): Promise<void> {
   try {

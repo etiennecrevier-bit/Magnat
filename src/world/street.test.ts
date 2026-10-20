@@ -85,6 +85,23 @@ function mondayStore(): GameStore {
   return createGameStore(createInitialState(42), NO_EVENTS)
 }
 
+/** Counts the listeners `store` holds that have not let go yet. */
+function listeners<L>(store: {
+  subscribe: (listener: L) => () => void
+}): () => number {
+  const subscribe = store.subscribe
+  let count = 0
+  store.subscribe = (listener) => {
+    count += 1
+    const off = subscribe(listener)
+    return () => {
+      count -= 1
+      off()
+    }
+  }
+  return () => count
+}
+
 function piece(app: ReturnType<typeof createFakeApp>, id: string): Container {
   const found = app.stage.getChildByLabel(id, true)
   if (found === null) throw new Error(`No piece ${id}`)
@@ -563,6 +580,41 @@ describe('startStreet: the customers', () => {
     await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
     expect(play(app, store, 10_000)).toBe(0)
     expect(piece(app, 'avatar:femme').visible).toBe(false)
+  })
+
+  it('takes down what it set up when its start fails halfway, as on an app no longer there', async () => {
+    const app = createFakeApp()
+    const added = vi.spyOn(app.stage, 'addChild')
+    app.ticker.add.mockImplementation(() => {
+      throw new Error('No ticker')
+    })
+    const store = wednesdayStore()
+    const settings = createSettingsStore(null)
+    const listening = { store: listeners(store), settings: listeners(settings) }
+    const picker = createPicker()
+
+    await expect(
+      startStreet(
+        app,
+        store,
+        createLoaders(),
+        ASSETS,
+        busyCrowd(),
+        picker,
+        settings,
+      ),
+    ).rejects.toThrow('No ticker')
+    const layers = added.mock.calls[0] as Container[]
+    expect(layers.map((layer) => layer.label)).toEqual([
+      'street',
+      'atmosphere',
+      'labels',
+    ])
+    expect(layers.every((layer) => layer.destroyed)).toBe(true)
+    expect(app.stage.children).toEqual([])
+    expect(listening.store()).toBe(0)
+    expect(listening.settings()).toBe(0)
+    expect(picker.view().live).toBe(false)
   })
 
   it('takes the customers, the avatar and the tally down with the street', async () => {
