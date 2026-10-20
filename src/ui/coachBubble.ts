@@ -212,3 +212,26 @@ export function cycleFocus<T>(
   const step = back ? -1 : 1
   return items[(index + step + items.length) % items.length]!
 }
+
+/**
+ * Where focus goes when the step's target changed or focus moved: the
+ * first of `destinations` when `active` is focused (not the page itself)
+ * but outside what the step allows, so Enter cannot press a control the
+ * hole no longer shows; null to leave it, as inside the target, where the
+ * player may be typing.
+ */
+export function refocus<T>(
+  active: T | null,
+  allowed: (element: T) => boolean,
+  destinations: readonly T[],
+): T | null {
+  if (active === null || allowed(active)) return null
+  return destinations.find((element) => element !== active) ?? null
+}
+
+/**
+ * How long a new live region waits, empty, before taking its text, so a
+ * screen reader hears it as a change rather than missing what it was
+ * born with, as when the region moves into a panel that just opened.
+ */
+export const ANNOUNCE_DELAY_MS = 100

@@ -3,6 +3,7 @@ import {
   bubbleWidth,
   COACH,
   cycleFocus,
+  refocus,
   holeBlockers,
   holeBox,
   placeBubble,
@@ -176,5 +177,27 @@ describe('cycleFocus', () => {
     expect(cycleFocus(items, 'elsewhere', false)).toBe('stepper')
     expect(cycleFocus(items, null, true)).toBe('skip')
     expect(cycleFocus([], null, false)).toBeNull()
+  })
+})
+
+describe('refocus', () => {
+  const allowed = (element: string) => ['close', 'skip'].includes(element)
+
+  it('moves focus off a control the hole no longer shows', () => {
+    // Café's + kept focus when the step moved on to « ✕ ».
+    expect(refocus('cafe+', allowed, ['close', 'skip'])).toBe('close')
+    // The panel focused its Menu tab as it opened.
+    expect(refocus('tab.menu', allowed, ['skip'])).toBe('skip')
+  })
+
+  it('leaves focus inside what the step allows, or on the page', () => {
+    expect(refocus('close', allowed, ['close', 'skip'])).toBeNull()
+    expect(refocus('skip', allowed, ['close'])).toBeNull()
+    expect(refocus(null, allowed, ['close'])).toBeNull()
+  })
+
+  it('has nowhere to go without a destination other than the focus', () => {
+    expect(refocus('cafe+', allowed, [])).toBeNull()
+    expect(refocus('cafe+', () => false, ['cafe+'])).toBeNull()
   })
 })

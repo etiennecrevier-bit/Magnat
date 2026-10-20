@@ -10,12 +10,14 @@ import {
 import { createPortal } from 'react-dom'
 import { TUTORIAL } from '../engine/tutorial.ts'
 import {
+  ANNOUNCE_DELAY_MS,
   bubbleWidth,
   COACH,
   cycleFocus,
   holeBlockers,
   holeBox,
   placeBubble,
+  refocus,
   showsWhole,
   visibleBox,
 } from './coachBubble.ts'
@@ -264,7 +266,11 @@ function place(element: HTMLElement | null, box: Box): void {
  * reach, as when something the player opened covers it, nothing dims or
  * blocks, and the bubble waits at the top, so the player can always close
  * what covers it. A step whose gesture is the bubble's button only shows
- * its target: a block covers the hole too. Returns the target found last.
+ * its target: a block covers the hole too. When the target changes or
+ * focus moves, focus held outside the target and the bubble, as on the
+ * control of the step before or on a panel's first tab, goes to the
+ * target, or to the bubble where the target only shows or opens a tooltip
+ * as it takes focus. Returns the target found last.
  */
 function useLayout(
   view: StepView,
@@ -279,6 +285,8 @@ function useLayout(
   useEffect(() => {
     const scrolled = new WeakSet<Element>()
     let frame = 0
+    let lastActive: Element | null = null
+    let lastTarget: Element | null | undefined
     const layout = () => {
       frame = window.requestAnimationFrame(layout)
       const layer = layerRef.current
@@ -295,6 +303,30 @@ function useLayout(
         ? null
         : findTarget(view.anchors, layer, page, scrolled)
       target.current = found
+      const active = document.activeElement
+      if (
+        !(!centred && found === null) &&
+        (active !== lastActive || found?.element !== lastTarget)
+      ) {
+        lastActive = active
+        lastTarget = found?.element
+        const open = found !== null && !view.showOnly ? found : null
+        const next = refocus(
+          active instanceof HTMLElement && active !== document.body
+            ? active
+            : null,
+          (element) =>
+            bubble.contains(element) ||
+            (open?.element.contains(element) ?? false),
+          [
+            ...(open === null || view.tipAnchors.includes(open.anchor)
+              ? []
+              : focusables(open.element)),
+            ...focusables(bubble),
+          ],
+        )
+        next?.focus({ preventScroll: true })
+      }
       const width = bubbleWidth(page, phone)
       bubble.style.width = `${width}px`
       const size = { width, height: bubble.getBoundingClientRect().height }
@@ -473,6 +505,49 @@ function CoachLayer({
 }
 
 /**
+ * Reads out `text` as it comes: a polite live region in the topmost modal
+ * dialog when one is open, outside which the page is inert and unheard,
+ * else in the page. Moved into a dialog that opens, it starts empty and
+ * takes the text a moment later, so the step that came with the dialog
+ * is still read.
+ */
+function CoachAnnouncer({ text }: { readonly text: string }) {
+  const [container, setContainer] = useState<Element>(
+    () => topModalDialog() ?? document.body,
+  )
+  // What was said last, and where: anything else shows empty until the
+  // timer says it.
+  const [said, setSaid] = useState<{ text: string; container: Element }>({
+    text: '',
+    container,
+  })
+  useEffect(() => {
+    let frame = 0
+    const watch = () => {
+      frame = window.requestAnimationFrame(watch)
+      const next = topModalDialog() ?? document.body
+      setContainer((current) => (current === next ? current : next))
+    }
+    watch()
+    return () => window.cancelAnimationFrame(frame)
+  }, [])
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setSaid({ text, container }),
+      ANNOUNCE_DELAY_MS,
+    )
+    return () => window.clearTimeout(timer)
+  }, [text, container])
+  const current = said.text === text && said.container === container
+  return createPortal(
+    <p className="visually-hidden" aria-live="polite" data-coach-announcer="">
+      {current ? text : ''}
+    </p>,
+    container,
+  )
+}
+
+/**
  * Réal's bubble while a step of the tutorial is due, never in a Défi, over
  * everything else, with what he says read out as each step comes.
  */
@@ -487,8 +562,8 @@ export default function CoachBubble({
     () => (game.challenge === null ? stepView(game) : null),
     [game],
   )
-  // Kept on the page for the whole tour, so each step's text is read out
-  // as it comes, even where the bubble's layer is new.
+  // The announcer stays for the whole tour, so each step's text is read
+  // out as it comes, even where the bubble's layer is new.
   const touring =
     game.challenge === null &&
     game.tutorial !== undefined &&
@@ -496,11 +571,13 @@ export default function CoachBubble({
   if (!touring) return null
   return (
     <>
-      <p className="visually-hidden" aria-live="polite">
-        {view === null
-          ? ''
-          : `${coach.name}\u00a0: ${touch ? (view.touchText ?? view.text) : view.text}`}
-      </p>
+      <CoachAnnouncer
+        text={
+          view === null
+            ? ''
+            : `${coach.name}\u00a0: ${touch ? (view.touchText ?? view.text) : view.text}`
+        }
+      />
       {view !== null && (
         <CoachLayer key={view.id} view={view} signals={signals} />
       )}
