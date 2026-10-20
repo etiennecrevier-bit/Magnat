@@ -10,8 +10,18 @@ import {
   type IncomeStatement,
 } from '../finance/statements.ts'
 
-/** The periods the États financiers screen offers, relative to today. */
+/** The periods each statement offers, relative to today. */
 export type PeriodKey = 'thisMonth' | 'lastMonth' | 'yearToDate'
+
+/** The three statements: the bilan, the état des résultats and the flux. */
+export type StatementTab = 'balanceSheet' | 'incomeStatement' | 'cashFlow'
+
+/** Each statement's title, on its accordion in « Finances ». */
+export const STATEMENT_TITLES: Record<StatementTab, string> = {
+  balanceSheet: 'Bilan',
+  incomeStatement: 'État des résultats',
+  cashFlow: 'État des flux de trésorerie',
+}
 
 /** Game days from `fromDay` to `toDay`, both included. */
 export interface Period {

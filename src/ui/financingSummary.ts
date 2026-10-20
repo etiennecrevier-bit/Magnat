@@ -10,7 +10,7 @@ import type { Day, GameState } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { entriesSince, type JournalEntry } from '../finance/journal.ts'
 
-// What the « Financement » block of « Aujourd'hui » shows (#163): the
+// What the « Financement » accordion of « Finances » shows (#163, #205): the
 // emergency loans and the shares sold, as the engine keeps them
 // (src/engine/financing.ts), with what the books say of them.
 

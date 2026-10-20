@@ -5,15 +5,13 @@ import { cents, sub, type Cents } from '../engine/money.ts'
 import type { GameState } from '../engine/types.ts'
 import { balance } from '../finance/journal.ts'
 import { incomeStatement } from '../finance/statements.ts'
-import FinancialStatements, {
-  FinancialStatementsView,
-  type StatementTab,
-} from './FinancialStatements.tsx'
+import FinancialStatement, { StatementView } from './FinancialStatements.tsx'
 import { formatStatementAmount } from './formatMoney.ts'
 import {
   computeStatements,
   periodFor,
   type PeriodKey,
+  type StatementTab,
   type Statements,
 } from './statementPeriods.ts'
 
@@ -37,17 +35,20 @@ function statementsFor(game: GameState, key: PeriodKey): Statements {
   return computeStatements(game.journal, period)
 }
 
+/** The id of the accordion's title, which names the table. */
+const TITLE = 'statement-title'
+
 function render(
   tab: StatementTab,
   statements: Statements | null,
   periodKey: PeriodKey = 'thisMonth',
 ) {
   return renderToStaticMarkup(
-    <FinancialStatementsView
-      tab={tab}
+    <StatementView
+      statement={tab}
       periodKey={periodKey}
       statements={statements}
-      onTabChange={() => {}}
+      labelledBy={TITLE}
       onPeriodChange={() => {}}
     />,
   )
@@ -80,7 +81,7 @@ function toggles(html: string) {
 const cashAt = (game: GameState, toDay: number) =>
   balance(game.journal, '1000', { toDay })
 
-describe('FinancialStatementsView', () => {
+describe('StatementView', () => {
   // Day 45 is June 15th, year 1: this month runs from day 31 to day 45.
   const { game, revenueByDay } = play(45)
   const statements = statementsFor(game, 'thisMonth')
@@ -101,8 +102,6 @@ describe('FinancialStatementsView', () => {
     // Moyen's Mise de fonds: 10 000 $ in the bank and the 15 000 $ down on
     // the truck.
     expect(rows.get('Capital-actions')).toBe(`25${S}000,00${S}$`)
-    expect(html).toContain('<h2 id="')
-    expect(html).toContain('>Bilan</h2>')
     expect(html).toContain('<p class="statements__dates">Au 15 juin, an 1</p>')
   })
 
@@ -147,7 +146,6 @@ describe('FinancialStatementsView', () => {
     expect(rows.get('Paiements aux fournisseurs')).toMatch(
       new RegExp(`^\\(\\d[\\d${S}]*,\\d\\d${S}\\$\\)$`),
     )
-    expect(html).toContain('>État des flux de trésorerie</h2>')
   })
 
   it.each([
@@ -178,16 +176,10 @@ describe('FinancialStatementsView', () => {
     { tab: 'incomeStatement', periodKey: 'lastMonth' },
     { tab: 'cashFlow', periodKey: 'yearToDate' },
   ] as const)(
-    'presses the $tab and $periodKey buttons only',
+    'presses the $periodKey button only, with no choice of statement',
     ({ tab, periodKey }) => {
       const html = render(tab, statementsFor(game, periodKey), periodKey)
       expect(toggles(html)).toEqual([
-        { label: 'Bilan', pressed: String(tab === 'balanceSheet') },
-        {
-          label: 'État des résultats',
-          pressed: String(tab === 'incomeStatement'),
-        },
-        { label: 'Flux de trésorerie', pressed: String(tab === 'cashFlow') },
         { label: 'Ce mois-ci', pressed: String(periodKey === 'thisMonth') },
         { label: 'Mois dernier', pressed: String(periodKey === 'lastMonth') },
         {
@@ -195,7 +187,7 @@ describe('FinancialStatementsView', () => {
           pressed: String(periodKey === 'yearToDate'),
         },
       ])
-      expect(html).toContain('role="group" aria-label="État financier"')
+      expect(html).not.toContain('aria-label="État financier"')
       expect(html).toContain('role="group" aria-label="Période"')
     },
   )
@@ -213,33 +205,32 @@ describe('FinancialStatementsView', () => {
 
   it('says when a period has no data yet', () => {
     const html = render('incomeStatement', null, 'lastMonth')
-    expect(html).toContain('>État des résultats</h2>')
     expect(html).toContain('<p>Aucune donnée pour cette période.</p>')
     expect(html).not.toContain('<table')
   })
 
-  it('labels each table with its heading and has no tooltips', () => {
+  it('labels each table with the title it is given, and has no heading of its own nor tooltips', () => {
     for (const tab of [
       'balanceSheet',
       'incomeStatement',
       'cashFlow',
     ] as const) {
       const html = render(tab, statements)
-      const id = /<h2 id="([^"]+)">/.exec(html)?.[1]
-      expect(id).toBeDefined()
       expect(html).toContain(
-        `<table class="data-table statement" aria-labelledby="${id}">`,
+        `<table class="data-table statement" aria-labelledby="${TITLE}">`,
       )
+      expect(html).not.toMatch(/<h\d/)
       expect(html).not.toContain('title=')
     }
   })
 })
 
-describe('FinancialStatements', () => {
-  it('opens on the bilan for this month, from the app store', () => {
-    const html = renderToStaticMarkup(<FinancialStatements />)
-    expect(html).toContain('<h1>États financiers</h1>')
-    expect(html).toContain('>Bilan</h2>')
+describe('FinancialStatement', () => {
+  it('shows the bilan for this month, from the app store', () => {
+    const html = renderToStaticMarkup(
+      <FinancialStatement statement="balanceSheet" labelledBy={TITLE} />,
+    )
+    expect(toggles(html)[0]).toEqual({ label: 'Ce mois-ci', pressed: 'true' })
     expect(html).toContain('<p class="statements__dates">Au 1er mai, an 1</p>')
     const rows = amounts(html)
     // A Moyen game: 10 000 $ in the bank and the 85 000 $ truck.

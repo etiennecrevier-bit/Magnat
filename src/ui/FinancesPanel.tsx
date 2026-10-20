@@ -1,3 +1,6 @@
+import { useMemo } from 'react'
+import { cents, sub } from '../engine/money.ts'
+import { netWorthParts, type NetWorthParts } from '../engine/netWorth.ts'
 import type { Day, PersonalAccount } from '../engine/types.ts'
 import { formatDayAndMonth, formatGameMonth } from './formatGameDate.ts'
 import { formatMoney } from './formatMoney.ts'
@@ -8,6 +11,7 @@ import './FinancesPanel.css'
 
 const TITLE_ID = 'finances-title'
 const MONTH_ID = 'finances-month'
+const NET_WORTH_ID = 'finances-net-worth'
 
 interface FinancesPanelViewProps {
   /** The owner's personal account, as of the close of the last day played. */
@@ -87,11 +91,52 @@ export function FinancesPanelView({
   )
 }
 
-/** « Vos finances » with the app store's game, as a tab of « Finances ». */
+/**
+ * The owner's « Valeur nette » this morning and its four parts, the debts
+ * below zero so the parts add up to it.
+ */
+export function NetWorthPartsView({ netWorth }: { netWorth: NetWorthParts }) {
+  const parts = [
+    { label: "Part de l'entreprise", amount: netWorth.companyShare },
+    { label: 'Argent personnel', amount: netWorth.personalCash },
+    { label: 'Biens personnels', amount: netWorth.personalAssets },
+    {
+      label: 'Dettes personnelles',
+      amount: sub(cents(0), netWorth.personalDebts),
+    },
+  ]
+  return (
+    <section className="finances__net-worth" aria-labelledby={NET_WORTH_ID}>
+      <h3 id={NET_WORTH_ID}>
+        Valeur nette&nbsp;: <strong>{formatMoney(netWorth.total)}</strong>
+      </h3>
+      <ul className="finances__net-worth-parts">
+        {parts.map(({ label, amount }) => (
+          <li key={label}>
+            {label}&nbsp;: {formatMoney(amount)}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/**
+ * « Personnel » of « Finances » with the app store's game: « Vos finances
+ * », then the net worth's four parts.
+ */
 export default function FinancesPanel() {
   const account = useGame((state) => state.game.personal)
   const day = useGame((state) => state.game.day)
   const lastPlayed = useGame((state) => state.game.lastDay?.day ?? null)
+  const journal = useGame((state) => state.game.journal)
+  const financing = useGame((state) => state.game.financing)
+  const dream = useGame((state) => state.game.dream)
+  // The books only change when a day is played, not on every frame.
+  const netWorth = useMemo(
+    () => netWorthParts({ day, journal, financing, personal: account, dream }),
+    [day, journal, financing, account, dream],
+  )
   // Its own « Fermer » hides in the drawer's frame, whose « ✕ » closes it.
   return (
     <div className="finances">
@@ -101,6 +146,7 @@ export default function FinancesPanel() {
         lastPlayed={lastPlayed}
         onClose={() => {}}
       />
+      <NetWorthPartsView netWorth={netWorth} />
     </div>
   )
 }

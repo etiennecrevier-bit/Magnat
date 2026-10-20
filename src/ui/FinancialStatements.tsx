@@ -1,4 +1,3 @@
-import { useId, useState } from 'react'
 import type { Cents } from '../engine/money.ts'
 import type {
   BalanceSheet,
@@ -12,24 +11,11 @@ import { formatStatementAmount } from './formatMoney.ts'
 import {
   createStatementsReader,
   type PeriodKey,
+  type StatementTab,
   type Statements,
 } from './statementPeriods.ts'
 import { useGame } from './store.ts'
 import './FinancialStatements.css'
-
-export type StatementTab = 'balanceSheet' | 'incomeStatement' | 'cashFlow'
-
-const TABS: Record<StatementTab, { label: string; heading: string }> = {
-  balanceSheet: { label: 'Bilan', heading: 'Bilan' },
-  incomeStatement: {
-    label: 'État des résultats',
-    heading: 'État des résultats',
-  },
-  cashFlow: {
-    label: 'Flux de trésorerie',
-    heading: 'État des flux de trésorerie',
-  },
-}
 
 const PERIODS: Record<PeriodKey, string> = {
   thisMonth: 'Ce mois-ci',
@@ -149,40 +135,30 @@ function StatementTable({
   )
 }
 
-interface FinancialStatementsViewProps {
-  tab: StatementTab
+interface StatementViewProps {
+  statement: StatementTab
   periodKey: PeriodKey
   /** The statements for `periodKey`, or null when it has no days yet. */
   statements: Statements | null
-  onTabChange: (tab: StatementTab) => void
+  /** The id of the statement's heading, which names its table. */
+  labelledBy: string
   onPeriodChange: (key: PeriodKey) => void
 }
 
-export function FinancialStatementsView({
-  tab,
+/**
+ * One statement, `statement`, under its own heading: its period picker,
+ * the dates it covers, and its table, negative amounts in parentheses.
+ */
+export function StatementView({
+  statement,
   periodKey,
   statements,
-  onTabChange,
+  labelledBy,
   onPeriodChange,
-}: FinancialStatementsViewProps) {
-  const headingId = useId()
-  const content = statements === null ? null : contentFor(tab, statements)
+}: StatementViewProps) {
+  const content = statements === null ? null : contentFor(statement, statements)
   return (
-    <section className="statements">
-      <h1>États financiers</h1>
-      <div className="toggle-group" role="group" aria-label="État financier">
-        {(Object.keys(TABS) as StatementTab[]).map((option) => (
-          <button
-            key={option}
-            type="button"
-            className="toggle"
-            aria-pressed={option === tab}
-            onClick={() => onTabChange(option)}
-          >
-            {TABS[option].label}
-          </button>
-        ))}
-      </div>
+    <div className="statements">
       <div className="toggle-group" role="group" aria-label="Période">
         {(Object.keys(PERIODS) as PeriodKey[]).map((option) => (
           <button
@@ -196,37 +172,44 @@ export function FinancialStatementsView({
           </button>
         ))}
       </div>
-      <h2 id={headingId}>{TABS[tab].heading}</h2>
       {content === null ? (
         <p>Aucune donnée pour cette période.</p>
       ) : (
         <>
           <p className="statements__dates">{content.dates}</p>
-          <StatementTable rows={content.rows} labelledBy={headingId} />
+          <StatementTable rows={content.rows} labelledBy={labelledBy} />
         </>
       )}
-    </section>
+    </div>
   )
 }
 
-// Shared by every mount of the screen, so coming back to it on the same day
-// computes nothing.
+// Shared by every mount, so opening another statement or coming back to
+// one on the same day computes nothing.
 const readStatements = createStatementsReader()
 
-/** The États financiers screen wired to the app store. */
-export default function FinancialStatements() {
+/**
+ * `statement` wired to the app store, over the period the store keeps for
+ * it, so it stays as the accordion or the drawer closes.
+ */
+export default function FinancialStatement({
+  statement,
+  labelledBy,
+}: {
+  statement: StatementTab
+  labelledBy: string
+}) {
   const journal = useGame((state) => state.game.journal)
   const today = useGame((state) => state.game.day)
-  const [tab, setTab] = useState<StatementTab>('balanceSheet')
-  const [periodKey, setPeriodKey] = useState<PeriodKey>('thisMonth')
-
+  const periodKey = useGame((state) => state.financeSections.periods[statement])
+  const setStatementPeriod = useGame((state) => state.setStatementPeriod)
   return (
-    <FinancialStatementsView
-      tab={tab}
+    <StatementView
+      statement={statement}
       periodKey={periodKey}
       statements={readStatements(journal, today, periodKey)}
-      onTabChange={setTab}
-      onPeriodChange={setPeriodKey}
+      labelledBy={labelledBy}
+      onPeriodChange={(key) => setStatementPeriod(statement, key)}
     />
   )
 }

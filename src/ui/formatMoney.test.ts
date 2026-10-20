@@ -4,6 +4,7 @@ import {
   formatAmount,
   formatBriefMoney,
   formatWholeMoney,
+  formatWholeStatementAmount,
   formatCount,
   formatMoney,
   formatSignedMoney,
@@ -127,4 +128,15 @@ describe('formatWholeMoney', () => {
       expect(formatWholeMoney(cents(amount))).toBe(text)
     },
   )
+})
+
+describe('formatWholeStatementAmount', () => {
+  it.each([
+    { amount: 879_749, text: `8${S}797${S}$` },
+    { amount: -176_499, text: `(1${S}765${S}$)` },
+    { amount: -49, text: `0${S}$` },
+    { amount: 0, text: `0${S}$` },
+  ])('writes $amount cents as $text', ({ amount, text }) => {
+    expect(formatWholeStatementAmount(cents(amount))).toBe(text)
+  })
 })

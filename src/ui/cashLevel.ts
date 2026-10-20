@@ -1,8 +1,47 @@
 import cashGauge from '../content/cashGauge.json'
+import type { DifficultyId } from '../content/schema.ts'
+import { DIFFICULTIES, FOOD_TRUCK } from '../engine/day.ts'
+import { truckReplacedOn } from '../engine/dream.ts'
+import { monthlyFixedCosts } from '../engine/fixedCosts.ts'
 import { mulInt, type Cents } from '../engine/money.ts'
+import type { BakeryState, Day, DreamState } from '../engine/types.ts'
 
 // The engine reads the fixed costs too, for the event cards' draw (#137).
-export { monthlyFixedCosts } from '../engine/fixedCosts.ts'
+export { monthlyFixedCosts }
+
+/** What `nextFixedCosts` reads of a game. */
+export interface FixedCostsGame {
+  readonly day: Day
+  readonly difficulty: DifficultyId
+  /** The day the truck came: day 0, but in a Défi its first day. */
+  readonly firstDay: Day
+  readonly bakery: BakeryState
+  readonly dream: DreamState
+}
+
+/**
+ * What the next 1st of the month takes from the encaisse, seen on the
+ * morning of `day` (see `monthlyFixedCosts`): what the cash chip reads the
+ * encaisse against, and « À surveiller » shows.
+ */
+export function nextFixedCosts({
+  day,
+  difficulty,
+  firstDay,
+  bakery,
+  dream,
+}: FixedCostsGame): Cents {
+  return monthlyFixedCosts(
+    day,
+    difficulty,
+    firstDay,
+    FOOD_TRUCK,
+    DIFFICULTIES,
+    bakery,
+    undefined,
+    truckReplacedOn(dream),
+  )
+}
 
 /** How the cash gauge reads the encaisse. */
 export type CashLevel = 'healthy' | 'low' | 'negative'

@@ -1,31 +1,14 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
-import { netWorth as netWorthOf, netWorthChange } from '../engine/netWorth.ts'
+import { useCallback, useState, type ReactNode } from 'react'
 import ContractsScreen from './ContractsScreen.tsx'
 import { dockButtonId } from './dock.ts'
 import { DockDrawer } from './DockFrame.tsx'
 import { financesTabs, JOURNAL_TABS } from './dockFrame.ts'
 import EventLog from './EventLog.tsx'
+import FinancesCompany from './FinancesCompany.tsx'
 import FinancesPanel from './FinancesPanel.tsx'
-import FinancialStatements from './FinancialStatements.tsx'
-import { NetWorthGaugeView } from './NetWorthGauge.tsx'
 import { gameStore, useGame } from './store.ts'
-import TodayPanel from './TodayPanel.tsx'
 import WeekReports from './WeekReports.tsx'
-
-/** The owner's « Valeur nette » and how it moved since the last Sunday. */
-function NetWorthNow() {
-  const day = useGame((state) => state.game.day)
-  const journal = useGame((state) => state.game.journal)
-  const financing = useGame((state) => state.game.financing)
-  const personal = useGame((state) => state.game.personal)
-  const dream = useGame((state) => state.game.dream)
-  const weekHistory = useGame((state) => state.game.weekHistory)
-  const worth = useMemo(() => {
-    const game = { day, journal, financing, personal, dream, weekHistory }
-    return { total: netWorthOf(game), change: netWorthChange(game) }
-  }, [day, journal, financing, personal, dream, weekHistory])
-  return <NetWorthGaugeView netWorth={worth.total} change={worth.change} />
-}
+import './FinancesDrawer.css'
 
 /** Whether a drawer was ever open, so its tab stays on the page from then. */
 function useOpened(open: boolean): boolean {
@@ -41,10 +24,10 @@ const panelOpen = () => gameStore.getState().panel !== null
 const close = () => gameStore.getState().closeDrawer()
 
 /**
- * « Finances », the drawer of the money, which leaves the game running:
- * « Aujourd'hui » (the net worth, yesterday by product, the net worth's
- * parts and the financing), « Vos finances », the « États financiers »,
- * and, in a Défi, the « Contrats ».
+ * « Finances », the drawer of the money, which slides in from the left and
+ * leaves the game running: « Entreprise » (tiles, the last 30 days, « À
+ * surveiller » and the statements in accordions), « Personnel » (« Vos
+ * finances » and the net worth's parts), and, in a Défi, « Contrats ».
  */
 export function FinancesDrawer() {
   const open = useGame((state) => state.drawer === 'finances')
@@ -57,18 +40,11 @@ export function FinancesDrawer() {
     [],
   )
   const tabs = financesTabs(challenge !== null)
-  const shown = tabs.some(({ id }) => id === tab) ? tab : 'today'
+  const shown = tabs.some(({ id }) => id === tab) ? tab : 'company'
   let body: ReactNode = null
   if (opened) {
-    if (shown === 'today') {
-      body = (
-        <>
-          <NetWorthNow />
-          <TodayPanel />
-        </>
-      )
-    } else if (shown === 'personal') body = <FinancesPanel />
-    else if (shown === 'statements') body = <FinancialStatements />
+    if (shown === 'company') body = <FinancesCompany />
+    else if (shown === 'personal') body = <FinancesPanel />
     else body = <ContractsScreen />
   }
   return (

@@ -80,16 +80,14 @@ describe('the tabs', () => {
     ])
   })
 
-  it('of « Finances »: « Contrats » too in a Défi only', () => {
+  it('of « Finances »: « Entreprise » and « Personnel », « Contrats » too in a Défi only', () => {
     expect(financesTabs(false).map(({ label }) => label)).toEqual([
-      "Aujourd'hui",
-      'Vos finances',
-      'États financiers',
+      'Entreprise',
+      'Personnel',
     ])
     expect(financesTabs(true).map(({ id }) => id)).toEqual([
-      'today',
+      'company',
       'personal',
-      'statements',
       'contracts',
     ])
   })
