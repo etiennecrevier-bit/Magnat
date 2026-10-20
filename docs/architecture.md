@@ -758,11 +758,11 @@ A save holds the Défi. `deserialize()` reads the game's first day from it, so a
 
 ## The tutorial
 
-The tutorial (#236) is a game of seven protected, scripted days, from `src/content/tutorial.json`, that goes on unprotected from its day 8. `startTutorial(profile, content, difficulties, tutorial)` in `src/engine/clock.ts` starts it: a game as `createInitialState()` opens it at the profile's difficulty, with the tutorial's seed, the starting decisions with the tutorial's laid over them, and `tutorial` on its first step. It throws a RangeError for a Défi, which never has one.
+The tutorial (#236) is a game of seven protected, scripted days, from `src/content/tutorial.json`, that goes on unprotected from its day 8. `startTutorial(profile, content, difficulties, tutorial)` in `src/engine/clock.ts` starts it: a game as `createInitialState()` opens it at the profile's difficulty, with the tutorial's seed, the starting decisions with the tutorial's laid over them, and `tutorial` on its first step. A Défi never has one: it starts through `startChallenge()`, and `checkTutorial()` in `src/engine/save.ts` refuses a Défi save that holds a tutorial.
 
 `src/engine/tutorial.ts` reads and moves it. While the tutorial is not done, the game is protected (`isProtected()`):
 - `tick()` throws an Error naming the step when a step of the day about to be played is not done (`checkTutorialDay()`). `applyDecision()` with `{ kind: 'tutorialStep', step }` marks the current step done at once, if it is due that day (`completeStep()`); `tutorialStepOf()` gives the current step when it is due. `skipTutorial()` ends the tutorial at once.
-- `tick()` draws no event and brings neither the financing's cards nor the letters; it brings each card of `scriptedEvents` on the morning of its day, as if drawn (`scriptedEventOn()`), when the event content holds it. The card is `tutorialOnly`, which no draw brings.
+- `tick()` draws no event and brings neither the financing's cards nor the letters; it brings each card of `scriptedEvents` on the morning of its day, as if drawn (`withScriptedEvent()`), when the event content holds it. The card is `tutorialOnly`, which no draw brings.
 - `playDay()` ends no game.
 
 Everything else plays as in any game, the books, the sales and the lost sales included. On the morning of `endsDay`, `tick()` sets `done` and nothing else, so that morning goes through the usual chain. `tutorialFacts()` tells the UI whether the last day had a croissant shortage and customers who found the café too expensive (`DaySummary.pricedOut`).
