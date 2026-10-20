@@ -4,6 +4,7 @@ import {
   placeTip,
   TIP,
   tipBounds,
+  tipScrollTop,
   type Box,
   type TipControl,
 } from './tooltip.ts'
@@ -154,15 +155,59 @@ describe('placeTip', () => {
   })
 })
 
+describe('tipScrollTop', () => {
+  // 114 px of text showing out of 400, scrolled 100 px down.
+  const VIEW = { scrollTop: 100, clientHeight: 114, scrollHeight: 400 }
+
+  it('scrolls a line on the arrows, a page less a line on Page Up and Down', () => {
+    expect(tipScrollTop('ArrowDown', VIEW)).toBe(140)
+    expect(tipScrollTop('ArrowUp', VIEW)).toBe(60)
+    expect(tipScrollTop('PageDown', VIEW)).toBe(174)
+    expect(tipScrollTop('PageUp', VIEW)).toBe(26)
+  })
+
+  it('goes to the top on Home and the bottom on End', () => {
+    expect(tipScrollTop('Home', VIEW)).toBe(0)
+    expect(tipScrollTop('End', VIEW)).toBe(286)
+  })
+
+  it('scrolls at least a line a page in a very short tooltip', () => {
+    const short = { scrollTop: 0, clientHeight: 30, scrollHeight: 400 }
+    expect(tipScrollTop('PageDown', short)).toBe(TIP.scrollLine)
+  })
+
+  it('stops at either end, then leaves the key to the anchor', () => {
+    expect(tipScrollTop('ArrowUp', { ...VIEW, scrollTop: 20 })).toBe(0)
+    expect(tipScrollTop('ArrowDown', { ...VIEW, scrollTop: 270 })).toBe(286)
+    expect(tipScrollTop('ArrowUp', { ...VIEW, scrollTop: 0 })).toBeNull()
+    expect(tipScrollTop('Home', { ...VIEW, scrollTop: 0 })).toBeNull()
+    expect(tipScrollTop('End', { ...VIEW, scrollTop: 286 })).toBeNull()
+  })
+
+  it('leaves every key to the anchor when the text fits, and other keys always', () => {
+    const fits = { scrollTop: 0, clientHeight: 114, scrollHeight: 114 }
+    expect(tipScrollTop('ArrowDown', fits)).toBeNull()
+    expect(tipScrollTop('End', fits)).toBeNull()
+    expect(tipScrollTop('Enter', VIEW)).toBeNull()
+    expect(tipScrollTop(' ', VIEW)).toBeNull()
+    expect(tipScrollTop('ArrowLeft', VIEW)).toBeNull()
+  })
+})
+
 describe('createTipControl', () => {
   let changes: boolean[]
+  let waits: boolean[]
   let control: TipControl
   const isOpen = () => changes.at(-1) ?? false
 
   beforeEach(() => {
     vi.useFakeTimers()
     changes = []
-    control = createTipControl((open) => changes.push(open))
+    waits = []
+    control = createTipControl(
+      (open) => changes.push(open),
+      (waiting) => waits.push(waiting),
+    )
   })
 
   afterEach(() => {
@@ -359,6 +404,31 @@ describe('createTipControl', () => {
     expect(changes).toEqual([true, false])
   })
 
+  it('says when an opening starts waiting and when it stops, opened or cancelled', () => {
+    control.pointerEnter('mouse')
+    control.pointerEnter('mouse')
+    expect(waits).toEqual([true])
+    vi.advanceTimersByTime(300)
+    expect(waits).toEqual([true, false])
+    expect(changes).toEqual([true])
+    control.escape()
+    // Escape while it waits: it stops waiting and never opens.
+    control.pointerEnter('mouse')
+    expect(control.escape()).toBe(false)
+    vi.advanceTimersByTime(1000)
+    expect(waits).toEqual([true, false, true, false])
+    expect(changes).toEqual([true, false])
+    // A long press waits the same way; lifting the finger stops it.
+    control.pressStart('touch')
+    control.pressEnd()
+    expect(waits).toEqual([true, false, true, false, true, false])
+    // Opening at once or on keyboard focus never waits.
+    control.open()
+    control.blur()
+    control.focus(true)
+    expect(waits).toHaveLength(6)
+  })
+
   it('tells nothing more once disposed', () => {
     control.pointerEnter('mouse')
     control.dispose()
@@ -368,5 +438,6 @@ describe('createTipControl', () => {
     control.dispose()
     vi.advanceTimersByTime(1000)
     expect(changes).toEqual([true])
+    expect(waits).toEqual([true])
   })
 })

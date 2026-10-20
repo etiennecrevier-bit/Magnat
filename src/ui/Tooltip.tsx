@@ -8,6 +8,7 @@ import {
   type MouseEventHandler,
   type PointerEventHandler,
   type ReactNode,
+  type Ref,
   type RefCallback,
 } from 'react'
 import {
@@ -15,6 +16,7 @@ import {
   placeTip,
   TIP,
   tipBounds,
+  tipScrollTop,
   type TipContent,
 } from './tooltip.ts'
 import './Tooltip.css'
@@ -61,15 +63,19 @@ export interface TooltipProps {
  * text, rows of figures and a hint of what clicking does, and an arrow
  * toward the anchor. It opens on hover after a moment, at once on keyboard
  * focus and on a long press, and closes on leave, blur, Escape or a press
- * elsewhere. It never takes the focus. It is a manual popover, so it shows
- * above an open panel while staying in its page.
+ * elsewhere. It never takes the focus: text taller than the window scrolls
+ * by the wheel, or by the arrows, Page Up, Page Down, Home and End on the
+ * focused anchor. It is a manual popover, so it shows above an open panel
+ * while staying in its page.
  */
 export default function Tooltip({ content, width, children }: TooltipProps) {
   const id = useId()
   const [open, setOpen] = useState(false)
-  const [control] = useState(() => createTipControl(setOpen))
+  const [waiting, setWaiting] = useState(false)
+  const [control] = useState(() => createTipControl(setOpen, setWaiting))
   const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null)
   const tipRef = useRef<HTMLDivElement | null>(null)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => () => control.dispose(), [control])
 
@@ -115,15 +121,31 @@ export default function Tooltip({ content, width, children }: TooltipProps) {
     }
   }, [open, width, anchorElement])
 
-  // While open, the first Escape closes only the tooltip, before a panel or
-  // an event card hears it, and a press anywhere else closes it.
+  // While open or about to open, the first Escape closes only the tooltip,
+  // or stops it opening, before a panel or an event card hears it, and a
+  // press anywhere else closes it. While open, the scroll keys on the
+  // focused anchor scroll text taller than the window.
   useEffect(() => {
-    if (!open) return
+    if (!open && !waiting) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && control.escape()) {
+      if (event.key === 'Escape') {
+        if (!control.escape()) return
         event.preventDefault()
         event.stopPropagation()
+        return
       }
+      const body = bodyRef.current
+      const target = event.target
+      if (!open || body === null || !(target instanceof Node)) return
+      if (!anchorElement?.contains(target)) return
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return
+      }
+      const to = tipScrollTop(event.key, body)
+      if (to === null) return
+      body.scrollTop = to
+      event.preventDefault()
+      event.stopPropagation()
     }
     const onPress = (event: PointerEvent) => {
       const target = event.target
@@ -138,7 +160,7 @@ export default function Tooltip({ content, width, children }: TooltipProps) {
       window.removeEventListener('keydown', onKey, true)
       window.removeEventListener('pointerdown', onPress, true)
     }
-  }, [open, control, anchorElement])
+  }, [open, waiting, control, anchorElement])
 
   const anchor: TipAnchorProps = {
     ref: setAnchorElement,
@@ -175,18 +197,28 @@ export default function Tooltip({ content, width, children }: TooltipProps) {
         // A press on the tooltip leaves the focus on the anchor.
         onMouseDown={(event) => event.preventDefault()}
       >
-        <TipBody content={content} />
+        <TipBody content={content} ref={bodyRef} />
         <span className="tip__arrow" aria-hidden="true" />
       </div>
     </>
   )
 }
 
-/** The tooltip's text: title, text, rows and the hint, each when given. */
-export function TipBody({ content }: { readonly content: TipContent }) {
+/**
+ * The tooltip's text: title, text, rows and the hint, each when given. Out
+ * of the Tab order even when it scrolls, since the browser would otherwise
+ * stop on it and blur the anchor.
+ */
+export function TipBody({
+  content,
+  ref,
+}: {
+  readonly content: TipContent
+  readonly ref?: Ref<HTMLDivElement>
+}) {
   const { title, text, rows, link } = content
   return (
-    <div className="tip__body">
+    <div className="tip__body" ref={ref} tabIndex={-1}>
       <p className="tip__title">{title}</p>
       {text !== undefined && <p className="tip__text">{text}</p>}
       {rows !== undefined && rows.length > 0 && (

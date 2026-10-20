@@ -41,8 +41,10 @@ describe('Tooltip', () => {
     expect(attribute(html, TIP_ELEMENT, 'id')).toBe(id)
     expect(html).toContain('popover="manual"')
     expect(html).not.toContain('data-open')
-    // It never takes the focus.
-    expect(html).not.toContain('tabindex')
+    // It never takes the focus: its text, which may scroll, is out of the
+    // Tab order, and nothing else in it is focusable.
+    expect(html).toContain('<div class="tip__body" tabindex="-1">')
+    expect(html.match(/tabindex="[^"]*"/g)).toEqual(['tabindex="-1"'])
   })
 
   it('shows the title and the rows, a value to look at in amber', () => {
@@ -72,7 +74,7 @@ describe('Tooltip', () => {
   it('leaves out the parts it is not given', () => {
     const html = render({ title: 'Seul', rows: [] })
     expect(html).toContain(
-      '<div class="tip__body"><p class="tip__title">Seul</p></div>',
+      '<div class="tip__body" tabindex="-1"><p class="tip__title">Seul</p></div>',
     )
     expect(html).not.toContain('tip__text')
     expect(html).not.toContain('tip__rows')
