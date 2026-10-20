@@ -59,10 +59,10 @@ type EndPanel = Extract<Panel, 'defiEnd' | 'bankruptcy'>
 
 /**
  * The part of a panel to show as it opens: « Fournil » in « Camion », as a
- * click on the bakery in the city opens it, or « Contrats » in « Ville », as
- * a click on a grocer does.
+ * click on the bakery in the city opens it, « Menu » in « Camion », as « Hier »
+ * opens it, or « Contrats » in « Ville », as a click on a grocer does.
  */
-export type PanelSection = 'bakery' | 'contracts'
+export type PanelSection = 'bakery' | 'menu' | 'contracts'
 
 /**
  * The drawers the dock opens over the street, which only read the game and
@@ -294,7 +294,7 @@ export interface GameStoreState {
    * panel and the speed it remembered stay. The event card, « Magnat » and
    * the end of a game only open on their own. The report takes the card
    * sliding in away and counts the reports as read. It closes the drawer
-   * open, if any. « Le camion » at « Fournil » shows that tab; « Ville »
+   * open, if any. « Le camion » at « Fournil » or « Menu » shows that tab; « Ville »
    * opens on « Contrats » for that section, else on « Aller à… ».
    */
   openPanel: (
@@ -706,8 +706,8 @@ export function createGameStore(
         panel,
         panelSection: section ?? null,
         drawer: null,
-        ...(panel === 'manage' && section === 'bakery'
-          ? { truckTab: 'bakery' as const }
+        ...(panel === 'manage' && (section === 'bakery' || section === 'menu')
+          ? { truckTab: section }
           : {}),
         ...(panel === 'trip'
           ? {

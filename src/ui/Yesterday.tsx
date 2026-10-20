@@ -105,7 +105,7 @@ export function YesterdayView({
   )
 }
 
-/** « Hier » with the app store's last day; a click opens « Camion ». */
+/** « Hier » with the app store's last day; a click opens « Camion » on « Menu ». */
 export default function Yesterday(
   props: Omit<YesterdayViewProps, 'numbers' | 'onOpen'>,
 ) {
@@ -115,7 +115,7 @@ export default function Yesterday(
     <YesterdayView
       {...props}
       numbers={lastDay === null ? null : todayNumbers(lastDay)}
-      onOpen={() => openPanel('manage')}
+      onOpen={() => openPanel('manage', 'menu')}
     />
   )
 }
