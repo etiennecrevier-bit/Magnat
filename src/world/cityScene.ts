@@ -6,7 +6,7 @@ import type {
   CityShows,
 } from '../content/assets.ts'
 import { WALL_KINDS } from '../content/assets.ts'
-import type { GrocerContent } from '../content/schema.ts'
+import type { GrocerContent, GrocerId } from '../content/schema.ts'
 import { GROCERS } from '../engine/contracts.ts'
 import type { VisualEffects } from '../ui/settings.ts'
 import {
@@ -31,6 +31,12 @@ import {
   type MakeFilters,
   type Shadows,
 } from './shadows.ts'
+
+/** What a building opens, and the grocer whose shop it is, if any. */
+export interface CityHit {
+  readonly opens: CityOpens
+  readonly grocer?: GrocerId
+}
 
 /** The city, built once from the manifest and shown from the game. */
 export interface CityScene {
@@ -61,9 +67,10 @@ export interface CityScene {
   showTruck: (open: boolean) => void
   /**
    * What a click at `point` of the design opens: the link of the nearest
-   * box shown there, or null when it opens nothing or no box is there.
+   * box shown there, with its grocer for a shop, or null when it opens
+   * nothing or no box is there.
    */
-  linkAt: (point: Vec) => CityOpens | null
+  linkAt: (point: Vec) => CityHit | null
   /** Softens the shadows' edge with the full visual effects only. */
   setEffects: (effects: VisualEffects) => void
   /** Takes the city down, with its textures and filters. */
@@ -140,7 +147,7 @@ export function buildCityScene(
   const hits: {
     polygon: Vec[]
     node: Container
-    opens: CityOpens | null
+    hit: CityHit | null
     layer: number
     rank: number
   }[] = []
@@ -177,7 +184,12 @@ export function buildCityScene(
       hits.push({
         polygon: silhouette(boxCorners(piece)),
         node,
-        opens: piece.opens ?? null,
+        hit:
+          piece.opens === undefined
+            ? null
+            : piece.grocer === undefined
+              ? { opens: piece.opens }
+              : { opens: piece.opens, grocer: piece.grocer },
         layer: city.layers.indexOf(piece.layer),
         rank: box?.rank ?? order,
       })
@@ -226,7 +238,7 @@ export function buildCityScene(
       const hit = hits.find(
         ({ node, polygon }) => node.visible && inside(point, polygon),
       )
-      return hit?.opens ?? null
+      return hit?.hit ?? null
     },
     setEffects: (effects) => shadows.setEffects(effects),
     destroy: () => {

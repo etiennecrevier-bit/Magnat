@@ -179,3 +179,10 @@
     padding: 0.25rem 1rem 1rem;
   }
 }
+
+/* Over something the backdrop hands its presses to, such as a building of
+   the city behind « Ville ». */
+.dock-panel--pointing,
+.dock-panel--pointing::backdrop {
+  cursor: pointer;
+}

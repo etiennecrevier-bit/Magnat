@@ -4,7 +4,13 @@ import type { CandidateId, StaffRoleId } from '../content/schema.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
 import type { GameState } from '../engine/types.ts'
-import { staffBoard } from './staffBoard.ts'
+import {
+  memberLine,
+  memberTip,
+  ownerTip,
+  roleTip,
+  staffBoard,
+} from './staffBoard.ts'
 import StaffPanel, { StaffPanelView } from './StaffPanel.tsx'
 import { gameStore, type GameStoreState } from './store.ts'
 
@@ -41,7 +47,6 @@ function render(
       confirming={confirming}
       onConfirmingChange={() => {}}
       onChange={() => {}}
-      onClose={() => {}}
     />,
   )
 }
@@ -50,14 +55,23 @@ function decided(state: GameState, ...changes: DecisionChange[]): GameState {
   return changes.reduce((game, change) => applyDecision(game, change), state)
 }
 
-/** Each team card's text, tags removed, its parts apart by « | ». */
-function cards(html: string): string[] {
-  return [...html.matchAll(/<li class="staff__member">(.*?)<\/li>/g)].map(
-    ([, inner]) =>
-      (inner ?? '')
-        .replace(/<\/(h4|p|button|label|span)>/g, '|')
-        .replace(/<[^>]*>/g, '')
-        .replace(/\|+$/, ''),
+/**
+ * Each row of the team, its tooltip left out: its text, tags removed, its
+ * parts apart by « | ».
+ */
+function rows(html: string): string[] {
+  const team =
+    html.match(/<ul class="staff__team"[^>]*>(.*?)<section/)?.[1] ?? ''
+  return [
+    ...team.matchAll(
+      /<div class="staff__row"[^>]*>(.*?)<\/div><div id="[^"]*" role="tooltip"/g,
+    ),
+  ].map(([, inner]) =>
+    (inner ?? '')
+      .replace(/<\/(h3|p|li|button|label|span)>/g, '|')
+      .replace(/<[^>]*>/g, '')
+      .replace(/\|+/g, '|')
+      .replace(/^\||\|$/g, ''),
   )
 }
 
@@ -69,71 +83,133 @@ function amelieAtWork(): GameState {
 }
 
 describe('StaffPanelView', () => {
-  it('opens on Fermer, then the title and the note', () => {
+  it('opens on the note, with no title of its own', () => {
     expect(render(START)).toMatch(
-      /^<div class="panel__content"><div class="panel__header"><button type="button" class="toggle">Fermer<\/button><h2 id="staff-title">Qui fait quoi<\/h2><\/div><p class="manage__note">Les changements s&#x27;appliquent demain matin<\/p>/,
+      /^<div class="panel__content"><p class="manage__note">Les changements s&#x27;appliquent demain matin<\/p><ul class="staff__team" aria-label="L&#x27;équipe">/,
     )
   })
 
-  it('shows the owner with their pay and what they do today', () => {
-    expect(cards(render(START))).toEqual([
-      `Vous|Propriétaire · 700,00${S}$ par semaine|Aujourd&#x27;hui${S}: Congé`,
+  it('shows the owner with a silhouette, their role, what they do today and their pay', () => {
+    const html = render(START)
+    expect(rows(html)).toEqual([
+      `Vous|Propriétaire|Congé|700,00${S}$ par semaine`,
     ])
-    expect(cards(render(tick(START)))[0]).toContain(
-      `Aujourd&#x27;hui${S}: Au camion`,
+    expect(html).toContain(
+      '<svg class="staff__portrait staff__silhouette" viewBox="0 0 96 96" width="48" height="48" aria-hidden="true" focusable="false">',
     )
-    expect(cards(render({ ...tick(START), ownerAway: true }))[0]).toContain(
-      `Aujourd&#x27;hui${S}: ailleurs toute la journée`,
+    expect(html).toContain('<li class="chip chip--off">Congé</li>')
+    expect(rows(render(tick(START)))[0]).toBe(
+      `Vous|Propriétaire|Au camion|700,00${S}$ par semaine`,
+    )
+    expect(rows(render({ ...tick(START), ownerAway: true }))[0]).toBe(
+      `Vous|Propriétaire|Ailleurs|700,00${S}$ par semaine`,
     )
   })
 
-  it('shows each employee with their role, wage and work today, and « Congédier »', () => {
+  it('shows each employee with their role, work today as chips, wage and « Congédier »', () => {
     const html = render(amelieAtWork())
-    expect(cards(html)[1]).toBe(
-      `Amélie Gagnon|Au camion · 612,50${S}$ par semaine|Aujourd&#x27;hui${S}: Au camion|Salaire horaire|$ de l&#x27;heure|Congédier`,
+    expect(rows(html)[1]).toBe(
+      `Amélie Gagnon|Au camion|Au camion|Salaire horaire|$ de l&#x27;heure|Congédier`,
     )
-    expect(html).toContain(
-      '<input id="staff-wage-amelie" class="field__input" type="text" inputMode="decimal" autoComplete="off" aria-invalid="false" aria-describedby="staff-wage-amelie-unit" value="17,50"/>',
+    expect(html).toContain('<li class="chip">Au camion</li>')
+    expect(html).toMatch(
+      /<input id="staff-wage-amelie" class="field__input" type="text" inputMode="decimal" autoComplete="off" aria-invalid="false" aria-describedby="staff-wage-amelie-unit [^"]+" value="17,50"\/>/,
     )
-    expect(html).toContain(
-      '<button type="button" class="button" aria-label="Congédier Amélie Gagnon">Congédier</button>',
+    expect(html).toMatch(
+      /<button type="button" class="button" aria-label="Congédier Amélie Gagnon" aria-describedby="[^"]+">Congédier<\/button>/,
     )
   })
 
-  it('asks to confirm « Congédier », with the notice it costs', () => {
-    const html = render(amelieAtWork(), 'camion', 'amelie')
-    expect(html).toContain(
-      `<div class="staff__confirm"><p role="alert">Congédier Amélie Gagnon? Préavis${S}: 1${S}225,00${S}$</p><button type="button" class="button button--primary">Confirmer</button> <button type="button" class="button">Annuler</button></div>`,
+  it('puts the hours, the weekly pay and the notice in the tooltip of someone at work', () => {
+    const board = staffBoard(amelieAtWork())
+    expect(memberTip(board.members[0]!, 35)).toEqual({
+      title: 'Amélie Gagnon',
+      rows: [
+        { label: 'Rôle', value: 'Au camion' },
+        { label: 'Heures par semaine', value: `35${S}h` },
+        { label: 'Salaire par semaine', value: `612,50${S}$` },
+        { label: 'Préavis si congédié', value: `1${S}225,00${S}$` },
+      ],
+    })
+    expect(render(amelieAtWork())).toContain(
+      `<dt>Préavis si congédié</dt><dd>1${S}225,00${S}$</dd>`,
     )
+    expect(ownerTip(board.owner)).toEqual({
+      title: 'Vous',
+      rows: [
+        { label: 'Rôle', value: 'Propriétaire' },
+        { label: 'Salaire par semaine', value: `700,00${S}$` },
+      ],
+    })
+  })
+
+  it('asks to confirm « Congédier », the notice in the tooltip', () => {
+    const html = render(amelieAtWork(), 'camion', 'amelie')
+    expect(html).toMatch(
+      /<div class="staff__confirm"><p role="alert">Congédier Amélie Gagnon\?<\/p><button type="button" class="button button--primary" aria-describedby="[^"]+">Confirmer<\/button> <button type="button" class="button">Annuler<\/button><\/div>/,
+    )
+    expect(rows(html)[1]).not.toContain('Préavis')
     expect(html).not.toContain('aria-label="Congédier Amélie Gagnon"')
   })
 
-  it('shows a hire who starts tomorrow, with the training and a free cancel', () => {
-    const html = render(
-      decided(START, { kind: 'hire', role: 'boulanger', candidate: 'sophie' }),
+  it('shows a hire who starts tomorrow, with a free cancel, the training in the tooltip', () => {
+    const game = decided(START, {
+      kind: 'hire',
+      role: 'boulanger',
+      candidate: 'sophie',
+    })
+    const html = render(game)
+    expect(rows(html)[1]).toBe(
+      `Sophie Roy|Boulanger|Commence demain|Salaire horaire|$ de l&#x27;heure|Annuler l&#x27;embauche · sans frais`,
     )
-    expect(cards(html)[1]).toBe(
-      `Sophie Roy|Boulanger · 352,00${S}$ par semaine|Commence demain · Formation${S}: 352,00${S}$|Salaire horaire|$ de l&#x27;heure|Annuler l&#x27;embauche · sans frais`,
+    expect(html).toContain(
+      '<p id="staff-sophie-status" class="status-line"><span class="status-line__dot status-line__dot--warn" aria-hidden="true"></span>Commence demain</p>',
     )
+    const sophie = staffBoard(game).members[0]!
+    expect(memberTip(sophie, 16).rows).toContainEqual({
+      label: 'Formation',
+      value: `352,00${S}$`,
+    })
+    expect(memberLine(sophie).fact).toEqual({
+      tone: 'warn',
+      text: 'Commence demain',
+    })
   })
 
   it('shows someone fired as leaving tomorrow, with what they do today and nothing left to change', () => {
-    const html = render(
-      decided(amelieAtWork(), { kind: 'fire', candidate: 'amelie' }),
+    const game = decided(amelieAtWork(), { kind: 'fire', candidate: 'amelie' })
+    const html = render(game)
+    expect(rows(html)[1]).toBe(
+      `Amélie Gagnon|Au camion|Part demain|Au camion|17,50${S}$ de l&#x27;heure`,
     )
-    expect(cards(html)[1]).toBe(
-      `Amélie Gagnon|Au camion · 612,50${S}$ par semaine|Aujourd&#x27;hui${S}: Au camion · Part demain`,
+    const amelie = staffBoard(game).members[0]!
+    expect(memberLine(amelie).fact).toEqual({
+      tone: 'off',
+      text: 'Part demain',
+    })
+    expect(memberTip(amelie, 35).rows).not.toContainEqual(
+      expect.objectContaining({ label: 'Préavis si congédié' }),
     )
   })
 
-  it('lists the roles with their hours, wage and training, then the candidates to hire', () => {
+  it('lists the roles by name, their hours, wage and training in each one’s tooltip, then the candidates to hire', () => {
     const html = render(START, 'livreur')
-    expect(html).toContain(
-      `<li><button type="button" class="toggle" aria-pressed="false" aria-describedby="staff-role-camion">Au camion</button> <span id="staff-role-camion" class="staff__role-details">35${S}h par semaine · 17,50${S}$ de l&#x27;heure · 612,50${S}$ par semaine · Formation${S}: 612,50${S}$</span></li>`,
+    expect(html).toMatch(
+      /<li><button type="button" class="toggle" aria-pressed="false" aria-describedby="[^"]+">Au camion<\/button><div id="[^"]+" role="tooltip"/,
     )
-    expect(html).toContain(
-      'aria-pressed="true" aria-describedby="staff-role-livreur">Livreur</button>',
+    expect(html).toMatch(
+      /aria-pressed="true" aria-describedby="[^"]+">Livreur<\/button>/,
     )
+    expect(html).not.toContain('staff__role-details')
+    expect(roleTip(staffBoard(START).roles[0]!)).toEqual({
+      title: 'Au camion',
+      rows: [
+        { label: 'Heures par semaine', value: `35${S}h` },
+        { label: 'Salaire horaire', value: `17,50${S}$` },
+        { label: 'Salaire par semaine', value: `612,50${S}$` },
+        { label: 'Formation', value: `612,50${S}$` },
+      ],
+    })
     expect(html).toContain(
       '<li><span>Amélie Gagnon</span> <button type="button" class="button" aria-label="Embaucher Amélie Gagnon, Livreur">Embaucher</button></li>',
     )
@@ -167,6 +243,6 @@ describe('StaffPanel', () => {
     expect(html).toMatch(
       /^<dialog class="panel dock-frame dock-panel staff" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\1" class="dock-frame__title">Équipe<\/h2>.*<div class="panel__content">.*<\/dialog>$/,
     )
-    expect(html).toContain('<h4>Amélie Gagnon</h4>')
+    expect(html).toContain('<h3 class="staff__name">Amélie Gagnon</h3>')
   })
 })

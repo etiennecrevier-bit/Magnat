@@ -3,6 +3,10 @@ import { mondayOf } from '../engine/calendar.ts'
 import { GROCERS } from '../engine/contracts.ts'
 import { sum, type Cents } from '../engine/money.ts'
 import type { Contract, Day, GameState } from '../engine/types.ts'
+import { formatDayAndMonth, formatWeekdayName } from './formatGameDate.ts'
+import { formatCount, formatMoney } from './formatMoney.ts'
+import type { StatusLine } from './productFacts.ts'
+import type { TipContent, TipRow } from './tooltip.ts'
 
 // What the « Contrats » screen shows of the grocers' contracts (#163): the
 // engine keeps them (src/engine/contracts.ts); this only reads them.
@@ -147,4 +151,106 @@ function weekDelivery(
     return { kind: 'due', day: deliveryDay }
   }
   return { kind: 'first', day: deliveryDay + DAYS_PER_WEEK }
+}
+
+/**
+ * The grocers of `board`, with `grocer` among them, in the order of
+ * `grocers`, as a click on their shop asks for their card: with no contract
+ * and nothing owed when the board leaves them out.
+ */
+export function withGrocer(
+  board: ContractsBoard,
+  grocer: GrocerId | null,
+  grocers: GrocerContent = GROCERS,
+): readonly GrocerLine[] {
+  if (grocer === null || board.grocers.some((line) => line.grocer === grocer)) {
+    return board.grocers
+  }
+  const { name, owner } = grocers.grocers[grocer]
+  const order = Object.keys(grocers.grocers)
+  return [
+    ...board.grocers,
+    { grocer, name, owner, contract: null, owed: [], owedTotal: sum([]) },
+  ].sort((a, b) => order.indexOf(a.grocer) - order.indexOf(b.grocer))
+}
+
+/** This week's delivery to `line`'s grocer, as the card's status line. */
+export function grocerLine({ contract }: GrocerLine): StatusLine {
+  if (contract === null) {
+    return {
+      fact: { tone: 'off', text: 'Aucun contrat en cours' },
+      tomorrow: null,
+    }
+  }
+  return { fact: weekFact(contract.week), tomorrow: null }
+}
+
+function weekFact(week: WeekDelivery): NonNullable<StatusLine['fact']> {
+  const weekday = formatWeekdayName(week.day)
+  switch (week.kind) {
+    case 'delivered':
+      return {
+        tone: 'ok',
+        text: `${formatCount(week.units)} croissants livrés ${weekday}, ${formatMoney(week.amount)}`,
+      }
+    case 'missed':
+      return { tone: 'bad', text: `Livraison manquée ${weekday}` }
+    case 'due':
+      return { tone: 'warn', text: `Livraison ${weekday}` }
+    case 'first':
+      return {
+        tone: 'off',
+        text: `Première livraison le ${formatDayAndMonth(week.day)}`,
+      }
+  }
+}
+
+/**
+ * What a grocer's tooltip says: who runs it, their contract as it runs and
+ * what they owe, by due day.
+ */
+export function grocerTip({
+  name,
+  owner,
+  contract,
+  owed,
+  owedTotal,
+}: GrocerLine): TipContent {
+  const rows: TipRow[] = []
+  if (contract !== null) {
+    const { unitsPerWeek, unitPrice, premium, weeksLeft, strikes, maxStrikes } =
+      contract
+    rows.push({
+      label: 'Par semaine',
+      value: `${formatCount(unitsPerWeek)} croissants à ${formatMoney(unitPrice)}`,
+    })
+    if (premium > 0) {
+      rows.push({
+        label: 'Prime du fournil',
+        value: `+${formatMoney(premium)} par croissant`,
+      })
+    }
+    rows.push(
+      { label: 'Semaines restantes', value: String(weeksLeft) },
+      {
+        label: 'Livraisons manquées',
+        value: `${strikes} sur ${maxStrikes}`,
+        warn: strikes > 0,
+      },
+    )
+  }
+  if (owed.length > 0) {
+    rows.push({
+      label: 'À recevoir',
+      value: formatMoney(owedTotal),
+      divider: true,
+    })
+    for (const { amount, dueDay } of owed) {
+      rows.push({
+        label: `Le ${formatDayAndMonth(dueDay)}`,
+        value: formatMoney(amount),
+      })
+    }
+  }
+  return { title: name, text: owner, rows }
 }

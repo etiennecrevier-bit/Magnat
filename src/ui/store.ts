@@ -1,5 +1,5 @@
 import { createStore, useStore, type StoreApi } from 'zustand'
-import type { EventContent } from '../content/schema.ts'
+import type { EventContent, GrocerId } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
 import { createInitialState, startChallenge, tick } from '../engine/clock.ts'
 import {
@@ -88,6 +88,22 @@ export type TruckTab =
 /** The tab « Le camion » opens on in a game that has not picked one yet. */
 export const FIRST_TRUCK_TAB: TruckTab = 'menu'
 
+/**
+ * The tabs of « Ville »: « Aller à… », where the owner goes, and «
+ * Contrats », whom they deliver to.
+ */
+export type CityTab = 'trip' | 'contracts'
+
+/**
+ * The grocer whose card « Contrats » brings into view, as a click on their
+ * shop in the city asks, and how many clicks asked so far, so each one
+ * brings it again.
+ */
+export interface CityPick {
+  readonly grocer: GrocerId
+  readonly count: number
+}
+
 /** The tab each drawer shows. */
 export interface DrawerTabs {
   readonly finances: FinancesTab
@@ -150,6 +166,10 @@ export interface GameStoreState {
   drawerTabs: DrawerTabs
   /** The tab « Le camion » shows, kept while it is closed. */
   truckTab: TruckTab
+  /** The tab « Ville » shows; « Aller à… » each time it opens. */
+  cityTab: CityTab
+  /** The grocer « Contrats » shows, as the city asked; null for none. */
+  cityPick: CityPick | null
   /**
    * How many reports came only as the card sliding in since the player
    * last read one, in the full report or in « Journal »: the count on the
@@ -234,7 +254,8 @@ export interface GameStoreState {
    * panel and the speed it remembered stay. The event card, « Magnat » and
    * the end of a game only open on their own. The report takes the card
    * sliding in away and counts the reports as read. It closes the drawer
-   * open, if any. « Le camion » at « Fournil » shows that tab.
+   * open, if any. « Le camion » at « Fournil » shows that tab; « Ville »
+   * opens on « Contrats » for that section, else on « Aller à… ».
    */
   openPanel: (
     panel: Exclude<Panel, 'event' | 'magnat' | EndPanel>,
@@ -251,6 +272,13 @@ export interface GameStoreState {
   setDrawerTab: <D extends Drawer>(drawer: D, tab: DrawerTabs[D]) => void
   /** Shows `tab` in « Le camion », open or not. */
   setTruckTab: (tab: TruckTab) => void
+  /** Shows `tab` in « Ville ». */
+  setCityTab: (tab: CityTab) => void
+  /**
+   * Shows `grocer`'s card on « Contrats » of « Ville », open: the tab, and
+   * the card brought into view once more.
+   */
+  pickGrocer: (grocer: GrocerId) => void
   /** Closes the drawer open, if any. */
   closeDrawer: () => void
   /**
@@ -399,6 +427,8 @@ function playing(game: GameState) {
     drawer: null,
     drawerTabs: FIRST_DRAWER_TABS,
     truckTab: FIRST_TRUCK_TAB,
+    cityTab: 'trip' as const,
+    cityPick: null,
     unreadReports: 0,
   }
 }
@@ -599,6 +629,12 @@ export function createGameStore(
         ...(panel === 'manage' && section === 'bakery'
           ? { truckTab: 'bakery' as const }
           : {}),
+        ...(panel === 'trip'
+          ? {
+              cityTab: section === 'contracts' ? 'contracts' : 'trip',
+              cityPick: null,
+            }
+          : {}),
         ...(panel === 'report' ? { slideIn: null, unreadReports: 0 } : {}),
       })
     },
@@ -615,6 +651,12 @@ export function createGameStore(
     setDrawerTab: (drawer, tab) =>
       set({ drawerTabs: { ...get().drawerTabs, [drawer]: tab } }),
     setTruckTab: (truckTab) => set({ truckTab }),
+    setCityTab: (cityTab) => set({ cityTab }),
+    pickGrocer: (grocer) =>
+      set({
+        cityTab: 'contracts',
+        cityPick: { grocer, count: (get().cityPick?.count ?? 0) + 1 },
+      }),
     closeDrawer: () => {
       if (get().drawer !== null) set({ drawer: null })
     },

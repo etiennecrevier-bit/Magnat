@@ -1,3 +1,4 @@
+import type { GrocerId } from '../content/schema.ts'
 import type { Point } from './customerCard.ts'
 import type { Picker } from './picker.ts'
 
@@ -6,8 +7,12 @@ import type { Picker } from './picker.ts'
 // The city reports what a click opens; the UI opens it. Either side can come
 // and go: a press before the city starts, or after it stops, does nothing.
 
-/** What a click on a building opens, as the city reports it to the page. */
-export type CityLink = 'trip' | 'fournil' | 'contracts'
+/**
+ * What a click on a building opens, as the city reports it to the page: a
+ * grocer's shop names its grocer, so the page can show that grocer's card.
+ */
+export type CityLink =
+  'trip' | 'fournil' | 'contracts' | { readonly grocer: GrocerId }
 
 /** What the city does when the page presses it: the city's side. */
 export interface CityTarget {

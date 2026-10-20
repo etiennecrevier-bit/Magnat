@@ -107,7 +107,6 @@
 }
 
 .top-bar__defi:focus-visible,
-.top-bar__view:focus-visible,
 .top-bar__speed:focus-visible,
 .top-bar__alert:focus-visible,
 .top-bar__settings:focus-visible {
@@ -128,9 +127,7 @@
   color: #2e7d4f;
 }
 
-/* « La rue » and « La ville », then the speeds: cream groups with an ink
-   border, the one pressed in ink. */
-.top-bar__views,
+/* The speeds: a cream group with an ink border, the one pressed in ink. */
 .top-bar__speeds {
   display: flex;
   gap: 4px;
@@ -140,7 +137,6 @@
   background: #fff7e8;
 }
 
-.top-bar__view,
 .top-bar__speed {
   display: inline-flex;
   align-items: center;
@@ -159,12 +155,10 @@
   cursor: pointer;
 }
 
-.top-bar__view:hover,
 .top-bar__speed:hover {
   background: #fbefd5;
 }
 
-.top-bar__view[aria-pressed='true'],
 .top-bar__speed[aria-pressed='true'] {
   background: #2b2622;
   color: #fff7e8;
@@ -258,7 +252,6 @@
     padding: 4px 10px;
   }
 
-  .top-bar__view,
   .top-bar__speed {
     padding: 0 8px;
   }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createInitialState, startChallenge } from '../engine/clock.ts'
 import { NORMAL_SPEED } from './store.ts'
-import { openCityLink, openContracts } from './cityLinks.ts'
+import { openCityLink, openContracts, showCity } from './cityLinks.ts'
+import { createSettingsStore } from './settings.ts'
 import { createGameStore, PAUSED } from './store.ts'
 
 function setup(game = createInitialState(42)) {
@@ -85,10 +86,97 @@ describe('openCityLink', () => {
     })
   })
 
+  it('opens « Ville » on « Contrats » at the grocer whose shop was clicked', () => {
+    const { store, open } = setup()
+    open({ grocer: 'chezNormand' })
+    expect(store.getState()).toMatchObject({
+      panel: 'trip',
+      cityTab: 'contracts',
+      cityPick: { grocer: 'chezNormand', count: 1 },
+      speed: PAUSED,
+    })
+  })
+
+  it('opens « Finances » on « Contrats » for a grocer’s shop in a Défi, with no pick', () => {
+    const { store, open } = setup(DEFI())
+    open({ grocer: 'chezNormand' })
+    expect(store.getState()).toMatchObject({
+      panel: null,
+      drawer: 'finances',
+      drawerTabs: { finances: 'contracts' },
+      cityPick: null,
+    })
+  })
+
+  it('opens no grocer under another panel', () => {
+    const { store, open } = setup()
+    store.getState().openPanel('settings')
+    open({ grocer: 'chezNormand' })
+    expect(store.getState()).toMatchObject({
+      panel: 'settings',
+      cityPick: null,
+    })
+  })
+
   it('opens no drawer under a panel in a Défi', () => {
     const { store } = setup(DEFI())
     store.getState().openPanel('settings')
     openContracts(store)
     expect(store.getState()).toMatchObject({ panel: 'settings', drawer: null })
+  })
+})
+
+describe('openCityLink with « Ville » open, the city behind it', () => {
+  function inCity() {
+    const context = setup()
+    context.store.getState().openPanel('trip')
+    return context
+  }
+
+  it('moves to « Contrats » on each grocer clicked, the same one again too', () => {
+    const { store, open } = inCity()
+    open({ grocer: 'marcheBioLogique' })
+    expect(store.getState()).toMatchObject({
+      panel: 'trip',
+      cityTab: 'contracts',
+      cityPick: { grocer: 'marcheBioLogique', count: 1 },
+    })
+    open({ grocer: 'marcheBioLogique' })
+    expect(store.getState().cityPick).toEqual({
+      grocer: 'marcheBioLogique',
+      count: 2,
+    })
+  })
+
+  it('moves to « Aller à… » for a place, and to « Contrats » for the grocers', () => {
+    const { store, open } = inCity()
+    open('contracts')
+    expect(store.getState()).toMatchObject({
+      panel: 'trip',
+      cityTab: 'contracts',
+    })
+    open('trip')
+    expect(store.getState()).toMatchObject({ panel: 'trip', cityTab: 'trip' })
+  })
+
+  it('swaps « Ville » for « Camion » at « Fournil » for the bakery, still paused', () => {
+    const { store, open } = inCity()
+    open('fournil')
+    expect(store.getState()).toMatchObject({
+      panel: 'manage',
+      panelSection: 'bakery',
+      truckTab: 'bakery',
+      speed: PAUSED,
+    })
+  })
+})
+
+describe('showCity', () => {
+  it('shows the city, then the street again', () => {
+    const settings = createSettingsStore(null)
+    const back = showCity(settings)
+    expect(settings.getState().worldView).toBe('city')
+    back()
+    expect(settings.getState().worldView).toBe('street')
   })
 })

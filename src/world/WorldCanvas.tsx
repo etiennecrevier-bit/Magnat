@@ -16,7 +16,7 @@ import './WorldCanvas.css'
 
 /**
  * The world, drawn behind the panels, which screen readers skip: the street
- * or the city, as the top bar's switch picks (see `startWorld`). While the
+ * or the city, the city while « Ville » is open (see `startWorld`). While the
  * street runs, the button that picks a customer from the keyboard, hidden
  * until it has focus, and the card of the customer the player picked, over
  * the panels. A click on a building of the city reports its link to

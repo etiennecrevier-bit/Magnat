@@ -1,5 +1,5 @@
 import type { Ticker } from 'pixi.js'
-import type { AssetManifest, CityOpens } from '../content/assets.ts'
+import type { AssetManifest } from '../content/assets.ts'
 import pacing from '../content/pacing.json'
 import { FOOD_TRUCK } from '../engine/day.ts'
 import type { GameState } from '../engine/types.ts'
@@ -13,7 +13,7 @@ import { loadArt } from './art.ts'
 import { createAtmosphere } from './atmosphere.ts'
 import { createCityPeople } from './cityPeople.ts'
 import { CITY, type CityLink, type CityPicker } from './cityPicker.ts'
-import { buildCityScene } from './cityScene.ts'
+import { buildCityScene, type CityHit } from './cityScene.ts'
 import { actorsAt, cityView, lineAt, type CityView } from './cityView.ts'
 import { CROWD } from './crowdSettings.ts'
 import type { Point } from './customerCard.ts'
@@ -156,11 +156,11 @@ export async function startCity(
     /** The link of the building drawn at `point` on the page, if it opens. */
     const linkAt = (point: Point): CityLink | null => {
       if (onOpen() === null) return null
-      const opens = scene.linkAt([
+      const hit = scene.linkAt([
         (point.x - fitted.x) / fitted.scale,
         (point.y - fitted.y) / fitted.scale,
       ])
-      return opens === null ? null : linkOf(opens, view)
+      return hit === null ? null : linkOf(hit, view)
     }
     undo(
       picker.connect({
@@ -197,8 +197,12 @@ export async function startCity(
   })
 }
 
-/** What a building's `opens` reports, or null for a trip none can make. */
-function linkOf(opens: CityOpens, view: CityView): CityLink | null {
+/**
+ * What a building reports: its grocer for a grocer's shop, else its
+ * `opens`, or null for a trip none can make.
+ */
+function linkOf({ opens, grocer }: CityHit, view: CityView): CityLink | null {
+  if (opens === 'contracts' && grocer !== undefined) return { grocer }
   if (typeof opens === 'string') return opens
   return view.trips ? 'trip' : null
 }

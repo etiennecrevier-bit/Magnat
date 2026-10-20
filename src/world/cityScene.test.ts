@@ -310,12 +310,28 @@ describe('CityScene.linkAt', () => {
   const scene = build()
 
   it('finds what a click on a building opens', () => {
-    expect(scene.linkAt(onLitWall('bakery'))).toBe('fournil')
-    expect(scene.linkAt(onLitWall('chez-normand'))).toBe('contracts')
-    expect(scene.linkAt(onLitWall('caisse'))).toEqual({ trip: 'caisse' })
+    expect(scene.linkAt(onLitWall('bakery'))).toEqual({ opens: 'fournil' })
+    expect(scene.linkAt(onLitWall('caisse'))).toEqual({
+      opens: { trip: 'caisse' },
+    })
     // The mill's lit wall is behind the Caisse; its shaded one is in sight.
-    expect(scene.linkAt(onLitWall('mill'))).toEqual({ trip: 'caisse' })
-    expect(scene.linkAt(onShadeWall('mill'))).toEqual({ trip: 'meunerie' })
+    expect(scene.linkAt(onLitWall('mill'))).toEqual({
+      opens: { trip: 'caisse' },
+    })
+    expect(scene.linkAt(onShadeWall('mill'))).toEqual({
+      opens: { trip: 'meunerie' },
+    })
+  })
+
+  it('names the grocer whose shop a click is on', () => {
+    expect(scene.linkAt(onLitWall('chez-normand'))).toEqual({
+      opens: 'contracts',
+      grocer: 'chezNormand',
+    })
+    expect(scene.linkAt(onLitWall('depanneur-24-24'))).toEqual({
+      opens: 'contracts',
+      grocer: 'depanneur2424',
+    })
   })
 
   it('opens nothing on a triplex, the truck, the park or a street', () => {

@@ -1,41 +1,121 @@
-/* The card itself is the shared .panel (panel.css), its note and fields
-   those of « Gérer le camion » (ManagePanel.css). Text colours keep at
-   least 4.5:1 against its cream #fff7e8. */
+/* « Équipe »: the card itself is the shared .panel (panel.css), its note
+   and fields those of « Le camion » (ManagePanel.css). Text colours keep at
+   least 4.5:1 against its cream #fff7e8 and the rows' white. */
 .staff {
   --panel-width: 56rem;
 }
 
-.staff section + section {
-  margin-top: 1.25rem;
+/* The owner and each employee, one row each. */
+.staff__team {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-/* The owner and each employee, side by side as long as they fit. */
-.staff__team {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: 0.75rem;
+/* A row: the portrait, the name and role over the status line, today's
+   chips, the wage, then « Congédier » or what replaces it. */
+.staff__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 14px;
+  border: 2px solid #2b2622;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.staff__row:hover,
+.staff__row:focus-within {
+  outline: 3px solid #2f6fb0;
+  outline-offset: 2px;
+}
+
+.staff__portrait {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border: 2px solid #2b2622;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.staff__silhouette {
+  background: #8c6d52;
+  fill: #fff7e8;
+}
+
+.staff__who {
+  display: flex;
+  flex: 1 1 9rem;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.staff__name {
+  margin: 0;
+  font-family: Fredoka, system-ui, sans-serif;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.staff__role {
+  margin: 0;
+  color: #5c5048;
+  font-size: 0.875rem;
+}
+
+.staff__tasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.staff__member {
-  padding: 0.5rem 0.75rem 0.75rem;
-  border: 1px solid #c9b48f;
-  border-radius: 8px;
-}
-
-.staff__member h4 {
+.staff__pay {
   margin: 0;
-  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
 }
 
-.staff__member p {
-  margin: 0 0 0.5rem;
+/* The wage: « Salaire horaire » small over its field. */
+.staff__row .field {
+  margin: 0;
+}
+
+.staff__row .field__label {
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.staff__row .field__input {
+  width: 5.5rem;
+}
+
+.staff__actions {
+  margin-left: auto;
+}
+
+.staff__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .staff__confirm p {
-  font-weight: 600;
+  margin: 0;
+  font-weight: 700;
+}
+
+.staff section {
+  margin-top: 1.25rem;
 }
 
 .staff__full {
@@ -49,17 +129,11 @@
   list-style: none;
 }
 
-/* Each role's toggle with its details beside it, under it on a phone. */
-.staff__roles li {
+/* The roles as pills in a row; what each pays is in its tooltip. */
+.staff__roles {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.5rem;
-  margin: 0 0 0.5rem;
-}
-
-.staff__role-details {
-  color: #52606d;
+  gap: 0.5rem;
 }
 
 .staff__candidates {
@@ -80,4 +154,9 @@
   background: transparent;
   color: #7b6f63;
   cursor: not-allowed;
+}
+
+/* The dot stays beside its words as they wrap. */
+.staff__row .status-line {
+  flex-wrap: nowrap;
 }

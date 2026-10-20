@@ -3,12 +3,21 @@ import {
   useId,
   useLayoutEffect,
   useRef,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
 } from 'react'
-import { drawerEscape, nextTab, tabId, type FrameTab } from './dockFrame.ts'
+import {
+  backdropPoint,
+  drawerEscape,
+  nextTab,
+  tabId,
+  type BackdropPicks,
+  type FrameTab,
+} from './dockFrame.ts'
 import './panel.css'
 import './DockFrame.css'
 
@@ -156,6 +165,13 @@ export interface DockPanelProps<T extends string> {
   readonly onClose: () => void
   /** « ✕ »: closes the dialog, as the panel's own « Fermer » did. */
   readonly onDismiss: () => void
+  /**
+   * What gets the presses on the backdrop, with the pointer shown where it
+   * is over something there: the city, for « Ville ». None by default.
+   */
+  readonly backdrop?: BackdropPicks
+  /** The dialog's own style, such as the custom properties its CSS reads. */
+  readonly style?: CSSProperties
   readonly children: ReactNode
 }
 
@@ -164,6 +180,8 @@ export interface DockPanelProps<T extends string> {
  * anchored above the dock, which the store keeps the game paused under.
  * The page behind it is out of reach, and « ✕ » or Escape closes it. The
  * caller opens the dialog with `showModal()`, as `useFieldDialog` does.
+ * With `backdrop`, a primary press on the backdrop goes to it instead,
+ * without moving the focus.
  */
 export function DockPanel<T extends string>({
   dialogRef,
@@ -175,17 +193,46 @@ export function DockPanel<T extends string>({
   onCancel,
   onClose,
   onDismiss,
+  backdrop,
+  style,
   children,
 }: DockPanelProps<T>) {
   const titleId = useId()
   const bodyId = useId()
+  const onBackdrop = (event: ReactPointerEvent<HTMLDialogElement>) => {
+    const dialog = event.currentTarget
+    return backdropPoint(event, dialog, dialog.getBoundingClientRect())
+  }
   return (
     <dialog
       ref={dialogRef}
       className={`panel dock-frame dock-panel ${className}`}
       aria-labelledby={titleId}
+      style={style}
       onCancel={onCancel}
       onClose={onClose}
+      onPointerDown={
+        backdrop &&
+        ((event) => {
+          if (event.button !== 0 || !event.isPrimary) return
+          const point = onBackdrop(event)
+          if (point === null) return
+          // No mouse events follow, so the focus stays where the press
+          // leaves it, as on the card it brings into view.
+          event.preventDefault()
+          backdrop.at(point)
+        })
+      }
+      onPointerMove={
+        backdrop &&
+        ((event) => {
+          const point = onBackdrop(event)
+          event.currentTarget.classList.toggle(
+            'dock-panel--pointing',
+            point !== null && backdrop.over(point),
+          )
+        })
+      }
     >
       <FrameHeader
         titleId={titleId}

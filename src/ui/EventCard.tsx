@@ -20,6 +20,7 @@ import { FORCED_CHOICE_REASON } from './defis.ts'
 import { choiceChanges, formatChangeLine } from './eventChanges.ts'
 import { formatCardText, formatChoiceTag } from './eventTags.ts'
 import { portraitUrl } from './portraits.ts'
+import { Silhouette } from './Silhouette.tsx'
 import { gameStore, useGame } from './store.ts'
 import './panel.css'
 import './EventCard.css'
@@ -92,7 +93,10 @@ export function EventCardView({
     <div className="panel__content event-card__content">
       <div className="event-card__who">
         {portrait === null ? (
-          <Silhouette />
+          <Silhouette
+            className="event-card__portrait event-card__silhouette"
+            size={96}
+          />
         ) : (
           <img
             className="event-card__portrait"
@@ -196,23 +200,6 @@ export function EventCardView({
         </section>
       )}
     </div>
-  )
-}
-
-/** A cream silhouette, for a character with no portrait yet. */
-function Silhouette() {
-  return (
-    <svg
-      className="event-card__portrait event-card__silhouette"
-      viewBox="0 0 96 96"
-      width={96}
-      height={96}
-      aria-hidden="true"
-      focusable="false"
-    >
-      <circle cx="48" cy="38" r="17" />
-      <path d="M14 96c0-21 15-35 34-35s34 14 34 35z" />
-    </svg>
   )
 }
 
