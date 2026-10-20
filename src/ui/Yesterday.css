@@ -2,8 +2,9 @@
    window is too narrow for both side by side, it stands above the dock.
    --report-room is how far above the window's bottom the week's card,
    above « Hier », sits (WeekSlideIn.css). Text colours keep at least 4.5:1
-   against the cream #fff7e8. */
-:root {
+   against the cream #fff7e8. Declared on the body, like Dock.css's rooms,
+   so they follow the band's real height. */
+body {
   --yesterday-bottom: var(--dock-bottom, 3.5rem);
   --report-room: calc(var(--yesterday-bottom) + 118px);
 }
@@ -125,7 +126,7 @@
 /* The dock (about 680 px wide) and « Hier » (about 230 px from the right
    edge) no longer fit side by side, so « Hier » rises above the dock. */
 @media (max-width: 1159px) {
-  :root {
+  body {
     --yesterday-bottom: var(--dock-room, 10rem);
   }
 }
@@ -136,7 +137,7 @@
     display: none;
   }
 
-  :root {
+  body {
     --report-room: var(--dock-room, 10rem);
   }
 }

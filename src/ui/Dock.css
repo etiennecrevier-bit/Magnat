@@ -3,8 +3,10 @@
    ink border, a 24 px radius and a hard 6 px shadow, holding 60 px square
    buttons with a word under each. --dock-room is how far above the window's
    bottom its top stands, with a 12 px gap, for the panels, the drawers and
-   the cards that sit above it. */
-:root {
+   the cards that sit above it. Both are declared on the body, where
+   Ticker.tsx keeps --ticker-height, so they follow the band's real height
+   when its headline wraps (on :root they would only see the fallback). */
+body {
   --dock-bottom: calc(var(--ticker-height, 2.75rem) + 14px);
   --dock-room: calc(var(--dock-bottom) + 108px + 12px);
 }
@@ -128,7 +130,7 @@
    share the width, each at least 44 px wide down to a 320 px window, the
    tiles up to 48 px and a little narrower than their button. */
 @media (max-width: 699px) {
-  :root {
+  body {
     --dock-bottom: var(--ticker-height, 2.75rem);
     --dock-room: calc(var(--dock-bottom) + 64px + 8px);
   }

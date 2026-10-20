@@ -20,6 +20,19 @@
   pointer-events: none;
 }
 
+/* While the week's card shows, the messages end 12 px above all of it
+   (WeekSlideIn.tsx keeps --report-card-height), scrolling instead, so it
+   never covers them nor they it. Below 1216 px the stack, up to 30rem wide
+   in the centre, and the 22rem card at the right share a band. */
+@media (max-width: 1215px) {
+  body:has(.week-slide-in__card) .shell__notices {
+    max-height: calc(
+      100dvh - var(--top-bar-room, 5.75rem) - var(--report-room, 10rem) -
+        var(--report-card-height, 0px) - 24px
+    );
+  }
+}
+
 .shell__notices > * {
   pointer-events: auto;
 }
