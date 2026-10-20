@@ -118,9 +118,11 @@ const MIN_EVENTS = 100
 const MIN_DELIVERIES = 50
 /**
  * Fewer days than this of any kind of change to the street over ten years
- * would leave it untested.
+ * would leave it untested. Willingness changes are the rarest: since P4-14
+ * (#211), the loyalty cards bring theirs only when Gilles prints the right
+ * name, and seed 42 plays 18 days of them.
  */
-const MIN_MODIFIER_DAYS = 20
+const MIN_MODIFIER_DAYS = 15
 /**
  * Fewer weekly wages than this over ten years of a game with staff would
  * leave them untested: a year of two employees.

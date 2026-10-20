@@ -780,6 +780,110 @@ describe('the cards of #155', () => {
     ).toEqual([])
   })
 
+  it.each([
+    [0, { habitue: 1.1, chic: 1 }],
+    [1, { habitue: 0.92, chic: 0.92 }],
+  ] as const)(
+    'stagiaire: « Le prendre en stage », outcome %i, pays his lunches and changes the walk-ins for 2 weeks',
+    (outcome, walkIns) => {
+      const morning = firstMorning('stagiaire')
+      const { day } = morning
+      const days = playOut(choose(morning, 'stagiaire', 'prendre', outcome))
+      expect(entries(last(days), 'Dîners du stagiaire').map(shape)).toEqual([
+        { day, debited: '6900', credited: CASH, amount: 3000 },
+      ])
+      for (const at of [day, day + 13]) {
+        expect(streetOnDay(days, at).walkIns).toMatchObject(walkIns)
+      }
+      expect(streetOnDay(days, day + 14).walkIns).toMatchObject({
+        habitue: 1,
+        chic: 1,
+      })
+    },
+  )
+
+  it('carteFidelite: « Imprimer les cartes » brings walk-ins for 2 months at 60 %, and only the bill at 40 %', () => {
+    const morning = firstMorning('carteFidelite')
+    const { day } = morning
+    for (const [outcome, walkIns, aubaine] of [
+      [0, 1.1, 0.95],
+      [1, 1, 1],
+    ] as const) {
+      const days = playOut(
+        choose(morning, 'carteFidelite', 'imprimer', outcome),
+        { minDays: 61 },
+      )
+      expect(entries(last(days), 'Cartes de fidélité').map(shape)).toEqual([
+        { day, debited: MARKETING, credited: CASH, amount: 12_000 },
+      ])
+      expect(streetOnDay(days, day + 59).walkIns.chic).toBe(walkIns)
+      expect(streetOnDay(days, day + 59).willingness.aubaine).toBe(aubaine)
+      expect(streetOnDay(days, day + 60).walkIns.chic).toBe(1)
+    }
+  })
+
+  it('inspection: « Tout nettoyer » takes 40 % of the walk-ins that day only', () => {
+    const morning = firstMorning('inspection')
+    const { day } = morning
+    const days = playOut(choose(morning, 'inspection', 'nettoyer'))
+    expect(
+      daysWhen(days, day, day + 3, ({ walkIns }) => walkIns.chic === 0.6),
+    ).toEqual([day])
+    expect(entries(last(days), 'Amende, formulaire 31-H')).toEqual([])
+  })
+
+  it('pluie: « Acheter un auvent » brings 5 % more walk-ins for a month once the rain stops', () => {
+    const morning = firstMorning('pluie')
+    const { day } = morning
+    const days = playOut(choose(morning, 'pluie', 'auvent'), { minDays: 41 })
+    const factor = (factor: number) =>
+      daysWhen(days, day, day + 40, ({ walkIns }) => walkIns.chic === factor)
+    expect(factor(0.8)).toEqual([day, day + 1, day + 2])
+    expect(factor(1.05)).toEqual(
+      Array.from({ length: 30 }, (_, d) => day + 3 + d),
+    )
+  })
+
+  it('clientMystere: « Sortir le grand jeu » pays the flowers and the tablecloth, critic or tourist', () => {
+    const morning = firstMorning('clientMystere')
+    for (const outcome of [0, 1]) {
+      const chosen = choose(morning, 'clientMystere', 'grandJeu', outcome)
+      expect(
+        entries(chosen, 'Fleurs et nappe pour le critique').map(shape),
+      ).toEqual([
+        { day: morning.day, debited: MARKETING, credited: CASH, amount: 5000 },
+      ])
+    }
+  })
+
+  it('premierJuillet: « Aider Normand » brings the habitués for 4 weeks from July 2 at 40 %', () => {
+    const morning = firstMorning('premierJuillet')
+    const { day } = morning
+    const habitues = (outcome: number) => {
+      const days = playOut(
+        choose(morning, 'premierJuillet', 'aiderNormand', outcome),
+        { minDays: 36 },
+      )
+      expect(
+        last(days).personal.movements.filter(
+          ({ label }) => label === 'Normand vous remercie',
+        ),
+      ).toEqual([
+        { day: day + 1, label: 'Normand vous remercie', amount: 6000 },
+      ])
+      return daysWhen(
+        days,
+        day,
+        day + 35,
+        ({ walkIns }) => walkIns.habitue === 1.2,
+      )
+    }
+    expect(habitues(0)).toEqual([])
+    expect(habitues(1)).toEqual(
+      Array.from({ length: 28 }, (_, d) => day + 2 + d),
+    )
+  })
+
   it('fournisseurRetard: « Fermer demain » closes tomorrow only', () => {
     const morning = firstMorning('fournisseurRetard')
     const { day } = morning
@@ -855,6 +959,35 @@ describe('the cards of #155', () => {
     ])
   })
 
+  it('camionVoisin: the damp coffee of « Racheter son café » is paid and thrown out, the stock left as it was', () => {
+    const morning = firstMorning('camionVoisin')
+    const { day } = morning
+    const chosen = choose(morning, 'camionVoisin', 'stock', 1)
+    expect(chosen.inventory).toEqual(morning.inventory)
+    expect(entries(chosen, 'Achat de marchandises')).toEqual(
+      entries(morning, 'Achat de marchandises'),
+    )
+    expect(
+      entries(chosen, 'Café humide du beau-frère de Sylvain').map(shape),
+    ).toEqual([{ day, debited: '6900', credited: CASH, amount: 6000 }])
+  })
+
+  it('camionVoisin: « Acheter sa machine » pays 650 $ and makes the café 15 % more appealing for 3 months', () => {
+    const morning = firstMorning('camionVoisin')
+    const { day } = morning
+    const days = playOut(choose(morning, 'camionVoisin', 'machine'), {
+      minDays: 96,
+    })
+    expect(
+      entries(last(days), 'Machine à espresso du beau-frère de Sylvain').map(
+        shape,
+      ),
+    ).toEqual([{ day, debited: '6200', credited: CASH, amount: 65_000 }])
+    expect(
+      daysWhen(days, day, day + 95, ({ appeal }) => appeal.cafe === 1.15),
+    ).toEqual(Array.from({ length: 90 }, (_, d) => day + d))
+  })
+
   it('camionVoisin: « Acheter sa machine » stops machineTousse for good', () => {
     const morning = firstMorning('camionVoisin')
     const coughs = (state: GameState) =>
@@ -864,14 +997,17 @@ describe('the cards of #155', () => {
     expect(coughs(choose(morning, 'camionVoisin', 'stock'))).toBe(true)
   })
 
-  it('volCaisse: « Prendre le risque » brings the theft back 30 days later at 10 %, though it comes once a game', () => {
+  it('volCaisse: « Prendre le risque » brings the theft back 30 days later at 35 %, though it comes once a game', () => {
     const morning = firstMorning('volCaisse')
     const { day } = morning
     const risk = (test: (value: number) => boolean) =>
       choose({ ...morning, rngState: seedWhere(test) }, 'volCaisse', 'risque')
     expect(cardOf('volCaisse').conditions?.oncePerGame).toBe(true)
-    expect(risk((value) => value >= 0.1).events.followUps).toEqual([])
-    const again = risk((value) => value < 0.1)
+    expect(risk((value) => value >= 0.35).events.followUps).toEqual([])
+    expect(
+      risk((value) => value >= 0.3 && value < 0.35).events.followUps,
+    ).toEqual([{ day: day + 30, event: 'volCaisse' }])
+    const again = risk((value) => value < 0.3)
     expect(again.events.followUps).toEqual([
       { day: day + 30, event: 'volCaisse' },
     ])
@@ -915,6 +1051,42 @@ describe('the cards of #155', () => {
       expect(streetOnDay(days, day + 2).walkIns.chic).toBe(chic)
       expect(streetOnDay(days, day + 22).walkIns.chic).toBe(chic)
       expect(streetOnDay(days, day + 23).walkIns.chic).toBe(1)
+    },
+  )
+})
+
+describe('the costs of Difficile only (#211)', () => {
+  // The cards play as written, the game at Difficile or at Moyen.
+  const at = (
+    state: GameState,
+    difficulty: GameState['profile']['difficulty'],
+  ): GameState => ({ ...state, profile: { ...state.profile, difficulty } })
+
+  it.each([
+    ['grosseCommande', 'refuser', { kind: 'walkIns', factor: 0.95 }, 7],
+    [
+      'camionVoisin',
+      'stock',
+      { kind: 'appeal', product: 'cafe', factor: 0.95 },
+      21,
+    ],
+    [
+      'camionVoisin',
+      'nonMerci',
+      { kind: 'appeal', product: 'cafe', factor: 0.95 },
+      21,
+    ],
+  ] as const)(
+    '%s: « %s » changes the street from that day at Difficile only',
+    (event, choiceId, change, days) => {
+      const morning = firstMorning(event)
+      const { day } = morning
+      expect(
+        choose(at(morning, 'difficile'), event, choiceId).events.modifiers,
+      ).toEqual([{ event, change, fromDay: day, lastDay: day + days - 1 }])
+      expect(
+        choose(at(morning, 'moyen'), event, choiceId).events.modifiers,
+      ).toEqual([])
     },
   )
 })
