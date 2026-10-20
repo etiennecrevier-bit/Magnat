@@ -5,10 +5,8 @@ import {
   glowAlpha,
   grainPixels,
   rampPixels,
-  speckledPixels,
   spotPixels,
   strayOf,
-  tilePixels,
   unevennessPixels,
   vignetteAlpha,
   vignettePixels,
@@ -124,11 +122,8 @@ describe('the glow', () => {
 })
 
 describe('the materials', () => {
-  it.each([
-    ['bricks', brickPixels(LIGHT.material.brick, lineOpacity, LIGHT.slate)],
-    ['tiles', tilePixels(LIGHT.material.tile, lineOpacity, LIGHT.slate)],
-    ['speckle', speckledPixels(LIGHT.material.speckle, lineOpacity, LIGHT.sun)],
-  ])('draws the %s at 12 to 20 %, clear between their lines', (_, pixels) => {
+  it('draws the bricks at 12 to 20 %, clear between their lines', () => {
+    const pixels = brickPixels(LIGHT.material.brick, lineOpacity, LIGHT.slate)
     const drawn = alphas(pixels).filter((a) => a > 0)
     expect(drawn.length).toBeGreaterThan(0)
     expect(drawn.length).toBeLessThan(pixels.width * pixels.height * 0.5)

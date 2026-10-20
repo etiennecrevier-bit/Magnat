@@ -29,6 +29,7 @@ import type {
   SegmentId,
   StreetChange,
 } from '../content/schema.ts'
+import { ART_URLS } from './art.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
 import { placeCard, saying, type Box, type Point } from './customerCard.ts'
 import { ASSETS, LINES } from './manifest.ts'
@@ -228,6 +229,24 @@ describe('startStreet', () => {
     expect(() => store.getState().advance(1)).not.toThrow()
   })
 
+  it("loads the street's SVG art at the manifest's resolution and draws it", async () => {
+    const texture = new Texture()
+    const loaders = {
+      ...createLoaders(),
+      loadTexture: vi.fn(async () => texture),
+    }
+    const app = createFakeApp()
+
+    await startStreet(app, mondayStore(), loaders, ASSETS)
+
+    expect(loaders.loadTexture).toHaveBeenCalledWith(
+      ART_URLS.get('street/triplex-2.svg'),
+      ASSETS.artResolution,
+    )
+    const triplex = piece(app, 'triplex-2').children[0] as Sprite
+    expect(triplex.texture).toBe(texture)
+  })
+
   it('draws placeholders in the system font when the font and art fail to load', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const app = createFakeApp()
@@ -245,8 +264,11 @@ describe('startStreet', () => {
 
     await startStreet(app, mondayStore(), loaders, manifest)
 
-    expect(warn).toHaveBeenCalledTimes(2)
+    // The font, then each image once.
+    const images = new Set(manifest.pieces.flatMap((p) => p.image ?? []))
+    expect(warn).toHaveBeenCalledTimes(1 + images.size)
     expect(piece(app, 'truck').children[0]?.label).toBe('placeholder')
+    expect(piece(app, 'triplex-2').children[0]?.label).toBe('placeholder')
     expect(app.stage.children).toHaveLength(3)
   })
 })

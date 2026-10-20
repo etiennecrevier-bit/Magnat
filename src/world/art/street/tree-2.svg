@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="274" height="359" viewBox="1150 308 274 359">
+<defs>
+<pattern id="rl-leaves" width="22" height="18" patternUnits="userSpaceOnUse">
+<circle cx="4" cy="5" r="2.4" fill="#34404f" fill-opacity="0.16"></circle>
+<circle cx="15" cy="12" r="2.8" fill="#34404f" fill-opacity="0.13"></circle>
+<circle cx="12" cy="3" r="1.8" fill="#fff1cf" fill-opacity="0.18"></circle>
+</pattern>
+<filter id="rl-soft2" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2"></feGaussianBlur></filter>
+<filter id="rl-soft8" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="8"></feGaussianBlur></filter>
+</defs>
+<circle cx="1262" cy="436" r="52.800000000000004" fill="#34404f" opacity="0.22" filter="url(#rl-soft8)"></circle>
+<circle cx="1312" cy="406" r="57.599999999999994" fill="#34404f" opacity="0.22" filter="url(#rl-soft8)"></circle>
+<circle cx="1352" cy="442" r="48.0" fill="#34404f" opacity="0.22" filter="url(#rl-soft8)"></circle>
+<circle cx="1302" cy="466" r="48.0" fill="#34404f" opacity="0.22" filter="url(#rl-soft8)"></circle>
+<ellipse cx="1256" cy="652" rx="34" ry="7" fill="#5b4a3a"></ellipse>
+<ellipse cx="1276" cy="654" rx="52" ry="7" fill="#34404f" opacity="0.30" filter="url(#rl-soft2)"></ellipse>
+<path d="M 1249 648 L 1251 412 L 1232 382 M 1261 422 L 1284 392" stroke="#5a3a2a" stroke-width="7" fill="none" stroke-linecap="round"></path>
+<rect x="1248.0" y="412.0" width="16.0" height="236.0" fill="#5a3a2a"></rect>
+<rect x="1248.0" y="412.0" width="6.0" height="236.0" fill="#7d5a42"></rect>
+<circle cx="1210.2" cy="415.4" r="52.800000000000004" fill="#3d6a3f"></circle>
+<circle cx="1263.0" cy="377.0" r="59.519999999999996" fill="#3d6a3f"></circle>
+<circle cx="1315.8" cy="410.6" r="52.800000000000004" fill="#3d6a3f"></circle>
+<circle cx="1243.8" cy="434.6" r="48.0" fill="#3d6a3f"></circle>
+<circle cx="1291.8" cy="437.48" r="48.0" fill="#3d6a3f"></circle>
+<circle cx="1203.2" cy="406.4" r="52.800000000000004" fill="#5f9a4a"></circle>
+<circle cx="1256.0" cy="368.0" r="59.519999999999996" fill="#5f9a4a"></circle>
+<circle cx="1308.8" cy="401.6" r="52.800000000000004" fill="#5f9a4a"></circle>
+<circle cx="1236.8" cy="425.6" r="48.0" fill="#5f9a4a"></circle>
+<circle cx="1284.8" cy="428.48" r="48.0" fill="#5f9a4a"></circle>
+<circle cx="1203.2" cy="406.4" r="52.800000000000004" fill="url(#rl-leaves)"></circle>
+<circle cx="1256.0" cy="368.0" r="59.519999999999996" fill="url(#rl-leaves)"></circle>
+<circle cx="1308.8" cy="401.6" r="52.800000000000004" fill="url(#rl-leaves)"></circle>
+<circle cx="1236.8" cy="425.6" r="48.0" fill="url(#rl-leaves)"></circle>
+<circle cx="1284.8" cy="428.48" r="48.0" fill="url(#rl-leaves)"></circle>
+<circle cx="1196.48" cy="393.92" r="30.72" fill="#8cc061" opacity="0.85"></circle>
+<circle cx="1246.4" cy="353.6" r="34.56" fill="#8cc061" opacity="0.85"></circle>
+<circle cx="1296.32" cy="386.24" r="24.96" fill="#8cc061" opacity="0.85"></circle>
+</svg>

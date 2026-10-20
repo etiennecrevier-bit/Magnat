@@ -18,18 +18,24 @@ export const ART_URLS: ReadonlyMap<string, string> = new Map(
   ]),
 )
 
-/** Loads the image at `url` as a texture, as Pixi's `Assets.load` does. */
-export type LoadTexture = (url: string) => Promise<Texture>
+/**
+ * Loads the image at `url` as a texture, as Pixi's `Assets.load` does. An
+ * SVG comes with the `resolution` it is drawn at: that many pixels per
+ * logical pixel of its own size. Other images keep their own pixels.
+ */
+export type LoadTexture = (url: string, resolution?: number) => Promise<Texture>
 
 /**
  * Loads the image of every piece of a scene that names one, the street's
  * or the city's, each file once, and returns the textures by image path. An
  * image with no file under src/world/art/, or that fails to load, is left
- * out with a warning, and its pieces keep their placeholders.
+ * out with a warning, and its pieces keep their placeholders. SVG images
+ * are drawn at `resolution` (the manifest's `artResolution`).
  */
 export async function loadArt(
   pieces: readonly { readonly image?: string }[],
   loadTexture: LoadTexture,
+  resolution: number,
   urls: ReadonlyMap<string, string> = ART_URLS,
 ): Promise<ReadonlyMap<string, Texture>> {
   const images = new Set(pieces.flatMap((piece) => piece.image ?? []))
@@ -44,7 +50,11 @@ export async function loadArt(
         return
       }
       try {
-        textures.set(image, await loadTexture(url))
+        const svg = image.endsWith('.svg')
+        textures.set(
+          image,
+          await (svg ? loadTexture(url, resolution) : loadTexture(url)),
+        )
       } catch (error) {
         console.warn(
           `src/world/art/${image} could not load; its pieces keep their placeholders.`,

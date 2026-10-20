@@ -77,7 +77,7 @@ export async function startCity(
   const { city } = manifest
   const [, textures] = await Promise.all([
     loadTitleFont(loaders.loadFont),
-    loadArt(city.pieces, loaders.loadTexture),
+    loadArt(city.pieces, loaders.loadTexture, manifest.artResolution),
   ])
   return setUpOrUndo((undo) => {
     const scene = buildCityScene(

@@ -3,7 +3,6 @@ import {
   Graphics,
   Sprite,
   Text,
-  TilingSprite,
   type TextStyleOptions,
 } from 'pixi.js'
 import type { Light, Palette, Piece, PieceKind } from '../content/assets.ts'
@@ -18,8 +17,9 @@ import type { Shadows } from './shadows.ts'
 // are lighter, with a bright rim on their front edge; faces looking at the
 // viewer keep the colour, a facade graded from light at the top to slate at
 // the foot; faces turned away are mixed with slate. Ledges throw a short
-// shadow on the wall under them, and bricks, tiles and the asphalt's
-// speckle come from textures made once (materials.ts). Each piece is drawn
+// shadow on the wall under them, from a texture made once (materials.ts).
+// The street's scenery is art (`backdrop`), drawn here only as a flat shape
+// when its image fails to load. Each piece is drawn
 // at its size from its top-left corner. Where the parts of a shape sit
 // inside it is placeholder geometry, which real art replaces, so those
 // proportions stay here; where each piece sits and how big it is lives in
@@ -46,294 +46,11 @@ export type DrawPlaceholder = (
 
 /** The placeholder for each kind of piece. */
 export const PLACEHOLDERS: Record<PieceKind, DrawPlaceholder> = {
-  cloud: (piece, style) =>
-    puffs(piece, style, (g, { width: w, height: h }, dx, dy) => {
-      g.circle(w * 0.3 + dx, h * 0.6 + dy, h * 0.34)
-        .circle(w * 0.5 + dx, h * 0.42 + dy, h * 0.42)
-        .circle(w * 0.72 + dx, h * 0.58 + dy, h * 0.34)
-        .roundRect(w * 0.12 + dx, h * 0.52 + dy, w * 0.76, h * 0.44, h * 0.22)
-    }),
-
-  rooftops: (piece, style) => {
-    const { width: w, height: h } = piece
+  backdrop: (piece, style) => {
+    // The image failed: a flat shape in its colour, unlit, so the street
+    // keeps its layout.
     const g = new Graphics()
-    const widths = [150, 110, 170, 130, 190, 120, 160]
-    const heights = [0.8, 0.9, 0.82, 1, 0.85, 0.95, 0.8]
-    const base = color(piece, style)
-    for (let x = 0, i = 0; x < w; x += widths[i % widths.length]!, i += 1) {
-      const bw = Math.min(widths[i % widths.length]!, w - x)
-      const bh = h * heights[i % heights.length]!
-      box(g, x, h - bh, bw, bh, base, style, 4, bw * 0.08)
-      if (i % 2 === 0)
-        box(g, x + bw * 0.7, h - bh - 18, 14, 18, base, style, 3, 4)
-    }
-    return g
-  },
-
-  triplex: (piece, style) => {
-    const { width: w, height: h } = piece
-    const { palette, materials } = style
-    const facade = new Sprite({
-      texture: materials.facade(color(piece, style)),
-      label: 'facade',
-    })
-    facade.setSize(w, h)
-    const bricks = new TilingSprite({
-      texture: materials.brick,
-      width: w,
-      height: h,
-      label: 'bricks',
-    })
-    const openings = new Graphics({ label: 'openings' })
-    const ledges = new Graphics({ label: 'ledges' })
-    const shadows: Sprite[] = []
-
-    const cornice = h * 0.07
-    const storey = (h - cornice) / 3
-    for (let floor = 0; floor < 3; floor += 1) {
-      const top = cornice + floor * storey
-      const doorHeight = storey * 0.68
-      opening(
-        openings,
-        w * 0.07,
-        top + storey - doorHeight,
-        w * 0.14,
-        doorHeight,
-        palette.wood,
-        style,
-      )
-      for (const left of [w * 0.3, w * 0.55]) {
-        const pane = { x: left, y: top + storey * 0.2 }
-        const size = { width: w * 0.18, height: storey * 0.46 }
-        opening(
-          openings,
-          pane.x,
-          pane.y,
-          size.width,
-          size.height,
-          palette.glass,
-          style,
-        )
-        // The hood over the window and the sill under it, both ledges.
-        const hood = {
-          x: left - w * 0.015,
-          y: top + storey * 0.12,
-          width: w * 0.21,
-          height: storey * 0.07,
-        }
-        shadows.push(
-          ledgeShadow(hood.x, hood.y + hood.height, hood.width, 'sill', style),
-        )
-        box(
-          ledges,
-          hood.x,
-          hood.y,
-          hood.width,
-          hood.height,
-          palette.cream,
-          style,
-          hood.height * 0.4,
-        )
-        const sill = {
-          x: left - w * 0.01,
-          y: pane.y + size.height,
-          width: size.width + w * 0.02,
-          height: Math.max(3, storey * 0.035),
-        }
-        shadows.push(
-          ledgeShadow(sill.x, sill.y + sill.height, sill.width, 'sill', style),
-        )
-        topFace(
-          ledges,
-          sill.x,
-          sill.y,
-          sill.width,
-          sill.height,
-          palette.cream,
-          style,
-        )
-      }
-    }
-    shadows.push(ledgeShadow(-w * 0.015, cornice, w * 1.03, 'cornice', style))
-    box(
-      ledges,
-      -w * 0.015,
-      0,
-      w * 1.03,
-      cornice,
-      palette.wood,
-      style,
-      cornice * 0.3,
-    )
-
-    // A wooden balcony in front of each upper floor.
-    const wood = tones(palette.wood, style)
-    for (const floor of [1, 2]) {
-      const deck = cornice + floor * storey
-      const rail = deck - storey * 0.3
-      for (let x = w / 24; x < w; x += w / 12) {
-        ledges.rect(x - 1.5, rail, 3, deck - rail).fill(wood.lit)
-        ledges.rect(x + 0.5, rail, 1, deck - rail).fill(wood.shade)
-      }
-      box(ledges, 0, rail - 2, w, 4, palette.wood, style, 2)
-      shadows.push(ledgeShadow(0, deck + 5, w, 'balcony', style))
-      box(ledges, 0, deck - 5, w, 10, palette.wood, style, 4)
-    }
-
-    // The spiral staircase, from the sidewalk to the second floor's
-    // balcony: iron, its far side in shade, its near side catching the sun.
-    const iron = tones(palette.ink, style)
-    const centre = w * 0.88
-    const radius = w * 0.08
-    const landing = cornice + 2 * storey
-    const helix = (r: Graphics, lift: number) => {
-      const turns = 1.5
-      const points = 48
-      for (let i = 0; i <= points; i += 1) {
-        const t = i / points
-        const x = centre + radius * Math.sin(t * turns * 2 * Math.PI)
-        const y = h - t * (h - landing) - lift
-        if (i === 0) r.moveTo(x, y)
-        else r.lineTo(x, y)
-      }
-    }
-    const stair = new Graphics({ label: 'stair' })
-    stair
-      .moveTo(centre, landing)
-      .lineTo(centre, h)
-      .stroke(ironStroke(iron.shade, style.outline))
-    helix(stair, storey * 0.22)
-    stair.stroke(ironStroke(iron.shade, style.outline * 0.7))
-    helix(stair, 0)
-    stair.stroke(ironStroke(iron.top, style.outline * 1.2))
-
-    return new Container({
-      children: [facade, bricks, openings, ...shadows, ledges, stair],
-    })
-  },
-
-  sidewalk: (piece, style) => {
-    const { width: w, height: h } = piece
-    const curb = 10
-    const g = new Graphics()
-    topFace(g, 0, 0, w, h - curb, color(piece, style), style)
-    g.rect(0, h - curb, w, curb).fill(tones(color(piece, style), style).lit)
-    const tiles = new TilingSprite({
-      texture: style.materials.tile,
-      width: w,
-      height: h - curb,
-      label: 'tiles',
-    })
-    return new Container({ children: [g, tiles] })
-  },
-
-  tree: (piece, style) => {
-    const { width: w, height: h } = piece
-    const g = new Graphics()
-    const trunk = w * 0.12
-    box(
-      g,
-      w * 0.44,
-      h * 0.45,
-      trunk,
-      h * 0.55,
-      style.palette.wood,
-      style,
-      0,
-      trunk * 0.35,
-    )
-    const canopy = new Graphics({ label: 'canopy' })
-    const blobs = [
-      [w * 0.5, h * 0.28, w * 0.3],
-      [w * 0.27, h * 0.42, w * 0.23],
-      [w * 0.73, h * 0.42, w * 0.23],
-      [w * 0.5, h * 0.5, w * 0.25],
-    ] as const
-    const leaf = tones(color(piece, style), style)
-    for (const [cx, cy, r] of blobs) canopy.circle(cx, cy, r).fill(leaf.shade)
-    for (const [cx, cy, r] of blobs) {
-      const d = r * 0.14
-      canopy.circle(cx - d, cy - d, r - d * Math.SQRT2).fill(leaf.lit)
-    }
-    for (const [cx, cy, r] of blobs.slice(0, 2)) {
-      canopy.circle(cx - r * 0.35, cy - r * 0.35, r * 0.3).fill(leaf.top)
-    }
-    // Leaves, at the materials' low contrast.
-    const { min, max } = style.light.material.lineOpacity
-    const marks = 26
-    for (let i = 0; i < marks; i += 1) {
-      const angle = i * 2.39996
-      const reach = Math.sqrt((i + 0.5) / marks) * w * 0.36
-      const x = w * 0.5 + Math.cos(angle) * reach
-      const y = h * 0.4 + Math.sin(angle) * reach * 0.62
-      const r = w * 0.025
-      canopy
-        .moveTo(...around(x, y, r, Math.PI * 0.15))
-        .arc(x, y, r, Math.PI * 0.15, Math.PI * 0.85)
-        .stroke({
-          width: 2,
-          color: style.light.slate,
-          alpha: i % 2 === 0 ? max : min,
-          cap: 'round',
-        })
-    }
-    return new Container({ children: [g, canopy] })
-  },
-
-  lampPost: (piece, style) => {
-    const { width: w, height: h } = piece
-    const post = tones(color(piece, style), style)
-    const g = new Graphics()
-    g.rect(w * 0.4, h * 0.14, w * 0.2, h * 0.82).fill(post.shade)
-    g.rect(w * 0.4, h * 0.14, w * 0.12, h * 0.82).fill(post.lit)
-    g.rect(w * 0.4, h * 0.14, 1.5, h * 0.82).fill(post.rim)
-    box(
-      g,
-      w * 0.22,
-      h * 0.93,
-      w * 0.56,
-      h * 0.07,
-      color(piece, style),
-      style,
-      3,
-      w * 0.1,
-    )
-    box(
-      g,
-      w * 0.12,
-      h * 0.05,
-      w * 0.76,
-      h * 0.09,
-      style.palette.cream,
-      style,
-      0,
-      w * 0.14,
-    )
-    g.poly([w * 0.5, 0, w * 0.5, h * 0.05, 0, h * 0.05]).fill(post.top)
-    g.poly([w * 0.5, 0, w, h * 0.05, w * 0.5, h * 0.05]).fill(post.shade)
-    return g
-  },
-
-  street: (piece, style) => {
-    const { width: w, height: h } = piece
-    const g = new Graphics()
-    g.rect(0, 0, w, h).fill(tones(color(piece, style), style).top)
-    const speckle = new TilingSprite({
-      texture: style.materials.speckle,
-      width: w,
-      height: h,
-      label: 'speckle',
-    })
-    // The curb's shadow on the gutter.
-    const curb = ledgeShadow(0, 0, w, 'curb', style)
-    return new Container({ children: [g, speckle, curb] })
-  },
-
-  laneMarkings: (piece, style) => {
-    const { width: w, height: h } = piece
-    const g = new Graphics()
-    for (let x = 0; x < w; x += 110) g.rect(x, 0, Math.min(60, w - x), h)
-    g.fill(tones(color(piece, style), style).top)
+    g.rect(0, 0, piece.width, piece.height).fill(color(piece, style))
     return g
   },
 
@@ -857,22 +574,6 @@ export const PLACEHOLDERS: Record<PieceKind, DrawPlaceholder> = {
 export const PLACEHOLDER_SHADOWS: Partial<
   Record<PieceKind, (piece: Piece, shadows: Shadows) => readonly Container[]>
 > = {
-  tree: ({ id, x, y, width: w, height: h }, shadows) => {
-    const foot = { x: x + w * 0.5, y: y + h }
-    return [
-      shadows.castBody(id, foot.x, foot.y, w * 0.12, h * 0.55),
-      shadows.castMass(id, foot.x, foot.y, w * 0.42, h * 0.62),
-      shadows.contactShadow(id, foot.x, foot.y, w * 0.3, 'tree'),
-    ]
-  },
-  lampPost: ({ id, x, y, width: w, height: h }, shadows) => {
-    const foot = { x: x + w * 0.5, y: y + h }
-    return [
-      shadows.castBody(id, foot.x, foot.y, w * 0.2, h * 0.95),
-      shadows.castMass(id, foot.x, foot.y, w * 0.4, h * 0.92),
-      shadows.contactShadow(id, foot.x, foot.y, w * 0.8, 'lampPost'),
-    ]
-  },
   truck: (piece, shadows) => truckShadows(piece, shadows),
   rivalTruck: (piece, shadows) => {
     const { body } = rivalBoard(piece)
@@ -1167,9 +868,4 @@ function around(
   angle: number,
 ): [number, number] {
   return [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)]
-}
-
-/** A stroke of the staircase's iron. */
-function ironStroke(color: string, width: number) {
-  return { width, color, join: 'round', cap: 'round' } as const
 }

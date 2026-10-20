@@ -42,16 +42,13 @@ export const colorNameSchema = z.enum([
 
 export type ColorName = z.infer<typeof colorNameSchema>
 
-/** What a piece is, which picks the placeholder the world draws for it. */
+/**
+ * What a piece is, which picks the placeholder the world draws for it. A
+ * `backdrop` is the street's scenery, drawn by its image; its placeholder is
+ * a flat shape in its colour, for when the image fails to load.
+ */
 export const pieceKindSchema = z.enum([
-  'cloud',
-  'rooftops',
-  'triplex',
-  'sidewalk',
-  'tree',
-  'lampPost',
-  'street',
-  'laneMarkings',
+  'backdrop',
   'truck',
   'rack',
   'croissants',
@@ -136,8 +133,6 @@ const lightSchema = z.strictObject({
     opacity: z.strictObject({
       person: share,
       wheel: share,
-      tree: share,
-      lampPost: share,
       /** A cone's foot, a sign's leg. */
       prop: share,
     }),
@@ -146,36 +141,16 @@ const lightSchema = z.strictObject({
   ledgeShadow: z.strictObject({
     opacity: share,
     /** How far down each kind of ledge's shadow fades out, in pixels. */
-    depth: z.strictObject({
-      cornice: size,
-      balcony: size,
-      sill: size,
-      awning: size,
-      curb: size,
-    }),
+    depth: z.strictObject({ sill: size, awning: size }),
   }),
-  /** Bricks, tiles and the asphalt's speckle, at low contrast. */
+  /** The city's bricks, at low contrast. */
   material: z.strictObject({
     lineOpacity: z.strictObject({ min: share, max: share }),
-    /** One brick and one tile, their joints `line` pixels wide. */
+    /** One brick, its joints `line` pixels wide. */
     brick: z.strictObject({
       width: size,
       height: size,
       line: size,
-      tone,
-      seed,
-    }),
-    tile: z.strictObject({
-      width: size,
-      height: size,
-      line: size,
-      tone,
-      seed,
-    }),
-    /** `count` specks in a tile `size` pixels square. */
-    speckle: z.strictObject({
-      size: z.int().positive(),
-      count: z.int().nonnegative(),
       tone,
       seed,
     }),
@@ -639,6 +614,12 @@ export const assetManifestSchema = z
       width: z.int().positive(),
       height: z.int().positive(),
     }),
+    /**
+     * How many pixels an SVG image is drawn at per logical pixel of its own
+     * size, once when it loads: enough to stay sharp with the window's scale
+     * and the screen's density.
+     */
+    artResolution: z.number().min(1).max(4),
     // A record keyed by the enum needs every colour and rejects any other.
     palette: z.record(colorNameSchema, hexColor),
     /** The width of the dark outlines round people, bubbles and the tally. */

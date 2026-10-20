@@ -32,7 +32,7 @@ describe('assets.json', () => {
     expect(manifest.designSize).toEqual({ width: 1440, height: 900 })
     expect(manifest.layers).toEqual([
       'sky',
-      'rooftops',
+      'far',
       'buildings',
       'sidewalk',
       'street',
@@ -45,13 +45,13 @@ describe('assets.json', () => {
     }
   })
 
-  it('stands the tree and the lamp post over the shadows, which hold no piece', () => {
+  it('stands the trees and the lamp post over the shadows, which hold no piece', () => {
     const manifest = loadAssetManifest()
     const { layers, light, pieces } = manifest
     expect(light.shadowLayer).toBe('shadows')
     expect(pieces.filter((p) => p.layer === light.shadowLayer)).toEqual([])
     expect(layers.indexOf('shadows')).toBeGreaterThan(layers.indexOf('street'))
-    for (const id of ['tree', 'lamp-post']) {
+    for (const id of ['tree-1', 'tree-2', 'lamp-post']) {
       expect(pieces.find((p) => p.id === id)?.layer, id).toBe('furniture')
     }
   })
@@ -100,17 +100,30 @@ describe('assets.json', () => {
   })
 
   it('draws the scene the card asks for', () => {
-    const kinds = loadAssetManifest().pieces.map((p) => p.kind)
+    const { pieces } = loadAssetManifest()
+    const kinds = pieces.map((p) => p.kind)
     const count = (kind: string) => kinds.filter((k) => k === kind).length
-    expect(count('triplex')).toBe(5)
-    expect(count('cloud')).toBeGreaterThan(0)
+    // The street's backdrop is art, each piece drawn by its image (#198).
+    const images = (file: string) =>
+      pieces.filter((p) => p.image === `street/${file}.svg`).length
+    for (const triplex of [1, 2, 3, 4]) {
+      expect(images(`triplex-${triplex}`), `triplex-${triplex}`).toBe(1)
+    }
+    expect(images('triplex-1-mirrored')).toBe(1)
+    expect(images('triplex-5')).toBe(4)
+    for (const file of ['sky', 'far', 'depanneur', 'lamp-post']) {
+      expect(images(file), file).toBe(1)
+    }
+    for (const file of ['cloud-1', 'cloud-2', 'cloud-3', 'tree-1', 'tree-2']) {
+      expect(images(file), file).toBe(1)
+    }
+    for (const file of ['sidewalk', 'curb', 'road']) {
+      expect(images(file), file).toBe(3)
+    }
+    for (const piece of pieces.filter((p) => p.kind === 'backdrop')) {
+      expect(piece.image, piece.id).toBeDefined()
+    }
     for (const kind of [
-      'rooftops',
-      'sidewalk',
-      'lampPost',
-      'tree',
-      'street',
-      'laneMarkings',
       'truck',
       'counter',
       'rack',
@@ -238,9 +251,9 @@ describe('loadAssetManifest', () => {
   rejects(
     'a duplicate piece id',
     (raw) => {
-      piece(raw, 'cloud-2').id = 'cloud-1'
+      piece(raw, 'tree-2').id = 'tree-1'
     },
-    /duplicate piece id: cloud-1/,
+    /duplicate piece id: tree-1/,
   )
   rejects(
     'a duplicate layer',
@@ -252,14 +265,14 @@ describe('loadAssetManifest', () => {
   rejects(
     'a piece in an unknown layer',
     (raw) => {
-      piece(raw, 'tree').layer = 'park'
+      piece(raw, 'lamp-post').layer = 'park'
     },
     /unknown layer: park/,
   )
   rejects(
     'an unknown colour name',
     (raw) => {
-      piece(raw, 'tree').color = 'green'
+      piece(raw, 'lamp-post').color = 'green'
     },
     /pieces\[\d+\]\.color/,
   )
@@ -280,21 +293,21 @@ describe('loadAssetManifest', () => {
   rejects(
     'an unknown key',
     (raw) => {
-      piece(raw, 'tree').colour = 'foliage'
+      piece(raw, 'lamp-post').colour = 'foliage'
     },
     /colour/,
   )
   rejects(
     'an unknown piece kind',
     (raw) => {
-      piece(raw, 'tree').kind = 'bush'
+      piece(raw, 'lamp-post').kind = 'bush'
     },
     /pieces\[\d+\]\.kind/,
   )
   rejects(
     'a size of zero',
     (raw) => {
-      piece(raw, 'tree').width = 0
+      piece(raw, 'lamp-post').width = 0
     },
     /pieces\[\d+\]\.width/,
   )
@@ -407,9 +420,9 @@ describe('loadAssetManifest', () => {
   rejects(
     'a text on a piece that writes none',
     (raw) => {
-      piece(raw, 'tree').text = 'Arbre'
+      piece(raw, 'lamp-post').text = 'Arbre'
     },
-    /tree pieces write no text/,
+    /backdrop pieces write no text/,
   )
   rejects(
     'an empty text',
@@ -478,7 +491,7 @@ describe('loadAssetManifest', () => {
   rejects(
     'a piece in the shadow layer',
     (raw) => {
-      piece(raw, 'tree').layer = 'shadows'
+      piece(raw, 'lamp-post').layer = 'shadows'
     },
     /the shadow layer holds no piece/,
   )

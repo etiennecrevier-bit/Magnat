@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="228" height="432" viewBox="1231 214 228 432">
+<defs>
+<linearGradient id="rl-faceV" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#fff1cf" stop-opacity="0.26"></stop><stop offset="0.5" stop-color="#fff1cf" stop-opacity="0"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0.30"></stop>
+</linearGradient>
+<linearGradient id="rl-faceH" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0" stop-color="#fff1cf" stop-opacity="0.30"></stop><stop offset="0.45" stop-color="#fff1cf" stop-opacity="0"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0.38"></stop>
+</linearGradient>
+<linearGradient id="rl-dropDown" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#34404f" stop-opacity="0.55"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0"></stop>
+</linearGradient>
+<linearGradient id="rl-aoUp" x1="0" y1="1" x2="0" y2="0">
+<stop offset="0" stop-color="#34404f" stop-opacity="0.50"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0"></stop>
+</linearGradient>
+<linearGradient id="rl-glass" x1="0" y1="0" x2="0.35" y2="1">
+<stop offset="0" stop-color="#e6f3f5"></stop><stop offset="0.45" stop-color="#a8cad7"></stop><stop offset="1" stop-color="#6a8ea2"></stop>
+</linearGradient>
+<linearGradient id="rl-glassDark" x1="0" y1="0" x2="0.35" y2="1">
+<stop offset="0" stop-color="#a9c2cc"></stop><stop offset="1" stop-color="#4d6676"></stop>
+</linearGradient>
+<pattern id="rl-bricks" width="28" height="14" patternUnits="userSpaceOnUse">
+<path d="M0 6.6H28M0 13.6H28M7 0V6.6M21 7V13.6" stroke="#2b2622" stroke-opacity="0.16" stroke-width="1.2" fill="none"></path>
+<rect x="7.7" y="0" width="12.6" height="6" fill="#fff1cf" fill-opacity="0.08"></rect>
+<rect x="0" y="7.2" width="6.4" height="6" fill="#34404f" fill-opacity="0.08"></rect>
+</pattern>
+<pattern id="rl-brickVar" width="98" height="42" patternUnits="userSpaceOnUse">
+<rect x="7.7" y="0.6" width="12.6" height="6" fill="#fff1cf" fill-opacity="0.12"></rect>
+<rect x="49.7" y="14.6" width="12.6" height="6" fill="#34404f" fill-opacity="0.12"></rect>
+<rect x="21.7" y="28.6" width="12.6" height="6" fill="#34404f" fill-opacity="0.10"></rect>
+<rect x="77.7" y="35.6" width="12.6" height="6" fill="#fff1cf" fill-opacity="0.12"></rect>
+<rect x="63.7" y="7.6" width="12.6" height="6" fill="#34404f" fill-opacity="0.08"></rect>
+</pattern>
+</defs>
+<rect x="1240.0" y="230.0" width="210.0" height="416.0" fill="#b4532f"></rect>
+<rect x="1240.0" y="230.0" width="210.0" height="416.0" fill="url(#rl-bricks)"></rect>
+<rect x="1240.0" y="230.0" width="210.0" height="416.0" fill="url(#rl-brickVar)"></rect>
+<rect x="1240.0" y="230.0" width="210.0" height="416.0" fill="url(#rl-faceV)"></rect>
+<rect x="1424.0" y="230.0" width="26.0" height="416.0" fill="#34404f" opacity="0.10"></rect>
+<rect x="1240.0" y="236.0" width="210.0" height="30.0" fill="url(#rl-dropDown)"></rect>
+<rect x="1231.0" y="214.0" width="228.0" height="24.0" fill="#5a3a2a"></rect>
+<rect x="1231.0" y="214.0" width="228.0" height="3.0" fill="#a48c74"></rect>
+<rect x="1231.0" y="234.0" width="228.0" height="4.0" fill="#4d3c37"></rect>
+<rect x="1236.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1249.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1262.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1275.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1288.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1301.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1314.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1327.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1340.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1353.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1366.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1379.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1392.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1405.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1418.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1431.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1444.0" y="238.0" width="7.0" height="6.0" fill="#523b31"></rect>
+<rect x="1231.0" y="214.0" width="16.0" height="44.0" fill="#543b30"></rect>
+<rect x="1443.0" y="214.0" width="16.0" height="44.0" fill="#4f3c35"></rect>
+<rect x="1263.0" y="259.0" width="69.0" height="11.0" fill="#e9dcc4"></rect>
+<rect x="1263.0" y="259.0" width="69.0" height="2.5" fill="#f6e9cb"></rect>
+<rect x="1267.0" y="270.0" width="61.0" height="80.0" fill="#f3e6c8"></rect>
+<rect x="1273.0" y="273.0" width="49.0" height="74.0" fill="url(#rl-glass)"></rect>
+<polygon points="1273.0,273.0 1289.7,273.0 1281.8,317.4 1273.0,328.5" fill="#c9d7b0" opacity="0.9"></polygon>
+<polygon points="1300.0,273.0 1312.2,273.0 1285.2,347.0 1273.0,347.0" fill="#ffffff" opacity="0.22"></polygon>
+<rect x="1295.5" y="270.0" width="4.0" height="80.0" fill="#f3e6c8"></rect>
+<rect x="1267.0" y="306.0" width="61.0" height="4.0" fill="#f3e6c8"></rect>
+<polygon points="1273.0,273.0 1322.0,273.0 1322.0,281.0 1280.0,281.0 1280.0,347.0 1273.0,347.0" fill="#34404f" opacity="0.38"></polygon>
+<rect x="1263.0" y="350.0" width="69.0" height="7.0" fill="#e9dcc4"></rect>
+<rect x="1263.0" y="350.0" width="69.0" height="2.0" fill="#f6e9cb"></rect>
+<rect x="1266.0" y="357.0" width="63.0" height="12.0" fill="url(#rl-dropDown)" opacity="0.7"></rect>
+<rect x="1348.0" y="259.0" width="69.0" height="11.0" fill="#e9dcc4"></rect>
+<rect x="1348.0" y="259.0" width="69.0" height="2.5" fill="#f6e9cb"></rect>
+<rect x="1352.0" y="270.0" width="61.0" height="80.0" fill="#f3e6c8"></rect>
+<rect x="1358.0" y="273.0" width="49.0" height="74.0" fill="url(#rl-glass)"></rect>
+<polygon points="1385.0,273.0 1397.2,273.0 1370.2,347.0 1358.0,347.0" fill="#ffffff" opacity="0.22"></polygon>
+<rect x="1380.5" y="270.0" width="4.0" height="80.0" fill="#f3e6c8"></rect>
+<rect x="1352.0" y="306.0" width="61.0" height="4.0" fill="#f3e6c8"></rect>
+<polygon points="1358.0,273.0 1407.0,273.0 1407.0,281.0 1365.0,281.0 1365.0,347.0 1358.0,347.0" fill="#34404f" opacity="0.38"></polygon>
+<rect x="1348.0" y="350.0" width="69.0" height="7.0" fill="#e9dcc4"></rect>
+<rect x="1348.0" y="350.0" width="69.0" height="2.0" fill="#f6e9cb"></rect>
+<rect x="1351.0" y="357.0" width="63.0" height="12.0" fill="url(#rl-dropDown)" opacity="0.7"></rect>
+<rect x="1263.0" y="379.0" width="69.0" height="11.0" fill="#e9dcc4"></rect>
+<rect x="1263.0" y="379.0" width="69.0" height="2.5" fill="#f6e9cb"></rect>
+<rect x="1267.0" y="390.0" width="61.0" height="80.0" fill="#f3e6c8"></rect>
+<rect x="1273.0" y="393.0" width="49.0" height="74.0" fill="url(#rl-glass)"></rect>
+<polygon points="1300.0,393.0 1312.2,393.0 1285.2,467.0 1273.0,467.0" fill="#ffffff" opacity="0.22"></polygon>
+<rect x="1295.5" y="390.0" width="4.0" height="80.0" fill="#f3e6c8"></rect>
+<rect x="1267.0" y="426.0" width="61.0" height="4.0" fill="#f3e6c8"></rect>
+<polygon points="1273.0,393.0 1322.0,393.0 1322.0,401.0 1280.0,401.0 1280.0,467.0 1273.0,467.0" fill="#34404f" opacity="0.38"></polygon>
+<rect x="1263.0" y="470.0" width="69.0" height="7.0" fill="#e9dcc4"></rect>
+<rect x="1263.0" y="470.0" width="69.0" height="2.0" fill="#f6e9cb"></rect>
+<rect x="1266.0" y="477.0" width="63.0" height="12.0" fill="url(#rl-dropDown)" opacity="0.7"></rect>
+<rect x="1348.0" y="379.0" width="69.0" height="11.0" fill="#e9dcc4"></rect>
+<rect x="1348.0" y="379.0" width="69.0" height="2.5" fill="#f6e9cb"></rect>
+<rect x="1352.0" y="390.0" width="61.0" height="80.0" fill="#f3e6c8"></rect>
+<rect x="1358.0" y="393.0" width="49.0" height="74.0" fill="url(#rl-glass)"></rect>
+<polygon points="1358.0,393.0 1374.7,393.0 1366.8,437.4 1358.0,448.5" fill="#c9d7b0" opacity="0.9"></polygon>
+<polygon points="1385.0,393.0 1397.2,393.0 1370.2,467.0 1358.0,467.0" fill="#ffffff" opacity="0.22"></polygon>
+<rect x="1380.5" y="390.0" width="4.0" height="80.0" fill="#f3e6c8"></rect>
+<rect x="1352.0" y="426.0" width="61.0" height="4.0" fill="#f3e6c8"></rect>
+<polygon points="1358.0,393.0 1407.0,393.0 1407.0,401.0 1365.0,401.0 1365.0,467.0 1358.0,467.0" fill="#34404f" opacity="0.38"></polygon>
+<rect x="1348.0" y="470.0" width="69.0" height="7.0" fill="#e9dcc4"></rect>
+<rect x="1348.0" y="470.0" width="69.0" height="2.0" fill="#f6e9cb"></rect>
+<rect x="1351.0" y="477.0" width="63.0" height="12.0" fill="url(#rl-dropDown)" opacity="0.7"></rect>
+<rect x="1254.0" y="366.0" width="186.0" height="26.0" fill="url(#rl-dropDown)" opacity="0.85"></rect>
+<rect x="1267.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1277.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1287.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1297.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1307.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1317.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1327.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1337.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1347.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1357.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1367.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1377.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1387.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1397.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1407.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1417.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1427.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1437.0" y="328.0" width="2.0" height="34.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1261.0" y="328.0" width="186.0" height="3.0" fill="#34404f" opacity="0.20"></rect>
+<rect x="1260.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1270.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1280.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1290.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1300.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1310.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1320.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1330.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1340.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1350.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1360.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1370.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1380.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1390.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1400.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1410.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1420.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1430.0" y="322.0" width="2.0" height="36.0" fill="#2b2622"></rect>
+<rect x="1254.0" y="320.0" width="186.0" height="4.0" fill="#2b2622"></rect>
+<rect x="1254.0" y="320.0" width="186.0" height="1.5" fill="#6d6058"></rect>
+<rect x="1250.0" y="358.0" width="194.0" height="9.0" fill="#4b4039"></rect>
+<rect x="1250.0" y="358.0" width="194.0" height="2.5" fill="#8a7a6c"></rect>
+<rect x="1274.0" y="528.0" width="78.0" height="118.0" fill="#e9dcc4"></rect>
+<rect x="1274.0" y="528.0" width="78.0" height="2.0" fill="#f6e9cb"></rect>
+<rect x="1280.0" y="536.0" width="66.0" height="22.0" fill="url(#rl-glassDark)"></rect>
+<rect x="1280.0" y="560.0" width="66.0" height="86.0" fill="#5a3a2a"></rect>
+<rect x="1280.0" y="560.0" width="66.0" height="86.0" fill="url(#rl-faceH)"></rect>
+<rect x="1288.0" y="570.0" width="21.0" height="64.0" fill="#4a3022"></rect>
+<rect x="1317.0" y="570.0" width="21.0" height="64.0" fill="#4a3022"></rect>
+<polygon points="1280.0,536.0 1346.0,536.0 1346.0,546.0 1288.0,546.0 1288.0,646.0 1280.0,646.0" fill="#34404f" opacity="0.35"></polygon>
+<rect x="1332.0" y="599.8" width="5.0" height="5.0" fill="#e8c56a"></rect>
+<rect x="1240.0" y="600.0" width="210.0" height="46.0" fill="url(#rl-aoUp)"></rect>
+</svg>
