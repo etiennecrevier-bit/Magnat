@@ -20,6 +20,7 @@ import {
   editsText,
   tipScrollTop,
   type TipContent,
+  type TipPrefer,
 } from './tooltip.ts'
 import './Tooltip.css'
 
@@ -54,6 +55,11 @@ export interface TooltipProps {
   /** Its width when the window has room, in CSS pixels; `TIP.width` by default. */
   readonly width?: number
   /**
+   * Where it tries first, `beside` its anchor by default. A button in a row
+   * takes `above`, so its tooltip does not cover the next button.
+   */
+  readonly prefer?: TipPrefer
+  /**
    * Draws the anchor, spreading `anchor` on it. The tooltip goes right after
    * it in the page, so the anchor sits where a `div` may.
    */
@@ -71,7 +77,12 @@ export interface TooltipProps {
  * in a text field inside it, which keeps those keys. It is a manual
  * popover, so it shows above an open panel while staying in its page.
  */
-export default function Tooltip({ content, width, children }: TooltipProps) {
+export default function Tooltip({
+  content,
+  width,
+  prefer,
+  children,
+}: TooltipProps) {
   const id = useId()
   const [open, setOpen] = useState(false)
   const [waiting, setWaiting] = useState(false)
@@ -103,6 +114,7 @@ export default function Tooltip({ content, width, children }: TooltipProps) {
         { width: bounds.width, height: tip.getBoundingClientRect().height },
         page,
         TIP,
+        prefer,
       )
       tip.style.left = `${spot.left}px`
       tip.style.top = `${spot.top}px`
@@ -122,7 +134,7 @@ export default function Tooltip({ content, width, children }: TooltipProps) {
       window.removeEventListener('scroll', place, true)
       hidePopover(tip)
     }
-  }, [open, width, anchorElement])
+  }, [open, width, prefer, anchorElement])
 
   // While open or about to open, the first Escape closes only the tooltip,
   // or stops it opening, before a panel or an event card hears it, and a

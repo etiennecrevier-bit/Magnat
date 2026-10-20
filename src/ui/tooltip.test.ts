@@ -155,6 +155,53 @@ describe('placeTip', () => {
     )
     expect(short.arrow).toBe(15)
   })
+
+  it('goes above a button in a row, clear of its neighbours, when asked to', () => {
+    // The dock at 1440 × 900 (#226): « Camion », « Équipe » and « Ville »,
+    // 84 px wide and 6 px apart. Beside « Camion », its 160 px tooltip lay
+    // over the next two buttons and took the click meant for « Équipe ».
+    const page = { width: 1440, height: 900 }
+    const button = (left: number): Box => ({
+      left,
+      top: 750,
+      right: left + 84,
+      bottom: 828,
+    })
+    const [camion, equipe, ville] = [button(401), button(491), button(581)]
+    const place = placeTip(
+      camion,
+      { width: 160, height: 63 },
+      page,
+      TIP,
+      'above',
+    )
+    expect(place.side).toBe('above')
+    expect(place.top + place.height).toBe(camion.top - TIP.gap)
+    const tip: Box = {
+      left: place.left,
+      top: place.top,
+      right: place.left + place.width,
+      bottom: place.top + place.height,
+    }
+    const overlaps = (a: Box, b: Box) =>
+      a.left < b.right &&
+      b.left < a.right &&
+      a.top < b.bottom &&
+      b.top < a.bottom
+    expect(overlaps(tip, equipe)).toBe(false)
+    expect(overlaps(tip, ville)).toBe(false)
+  })
+
+  it('goes beside the anchor when asked for above but there is no room', () => {
+    const place = placeTip(
+      { left: 401, top: 40, right: 485, bottom: 118 },
+      { width: 160, height: 63 },
+      { width: 1440, height: 900 },
+      TIP,
+      'above',
+    )
+    expect(place.side).toBe('right')
+  })
 })
 
 describe('editsText', () => {

@@ -66,6 +66,9 @@ export interface Size {
 
 export type TipSide = 'right' | 'left' | 'above'
 
+/** Where the tooltip tries first: beside its anchor, or above it. */
+export type TipPrefer = 'beside' | 'above'
+
 export interface TipPlace {
   /** The tooltip's left and top edges in the window, its border box. */
   readonly left: number
@@ -107,13 +110,15 @@ export function tipBounds(
  * always inside the window's margins. Beside the anchor it is centred on the
  * anchor's middle and slides up or down to stay inside; above it, centred
  * across and slid sideways. `tip` is the size measured at `tipBounds()`'s
- * width.
+ * width. With `prefer` at `above`, it goes above first when it fits there,
+ * as in a row of buttons, where beside one it would cover the next.
  */
 export function placeTip(
   anchor: Box,
   tip: Size,
   page: Size,
   settings: TipSettings,
+  prefer: TipPrefer = 'beside',
 ): TipPlace {
   const { gap, margin } = settings
   const { maxHeight } = tipBounds(page, settings)
@@ -123,7 +128,24 @@ export function placeTip(
     left >= margin && left + width <= page.width - margin
   const middleY = (anchor.top + anchor.bottom) / 2
   const middleX = (anchor.left + anchor.right) / 2
+  const above = (): TipPlace => {
+    const left = clamp(middleX - width / 2, margin, page.width - margin - width)
+    const top = clamp(
+      anchor.top - gap - height,
+      margin,
+      page.height - margin - height,
+    )
+    return {
+      left,
+      top,
+      width,
+      height,
+      side: 'above',
+      arrow: arrowAt(middleX - left, width, settings),
+    }
+  }
 
+  if (prefer === 'above' && anchor.top - gap - height >= margin) return above()
   const besideLeft = [anchor.right + gap, anchor.left - gap - width].find(fits)
   if (besideLeft !== undefined) {
     const top = clamp(
@@ -140,20 +162,7 @@ export function placeTip(
       arrow: arrowAt(middleY - top, height, settings),
     }
   }
-  const left = clamp(middleX - width / 2, margin, page.width - margin - width)
-  const top = clamp(
-    anchor.top - gap - height,
-    margin,
-    page.height - margin - height,
-  )
-  return {
-    left,
-    top,
-    width,
-    height,
-    side: 'above',
-    arrow: arrowAt(middleX - left, width, settings),
-  }
+  return above()
 }
 
 /**

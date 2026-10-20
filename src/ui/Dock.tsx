@@ -48,6 +48,7 @@ export function DockView({ items, isOpen, badges, onActivate }: DockViewProps) {
                   ...(item.key === null ? {} : { text: `Touche ${item.key}` }),
                 }}
                 width={160}
+                prefer="above"
               >
                 {(anchor) => (
                   <button
