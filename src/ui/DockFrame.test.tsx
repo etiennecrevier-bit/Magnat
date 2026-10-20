@@ -1,7 +1,29 @@
+import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { DockDrawer, FrameHeader } from './DockFrame.tsx'
 import { CITY_TABS } from './dockFrame.ts'
+
+/** Whether `drawerTree` is calling the frame outside React, without hooks. */
+const bare = vi.hoisted(() => ({ current: false }))
+
+vi.mock('react', async (importOriginal) => {
+  const react = await importOriginal<typeof import('react')>()
+  return {
+    ...react,
+    useId: (() => (bare.current ? 'id' : react.useId())) as typeof react.useId,
+    useRef: ((initial: unknown) =>
+      bare.current
+        ? { current: initial }
+        : react.useRef(initial)) as typeof react.useRef,
+    useEffect: ((effect, deps) => {
+      if (!bare.current) react.useEffect(effect, deps)
+    }) as typeof react.useEffect,
+    useLayoutEffect: ((effect, deps) => {
+      if (!bare.current) react.useLayoutEffect(effect, deps)
+    }) as typeof react.useLayoutEffect,
+  }
+})
 
 describe('FrameHeader', () => {
   it('shows the title, the tabs as pills, the one shown pressed, then « ✕ »', () => {
@@ -186,5 +208,40 @@ describe('DockDrawer', () => {
     expect(drawer(false)).toMatch(
       /^<section class="dock-frame dock-drawer journal-drawer" role="dialog" aria-modal="false" aria-labelledby="[^"]+" hidden="">/,
     )
+  })
+
+  it('gives each tab a body of its own, so a tab opens from its top, not where the last one was scrolled', () => {
+    // The body is what scrolls: one shared by the tabs would keep the
+    // scroll of « Entreprise » when « Personnel » shows (#228).
+    const body = (tab: 'company' | 'personal') => {
+      bare.current = true
+      try {
+        const section = DockDrawer({
+          open: true,
+          className: 'finances-drawer',
+          title: 'Finances',
+          tabs: [
+            { id: 'company', label: 'Entreprise' },
+            { id: 'personal', label: 'Personnel' },
+          ],
+          tab,
+          onTab: () => {},
+          onClose: () => {},
+          panelOpen: () => false,
+          returnFocus: () => null,
+          children: null,
+        }) as ReactElement<{ children: ReactElement[] }>
+        return section.props.children[1]!
+      } finally {
+        bare.current = false
+      }
+    }
+    const company = body('company')
+    const personal = body('personal')
+    // React keeps an element, and its scroll, when its type and key stay.
+    expect([personal.type, personal.key]).not.toEqual([
+      company.type,
+      company.key,
+    ])
   })
 })
