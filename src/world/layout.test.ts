@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { boxCorners, type Vec } from './iso.ts'
-import { fitCity, fitScene } from './layout.ts'
+import { fitCity, fitScene, fitStreet } from './layout.ts'
 import { ASSETS } from './manifest.ts'
 
 // Vitest hands CSS imports to tests empty, `?raw` included, so the test reads
@@ -38,6 +38,87 @@ describe('fitScene', () => {
     const fit = fitScene(720, 900, 1440, 900)
     expect(fit.scale).toBe(0.5)
     expect(fit).toEqual({ scale: 0.5, x: 0, y: 450 })
+  })
+})
+
+describe('fitStreet', () => {
+  const { frame, designSize } = ASSETS
+  const { focus } = frame
+  const whole = (width: number, height: number) =>
+    fitScene(width, height, designSize.width, designSize.height)
+
+  it('narrows to a phone where Dock.css does', () => {
+    const css = readFileSync(new URL('../ui/Dock.css', import.meta.url), 'utf8')
+    expect(css).toContain(`@media (max-width: ${frame.narrow - 1}px)`)
+  })
+
+  it('holds the truck, its line, the chalkboard and the employee in its focus', () => {
+    const inside = (
+      {
+        x,
+        y,
+        width,
+        height,
+      }: { x: number; y: number; width: number; height: number },
+      id: string,
+    ) => {
+      expect(x, id).toBeGreaterThanOrEqual(focus.x)
+      expect(x + width, id).toBeLessThanOrEqual(focus.x + focus.width)
+      expect(y, id).toBeGreaterThanOrEqual(focus.y)
+      expect(y + height, id).toBeLessThanOrEqual(focus.y + focus.height)
+    }
+    for (const id of ['truck', 'chalkboard', 'counter', 'awning']) {
+      inside(
+        ASSETS.pieces.find((p) => p.id === id)!,
+        id,
+      )
+    }
+    for (const id of ['menu', 'stocks', 'owner', 'employee']) {
+      inside(
+        ASSETS.spots.find((s) => s.id === id)!,
+        id,
+      )
+    }
+  })
+
+  for (const [width, height] of [
+    [1280, 720],
+    [1440, 900],
+    [1920, 1080],
+    [700, 900],
+  ] as const) {
+    it(`fits the whole design, on the bottom, at ${width} × ${height}`, () => {
+      expect(fitStreet(width, height, ASSETS)).toEqual(whole(width, height))
+    })
+  }
+
+  for (const [width, height] of [
+    [390, 844],
+    [320, 568],
+    [360, 640],
+    [430, 932],
+    [699, 900],
+  ] as const) {
+    it(`shows the focus between the top bar and the dock at ${width} × ${height}`, () => {
+      const fit = fitStreet(width, height, ASSETS)
+      const x0 = fit.x + focus.x * fit.scale
+      const x1 = fit.x + (focus.x + focus.width) * fit.scale
+      const y0 = fit.y + focus.y * fit.scale
+      const y1 = fit.y + (focus.y + focus.height) * fit.scale
+      // Across the window, centred, standing on the dock.
+      expect(x0).toBeGreaterThanOrEqual(-0.001)
+      expect(x1).toBeLessThanOrEqual(width + 0.001)
+      expect(x0).toBeCloseTo(width - x1)
+      expect(y0).toBeGreaterThanOrEqual(frame.top - 0.001)
+      expect(y1).toBeCloseTo(height - frame.bottom)
+      // As large as it allows, and larger than the whole design.
+      expect(Math.min(x0, y0 - frame.top)).toBeCloseTo(0)
+      expect(fit.scale).toBeGreaterThan(whole(width, height).scale)
+    })
+  }
+
+  it('fits the whole design when the bars leave no room between them', () => {
+    expect(fitStreet(690, 400, ASSETS)).toEqual(whole(690, 400))
   })
 })
 
@@ -139,7 +220,7 @@ describe('fitCity', () => {
     expect(fitCity(1280, 720, city).scale).toBeGreaterThan(0.5)
   })
 
-  it('fits the whole design, as the street, on a phone, where the panel comes down from the top', () => {
+  it('fits the whole design on a phone, where the panel comes down from the top', () => {
     expect(fitCity(390, 844, city)).toEqual(fitScene(390, 844, 1440, 900))
     expect(fitCity(699, 900, city)).toEqual(fitScene(699, 900, 1440, 900))
   })

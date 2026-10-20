@@ -1,4 +1,4 @@
-import type { CityManifest } from '../content/assets.ts'
+import type { AssetManifest, CityManifest } from '../content/assets.ts'
 
 /** Where the scene sits in the view: its scale and its top-left corner. */
 export interface Fit {
@@ -24,6 +24,32 @@ export function fitScene(
     scale,
     x: (viewWidth - designWidth * scale) / 2,
     y: viewHeight - designHeight * scale,
+  }
+}
+
+/**
+ * Fits the street in a view of `viewWidth` × `viewHeight` (see
+ * `AssetManifest['frame']`): as `fitScene` fits it, except in a view
+ * narrower than `frame.narrow`, where its `focus`, the truck with its line,
+ * is as large as fits across and in the room between the top bar's `top`
+ * and the dock's `bottom`, centred across and standing on the dock. With no
+ * room left there, the whole design is fitted again.
+ */
+export function fitStreet(
+  viewWidth: number,
+  viewHeight: number,
+  { designSize, frame }: Pick<AssetManifest, 'designSize' | 'frame'>,
+): Fit {
+  const { focus } = frame
+  const height = viewHeight - frame.bottom - frame.top
+  if (viewWidth >= frame.narrow || height <= 0) {
+    return fitScene(viewWidth, viewHeight, designSize.width, designSize.height)
+  }
+  const scale = Math.min(viewWidth / focus.width, height / focus.height)
+  return {
+    scale,
+    x: (viewWidth - focus.width * scale) / 2 - focus.x * scale,
+    y: viewHeight - frame.bottom - (focus.y + focus.height) * scale,
   }
 }
 

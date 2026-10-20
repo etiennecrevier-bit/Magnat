@@ -12,7 +12,7 @@ import type { StreetChange } from '../content/schema.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
 import type { StreetModifier } from '../engine/types.ts'
 import { ART_URLS, loadArt } from './art.ts'
-import { fitScene } from './layout.ts'
+import { fitStreet } from './layout.ts'
 import { tonesOf } from './light.ts'
 import { ASSETS } from './manifest.ts'
 import { SKY_COLOR } from './mountWorld.ts'
@@ -804,6 +804,9 @@ describe("the street's art", () => {
       'road-left',
       'road',
       'road-right',
+      'road-below-left',
+      'road-below',
+      'road-below-right',
       'truck-shadow',
       'lamp-post',
       'tree-1',
@@ -944,13 +947,14 @@ describe("the street's art", () => {
     [1920, 1080],
     [2560, 1080],
     [390, 844],
+    [320, 568],
   ])('leaves no gap in a %i × %i window', (viewWidth, viewHeight) => {
-    const { width, height } = ASSETS.designSize
-    const fit = fitScene(viewWidth, viewHeight, width, height)
+    const fit = fitStreet(viewWidth, viewHeight, ASSETS)
     const shown = {
       left: -fit.x / fit.scale,
       right: (viewWidth - fit.x) / fit.scale,
       top: -fit.y / fit.scale,
+      bottom: (viewHeight - fit.y) / fit.scale,
     }
     // Whether `pieces`, side by side, run unbroken from left to right.
     const across = (pieces: readonly { x: number; width: number }[]) => {
@@ -970,6 +974,8 @@ describe("the street's art", () => {
     }
     const [sky] = art('sky')
     expect(sky!.y).toBeLessThanOrEqual(shown.top)
+    const ground = Math.max(...art('road').map((p) => p.y + p.height))
+    expect(ground).toBeGreaterThanOrEqual(shown.bottom)
   })
 
   it('draws a flat shape in its colour where an image fails to load', () => {
