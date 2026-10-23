@@ -13,6 +13,7 @@ import { EVENTS, FOOD_TRUCK } from './day.ts'
 import { DREAM, travelTimeFactor } from './dream.ts'
 import { FINANCING, appointmentLoan, lendingRefusal } from './financing.ts'
 import { SECONDS_PER_MINUTE, type Away } from './service.ts'
+import { endOfProtection, isProtected } from './tutorial.ts'
 import type { DreamState, GameState, TownState } from './types.ts'
 
 // « Aller à… » (#164): the owner goes to the Caisse, the mill, the permits
@@ -142,10 +143,11 @@ export function todaysTrip(
  * `played` once the day is played, `booked` when a card's choice booked
  * the day's trip (see `bookedTrip`), `nothingToFile` for a place whose
  * effect is `filing`, where only a card sends the owner, and, for a place
- * whose effect is the lender's appointment, why she would not lend the
- * next morning, on the terms of `events`' card, as the books stand now
- * (see `lendingRefusal`): `came`, `mayNotLend` or `noNeed`, which `events`
- * without her card gives too.
+ * whose effect is the lender's appointment, `tutorial` while the tutorial
+ * still protects the next morning, which brings her no card (see `tick`),
+ * or else why she would not lend the next morning, on the terms of
+ * `events`' card, as the books stand now (see `lendingRefusal`): `came`,
+ * `mayNotLend` or `noNeed`, which `events` without her card gives too.
  */
 export type TripRefusal =
   | 'defi'
@@ -153,6 +155,7 @@ export type TripRefusal =
   | 'played'
   | 'booked'
   | 'nothingToFile'
+  | 'tutorial'
   | 'came'
   | 'mayNotLend'
   | 'noNeed'
@@ -174,6 +177,7 @@ export function tripRefusal(
     const terms = appointmentLoan(events, financing)
     if (terms === null) return 'noNeed'
     const tomorrow = { ...state, day: state.day + 1 }
+    if (isProtected(endOfProtection(tomorrow))) return 'tutorial'
     return lendingRefusal(tomorrow, terms, foodTruck, financing)
   }
   return null

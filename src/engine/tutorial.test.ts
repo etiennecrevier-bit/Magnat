@@ -333,21 +333,29 @@ describe('tick during the tutorial', () => {
   })
 
   it.each([1, 2, 3, 4, 5])(
-    'at Difficile, on protected day %d, takes the trip to the Caisse only to bring her card the next morning',
+    'at Difficile, on protected day %d, keeps the owner from the Caisse, whose card the next morning would not bring',
     (day) => {
       // The tour's encaisse falls below a month of fixed costs at Difficile
-      // (#273): a trip the Caisse takes must not be for nothing.
+      // (#273): a trip the Caisse took would be for nothing.
       const morning = doSteps(answer(playUntil(tutorialAt('difficile'), day)))
       expect(isProtected(morning)).toBe(true)
-      if (tripRefusal(morning, 'caisse') !== null) return
-      const next = step(goTo(morning, 'caisse'))
-      expect(next.events.pending).toEqual({
-        event: FINANCING.appointmentEvent,
-        followUp: false,
-      })
-      expect(next.financing.lastLoanRequestDay).toBe(day + 1)
+      expect(tripRefusal(morning, 'caisse')).toBe('tutorial')
+      expect(() => goTo(morning, 'caisse')).toThrow(/tutorial/)
     },
   )
+
+  it('at Difficile, on day 6, takes the trip to the Caisse, whose card comes on the morning the protection ends', () => {
+    const morning = doSteps(answer(playUntil(tutorialAt('difficile'), 6)))
+    expect(isProtected(morning)).toBe(true)
+    expect(tripRefusal(morning, 'caisse')).toBeNull()
+    const next = step(goTo(morning, 'caisse'))
+    expect(isProtected(next)).toBe(false)
+    expect(next.events.pending).toEqual({
+      event: FINANCING.appointmentEvent,
+      followUp: false,
+    })
+    expect(next.financing.lastLoanRequestDay).toBe(7)
+  })
 
   it('ends no game while it protects it', () => {
     // An artificial tutorial still under way at the close of November 30,
