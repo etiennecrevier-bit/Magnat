@@ -106,8 +106,9 @@ export const NO_MEMORY: MessageMemory = {
  * `ownWordsTriggers`). Waking up exhausted, from a morning that was not
  * (before a decision left the owner exhausted, as
  * `memory.exhaustedByDecision` keeps), calls for the owner's own, once a
- * game week at most: the week of `memory.exhaustedWeek` is skipped. Returns
- * the memory to keep.
+ * game week at most: the week of `memory.exhaustedWeek` is skipped. The
+ * employees' own words are `ownWords` when the caller heard them morning
+ * by morning (see `startMessages`). Returns the memory to keep.
  */
 export function triggersBetween(
   previous: GameState,
@@ -116,6 +117,7 @@ export function triggersBetween(
   energy: EnergyContent = ENERGY,
   grocers: GrocerContent = GROCERS,
   messages: Messages = MESSAGES,
+  ownWords: readonly Trigger[] = ownWordsTriggers(previous, next, messages),
 ): { triggers: Trigger[]; memory: MessageMemory } {
   const exhausted = (state: GameState) =>
     fatigueOf(state.energy, energy) === 'exhausted'
@@ -132,7 +134,7 @@ export function triggersBetween(
       .map((day): Trigger => ({ kind: 'landlord', day })),
     ...contractTriggers(previous, next, grocers),
     ...staffTriggers(previous, next),
-    ...ownWordsTriggers(previous, next, messages),
+    ...ownWords,
   ].sort((a, b) => a.day - b.day)
   const week = Math.floor(next.day / DAYS_PER_WEEK)
   const wokeExhausted =
@@ -311,7 +313,9 @@ export function messageIds(from = 0): () => number {
  * (see `triggersBetween`), from the sender the game names or else the
  * content's, with a line of its kind picked with `random`, never the last
  * one of that kind shown, or else the employee's own words, and an id from
- * `nextId`, which other senders may share. Returns a function that stops
+ * `nextId`, which other senders may share. The employees' own words are
+ * heard on each morning `advance` plays, so someone hired and gone within
+ * one advance still warns and says goodbye. Returns a function that stops
  * it.
  */
 export function startMessages(
@@ -324,8 +328,23 @@ export function startMessages(
 ): () => void {
   let memory = NO_MEMORY
   const lastLine: Partial<Record<MessageKind, string>> = {}
-  return store.subscribe((state, previous) => {
+  // The last morning heard since the store last changed the game, and the
+  // own words heard up to it.
+  let heardUpTo: GameState | null = null
+  let heard: Trigger[] = []
+  const stopMornings = store.getState().watchMornings((morning) => {
+    const from = heardUpTo ?? store.getState().game
+    heard.push(...ownWordsTriggers(from, morning, messages))
+    heardUpTo = morning
+  })
+  const unsubscribe = store.subscribe((state, previous) => {
     if (state.game === previous.game) return
+    const ownWords = [
+      ...heard,
+      ...ownWordsTriggers(heardUpTo ?? previous.game, state.game, messages),
+    ]
+    heardUpTo = null
+    heard = []
     const found = triggersBetween(
       previous.game,
       state.game,
@@ -333,6 +352,7 @@ export function startMessages(
       energy,
       GROCERS,
       messages,
+      ownWords,
     )
     memory = found.memory
     for (const trigger of found.triggers) {
@@ -347,4 +367,8 @@ export function startMessages(
       onMessage({ id: nextId(), kind, from, text, day })
     }
   })
+  return () => {
+    stopMornings()
+    unsubscribe()
+  }
 }

@@ -449,6 +449,53 @@ describe("the employees' own words (#255)", () => {
     stop()
   })
 
+  it('sends both when one advance goes from his first morning past his last', () => {
+    // The code review's case: the staff before the advance does not hold
+    // him yet, and the staff after it no longer does.
+    const { store, sent, stop } = underpaid()
+    store.getState().advance(70)
+    expect(store.getState().game.day).toBe(70)
+    expect(store.getState().game.staff).toEqual([])
+    expect(sent.filter(({ kind }) => kind !== 'hired')).toEqual([
+      { id: 1, ...WARNING },
+      { id: 2, ...GOODBYE },
+    ])
+    stop()
+  })
+
+  it('sends the same words however the 70 days are cut into advances', () => {
+    const heard = (chunks: readonly number[]) => {
+      const { store, sent, stop } = underpaid()
+      for (const days of chunks) store.getState().advance(days)
+      stop()
+      expect(store.getState().game.day).toBe(70)
+      return sent.map(({ kind, day, from, text }) => [kind, day, from, text])
+    }
+    const dayByDay = heard(Array.from({ length: 70 }, () => 1))
+    expect(dayByDay.map(([kind]) => kind)).toEqual([
+      'hired',
+      'underpaid',
+      'quit',
+    ])
+    for (const chunks of [
+      [70],
+      [7, 7, 7, 7, 7, 7, 7, 7, 7, 7],
+      [56, 1, 13],
+      [57, 7, 6],
+      [63, 7],
+    ]) {
+      expect(heard(chunks)).toEqual(dayByDay)
+    }
+  })
+
+  it('hears nothing more once stopped', () => {
+    const { store, sent, stop } = underpaid()
+    store.getState().advance(2)
+    stop()
+    store.getState().advance(68)
+    expect(sent.map(({ kind }) => kind)).toEqual(['hired'])
+  })
+
   it('sends no goodbye once he is raised to what he asks in the warning week', () => {
     const { store, sent, stop } = underpaid()
     store.getState().advance(58)
