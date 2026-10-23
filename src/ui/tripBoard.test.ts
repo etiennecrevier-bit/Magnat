@@ -192,7 +192,7 @@ describe('tripBoard', () => {
         },
         'caisse',
       ).refusal,
-    ).toBe('Déjà reçu cette année')
+    ).toBe('Pas de rendez-vous avant le 1er mai')
     const lent = resolveEvent(
       {
         ...short,
@@ -239,6 +239,7 @@ describe('tripBoard', () => {
       'caisse',
     ).refusal
     expect(refusal ?? '').not.toMatch(/cette année/)
+    expect(refusal).toBe('Pas de rendez-vous avant le 1er mai')
   })
 })
 
