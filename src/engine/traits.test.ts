@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type {
   CandidateId,
+  RestockRule,
   StaffContent,
   StaffRoleId,
   TraitId,
@@ -181,6 +182,9 @@ const DAYS: Record<StaffRoleId, (staff: StaffContent) => GameState> = {
   },
 }
 
+/** The memo of the truck's morning purchases. */
+const MEMO_PURCHASES = 'Achat de marchandises'
+
 const memos = (state: GameState, day: number) =>
   entriesOf(state.journal)
     .filter((entry) => entry.day === day)
@@ -341,6 +345,102 @@ describe('an absent employee', () => {
       ),
     ).toBe(true)
     expect(sold.sold.croissant).toBe(summary(present).sold.croissant)
+  })
+
+  it('takes the absent out of the line: the day is the owner’s alone', () => {
+    const morning = next(game(ABSENT, hire('camion')), ABSENT)
+    const nobody = next(game(ABSENT), ABSENT)
+    const absent = summary(play(morning, ABSENT))
+    const alone = summary(play(nobody, ABSENT))
+    expect(absent.visits).toEqual(alone.visits)
+    expect(absent.averageWaitSeconds).toBe(alone.averageWaitSeconds)
+    expect(absent.leftLine).toBe(alone.leftLine)
+    expect(absent.sold).toEqual(alone.sold)
+  })
+
+  it('misses nothing on a day their role has no work, and is drawn from day 0 in a game set up that morning', () => {
+    // Day 0, a Monday, the truck closed: the morning's staff is drawn, but
+    // nobody missed any work.
+    const state = game(ABSENT, hire('camion'))
+    expect(state.day).toBe(0)
+    expect(state.decisions.daysOpen).not.toContain(1)
+    expect(absentOn(state, ABSENT)).toEqual([WHO])
+    expect(summary(play(state, ABSENT)).absent).toBeUndefined()
+  })
+
+  describe('the croissants bought for an absent baker', () => {
+    const bakingWith = (bake: RestockRule) =>
+      game(
+        ABSENT,
+        { kind: 'openBakery', oven: 'louer' },
+        { kind: 'croissantSource', source: 'fabriquer' },
+        {
+          kind: 'restock',
+          product: 'croissant',
+          rule: { kind: 'buyDaily', quantity: 40 },
+        },
+        { kind: 'bake', rule: bake },
+        hire('boulanger'),
+      )
+    /** Day 1 played from `state`'s next morning, with `change` to it. */
+    const dayOne = (
+      state: GameState,
+      change: (morning: GameState) => GameState = (morning) => morning,
+    ) => play(change(next(state, ABSENT)), ABSENT)
+    const bought = (day: GameState) =>
+      summary(day).sold.croissant + summary(day).spoiled.croissant
+    const purchases = (day: GameState) =>
+      entriesOf(day.journal)
+        .filter(({ day: on, memo }) => on === 1 && memo === MEMO_PURCHASES)
+        .reduce((total: number, { lines }) => total + (lines[0]?.debit ?? 0), 0)
+    const offSale = (morning: GameState): GameState => ({
+      ...morning,
+      events: {
+        ...morning.events,
+        modifiers: [
+          {
+            event: 'test',
+            change: { kind: 'unavailable', product: 'croissant' },
+            fromDay: 1,
+            lastDay: 1,
+          },
+        ],
+      },
+    })
+
+    it('buys what the bake rule orders, not the restock rule, at the truck’s cost', () => {
+      const state = bakingWith({ kind: 'buyDaily', quantity: 90 })
+      const day = dayOne(state)
+      expect(summary(day).absent).toEqual([WHO])
+      expect(bought(day)).toBe(90)
+      // Off sale, none is bought, and the purchases cost 90 croissants less.
+      const none = dayOne(state, offSale)
+      expect(bought(none)).toBe(0)
+      expect(purchases(day) - purchases(none)).toBe(
+        90 * FOOD_TRUCK.products.croissant.unitCostCents,
+      )
+    })
+
+    it('counts the croissants on hand, by the bake rule’s top-up', () => {
+      const state = bakingWith({ kind: 'topUp', whenBelow: 50, upTo: 90 })
+      const withStock = dayOne(state, (morning) => ({
+        ...morning,
+        inventory: [
+          {
+            product: 'croissant',
+            quantity: 30,
+            unitCost: FOOD_TRUCK.products.croissant.unitCostCents,
+            boughtOnDay: 1,
+          },
+        ],
+      }))
+      // 30 on hand, so 60 more, to 90.
+      expect(bought(withStock)).toBe(90)
+      expect(bought(dayOne(state))).toBe(90)
+      expect(purchases(dayOne(state)) - purchases(withStock)).toBe(
+        30 * FOOD_TRUCK.products.croissant.unitCostCents,
+      )
+    })
   })
 
   it('is drawn on a hire’s first morning too, and for those the morning hires', () => {

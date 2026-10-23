@@ -295,8 +295,8 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * the morning restock of every product the street leaves on sale, but the
  * croissants when they come from the bakery and it runs, which then makes them
  * with the capacity the deliveries left if someone bakes, and none otherwise
- * (see `bake`), but buys them by the bake rule, within the bakery's
- * capacity, when the baker is absent, then the walk-in customers,
+ * (see `bake`), but buys them by the bake rule when the baker is absent,
+ * then the walk-in customers,
  * with those the marketing of the days before brings on top (see
  * `marketingCrowd`) and as the street, and the rungs owned, change them (see
  * `withDreamStreet`), the regulars × the accueil of each employee at the
@@ -466,7 +466,6 @@ export function playDay(
         ? { ...street.unavailable, [BAKED]: true }
         : street.unavailable,
       discount,
-      buyInstead ? { [BAKED]: bakeryContent.capacityPerDay } : {},
     )
     discounted = restocked.units > 0
     journal = post(journal, day, MEMO.purchases, [
@@ -844,8 +843,7 @@ function closed(rngState: number): Served {
  * Buys each product its restock rule calls for, at today's unit cost less
  * `discount` of it, the discount rounded to the cent, as a new lot after the
  * others, but
- * none of a product that is `unavailable`, and no more of one than its cap
- * in `caps`, if any. Also returns the units bought.
+ * none of a product that is `unavailable`. Also returns the units bought.
  */
 function restock(
   lots: readonly Lot[],
@@ -854,17 +852,13 @@ function restock(
   content: FoodTruckContent,
   unavailable: Readonly<Record<ProductId, boolean>>,
   discount: number,
-  caps: Partial<Readonly<Record<ProductId, number>>> = {},
 ): { lots: readonly Lot[]; cost: Cents; units: number } {
   const bought: Lot[] = []
   let cost = ZERO
   let units = 0
   for (const product of PRODUCTS) {
     if (unavailable[product]) continue
-    const quantity = Math.min(
-      orderSize(rules[product], onHand(lots, product)),
-      caps[product] ?? Number.POSITIVE_INFINITY,
-    )
+    const quantity = orderSize(rules[product], onHand(lots, product))
     if (quantity === 0) continue
     const listed = content.products[product].unitCostCents
     const unitCost = sub(listed, mulRatio(listed, discount))
