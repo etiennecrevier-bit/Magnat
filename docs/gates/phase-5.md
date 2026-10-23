@@ -51,7 +51,7 @@ This is a controlled scenario, not what a fresh session will see. Each game is a
 | « Livreur » | -$5,511.94 | Olivier Girard, -$500.00 | Sophie Roy, Jonathan Côté, Maude Leblanc, -$1,750.00 | $1,250.00 |
 | « Boulanger » | -$10,833.75 | Thierry Nguyen, -$249.27 | Jonathan Côté, -$650.00 | $400.73 |
 
-- After two months, every hire costs money, in every role. The 12-month report's second target (the weakest candidate beats no hire in at least one role) is not met at two months: the best is Jonathan Côté as a baker, at -$650.00. That is expected, since the training and the first weeks are paid before a hire earns anything back. Over 12 months, bakers gain $507 to $2,480.
+- After two months, every hire costs money, in every role. The 12-month report's second target (the weakest candidate beats no hire in at least one role) is not met at two months: the weakest candidate is Jonathan Côté, whose best role is baker, at -$650.00. That is expected, since the training and the first weeks are paid before a hire earns anything back. Over 12 months, bakers gain $507 to $2,480.
 - At the truck the cheapest candidates come first. The three who ask $16.00 (Olivier, Nadia, Thierry, all weak in fiabilité) lose about $1,000 to $1,700 less than the three who ask $19.00 (Sophie, Jonathan, Maude, strong in fiabilité). In money, the choice at the truck is mostly the wage.
 - The deliverer's gap is the wages and the training, $1,600 to $1,750, except for those absent on a delivery Monday. Olivier, absent half a day at the median, comes out $1,100 better. Most likely, the croissants of the missed delivery were not bought, while the grocer pays at 60 days, after the window. Not examined further.
 
@@ -163,7 +163,7 @@ Then leave three lines in a comment on #257: what was fun, what was boring, what
 ### An optional extension: to see a warning and a quit
 Only after the four answers are recorded, and recorded apart from them:
 1. Pick an employee whose asking wage is above the role's minimum (not Nadia, Olivier or Thierry at the truck or delivering), and lower their wage by one step.
-2. Play on, without raising it again. About 8 weeks after the first morning at the lower wage, they warn: a message in their own words, and « Pense à partir » on their card. A week later, their card reads « Parti ce matin », and their message comes the next morning. On the dates above, that means mid-July or later.
+2. Play on, without raising it again. About 8 weeks after the first morning at the lower wage, they warn: a message in their own words, and « Pense à partir » on their card. A week later, their card reads « Parti ce matin », and their message comes the next morning. On the dates above, that means mid-July or later only if the lower wage started in May. A cut decided on 30 juin first counts on 1er juillet, so the warning comes on 26 août and the quit on 2 septembre: budget the extension from the day of the cut.
 3. Note whether the warning was clear, whether you raised the wage back, and whether the quit made sense.
 
 | Extension | Date in game | Notes |
