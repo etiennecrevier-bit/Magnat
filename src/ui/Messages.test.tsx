@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { postcardIdSchema } from '../content/schema.ts'
 import { createInitialState } from '../engine/clock.ts'
+import { TUTORIAL } from '../engine/tutorial.ts'
 import type { GameState } from '../engine/types.ts'
 import {
   createMessageStack,
@@ -10,6 +11,7 @@ import {
 } from './messageStack.ts'
 import type { Message } from './messageTriggers.ts'
 import Messages, { MessagesView } from './Messages.tsx'
+import { portraitUrl } from './portraits.ts'
 import { createGameStore } from './store.ts'
 
 const RENT: Message = {
@@ -183,10 +185,24 @@ describe('a postcard from Réal (#239)', () => {
     )
   })
 
-  it('shows the silhouette while Réal has no portrait, and the content’s « Merci! » by default', () => {
+  it('shows Réal’s portrait and the content’s « Merci! » by default', () => {
     const html = render([CARD])
-    expect(html).toContain('class="message__portrait message__silhouette"')
+    expect(html).toContain(
+      `<img class="message__portrait" src="${portraitUrl(TUTORIAL.coach.character)}" alt="" width="44" height="44"/>`,
+    )
+    expect(html).not.toContain('message__silhouette')
     expect(html).toContain('>Merci!</button>')
+  })
+
+  it('shows the silhouette for a postcard with no portrait', () => {
+    const html = renderToStaticMarkup(
+      <MessagesView
+        messages={[CARD]}
+        onDismiss={() => {}}
+        postcard={{ portrait: null, thanks: 'Merci!' }}
+      />,
+    )
+    expect(html).toContain('class="message__portrait message__silhouette"')
   })
 
   it('is put away with « Merci! »', () => {

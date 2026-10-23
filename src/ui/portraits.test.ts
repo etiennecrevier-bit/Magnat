@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import eventsJson from '../content/events.json'
+import { TUTORIAL } from '../engine/tutorial.ts'
 import { BANKER, PORTRAIT_URLS, portraitUrl } from './portraits.ts'
 
 // The shipped portraits are read from disk, not from PORTRAIT_URLS: Vitest
@@ -82,6 +83,10 @@ describe('the shipped portraits', () => {
 
   it("include the banker's, which the reports' advice shows", () => {
     expect(PORTRAIT_FILES).toContain(`${BANKER}.png`)
+  })
+
+  it("include Réal's, which the tour's bubble and his postcards show", () => {
+    expect(PORTRAIT_FILES).toContain(`${TUTORIAL.coach.character}.png`)
   })
 
   it('leave out only characters that are on a card and have no file', () => {
