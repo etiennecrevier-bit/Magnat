@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState } from '../engine/clock.ts'
+import { cents } from '../engine/money.ts'
 import EventLog, { EventLogView } from './EventLog.tsx'
 import { gameStore, type GameStoreState } from './store.ts'
 
@@ -18,6 +19,9 @@ vi.mock('./store.ts', async (importOriginal) => {
 afterEach(() => {
   gameStore.setState(gameStore.getInitialState(), true)
 })
+
+// Every space in an amount is a no-break space (U+00A0).
+const S = '\u00a0'
 
 const ENTRIES = [
   { key: '31-b', day: 31, title: 'B', choice: 'Oui', result: 'Fait.' },
@@ -95,6 +99,45 @@ describe('EventLog', () => {
         'La carte d&#x27;essai',
         'Ne rien faire',
       ),
+    )
+  })
+
+  it('lists a rung bought among the events, as « Achat · {name} » at its price', () => {
+    const game = createInitialState(1)
+    gameStore.getState().startGame({
+      ...game,
+      day: 5,
+      dream: {
+        ...game.dream,
+        bought: [{ rung: 'espresso', day: 4, cost: cents(600_000) }],
+      },
+      events: {
+        ...game.events,
+        history: [
+          {
+            day: 3,
+            event: 'essai',
+            followUp: false,
+            choice: 'rienFaire',
+            outcome: 0,
+          },
+        ],
+      },
+    })
+    const html = renderToStaticMarkup(<EventLog />)
+    expect(html).toContain(
+      closedRow(
+        'achat-4-espresso',
+        '5 mai, an 1',
+        'Achat · Machine à espresso pro',
+        `6${S}000${S}$`,
+      ) +
+        closedRow(
+          '3-essai',
+          '4 mai, an 1',
+          'La carte d&#x27;essai',
+          'Ne rien faire',
+        ),
     )
   })
 })

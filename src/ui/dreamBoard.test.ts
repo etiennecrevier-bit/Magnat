@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { DifficultyId, Rung, RungId } from '../content/schema.ts'
-import { createInitialState } from '../engine/clock.ts'
+import { createInitialState, tick } from '../engine/clock.ts'
 import { applyDecision } from '../engine/decisions.ts'
-import { cents } from '../engine/money.ts'
+import { add, cents, sub } from '../engine/money.ts'
+import { entriesOf, postEntry } from '../finance/journal.ts'
 import { netWorth } from '../engine/netWorth.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
 import {
+  booksFacts,
   bonusChip,
   dreamBoard,
   factLine,
@@ -15,6 +17,7 @@ import {
   rungTip,
 } from './dreamBoard.ts'
 import { DREAM } from '../engine/dream.ts'
+import { formatBriefMoney } from './formatMoney.ts'
 
 // Every space in an amount is a no-break space (U+00A0), as before a colon
 // or a percent sign.
@@ -49,7 +52,7 @@ describe('dreamBoard', () => {
     const board = dreamBoard(started())
     expect(board.personal).toMatchObject({
       ladder: 'personal',
-      payer: 'Payé par vous',
+      payer: "Payé par vous · ne touche pas l'entreprise",
       cash: 400_000,
       next: { id: 'velo', buyable: true },
       needed: 150_000,
@@ -208,7 +211,7 @@ describe('rungTip', () => {
     const board = dreamBoard(started())
     expect(rungTip(board.personal, board.personal.rungs[0]!)).toEqual({
       title: 'Vélo électrique',
-      text: `1${S}500,00${S}$, payé par vous`,
+      text: `1${S}500,00${S}$, payé par vous · ne touche pas l'entreprise`,
       rows: [{ label: 'Déplacements en ville', value: `−30${S}% de temps` }],
     })
     const condo = board.personal.rungs[2]!
@@ -307,11 +310,125 @@ describe('rungFacts', () => {
     const board = dreamBoard(game)
     const velo = board.personal.rungs[0]!
     expect(priceLine(board.personal, velo)).toBe(
-      `1${S}500,00${S}$, payé par vous`,
+      `1${S}500,00${S}$, payé par vous · ne touche pas l'entreprise`,
     )
     const espresso = board.company.rungs[0]!
     expect(priceLine(board.company, espresso)).toBe(
       `6${S}000,00${S}$, payé par l'entreprise`,
     )
+  })
+})
+
+/** The 1500 and 1000 lines of the entries `buying` posted on `before`. */
+function postedLines(before: GameState, after: GameState) {
+  const posted = entriesOf(after.journal).slice(
+    entriesOf(before.journal).length,
+  )
+  let added = cents(0)
+  let retired = cents(0)
+  let paid = cents(0)
+  for (const { memo, lines } of posted) {
+    for (const { account, debit, credit } of lines) {
+      if (account === '1500' && memo.startsWith('Achat')) {
+        added = add(added, debit)
+      }
+      if (account === '1500') retired = add(retired, credit)
+      if (account === '1000') paid = add(paid, sub(credit, debit))
+    }
+  }
+  return { added, retired, paid }
+}
+
+describe('booksFacts', () => {
+  it('reads the equipment and its depreciation off the entries the engine posts', () => {
+    const game = started()
+    const after = buying(game, 'espresso')
+    const { added, retired, paid } = postedLines(game, after)
+    const facts = booksFacts(game, rung('espresso'))
+    expect(facts.map(factLine)).toEqual([
+      `Équipement au bilan${S}: +6${S}000${S}$`,
+      `Amortissement${S}: 100${S}$ par mois pendant 60 mois`,
+    ])
+    expect(facts[0]!.value).toBe(`+${formatBriefMoney(added)}`)
+    expect(added).toBe(paid)
+    expect(retired).toBe(0)
+  })
+
+  it.each<DifficultyId>(['facile', 'moyen', 'difficile'])(
+    'adds the old truck retired at %s, as the bigger truck’s entries do',
+    (difficulty) => {
+      const game = started(difficulty)
+      // Encaisse holds plenty: more capital paid in on day 0.
+      const funded: GameState = {
+        ...game,
+        journal: postEntry(game.journal, {
+          day: 0,
+          memo: 'Mise de fonds',
+          lines: [
+            { account: '1000', debit: cents(10_000_000), credit: cents(0) },
+            { account: '3000', debit: cents(0), credit: cents(10_000_000) },
+          ],
+        }),
+      }
+      let ready = buying(funded, 'espresso')
+      // Some depreciation on the old truck first.
+      while (ready.day < 40) ready = tick(ready)
+      const after = buying(ready, 'grandCamion')
+      const { added, retired, paid } = postedLines(ready, after)
+      const facts = booksFacts(ready, rung('grandCamion'))
+      const value = (label: string) =>
+        facts.find((fact) => fact.label === label)?.value
+      expect(value('Équipement au bilan')).toBe(`+${formatBriefMoney(added)}`)
+      expect(value('Ancien camion retiré')).toBe(
+        retired === 0 ? undefined : `−${formatBriefMoney(retired)}`,
+      )
+      expect(retired > 0).toBe(difficulty !== 'difficile')
+      expect(value('Amortissement')).toBe(
+        `${formatBriefMoney(cents(Math.floor(added / 120)))} par mois pendant 120 mois`,
+      )
+      // What the company pays is the rung's price, whatever the truck.
+      expect(paid).toBe(rung('grandCamion').priceCents)
+    },
+  )
+
+  it('has nothing for a personal rung', () => {
+    expect(booksFacts(started(), rung('velo'))).toEqual([])
+    const board = dreamBoard(started())
+    expect(board.personal.rungs[0]!.books).toEqual([])
+    expect(board.company.rungs[0]!.books).toEqual(
+      booksFacts(started(), rung('espresso')),
+    )
+  })
+})
+
+describe('a company rung owned', () => {
+  it('tells its book value and its depreciation so far, as the books carry them', () => {
+    let game = buying(started(), 'espresso')
+    // Three 1sts after the purchase: day 31, 61 and 92.
+    while (game.day < 95) game = tick(game)
+    const board = dreamBoard(game)
+    const espresso = board.company.rungs[0]!
+    expect(espresso.status).toBe('owned')
+    let depreciated = cents(0)
+    for (const { memo, lines } of entriesOf(game.journal)) {
+      if (memo !== 'Amortissement · Machine à espresso pro') continue
+      for (const line of lines) {
+        if (line.account === '1510') depreciated = add(depreciated, line.credit)
+      }
+    }
+    expect(depreciated).toBe(30_000)
+    expect(espresso.onBooks).toEqual({
+      bookValue: 570_000,
+      depreciated: 30_000,
+    })
+    expect(rungTip(board.company, espresso).rows?.slice(-2)).toEqual([
+      { label: 'Valeur aux livres', value: `5${S}700,00${S}$`, divider: true },
+      { label: 'Amortissement à ce jour', value: `300,00${S}$` },
+    ])
+  })
+
+  it('has no book value on a personal rung', () => {
+    const board = dreamBoard(buying(started(), 'velo'))
+    expect(board.personal.rungs[0]!.onBooks).toBeNull()
   })
 })

@@ -219,7 +219,7 @@ function Foot({
   onConfirmingChange: (rung: RungId | null) => void
   onChange: (change: DecisionChange) => void
 }) {
-  const { id, name, status, buyable, facts, after } = rung
+  const { id, name, status, buyable, facts, books, after } = rung
   switch (status) {
     case 'owned':
       return <Status tone="owned" text="Acquis" />
@@ -240,7 +240,7 @@ function Foot({
     return (
       <ConfirmBuy
         question={`Acheter ${name}? ${priceLine(row, rung)}`}
-        lines={facts.map(factLine)}
+        lines={[...facts, ...books].map(factLine)}
         describedBy={describedBy}
         onConfirm={() => {
           onConfirmingChange(null)

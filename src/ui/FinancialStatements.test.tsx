@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { cents, sub, type Cents } from '../engine/money.ts'
 import type { GameState } from '../engine/types.ts'
@@ -14,6 +14,22 @@ import {
   type StatementTab,
   type Statements,
 } from './statementPeriods.ts'
+import { gameStore, type GameStoreState } from './store.ts'
+
+// A static render reads a Zustand store's initial state, so the connected
+// statement reads the app store's current state through this stand-in.
+vi.mock('./store.ts', async (importOriginal) => {
+  const store = await importOriginal<typeof import('./store.ts')>()
+  return {
+    ...store,
+    useGame: <T,>(selector: (state: GameStoreState) => T): T =>
+      selector(store.gameStore.getState()),
+  }
+})
+
+afterEach(() => {
+  gameStore.setState(gameStore.getInitialState(), true)
+})
 
 // Every space in an amount is a no-break space (U+00A0).
 const S = '\u00a0'
@@ -58,11 +74,14 @@ function unescape(text: string): string {
   return text.replaceAll('&#x27;', "'").replaceAll('&amp;', '&')
 }
 
-/** Each row with an amount, label to amount, as the screen shows them. */
+/**
+ * Each row with an amount, label to amount, as the screen shows them; a
+ * label with a tooltip is read from its anchor.
+ */
 function amounts(html: string): Map<string, string> {
   const rows = new Map<string, string>()
   const pattern =
-    /<th scope="row"[^>]*>([^<]*)<\/th><td class="number">([^<]*)<\/td>/g
+    /<th scope="row"[^>]*>(?:<span class="statement__tip"[^>]*>)?([^<]*)(?:<\/span>.*?)?<\/th><td class="number">([^<]*)<\/td>/g
   for (const [, label = '', amount = ''] of html.matchAll(pattern)) {
     rows.set(unescape(label), amount)
   }
@@ -238,6 +257,30 @@ describe('FinancialStatement', () => {
     expect(rows.get('Total des actifs')).toBe(`95${S}000,00${S}$`)
     expect(rows.get('Total des passifs et des capitaux propres')).toBe(
       `95${S}000,00${S}$`,
+    )
+  })
+
+  it('tells what the bilan’s « Équipement » holds, adding up to the line', () => {
+    const html = renderToStaticMarkup(
+      <FinancialStatement statement="balanceSheet" labelledBy={TITLE} />,
+    )
+    expect(amounts(html).get('Équipement')).toBe(`85${S}000,00${S}$`)
+    expect(html).toMatch(
+      /<span class="statement__tip" tabindex="0" aria-describedby="[^"]+">Équipement<\/span><div [^>]*role="tooltip"[^>]*><div class="tip__body" tabindex="-1"><p class="tip__title">Équipement<\/p><dl class="tip__rows"><div class="tip__row"><dt>Camion<\/dt><dd>85\u00a0000,00\u00a0\$<\/dd><\/div><div class="tip__row tip__row--divider"><dt>Total<\/dt><dd>85\u00a0000,00\u00a0\$<\/dd><\/div><\/dl>/,
+    )
+    // Only the one line tells what it holds.
+    expect(html.match(/statement__tip/g)).toHaveLength(1)
+  })
+
+  it('tells what the investing « Équipement » holds over the period', () => {
+    gameStore.getState().decide({ kind: 'buy', rung: 'espresso' })
+    const html = renderToStaticMarkup(
+      <FinancialStatement statement="cashFlow" labelledBy={TITLE} />,
+    )
+    // Moyen buys its truck on day 0, this month too.
+    expect(amounts(html).get('Équipement')).toBe(`(91${S}000,00${S}$)`)
+    expect(html).toContain(
+      `<dt>Camion</dt><dd>(85${S}000,00${S}$)</dd></div><div class="tip__row"><dt>Machine à espresso pro</dt><dd>(6${S}000,00${S}$)</dd>`,
     )
   })
 })

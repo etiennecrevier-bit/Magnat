@@ -18,24 +18,28 @@ import {
 import { applyDecision } from '../engine/decisions.ts'
 import {
   DREAM,
+  DREAM_MEMO,
   cashNeeded,
+  dreamLabel,
   isBought,
   isCompany,
   isPersonal,
   nextRung,
   nextTitle,
   ownedRungs,
+  purchaseEntries,
+  purchaseOf,
   rungsOf,
   soldBy,
   titleOf,
 } from '../engine/dream.ts'
-import { sub, type Cents } from '../engine/money.ts'
+import { add, cents, sub, type Cents } from '../engine/money.ts'
 import { netWorth } from '../engine/netWorth.ts'
 import { STAFF } from '../engine/staff.ts'
 import type { GameState } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
-import { balance } from '../finance/journal.ts'
-import { formatMoney } from './formatMoney.ts'
+import { balance, entriesOf } from '../finance/journal.ts'
+import { formatBriefMoney, formatMoney } from './formatMoney.ts'
 import type { TipContent, TipRow } from './tooltip.ts'
 
 // What the « Améliorations » panel shows (#162, #207): the owner's ladder
@@ -45,10 +49,13 @@ import type { TipContent, TipRow } from './tooltip.ts'
 // reads the game.
 
 const CASH = '1000' satisfies AccountCode
+const EQUIPMENT = '1500' satisfies AccountCode
+const ACCUMULATED_DEPRECIATION = '1510' satisfies AccountCode
 
 // French puts a no-break space (U+00A0) before a colon and a percent sign.
 const COLON = '\u00a0:'
 const PERCENT = '\u00a0%'
+const MINUS = '\u2212'
 
 /**
  * Where a rung stands: bought and still owned, bought then sold back by a
@@ -76,6 +83,19 @@ export interface RungRow {
   readonly chip: string | null
   /** What it gives, and what buying it changes, in plain facts. */
   readonly facts: readonly RungFact[]
+  /**
+   * What buying it does to the company's books, as the confirmation adds
+   * it: the equipment and its depreciation; none for a personal rung.
+   */
+  readonly books: readonly RungFact[]
+  /**
+   * A company rung owned: its book value today and its depreciation so far;
+   * null otherwise.
+   */
+  readonly onBooks: {
+    readonly bookValue: Cents
+    readonly depreciated: Cents
+  } | null
   /** The name of the rung it comes after, while it is locked; else null. */
   readonly after: string | null
 }
@@ -163,6 +183,8 @@ function ladderRow(
       buyable: status === 'next' && buys(game, rung.id, content),
       chip: bonusChip(rung, content),
       facts: rungFacts(game, rung, content),
+      books: status === 'next' ? booksFacts(game, rung) : [],
+      onBooks: status === 'owned' ? onBooksOf(game, rung) : null,
       after: status === 'locked' && before !== undefined ? before.name : null,
     }
   })
@@ -171,7 +193,10 @@ function ladderRow(
     coming === null || next === null ? null : cashNeeded(coming, content)
   return {
     ladder,
-    payer: ladder === 'personal' ? 'Payé par vous' : "Payé par l'entreprise",
+    payer:
+      ladder === 'personal'
+        ? "Payé par vous · ne touche pas l'entreprise"
+        : "Payé par l'entreprise",
     cash,
     rungs,
     next,
@@ -269,6 +294,74 @@ export function rungFacts(
   }
   if (isCompany(rung)) facts.push(...truckFacts(game, rung))
   return facts
+}
+
+/**
+ * What buying the company rung `rung` on `game`'s morning posts, read from
+ * the very entries the engine posts (see `purchaseEntries`): the equipment
+ * it adds to the bilan, its depreciation each month, as `depreciate` takes
+ * it, and the old truck's price leaving the bilan when it replaces it. None
+ * for a personal rung.
+ */
+export function booksFacts(game: GameState, rung: Rung): RungFact[] {
+  if (!isCompany(rung)) return []
+  const truck = truckOnBooks(game.journal, game.day, game.profile.difficulty)
+  const entries = purchaseEntries(rung, game.day, truck)
+  const memo = dreamLabel(DREAM_MEMO.bought, rung.name)
+  const linesOf = (wanted: string) =>
+    entries
+      .filter((entry) => entry.memo === wanted)
+      .flatMap(({ lines }) => lines)
+      .filter(({ account }) => account === EQUIPMENT)
+  const added = linesOf(memo).reduce(
+    (total, { debit }) => add(total, debit),
+    cents(0),
+  )
+  const retired = linesOf(DREAM_MEMO.truckSold).reduce(
+    (total, { credit }) => add(total, credit),
+    cents(0),
+  )
+  const { usefulLifeMonths } = rung
+  const monthly = cents((added - (added % usefulLifeMonths)) / usefulLifeMonths)
+  const facts: RungFact[] = [
+    { label: 'Équipement au bilan', value: `+${formatBriefMoney(added)}` },
+    {
+      label: 'Amortissement',
+      value: `${formatBriefMoney(monthly)} par mois pendant ${usefulLifeMonths} mois`,
+    },
+  ]
+  if (retired > 0) {
+    facts.push({
+      label: 'Ancien camion retiré',
+      value: `${MINUS}${formatBriefMoney(retired)}`,
+    })
+  }
+  return facts
+}
+
+/**
+ * The company rung `rung` as the books carry it at `game`'s morning: what
+ * it cost less the « Amortissement · {name} » posted so far, and that
+ * depreciation; null for a personal rung or one not bought.
+ */
+export function onBooksOf(
+  game: GameState,
+  rung: Rung,
+): { bookValue: Cents; depreciated: Cents } | null {
+  const purchase = purchaseOf(game.dream, rung.id)
+  if (!isCompany(rung) || purchase === undefined) return null
+  const memo = dreamLabel(DREAM_MEMO.depreciation, rung.name)
+  let depreciated = cents(0)
+  for (const entry of entriesOf(game.journal)) {
+    if (entry.day > game.day) break
+    if (entry.memo !== memo) continue
+    for (const { account, credit } of entry.lines) {
+      if (account === ACCUMULATED_DEPRECIATION) {
+        depreciated = add(depreciated, credit)
+      }
+    }
+  }
+  return { bookValue: sub(purchase.cost, depreciated), depreciated }
 }
 
 /** A fact as one line: « label : value ». */
@@ -398,6 +491,19 @@ export function rungTip(row: LadderRow, rung: RungRow): TipContent {
     label,
     value,
   }))
+  if (rung.onBooks !== null) {
+    rows.push(
+      {
+        label: 'Valeur aux livres',
+        value: formatMoney(rung.onBooks.bookValue),
+        divider: true,
+      },
+      {
+        label: 'Amortissement à ce jour',
+        value: formatMoney(rung.onBooks.depreciated),
+      },
+    )
+  }
   const { cash, needed } = row
   if (rung.status === 'next' && needed !== null && cash < needed) {
     rows.push({

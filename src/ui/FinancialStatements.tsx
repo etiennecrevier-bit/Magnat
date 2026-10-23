@@ -1,4 +1,6 @@
 import type { Cents } from '../engine/money.ts'
+import type { AccountCode } from '../finance/accounts.ts'
+import type { Journal } from '../finance/journal.ts'
 import type {
   BalanceSheet,
   CashFlowStatement,
@@ -14,8 +16,18 @@ import {
   type StatementTab,
   type Statements,
 } from './statementPeriods.ts'
+import {
+  breakdownTip,
+  equipmentCashFlows,
+  equipmentOnBooks,
+  type BreakdownRow,
+} from './statementBreakdown.ts'
 import { useGame } from './store.ts'
+import Tooltip from './Tooltip.tsx'
+import type { TipContent } from './tooltip.ts'
 import './FinancialStatements.css'
+
+const EQUIPMENT = '1500' satisfies AccountCode
 
 const PERIODS: Record<PeriodKey, string> = {
   thisMonth: 'Ce mois-ci',
@@ -23,36 +35,54 @@ const PERIODS: Record<PeriodKey, string> = {
   yearToDate: "Depuis le début de l'année",
 }
 
-/** One table row. Headings have no amount; `depth` sets the indent. */
+/**
+ * One table row. Headings have no amount; `depth` sets the indent. A row
+ * with a `tip` shows what its line holds when its label is hovered.
+ */
 interface Row {
   kind: 'heading' | 'line' | 'total' | 'grandTotal'
   label: string
   amount?: Cents
   depth: number
+  tip?: TipContent
 }
+
+/** What a line holds, when its tooltip lists it; else undefined. */
+type LineTips = (line: StatementLine) => readonly BreakdownRow[] | undefined
+
+const NO_TIPS: LineTips = () => undefined
 
 function lineRow(
-  { label, amount }: StatementLine,
+  line: StatementLine,
   depth: number,
   kind: Row['kind'] = 'line',
+  tips: LineTips = NO_TIPS,
 ): Row {
-  return { kind, label, amount, depth }
+  const { label, amount } = line
+  const parts = tips(line)
+  return parts === undefined || parts.length === 0
+    ? { kind, label, amount, depth }
+    : { kind, label, amount, depth, tip: breakdownTip(label, parts, amount) }
 }
 
-function sectionRows(section: StatementSection, depth: number): Row[] {
+function sectionRows(
+  section: StatementSection,
+  depth: number,
+  tips: LineTips = NO_TIPS,
+): Row[] {
   return [
     { kind: 'heading', label: section.label, depth },
-    ...section.lines.map((line) => lineRow(line, depth + 1)),
+    ...section.lines.map((line) => lineRow(line, depth + 1, 'line', tips)),
     lineRow(section.total, depth, 'total'),
   ]
 }
 
-function balanceSheetRows(sheet: BalanceSheet): Row[] {
+function balanceSheetRows(sheet: BalanceSheet, tips: LineTips): Row[] {
   const { assets } = sheet
   return [
     { kind: 'heading', label: assets.label, depth: 0 },
     ...sectionRows(assets.current, 1),
-    ...sectionRows(assets.longTerm, 1),
+    ...sectionRows(assets.longTerm, 1, tips),
     lineRow(assets.total, 0, 'grandTotal'),
     ...sectionRows(sheet.liabilities, 0),
     ...sectionRows(sheet.equity, 0),
@@ -70,10 +100,10 @@ function incomeStatementRows(statement: IncomeStatement): Row[] {
   ]
 }
 
-function cashFlowRows(statement: CashFlowStatement): Row[] {
+function cashFlowRows(statement: CashFlowStatement, tips: LineTips): Row[] {
   return [
     ...sectionRows(statement.operating, 0),
-    ...sectionRows(statement.investing, 0),
+    ...sectionRows(statement.investing, 0, tips),
     ...sectionRows(statement.financing, 0),
     lineRow(statement.netChange, 0, 'total'),
     lineRow(statement.openingCash, 0),
@@ -81,14 +111,29 @@ function cashFlowRows(statement: CashFlowStatement): Row[] {
   ]
 }
 
-/** The rows of the statement `tab` shows, and the dates they cover. */
-function contentFor(tab: StatementTab, statements: Statements) {
+/**
+ * The rows of the statement `tab` shows, and the dates they cover. With
+ * `journal`, the « Équipement » lines tell what they hold.
+ */
+function contentFor(
+  tab: StatementTab,
+  statements: Statements,
+  journal: Journal | null,
+) {
   const { fromDay, toDay } = statements.period
+  const read = (tips: LineTips): LineTips => (journal === null ? NO_TIPS : tips)
   switch (tab) {
     case 'balanceSheet':
       return {
         dates: `Au ${formatShortGameDate(toDay)}`,
-        rows: balanceSheetRows(statements.balanceSheet),
+        rows: balanceSheetRows(
+          statements.balanceSheet,
+          read((line) =>
+            line.account === EQUIPMENT && journal !== null
+              ? equipmentOnBooks(journal, toDay)
+              : undefined,
+          ),
+        ),
       }
     case 'incomeStatement':
       return {
@@ -98,7 +143,14 @@ function contentFor(tab: StatementTab, statements: Statements) {
     case 'cashFlow':
       return {
         dates: formatGamePeriod(fromDay, toDay),
-        rows: cashFlowRows(statements.cashFlow),
+        rows: cashFlowRows(
+          statements.cashFlow,
+          read((line) =>
+            line.label === 'Équipement' && journal !== null
+              ? equipmentCashFlows(journal, fromDay, toDay)
+              : undefined,
+          ),
+        ),
       }
   }
 }
@@ -113,7 +165,7 @@ function StatementTable({
   return (
     <table className="data-table statement" aria-labelledby={labelledBy}>
       <tbody>
-        {rows.map(({ kind, label, amount, depth }, index) => (
+        {rows.map(({ kind, label, amount, depth, tip }, index) => (
           // Rows never move within a statement, so their place is their key.
           <tr key={index} className={`statement__${kind}`}>
             {amount === undefined ? (
@@ -123,7 +175,21 @@ function StatementTable({
             ) : (
               <>
                 <th scope="row" className={`statement__depth-${depth}`}>
-                  {label}
+                  {tip === undefined ? (
+                    label
+                  ) : (
+                    <Tooltip content={tip}>
+                      {(anchor) => (
+                        <span
+                          className="statement__tip"
+                          tabIndex={0}
+                          {...anchor}
+                        >
+                          {label}
+                        </span>
+                      )}
+                    </Tooltip>
+                  )}
                 </th>
                 <td className="number">{formatStatementAmount(amount)}</td>
               </>
@@ -143,6 +209,11 @@ interface StatementViewProps {
   /** The id of the statement's heading, which names its table. */
   labelledBy: string
   onPeriodChange: (key: PeriodKey) => void
+  /**
+   * The books the statements are read from, for the tooltips of the lines
+   * that tell what they hold; none without it.
+   */
+  journal?: Journal | null
 }
 
 /**
@@ -155,8 +226,10 @@ export function StatementView({
   statements,
   labelledBy,
   onPeriodChange,
+  journal = null,
 }: StatementViewProps) {
-  const content = statements === null ? null : contentFor(statement, statements)
+  const content =
+    statements === null ? null : contentFor(statement, statements, journal)
   return (
     <div className="statements">
       <div className="toggle-group" role="group" aria-label="Période">
@@ -210,6 +283,7 @@ export default function FinancialStatement({
       statements={readStatements(journal, today, periodKey)}
       labelledBy={labelledBy}
       onPeriodChange={(key) => setStatementPeriod(statement, key)}
+      journal={journal}
     />
   )
 }
