@@ -53,6 +53,14 @@
   grid-area: close;
 }
 
+/* An employee's message: their face at the left, as on a postcard. */
+.message--face {
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'portrait from close'
+    'portrait text close';
+}
+
 /* Réal's postcard (#239): a lighter cream card, his portrait at the left,
    « Merci! » at the right, and the palm-tree stamp stuck over its top
    right corner, clear of the button. */
@@ -110,6 +118,20 @@
   }
 
   .message--postcard .message__portrait {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* An employee's: the sentence under their face and name, « Fermer »
+     beside them. */
+  .message--face {
+    grid-template-areas:
+      'portrait from close'
+      'text text text';
+    gap: 0.25rem 0.75rem;
+  }
+
+  .message--face .message__portrait {
     width: 32px;
     height: 32px;
   }

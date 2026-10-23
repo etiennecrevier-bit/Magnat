@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CandidateId, StaffRoleId } from '../content/schema.ts'
 import type { DecisionChange } from '../engine/decisions.ts'
-import { STAFF } from '../engine/staff.ts'
 import { wageChange } from './decisionInput.ts'
 import { describedBy } from './describedBy.ts'
 import { DockPanel } from './DockFrame.tsx'
@@ -101,9 +100,10 @@ export function StaffPanelView({
           <p>Personne d'autre à embaucher.</p>
         ) : (
           <ul className="staff__candidates">
-            {board.candidates.map(({ candidate, name }) => (
+            {board.candidates.map(({ candidate, name, portrait }) => (
               <li key={candidate}>
-                <span>{name}</span>{' '}
+                <Portrait url={portraitUrl(portrait)} />
+                <span className="staff__candidate">{name}</span>{' '}
                 <button
                   type="button"
                   className="button"
@@ -224,7 +224,7 @@ function MemberRowView({
     onConfirmingChange(null)
     onChange({ kind: 'fire', candidate })
   }
-  const portrait = portraitUrl(STAFF.candidates[candidate].portrait)
+  const portrait = portraitUrl(member.portrait)
   return (
     <li>
       <Tooltip content={memberTip(member, hours)}>

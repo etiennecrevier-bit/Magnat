@@ -138,6 +138,8 @@ export type MemberStatus = 'atWork' | 'startsTomorrow' | 'leavesTomorrow'
 export interface MemberRow {
   readonly candidate: CandidateId
   readonly name: string
+  /** Their portrait's id in staff.json (see portraits.ts). */
+  readonly portrait: string
   readonly role: StaffRoleId
   readonly roleName: string
   /** Their hourly wage as the player last left it. */
@@ -194,6 +196,8 @@ export interface RoleOffer {
 export interface CandidateRow {
   readonly candidate: CandidateId
   readonly name: string
+  /** Their portrait's id in staff.json (see portraits.ts). */
+  readonly portrait: string
 }
 
 /** The « Qui fait quoi » panel. */
@@ -231,6 +235,7 @@ export function staffBoard(
   ): MemberRow => ({
     candidate: hire.candidate,
     name: content.candidates[hire.candidate].name,
+    portrait: content.candidates[hire.candidate].portrait,
     role: hire.role,
     roleName: content.roles[hire.role].name,
     hourlyWage: hire.hourlyWage,
@@ -290,6 +295,7 @@ export function staffBoard(
       .map((candidate) => ({
         candidate,
         name: content.candidates[candidate].name,
+        portrait: content.candidates[candidate].portrait,
       })),
     full: latest.staff.length >= content.maxEmployees,
     maxEmployees: content.maxEmployees,
