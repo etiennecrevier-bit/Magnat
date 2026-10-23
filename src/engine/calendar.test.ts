@@ -5,6 +5,7 @@ import {
   gameYearOf,
   mondayOf,
   monthsSinceStart,
+  startOfNextGameYear,
   startOfQuarter,
   sundayOf,
   toCalendar,
@@ -252,6 +253,24 @@ describe('gameYearOf', () => {
 
   it.each([-1, 1.5, Number.NaN])('rejects day %d', (day) => {
     expect(() => gameYearOf(day)).toThrow(RangeError)
+  })
+})
+
+describe('startOfNextGameYear', () => {
+  it.each([
+    [0, 365],
+    [364, 365],
+    [365, 730],
+    [427, 730],
+    [633, 730],
+  ])('puts the game year after day %i on day %i, a May 1st', (day, next) => {
+    expect(startOfNextGameYear(day)).toBe(next)
+    expect(toCalendar(next)).toMatchObject({ month: 5, dayOfMonth: 1 })
+    expect(gameYearOf(next)).toBe(gameYearOf(day) + 1)
+  })
+
+  it.each([-1, 1.5, Number.NaN])('rejects day %d', (day) => {
+    expect(() => startOfNextGameYear(day)).toThrow(RangeError)
   })
 })
 

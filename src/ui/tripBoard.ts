@@ -2,7 +2,7 @@ import type { PlaceEffect, PlaceId } from '../content/schema.ts'
 import { toCalendar } from '../engine/calendar.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
 import { startOfDay } from '../engine/effects.ts'
-import { isLoanOpen } from '../engine/financing.ts'
+import { isLoanOpen, nextLoanRequestDay } from '../engine/financing.ts'
 import {
   PLACES,
   placeOf,
@@ -14,6 +14,7 @@ import {
 } from '../engine/places.ts'
 import { streetOn } from '../engine/street.ts'
 import type { GameState } from '../engine/types.ts'
+import { formatDayAndMonth } from './formatGameDate.ts'
 import type { StatusLine } from './productFacts.ts'
 import type { TipContent, TipRow } from './tooltip.ts'
 
@@ -161,8 +162,14 @@ export function refusalLine(game: GameState, refusal: TripRefusal): string {
       return 'Rien à déposer'
     case 'tutorial':
       return 'Pas pendant les jours avec Réal'
-    case 'came':
-      return 'Déjà reçu cette année'
+    case 'came': {
+      // The day she may come again, not « cette année »: her year runs from
+      // May 1st, the one on screen from January 1st (#275).
+      const next = nextLoanRequestDay(game)
+      return next === null
+        ? 'Déjà reçu'
+        : `Pas de rendez-vous avant le ${formatDayAndMonth(next)}`
+    }
     case 'mayNotLend':
       return game.financing.loans.some((loan) => isLoanOpen(loan, game.day))
         ? 'Un prêt déjà en cours'

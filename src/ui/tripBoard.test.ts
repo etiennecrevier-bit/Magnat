@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PlaceId, RungId } from '../content/schema.ts'
+import { toCalendar } from '../engine/calendar.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { EVENTS, FOOD_TRUCK } from '../engine/day.ts'
 import {
@@ -191,7 +192,7 @@ describe('tripBoard', () => {
         },
         'caisse',
       ).refusal,
-    ).toBe('Déjà reçu cette année')
+    ).toBe('Pas de rendez-vous avant le 1er mai')
     const lent = resolveEvent(
       {
         ...short,
@@ -215,6 +216,30 @@ describe('tripBoard', () => {
     expect(
       row({ ...short, tutorial: openingTutorial() }, 'caisse').refusal,
     ).toBe('Pas pendant les jours avec Réal')
+  })
+
+  it('does not say « cette année » in January for a visit of the calendar year before (#275)', () => {
+    // Mme Prudhomme came on July 2, « an 2 »; it is now January 24, « an 3 »,
+    // as the top bar reads it.
+    const july = 427
+    const january = 633
+    expect(toCalendar(july)).toMatchObject({ year: 2, month: 7, dayOfMonth: 2 })
+    expect(toCalendar(january)).toMatchObject({
+      year: 3,
+      month: 1,
+      dayOfMonth: 24,
+    })
+    const short = withCash(TUESDAY, 50_000)
+    const refusal = row(
+      {
+        ...short,
+        day: january,
+        financing: { ...short.financing, lastLoanRequestDay: july },
+      },
+      'caisse',
+    ).refusal
+    expect(refusal ?? '').not.toMatch(/cette année/)
+    expect(refusal).toBe('Pas de rendez-vous avant le 1er mai')
   })
 })
 

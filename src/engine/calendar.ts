@@ -145,6 +145,15 @@ export function gameYearOf(day: Day): number {
 }
 
 /**
+ * The first day of the game year after the one `day` falls in (see
+ * `gameYearOf`): always a May 1st. Throws a RangeError unless `day` is a
+ * non-negative safe integer.
+ */
+export function startOfNextGameYear(day: Day): Day {
+  return gameYearOf(day) * DAYS_PER_YEAR
+}
+
+/**
  * The first day of the calendar quarter of `day`, January 1st, April 1st,
  * July 1st or October 1st: negative for a day of year 1 before July, whose
  * quarter started before May 1st, day 0. Throws a RangeError unless `day`

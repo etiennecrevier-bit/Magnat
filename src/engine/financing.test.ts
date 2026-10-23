@@ -42,6 +42,7 @@ import {
   isFinancingMemo,
   isLoanOpen,
   mayLend,
+  nextLoanRequestDay,
   noFinancing,
   sellShares,
   takeEmergencyLoan,
@@ -428,6 +429,16 @@ describe('financingOffer', () => {
     )
     expect(pendingOf(nextYear)).toBe('pretUrgence')
     expect(nextYear.financing.lastLoanRequestDay).toBe(365)
+  })
+
+  it('names the first morning Mme Prudhomme may come again, the May 1st after her visit', () => {
+    expect(nextLoanRequestDay(brokeOn(100))).toBeNull()
+    expect(nextLoanRequestDay(brokeOn(364, { lastLoanRequestDay: 100 }))).toBe(
+      365,
+    )
+    expect(nextLoanRequestDay(brokeOn(633, { lastLoanRequestDay: 427 }))).toBe(
+      730,
+    )
   })
 
   it('brings Max Duvent in her place while an emergency loan is still open', () => {

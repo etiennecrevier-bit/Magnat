@@ -16,8 +16,8 @@ import {
 import { loanSchedule } from '../finance/loan.ts'
 import { incomeStatement } from '../finance/statements.ts'
 import {
-  gameYearOf,
   monthsSinceStart,
+  startOfNextGameYear,
   startOfQuarter,
   toCalendar,
 } from './calendar.ts'
@@ -104,9 +104,10 @@ type ShareEffect = Extract<EventEffect, { kind: 'shareSale' }>
  * event waits nor was chosen that morning, and only cards `events` holds:
  * - After a close below zero (see `belowZeroSince`), the lender of
  *   `rules.loanEvent` comes on the first such morning of a game year (see
- *   `gameYearOf`), which becomes `lastLoanRequestDay`. She offers her loan
- *   if she may (see `mayLend`); otherwise the investor of `investorEvent`
- *   comes in her place, while rounds are left (see `maxShareRounds`).
+ *   `nextLoanRequestDay`), which becomes `lastLoanRequestDay`. She offers
+ *   her loan if she may (see `mayLend`); otherwise the investor of
+ *   `investorEvent` comes in her place, while rounds are left (see
+ *   `maxShareRounds`).
  * - Otherwise, after a close below zero, the investor comes
  *   `investorDaysAfterLoan` days after the last emergency loan, while
  *   rounds are left.
@@ -158,9 +159,21 @@ export function appointmentLoan(
 }
 
 /**
+ * The first morning the lender of the emergency loan may come again: the
+ * start of the game year after her last visit (see `lastLoanRequestDay` and
+ * `startOfNextGameYear`), or null when she never came.
+ */
+export function nextLoanRequestDay(state: GameState): Day | null {
+  const { lastLoanRequestDay } = state.financing
+  return lastLoanRequestDay === null
+    ? null
+    : startOfNextGameYear(lastLoanRequestDay)
+}
+
+/**
  * Why the lender of the emergency loan would not lend on the morning of
  * `state.day`, on `terms`, or null when she would: `came` when she came
- * already that game year (see `lastLoanRequestDay`), `mayNotLend` when she
+ * already that game year (see `nextLoanRequestDay`), `mayNotLend` when she
  * may not (see `mayLend`), and `noNeed` when her loan would be zero or less
  * (see `loanPrincipal`, with `content`).
  */
@@ -173,13 +186,8 @@ export function lendingRefusal(
   content: FoodTruckContent = FOOD_TRUCK,
   rules: FinancingContent = FINANCING,
 ): LendingRefusal | null {
-  const { lastLoanRequestDay } = state.financing
-  if (
-    lastLoanRequestDay !== null &&
-    gameYearOf(lastLoanRequestDay) >= gameYearOf(state.day)
-  ) {
-    return 'came'
-  }
+  const next = nextLoanRequestDay(state)
+  if (next !== null && state.day < next) return 'came'
   if (!mayLend(state, rules)) return 'mayNotLend'
   if (loanPrincipal(state, terms, content) <= 0) return 'noNeed'
   return null
@@ -221,12 +229,8 @@ function belowZeroOffer(
   const investorComes =
     financing.shareSales.length < rules.maxShareRounds &&
     holds(rules.investorEvent)
-  const { lastLoanRequestDay } = financing
-  if (
-    holds(rules.loanEvent) &&
-    (lastLoanRequestDay === null ||
-      gameYearOf(lastLoanRequestDay) < gameYearOf(day))
-  ) {
+  const next = nextLoanRequestDay(state)
+  if (holds(rules.loanEvent) && (next === null || day >= next)) {
     const visited: GameState = {
       ...state,
       financing: { ...financing, lastLoanRequestDay: day },
