@@ -32,8 +32,16 @@ import type {
   StreetChange,
 } from '../content/schema.ts'
 import { ART_URLS } from './art.ts'
+import { startCity } from './city.ts'
+import {
+  createCityPicker,
+  worldPickChanges,
+  type CityPicker,
+} from './cityPicker.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
 import { placeCard, saying, type Box, type Point } from './customerCard.ts'
+import { boxCorners } from './iso.ts'
+import { fitCity } from './layout.ts'
 import { ASSETS, LINES } from './manifest.ts'
 import { SEGMENT_ACCESSORY } from './people.ts'
 import { SPOT_HALF_RADIUS } from './noise.ts'
@@ -2395,8 +2403,12 @@ describe('startStreet behind the frame gate (#281)', () => {
     vi.unstubAllGlobals()
   })
 
-  /** The street, gated as the game gates it, on Wednesday at `speed`. */
-  async function gatedStreet(speed: number) {
+  /**
+   * The street, gated as the game gates it, on Wednesday at `speed`. With
+   * `city`, « Ville » shows the real city, whose buildings `city` names;
+   * else an empty one.
+   */
+  async function gatedStreet(speed: number, city?: CityPicker) {
     fakeFrames()
     const store = wednesdayStore(true)
     store.getState().setSpeed(speed)
@@ -2410,6 +2422,12 @@ describe('startStreet behind the frame gate (#281)', () => {
       tally: stage.getChildByLabel('tally', true)?.visible,
       scale: stage.getChildByLabel('street')?.scale.x,
       city: stage.getChildByLabel('city', true) !== null,
+      name: (
+        stage.children
+          .find((layer) => layer.label === 'labels')
+          ?.getChildByLabel('name')
+          ?.getChildByLabel('text') as Text | null | undefined
+      )?.text,
     }))
     const gate = gateWorld(
       app,
@@ -2417,7 +2435,8 @@ describe('startStreet behind the frame gate (#281)', () => {
         game: store,
         settings,
         playing: () => true,
-        picks: picker.subscribe,
+        // As WorldCanvas has it.
+        picks: worldPickChanges(picker, city ?? createCityPicker()),
       },
       page,
     )!
@@ -2435,9 +2454,18 @@ describe('startStreet behind the frame gate (#281)', () => {
             settings,
           ),
         city: async (scene) => {
-          const city = new Container({ label: 'city' })
-          scene.stage.addChild(city)
-          return () => city.destroy()
+          if (city !== undefined) {
+            return startCity(scene, {
+              store,
+              loaders: createLoaders(),
+              settings,
+              picker: city,
+              onOpen: () => () => {},
+            })
+          }
+          const empty = new Container({ label: 'city' })
+          scene.stage.addChild(empty)
+          return () => empty.destroy()
         },
       }),
       settings,
@@ -2514,6 +2542,48 @@ describe('startStreet behind the frame gate (#281)', () => {
     await vi.advanceTimersByTimeAsync(100)
     expect(rendered.at(-1)).toMatchObject({ city: false, tally: false })
     expect(rendered.at(-1)?.scale).toBeGreaterThan(0)
+    stop()
+  })
+
+  it('draws the name of the building under the pointer in the paused city, once, and its going', async () => {
+    const picker = createCityPicker()
+    const { settings, rendered, stop } = await gatedStreet(0, picker)
+    settings.getState().setWorldView('city')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(rendered.at(-1)).toMatchObject({ city: true, name: undefined })
+    /** The page's pixel on the middle of `id`'s lit wall. */
+    const over = (id: string) => {
+      const { left, front, wall } = boxCorners(
+        ASSETS.city.pieces.find((p) => p.id === id)!,
+      )
+      const fit = fitCity(1440, 900, ASSETS.city)
+      return {
+        x: fit.x + ((left[0] + front[0]) / 2) * fit.scale,
+        y: fit.y + ((left[1] + front[1]) / 2 - wall / 2) * fit.scale,
+      }
+    }
+    let drawn = rendered.length
+    picker.hover(over('rent'))
+    vi.advanceTimersByTime(100)
+    expect(rendered).toHaveLength(drawn + 1)
+    expect(rendered.at(-1)?.name).toBe('À louer')
+    // The pointer moves on the same wall: nothing to draw.
+    drawn = rendered.length
+    const { x, y } = over('rent')
+    picker.hover({ x: x + 1, y })
+    vi.advanceTimersByTime(100)
+    expect(rendered).toHaveLength(drawn)
+    picker.hover(over('bank'))
+    vi.advanceTimersByTime(100)
+    expect(rendered).toHaveLength(drawn + 1)
+    expect(rendered.at(-1)?.name).toBe('La Caisse populaire')
+    picker.hover(null)
+    vi.advanceTimersByTime(100)
+    expect(rendered).toHaveLength(drawn + 2)
+    expect(rendered.at(-1)?.name).toBeUndefined()
+    drawn = rendered.length
+    vi.advanceTimersByTime(5000)
+    expect(rendered).toHaveLength(drawn)
     stop()
   })
 

@@ -492,6 +492,25 @@ describe('startCity', () => {
       expect(shown(app)).toBeNull()
     })
 
+    it('tells the picker’s listeners when a name shows, changes or goes, not under a pointer that finds the same one', async () => {
+      const app = createFakeApp()
+      const { picker } = await start(app, tripStore(), { onOpen: () => {} })
+      const heard = vi.fn()
+      picker.subscribe(heard)
+      picker.hover(over('bank'))
+      expect(heard).toHaveBeenCalledTimes(1)
+      // A pixel further on the same wall: the same name, where it was.
+      const { x, y } = over('bank')
+      picker.hover({ x: x + 1, y })
+      expect(heard).toHaveBeenCalledTimes(1)
+      picker.hover(over('silo'))
+      expect(heard).toHaveBeenCalledTimes(2)
+      picker.hover(over('tri1'))
+      expect(heard).toHaveBeenCalledTimes(3)
+      picker.hover(null)
+      expect(heard).toHaveBeenCalledTimes(3)
+    })
+
     it('names nothing while the page cannot open it, nor a trip in a Défi', async () => {
       const app = createFakeApp()
       const { picker } = await start(app, tripStore(), { onOpen: null })

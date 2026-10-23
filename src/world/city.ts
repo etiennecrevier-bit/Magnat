@@ -170,12 +170,15 @@ export async function startCity(
       const link = hit === null ? null : linkOf(hit, view)
       return hit === null || link === null ? null : { hit, link }
     }
-    /** Names the building under the pointer at `point`, if it opens. */
-    const hover = (point: Point | null) => {
+    /**
+     * Names the building under the pointer at `point`, if it opens. Returns
+     * whether the name drawn changed.
+     */
+    const hover = (point: Point | null): boolean => {
       pointer = point
       const at = point === null ? null : openingAt(point)
       const name = at === null ? null : nameOf(at.hit, view, city)
-      people.name(name, at?.hit.top ?? null)
+      return people.name(name, at?.hit.top ?? null)
     }
     undo(
       picker.connect({

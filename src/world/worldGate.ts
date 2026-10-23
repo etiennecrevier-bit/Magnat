@@ -73,7 +73,10 @@ export interface WorldSignals {
   readonly settings: Pick<SettingsStore, 'getState' | 'subscribe'>
   /** Whether a game is played: false on the start menu. */
   readonly playing: () => boolean
-  /** Calls `listener` each time the player picks or points on the street. */
+  /**
+   * Calls `listener` each time the player picks or points on the street, or
+   * points at a building of the city.
+   */
   readonly picks: (listener: () => void) => () => void
 }
 

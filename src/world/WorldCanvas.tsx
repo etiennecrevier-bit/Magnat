@@ -7,7 +7,7 @@ import {
 import { settingsStore } from '../ui/settings.ts'
 import { gameStore } from '../ui/store.ts'
 import { startCity } from './city.ts'
-import { CITY, worldPicks } from './cityPicker.ts'
+import { CITY, worldPickChanges, worldPicks } from './cityPicker.ts'
 import { MOOD_COLORS, MOOD_WORDS, quoted } from './customerCard.ts'
 import { ASSETS } from './manifest.ts'
 import { mountWorld, worldOptions } from './mountWorld.ts'
@@ -82,7 +82,7 @@ export default function WorldCanvas({
         game: gameStore,
         settings: settingsStore,
         playing: () => played.current,
-        picks: PICKER.subscribe,
+        picks: worldPickChanges(PICKER, CITY),
       })
       invalidate.current = gate?.invalidate ?? null
       const stopWorld = await startWorld(
