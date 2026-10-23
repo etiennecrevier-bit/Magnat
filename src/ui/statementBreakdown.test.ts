@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import type { DifficultyId } from '../content/schema.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
-import { applyDecision } from '../engine/decisions.ts'
+import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
 import { add, cents, type Cents } from '../engine/money.ts'
 import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
 import { postEntry } from '../finance/journal.ts'
-import { balanceSheet, cashFlowStatement } from '../finance/statements.ts'
+import {
+  balanceSheet,
+  cashFlowStatement,
+  incomeStatement,
+} from '../finance/statements.ts'
 import {
   breakdownTip,
   equipmentCashFlows,
   equipmentOnBooks,
+  wagesByPerson,
   type BreakdownRow,
 } from './statementBreakdown.ts'
 
@@ -135,5 +140,41 @@ describe('breakdownTip', () => {
         { label: 'Total', value: `84${S}999,00${S}$`, divider: true },
       ],
     })
+  })
+})
+
+describe('wagesByPerson (#283)', () => {
+  it('lists each person’s wages, adding up to « Salaires » for each period', () => {
+    const start = createInitialState(42, undefined, defaultProfile())
+    let game: GameState = [
+      { kind: 'hire', role: 'camion', candidate: 'amelie' },
+      { kind: 'hire', role: 'livreur', candidate: 'kevin' },
+    ].reduce(
+      (state, change) => applyDecision(state, change as DecisionChange),
+      start,
+    )
+    while (game.day < 75) {
+      if (game.day === 40) {
+        game = applyDecision(game, { kind: 'fire', candidate: 'kevin' })
+      }
+      game = tick(game)
+    }
+    for (const [fromDay, toDay] of [
+      [0, 30],
+      [31, 60],
+      [61, 75],
+      [0, 75],
+    ] as const) {
+      const line = incomeStatement(
+        game.journal,
+        fromDay,
+        toDay,
+      ).expenses.lines.find(({ account }) => account === '6000')
+      const rows = wagesByPerson(game.journal, fromDay, toDay)
+      expect(total(rows)).toBe(line?.amount)
+    }
+    expect(
+      wagesByPerson(game.journal, 0, 75).map(({ label }) => label),
+    ).toEqual(['Amélie Gagnon', 'Kevin Bouchard', 'Vous'])
   })
 })

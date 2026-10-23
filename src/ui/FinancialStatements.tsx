@@ -20,6 +20,7 @@ import {
   breakdownTip,
   equipmentCashFlows,
   equipmentOnBooks,
+  wagesByPerson,
   type BreakdownRow,
 } from './statementBreakdown.ts'
 import { useGame } from './store.ts'
@@ -28,6 +29,7 @@ import type { TipContent } from './tooltip.ts'
 import './FinancialStatements.css'
 
 const EQUIPMENT = '1500' satisfies AccountCode
+const WAGES = '6000' satisfies AccountCode
 
 const PERIODS: Record<PeriodKey, string> = {
   thisMonth: 'Ce mois-ci',
@@ -90,12 +92,15 @@ function balanceSheetRows(sheet: BalanceSheet, tips: LineTips): Row[] {
   ]
 }
 
-function incomeStatementRows(statement: IncomeStatement): Row[] {
+function incomeStatementRows(
+  statement: IncomeStatement,
+  tips: LineTips,
+): Row[] {
   return [
     lineRow(statement.sales, 0),
     lineRow(statement.costOfGoodsSold, 0),
     lineRow(statement.grossMargin, 0, 'total'),
-    ...sectionRows(statement.expenses, 0),
+    ...sectionRows(statement.expenses, 0, tips),
     lineRow(statement.netIncome, 0, 'grandTotal'),
   ]
 }
@@ -113,7 +118,7 @@ function cashFlowRows(statement: CashFlowStatement, tips: LineTips): Row[] {
 
 /**
  * The rows of the statement `tab` shows, and the dates they cover. With
- * `journal`, the « Équipement » lines tell what they hold.
+ * `journal`, the « Équipement » lines and « Salaires » tell what they hold.
  */
 function contentFor(
   tab: StatementTab,
@@ -138,7 +143,14 @@ function contentFor(
     case 'incomeStatement':
       return {
         dates: formatGamePeriod(fromDay, toDay),
-        rows: incomeStatementRows(statements.incomeStatement),
+        rows: incomeStatementRows(
+          statements.incomeStatement,
+          read((line) =>
+            line.account === WAGES && journal !== null
+              ? wagesByPerson(journal, fromDay, toDay)
+              : undefined,
+          ),
+        ),
       }
     case 'cashFlow':
       return {

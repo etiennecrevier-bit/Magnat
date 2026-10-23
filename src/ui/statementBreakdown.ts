@@ -1,6 +1,8 @@
 import type { DreamContent } from '../content/schema.ts'
 import { BAKERY_MEMO } from '../engine/bakery.ts'
+import { OWNER_PAY_MEMO } from '../engine/day.ts'
 import { DREAM, DREAM_MEMO, dreamLabel } from '../engine/dream.ts'
+import { STAFF_MEMO } from '../engine/staff.ts'
 import { add, cents, sub, type Cents } from '../engine/money.ts'
 import type { Day } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
@@ -18,6 +20,7 @@ import type { TipContent, TipRow } from './tooltip.ts'
 
 const CASH = '1000' satisfies AccountCode
 const EQUIPMENT = '1500' satisfies AccountCode
+const WAGES = '6000' satisfies AccountCode
 // The accounts whose cash the état des flux de trésorerie shows on its «
 // Équipement » row (see `CASH_FLOW_ROW` in statements.ts).
 const EQUIPMENT_ROW: ReadonlySet<AccountCode> = new Set([
@@ -120,6 +123,39 @@ export function equipmentCashFlows(
     if (flow !== 0) added(amounts, assetOf(entry, rungs), flow)
   }
   return rowsOf(amounts)
+}
+
+/**
+ * What the état des résultats' « Salaires » holds from `fromDay` to
+ * `toDay` (#283): each person's charges on 6000, the owner's pay as «
+ * Vous », each employee's wage, training and notice under their name.
+ * The rows add up to the line.
+ */
+export function wagesByPerson(
+  journal: Journal,
+  fromDay: Day,
+  toDay: Day,
+): BreakdownRow[] {
+  const amounts = new Map<string, Cents>()
+  for (const entry of entriesOf(journal)) {
+    if (entry.day > toDay) break
+    if (entry.day < fromDay) continue
+    for (const { account, debit, credit } of entry.lines) {
+      if (account !== WAGES) continue
+      added(amounts, personOf(entry.memo), sub(debit, credit))
+    }
+  }
+  return rowsOf(amounts)
+}
+
+/** Whom a wage's memo pays: « Vous », an employee's name, or the memo. */
+function personOf(memo: string): string {
+  if (memo === OWNER_PAY_MEMO) return 'Vous'
+  for (const what of Object.values(STAFF_MEMO)) {
+    const prefix = `${what} · `
+    if (memo.startsWith(prefix)) return memo.slice(prefix.length)
+  }
+  return memo
 }
 
 /**

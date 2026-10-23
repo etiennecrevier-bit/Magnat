@@ -141,3 +141,11 @@ body {
     --report-room: var(--dock-room, 10rem);
   }
 }
+
+/* A fact about the day (#283), under its numbers, in the rows' colour. */
+.yesterday__note {
+  margin-top: 4px;
+  color: #6b625a;
+  font-weight: 600;
+  line-height: 1.25;
+}

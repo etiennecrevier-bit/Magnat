@@ -188,6 +188,9 @@ const MEMO = {
   spoilage: 'Marchandises périmées',
 } as const
 
+/** The memo of the owner's weekly pay, as the player reads it. */
+export const OWNER_PAY_MEMO = MEMO.ownerPay
+
 /**
  * The memos of the truck's own monthly charges, which end once a rung of «
  * Le rêve » replaces it.

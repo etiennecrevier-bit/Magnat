@@ -283,4 +283,21 @@ describe('FinancialStatement', () => {
       `<dt>Camion</dt><dd>(85${S}000,00${S}$)</dd></div><div class="tip__row"><dt>Machine à espresso pro</dt><dd>(6${S}000,00${S}$)</dd>`,
     )
   })
+
+  it('tells whose wages « Salaires » holds over the period (#283)', () => {
+    gameStore.getState().advance(10)
+    const html = renderToStaticMarkup(
+      <FinancialStatement statement="incomeStatement" labelledBy={TITLE} />,
+    )
+    const wages = amounts(html).get('Salaires')
+    expect(wages).toBeDefined()
+    expect(html).toContain(
+      `<span class="statement__tip" tabindex="0" aria-describedby=`,
+    )
+    expect(html).toMatch(
+      new RegExp(
+        `<dt>Vous</dt><dd>[^<]+</dd></div><div class="tip__row tip__row--divider"><dt>Total</dt><dd>${wages?.replace('$', '\\$')}</dd>`,
+      ),
+    )
+  })
 })

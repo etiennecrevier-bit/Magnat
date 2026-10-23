@@ -141,6 +141,24 @@ describe('YesterdayView', () => {
   })
 })
 
+describe('the note under the numbers (#283)', () => {
+  it('shows a fact about the day under its numbers, and nothing without one', () => {
+    const html = renderToStaticMarkup(
+      <YesterdayView
+        numbers={NUMBERS}
+        note="Sans Kevin, le camion aurait été fermé"
+        folded={false}
+        onFoldChange={() => {}}
+        onOpen={() => {}}
+      />,
+    )
+    expect(html).toContain(
+      '<span class="yesterday__note">Sans Kevin, le camion aurait été fermé</span></button>',
+    )
+    expect(render(NUMBERS)).not.toContain('yesterday__note')
+  })
+})
+
 describe('Yesterday', () => {
   it('shows the app store’s last day, dashes before the first', () => {
     const props = { folded: false, onFoldChange: () => {} }

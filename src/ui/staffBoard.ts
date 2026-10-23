@@ -16,21 +16,31 @@ import { FOOD_TRUCK } from '../engine/day.ts'
 import { latestDecisions } from '../engine/decisions.ts'
 import { startOfDay } from '../engine/effects.ts'
 import { onHand, orderSize } from '../engine/inventory.ts'
-import { cents, mulInt, type Cents } from '../engine/money.ts'
+import { cents, mulInt, sub, type Cents } from '../engine/money.ts'
 import { STAFF, crewOf, weeklyWage, type Doer } from '../engine/staff.ts'
 import { streetOn } from '../engine/street.ts'
-import type { Employee, GameState, Hire } from '../engine/types.ts'
-import { formatMoney } from './formatMoney.ts'
+import type {
+  Employee,
+  GameState,
+  Hire,
+  PersonDay,
+  WorkDay,
+  Worker,
+} from '../engine/types.ts'
+import { formatDayOfMonth, formatShortWeekdayName } from './formatGameDate.ts'
+import { formatCount, formatMoney, formatWholeMoney } from './formatMoney.ts'
 import type { StatusLine } from './productFacts.ts'
-import type { TipContent } from './tooltip.ts'
+import type { TipContent, TipRow } from './tooltip.ts'
 
 // What the « Qui fait quoi » panel shows (#163): the owner and the
 // employees, what each does today, and who may be hired. The engine plays
 // the day (src/engine/day.ts); today's work is read from its own helpers,
 // on the morning as it starts the day.
 
-// A no-break space (U+00A0) goes between a number and its unit.
+// A no-break space (U+00A0) goes between a number and its unit, and before
+// a colon.
 const NBSP = '\u00a0'
+const COLON = `${NBSP}:`
 
 /** A job of the day. */
 export type Task = 'truck' | 'deliveries' | 'bakery'
@@ -148,6 +158,10 @@ export interface MemberRow {
   readonly fireCost: Cents | null
   /** What their training costs, for a hire who has not started; else null. */
   readonly training: Cents | null
+  /** What they did yesterday, in one line; null if they did not work then. */
+  readonly yesterday: string | null
+  /** What they did each of the last days, one tooltip row a day. */
+  readonly days: readonly TipRow[]
 }
 
 /** The owner. */
@@ -158,6 +172,10 @@ export interface OwnerRow {
   readonly away: boolean
   /** What they do today. */
   readonly tasks: readonly Task[]
+  /** What they did yesterday, in one line; null before the first day. */
+  readonly yesterday: string | null
+  /** What they did each of the last days, one tooltip row a day. */
+  readonly days: readonly TipRow[]
 }
 
 /** A role the player may hire for. */
@@ -224,6 +242,7 @@ export function staffBoard(
       status === 'startsTomorrow'
         ? mulInt(weeklyWage(hire, content), content.trainingWeeks)
         : null,
+    ...workFacts(game, hire.candidate, ROLE_TASKS[hire.role]),
   })
   const members = [
     ...today.map((hire) => {
@@ -248,6 +267,7 @@ export function staffBoard(
       weeklyPay: latest.ownerWeeklyPay,
       away: work.ownerAway,
       tasks: work.ownerAway ? [] : ownerTasks(work),
+      ...workFacts(game, 'owner', null),
     },
     members,
     roles: (Object.keys(content.roles) as StaffRoleId[]).map((role) => {
@@ -318,13 +338,111 @@ function todayStaff(started: GameState): Employee[] {
   }))
 }
 
-/** What the owner's tooltip says: their role and their pay. */
+/** What someone did yesterday and on the last days (#283). */
+interface WorkFacts {
+  readonly yesterday: string | null
+  readonly days: readonly TipRow[]
+}
+
+/**
+ * What `who` did yesterday, as one line, and each of the days `game`
+ * keeps (see `GameState.workDays`), as tooltip rows: in their `task`, or
+ * for the owner, null, every job they did. Facts only: what they served,
+ * delivered or baked, never what it is worth to the player.
+ */
+function workFacts(game: GameState, who: Worker, task: Task | null): WorkFacts {
+  const history = game.workDays ?? []
+  const last = history.at(-1)
+  const yesterday =
+    last === undefined || last.day !== game.lastDay?.day
+      ? null
+      : dayText(last, who, task, 'line')
+  const days = history.flatMap((day): TipRow[] => {
+    const text = dayText(day, who, task, 'row')
+    return text === null
+      ? []
+      : [
+          {
+            label: `${formatShortWeekdayName(day.day)} ${formatDayOfMonth(day.day)}`,
+            value: text,
+          },
+        ]
+  })
+  return {
+    yesterday: yesterday === null ? null : `Hier${COLON} ${yesterday}`,
+    // The days start a part of their own, under a thin line.
+    days: days.map((row, index) =>
+      index === 0 ? { ...row, divider: true } : row,
+    ),
+  }
+}
+
+/**
+ * What `who` did on `day`, in a line or a tooltip row; « Absence » for an
+ * employee absent, « En ville » for the owner away all day, null for one
+ * not on staff that day.
+ */
+function dayText(
+  day: WorkDay,
+  who: Worker,
+  task: Task | null,
+  form: 'line' | 'row',
+): string | null {
+  if (who === 'owner' && day.ownerAway)
+    return form === 'row' ? 'En ville' : 'en ville'
+  if (who !== 'owner' && day.absent.includes(who)) {
+    return form === 'row' ? 'Absence' : 'absence'
+  }
+  const person = day.people.find((one) => one.who === who)
+  if (person === undefined) return null
+  const tasks: readonly Task[] = task !== null ? [task] : ownerDid(person)
+  return tasks.map((each) => taskText(person, each, form)).join(' · ')
+}
+
+/** The jobs the owner did: those with anything done, the truck by default. */
+function ownerDid(person: PersonDay): Task[] {
+  const did = (['truck', 'deliveries', 'bakery'] as const).filter((task) =>
+    task === 'truck'
+      ? person.customers > 0
+      : task === 'deliveries'
+        ? person.deliveries > 0
+        : person.baked > 0,
+  )
+  return did.length > 0 ? did : ['truck']
+}
+
+/** What `person` did at `task`, as a line says it or a row, shorter. */
+function taskText(person: PersonDay, task: Task, form: 'line' | 'row'): string {
+  const line = form === 'line'
+  switch (task) {
+    case 'truck':
+      return `${counted(person.customers, line ? 'client servi' : 'client', line ? 'clients servis' : 'clients')} · ${formatWholeMoney(person.sales)}${line ? ' de ventes' : ''}`
+    case 'deliveries':
+      return `${counted(person.deliveries, 'livraison', 'livraisons')} · ${formatWholeMoney(person.invoiced)}${line ? ' facturés' : ''}`
+    case 'bakery': {
+      const saved = sub(person.boughtCost, person.bakedCost)
+      const than = saved >= 0 ? 'de moins' : 'de plus'
+      return `${counted(person.baked, 'croissant', 'croissants')} · ${formatWholeMoney(cents(Math.abs(saved)))} ${than}${line ? " qu'achetés" : ''}`
+    }
+  }
+}
+
+/** `n` and its noun, singular below 2 as French has it. */
+function counted(n: number, one: string, many: string): string {
+  return `${formatCount(n)} ${n < 2 ? one : many}`
+}
+
+/**
+ * What the owner's tooltip says: their role and their pay, then what they
+ * did each of the last days.
+ */
 export function ownerTip(owner: OwnerRow): TipContent {
   return {
     title: 'Vous',
     rows: [
       { label: 'Rôle', value: 'Propriétaire' },
       { label: 'Salaire par semaine', value: formatMoney(owner.weeklyPay) },
+      ...owner.days,
     ],
   }
 }
@@ -335,7 +453,7 @@ export function ownerTip(owner: OwnerRow): TipContent {
  */
 export function memberTip(member: MemberRow, hours: number): TipContent {
   const { name, roleName, weeklyWage, status, training, fireCost } = member
-  const rows = [
+  const rows: TipRow[] = [
     { label: 'Rôle', value: roleName },
     { label: 'Heures par semaine', value: `${hours}${NBSP}h` },
     { label: 'Salaire par semaine', value: formatMoney(weeklyWage) },
@@ -346,6 +464,7 @@ export function memberTip(member: MemberRow, hours: number): TipContent {
   if (status === 'atWork' && fireCost !== null) {
     rows.push({ label: 'Préavis si congédié', value: formatMoney(fireCost) })
   }
+  rows.push(...member.days)
   return { title: name, rows }
 }
 
