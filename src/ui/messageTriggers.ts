@@ -4,6 +4,7 @@ import type {
   GrocerId,
   PostcardId,
   PostcardTarget,
+  StaffContent,
 } from '../content/schema.ts'
 import {
   loadMessages,
@@ -39,6 +40,8 @@ export interface Message {
   readonly kind: MessageKind | OwnWordsKind | 'postcard'
   /** Who it is from, as the card shows it. */
   readonly from: string
+  /** The sender's portrait id (see portraits.ts), for an employee's. */
+  readonly portrait?: string
   readonly text: string
   /** The day it is about. */
   readonly day: Day
@@ -69,6 +72,8 @@ export type Trigger =
        * content's.
        */
       readonly from?: string
+      /** The employee's portrait id, for theirs (see portraits.ts). */
+      readonly portrait?: string
     }
   | {
       /** An employee's own words (#255): their warning, or their goodbye. */
@@ -77,6 +82,8 @@ export type Trigger =
       readonly day: Day
       /** The employee. */
       readonly from: string
+      /** Their portrait id (see portraits.ts). */
+      readonly portrait: string
       /** Their line, theirs alone. */
       readonly text: string
     }
@@ -205,21 +212,51 @@ export function contractTriggers(
  * `next`, read from the journal as the mornings left it, so someone who
  * leaves and is hired again in between counts both times: each
  * « Formation » paid, the employee's `hired`, and each « Préavis », their
- * `fired`, dated that morning. Cancelling a hire who had not started pays
- * neither, and calls for nothing.
+ * `fired`, dated that morning, with the employee's portrait. Cancelling a
+ * hire who had not started pays neither, and calls for nothing.
  */
-export function staffTriggers(previous: GameState, next: GameState): Trigger[] {
+export function staffTriggers(
+  previous: GameState,
+  next: GameState,
+  content: StaffContent = STAFF,
+): Trigger[] {
   const training = staffMemo(STAFF_MEMO.training, '')
   const notice = staffMemo(STAFF_MEMO.notice, '')
   const triggers: Trigger[] = []
+  const employee = (name: string) => {
+    const portrait = portraitOfEmployee(name, content)
+    return portrait === undefined ? { from: name } : { from: name, portrait }
+  }
   for (const { day, memo } of entriesSince(next.journal, previous.day)) {
     if (memo.startsWith(training)) {
-      triggers.push({ kind: 'hired', day, from: memo.slice(training.length) })
+      triggers.push({
+        kind: 'hired',
+        day,
+        ...employee(memo.slice(training.length)),
+      })
     } else if (memo.startsWith(notice)) {
-      triggers.push({ kind: 'fired', day, from: memo.slice(notice.length) })
+      triggers.push({
+        kind: 'fired',
+        day,
+        ...employee(memo.slice(notice.length)),
+      })
     }
   }
   return triggers
+}
+
+/**
+ * The portrait id of the candidate named `name`, the name a journal memo
+ * gives (the content keeps the names unique); undefined for a name no
+ * candidate has.
+ */
+export function portraitOfEmployee(
+  name: string,
+  content: StaffContent = STAFF,
+): string | undefined {
+  return Object.values(content.candidates).find(
+    (candidate) => candidate.name === name,
+  )?.portrait
 }
 
 /**
@@ -237,6 +274,7 @@ export function ownWordsTriggers(
     kind,
     day,
     from: STAFF.candidates[candidate].name,
+    portrait: STAFF.candidates[candidate].portrait,
     text: messages[kind][candidate],
   }))
 }
@@ -360,11 +398,18 @@ export function startMessages(
         onMessage({ id: nextId(), ...trigger })
         continue
       }
-      const { kind, day, from = senderOf(messages, kind) } = trigger
+      const { kind, day, from = senderOf(messages, kind), portrait } = trigger
       const { lines } = messages[kind]
       const text = pickLine(lines, random, lastLine[kind] ?? null)
       lastLine[kind] = text
-      onMessage({ id: nextId(), kind, from, text, day })
+      onMessage({
+        id: nextId(),
+        kind,
+        from,
+        ...(portrait === undefined ? {} : { portrait }),
+        text,
+        day,
+      })
     }
   })
   return () => {

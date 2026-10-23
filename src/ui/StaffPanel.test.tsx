@@ -35,20 +35,30 @@ const S = ' '
 
 const START = createInitialState(42)
 
+/**
+ * `html` without the preloads React hoists ahead of it, one per portrait
+ * shown.
+ */
+function withoutPreloads(html: string): string {
+  return html.replace(/^(<link rel="preload" as="image" href="[^"]*"\/>)+/, '')
+}
+
 function render(
   game: GameState,
   role: StaffRoleId = 'camion',
   confirming: CandidateId | null = null,
 ) {
-  return renderToStaticMarkup(
-    <StaffPanelView
-      board={staffBoard(game)}
-      role={role}
-      onRoleChange={() => {}}
-      confirming={confirming}
-      onConfirmingChange={() => {}}
-      onChange={() => {}}
-    />,
+  return withoutPreloads(
+    renderToStaticMarkup(
+      <StaffPanelView
+        board={staffBoard(game)}
+        role={role}
+        onRoleChange={() => {}}
+        confirming={confirming}
+        onConfirmingChange={() => {}}
+        onChange={() => {}}
+      />,
+    ),
   )
 }
 
@@ -229,9 +239,23 @@ describe('StaffPanelView', () => {
       ],
     })
     expect(html).toContain(
-      '<li><span>Amélie Gagnon</span> <button type="button" class="button" aria-label="Embaucher Amélie Gagnon, Livreur">Embaucher</button></li>',
+      `<li><img class="staff__portrait" src="${portraitUrl('amelieGagnon')}" alt="" width="48" height="48"/><span class="staff__candidate">Amélie Gagnon</span> <button type="button" class="button" aria-label="Embaucher Amélie Gagnon, Livreur">Embaucher</button></li>`,
     )
     expect(html.match(/>Embaucher<\/button>/g)).toHaveLength(12)
+  })
+
+  it('shows each candidate to hire with their face', () => {
+    const hiring =
+      render(START).match(/<ul class="staff__candidates">(.*?)<\/ul>/)?.[1] ??
+      ''
+    const faces = [
+      ...hiring.matchAll(/<img class="staff__portrait" src="([^"]+)"/g),
+    ]
+    expect(faces.map(([, src]) => src)).toEqual(
+      staffBoard(START).candidates.map(({ portrait }) => portraitUrl(portrait)),
+    )
+    expect(faces).toHaveLength(12)
+    expect(hiring).not.toContain('staff__silhouette')
   })
 
   it('says the team is full, the hires disabled', () => {
@@ -257,11 +281,8 @@ describe('StaffPanelView', () => {
 describe('StaffPanel', () => {
   it('is a modal dialog in the dock’s frame, labelled by its title « Équipe », for the app store', () => {
     gameStore.getState().startGame(amelieAtWork())
-    // React hoists a preload of Amélie's portrait ahead of the dialog.
-    const html = renderToStaticMarkup(<StaffPanel />).replace(
-      `<link rel="preload" as="image" href="${portraitUrl('amelieGagnon')}"/>`,
-      '',
-    )
+    // React hoists a preload of each portrait ahead of the dialog.
+    const html = withoutPreloads(renderToStaticMarkup(<StaffPanel />))
     expect(html).toMatch(
       /^<dialog class="panel dock-frame dock-panel staff" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\1" class="dock-frame__title">Équipe<\/h2>.*<div class="panel__content">.*<\/dialog>$/,
     )

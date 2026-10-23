@@ -4,6 +4,7 @@ import { createInitialState, tick, toCalendar } from '../engine/clock.ts'
 import { GROCERS, startContract } from '../engine/contracts.ts'
 import { ENERGY, EVENTS } from '../engine/day.ts'
 import { NO_EVENTS } from '../engine/events.ts'
+import { STAFF } from '../engine/staff.ts'
 import { cents } from '../engine/money.ts'
 import type { Day, GameState } from '../engine/types.ts'
 import { entriesOf } from '../finance/journal.ts'
@@ -13,6 +14,7 @@ import {
   NO_MEMORY,
   contractTriggers,
   pickLine,
+  portraitOfEmployee,
   received,
   staffTriggers,
   startMessages,
@@ -388,9 +390,31 @@ describe('staffTriggers', () => {
     store.getState().decide({ kind: 'fire', candidate: 'kevin' })
     store.getState().advance(2)
     expect(staffTriggers(before, store.getState().game)).toEqual([
-      { kind: 'hired', day: 1, from: 'Kevin Bouchard' },
-      { kind: 'fired', day: 4, from: 'Kevin Bouchard' },
+      {
+        kind: 'hired',
+        day: 1,
+        from: 'Kevin Bouchard',
+        portrait: 'kevinBouchard',
+      },
+      {
+        kind: 'fired',
+        day: 4,
+        from: 'Kevin Bouchard',
+        portrait: 'kevinBouchard',
+      },
     ])
+  })
+})
+
+describe('portraitOfEmployee', () => {
+  it("finds each candidate's portrait by the name a memo gives", () => {
+    for (const { name, portrait } of Object.values(STAFF.candidates)) {
+      expect(portraitOfEmployee(name)).toBe(portrait)
+    }
+  })
+
+  it('finds none for a name no candidate has', () => {
+    expect(portraitOfEmployee('Personne Inconnue')).toBeUndefined()
   })
 })
 
@@ -416,12 +440,14 @@ describe("the employees' own words (#255)", () => {
   const WARNING = {
     kind: 'underpaid',
     from: 'Kevin Bouchard',
+    portrait: 'kevinBouchard',
     text: MESSAGES.underpaid.kevin,
     day: 57,
   }
   const GOODBYE = {
     kind: 'quit',
     from: 'Kevin Bouchard',
+    portrait: 'kevinBouchard',
     text: MESSAGES.quit.kevin,
     day: 64,
   }
@@ -539,6 +565,7 @@ describe('startMessages for the grocers and the employees', () => {
         id: 0,
         kind: 'fired',
         from: 'Amélie Gagnon',
+        portrait: 'amelieGagnon',
         text: MESSAGES.fired.lines[0],
         day: 3,
       },
@@ -546,6 +573,7 @@ describe('startMessages for the grocers and the employees', () => {
         id: 1,
         kind: 'hired',
         from: 'Amélie Gagnon',
+        portrait: 'amelieGagnon',
         text: MESSAGES.hired.lines[0],
         day: 4,
       },

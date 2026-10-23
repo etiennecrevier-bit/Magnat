@@ -35,9 +35,24 @@ interface MessagesViewProps {
   postcard?: PostcardLook
 }
 
+/** A sender's face, or a silhouette for one without a portrait file. */
+function MessagePortrait({ url }: { url: string | null }) {
+  return url === null ? (
+    <Silhouette className="message__portrait message__silhouette" size={44} />
+  ) : (
+    <img
+      className="message__portrait"
+      src={url}
+      alt=""
+      width={44}
+      height={44}
+    />
+  )
+}
+
 /**
  * The messages the player received, newest first, each with its sender, its
- * day and « Fermer ». A postcard from Réal is a cream card with a palm-tree
+ * day and « Fermer », and an employee's with their face. A postcard from Réal is a cream card with a palm-tree
  * stamp in its corner and his portrait, put away with « Merci! ». The log
  * is always on the page, empty and taking no room when there is none, so
  * screen readers read each new one.
@@ -49,7 +64,7 @@ export function MessagesView({
 }: MessagesViewProps) {
   return (
     <section className="messages" role="log" aria-label="Messages">
-      {messages.map(({ id, kind, from, text, day }) =>
+      {messages.map(({ id, kind, from, portrait, text, day }) =>
         kind === 'postcard' ? (
           <article
             key={id}
@@ -57,20 +72,7 @@ export function MessagesView({
             className="message message--postcard"
             tabIndex={-1}
           >
-            {postcard.portrait === null ? (
-              <Silhouette
-                className="message__portrait message__silhouette"
-                size={44}
-              />
-            ) : (
-              <img
-                className="message__portrait"
-                src={postcard.portrait}
-                alt=""
-                width={44}
-                height={44}
-              />
-            )}
+            <MessagePortrait url={postcard.portrait} />
             <p className="message__from" id={`message-${id}`}>
               {from}{' '}
               <span className="message__day">{formatDayAndMonth(day)}</span>
@@ -92,9 +94,12 @@ export function MessagesView({
           <article
             key={id}
             id={messageElementId(id)}
-            className={`message message--${kind}`}
+            className={`message message--${kind}${portrait === undefined ? '' : ' message--face'}`}
             tabIndex={-1}
           >
+            {portrait !== undefined && (
+              <MessagePortrait url={portraitUrl(portrait)} />
+            )}
             <p className="message__from" id={`message-${id}`}>
               {from}{' '}
               <span className="message__day">{formatDayAndMonth(day)}</span>

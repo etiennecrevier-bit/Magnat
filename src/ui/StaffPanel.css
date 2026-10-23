@@ -142,11 +142,16 @@
   gap: 0.5rem 1rem;
 }
 
+/* A candidate: their portrait, their name, then « Embaucher ». */
 .staff__candidates li {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.5rem 0.75rem;
+}
+
+.staff__candidate {
+  flex: 1;
+  min-width: 0;
 }
 
 .staff .button:disabled {

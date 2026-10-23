@@ -135,6 +135,7 @@ describe('staffBoard', () => {
     expect(board.candidates[0]).toEqual({
       candidate: 'amelie',
       name: 'Amélie Gagnon',
+      portrait: 'amelieGagnon',
     })
     expect(board).toMatchObject({ full: false, maxEmployees: 3 })
   })
@@ -150,6 +151,7 @@ describe('staffBoard', () => {
       {
         candidate: 'amelie',
         name: 'Amélie Gagnon',
+        portrait: 'amelieGagnon',
         role: 'camion',
         roleName: 'Au camion',
         hourlyWage: 1750,

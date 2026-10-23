@@ -59,6 +59,43 @@ describe('MessagesView', () => {
     )
   })
 
+  it("shows an employee's face on their message, and none on the landlord's", () => {
+    const hired: Message = {
+      id: 9,
+      kind: 'hired',
+      from: 'Amélie Gagnon',
+      portrait: 'amelieGagnon',
+      text: 'Je commence demain!',
+      day: 34,
+    }
+    const url = portraitUrl('amelieGagnon')
+    expect(url).not.toBeNull()
+    const html = render([hired, RENT])
+    expect(html).toContain(
+      `<article id="message-card-9" class="message message--hired message--face" tabindex="-1"><img class="message__portrait" src="${url}" alt="" width="44" height="44"/><p class="message__from" id="message-9">Amélie Gagnon `,
+    )
+    expect(html).toContain(
+      '<article id="message-card-7" class="message message--landlord" tabindex="-1"><p class="message__from"',
+    )
+    expect(html.match(/message__portrait/g)).toHaveLength(1)
+  })
+
+  it('shows a silhouette for an employee whose portrait has no file', () => {
+    const html = render([
+      {
+        id: 10,
+        kind: 'fired',
+        from: 'Personne',
+        portrait: 'nobodyHasThisFace',
+        text: 'Bonne chance.',
+        day: 35,
+      },
+    ])
+    expect(html).toContain('message message--fired message--face')
+    expect(html).toContain('message__portrait message__silhouette')
+    expect(html).not.toContain('<img')
+  })
+
   it('dismisses the message whose Fermer is pressed', () => {
     const dismissed: number[] = []
     const view = MessagesView({
@@ -66,9 +103,13 @@ describe('MessagesView', () => {
       onDismiss: (id) => dismissed.push(id),
     })
     const articles = view.props.children as {
-      props: { children: { props: { onClick?: () => void } }[] }
+      props: { children: ({ props: { onClick?: () => void } } | false)[] }
     }[]
-    articles[1]!.props.children[2]!.props.onClick?.()
+    const close = articles[1]!.props.children.find(
+      (child) => child !== false && child.props.onClick !== undefined,
+    )
+    if (close === undefined || close === false) throw new Error('No Fermer')
+    close.props.onClick?.()
     expect(dismissed).toEqual([RENT.id])
   })
 })
