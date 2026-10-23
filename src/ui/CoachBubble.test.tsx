@@ -51,7 +51,7 @@ describe('CoachBubbleView', () => {
     expect(html).toContain(`id="${textId}" class="coach__text">`)
   })
 
-  it('shows the silhouette until Réal’s portrait lands, then the portrait, 64 px', () => {
+  it('shows the silhouette without a portrait, and the portrait with one, 64 px', () => {
     expect(render(first)).toMatch(
       /<svg class="coach__portrait coach__silhouette"[^>]*width="64"/,
     )

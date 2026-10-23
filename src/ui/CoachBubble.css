@@ -73,7 +73,7 @@
   object-fit: cover;
 }
 
-/* A cream figure on a warm brown until Réal's portrait lands (#237). */
+/* A cream figure on a warm brown when Réal's portrait is missing. */
 .coach__silhouette {
   background: #8c6d52;
   fill: #fff7e8;
