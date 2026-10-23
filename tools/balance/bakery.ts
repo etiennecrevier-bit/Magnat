@@ -16,7 +16,7 @@ import type { DecisionChange } from '../../src/engine/decisions.ts'
 import { NO_EVENTS } from '../../src/engine/events.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
 import { PERCENTILES } from '../../src/engine/percentiles.ts'
-import { STAFF, weeklyWage } from '../../src/engine/staff.ts'
+import { STAFF, askingWage, weeklyWage } from '../../src/engine/staff.ts'
 import type { Day, GameState } from '../../src/engine/types.ts'
 import type { AccountCode } from '../../src/finance/accounts.ts'
 import { balance } from '../../src/finance/journal.ts'
@@ -97,18 +97,20 @@ export interface TruckStrategy {
 
 /**
  * The employee at the truck a strategy hires, and the baker every bakery
- * game hires, both on day 0 at their role's starting wage. Any candidate
- * would do.
+ * game hires, both on day 0 at the wage they ask, so neither quits (#255).
+ * Any candidate would do.
  */
 export const AT_TRUCK_HIRE = {
   kind: 'hire',
   role: 'camion',
   candidate: 'amelie',
+  hourlyWage: askingWage('amelie', 'camion'),
 } as const satisfies DecisionChange
 export const BAKER_HIRE = {
   kind: 'hire',
   role: 'boulanger',
   candidate: 'sophie',
+  hourlyWage: askingWage('sophie', 'boulanger'),
 } as const satisfies DecisionChange
 
 /**
@@ -349,8 +351,9 @@ export function monthEnds(months: number): number[] {
  * in order, and each renewal accepted; no other event card comes up. A game
  * that ends before, in bankruptcy (#160), plays no more: only the days it
  * played count, and the month ends after its last day read the Encaisse
- * of that day's close, which nothing moves since. Returns the last state
- * too, for the tests.
+ * of that day's close, which nothing moves since. `watch`, if any, reads
+ * each day played, as the morning after it. Returns the last state too, for
+ * the tests.
  */
 export function playBakeryGame(
   seed: number,
@@ -359,6 +362,7 @@ export function playBakeryGame(
   difficulties: DifficultyContent,
   months: number,
   contracts: readonly GrocerId[] = [],
+  watch: (state: GameState) => void = () => {},
 ): { game: BakeryGame; state: GameState } {
   const ends = monthEnds(months)
   const lastDay = ends.at(-1) ?? 0
@@ -382,6 +386,7 @@ export function playBakeryGame(
     if (state.ended === null) {
       const opens = state.decisions.daysOpen.includes(toCalendar(day).weekday)
       state = playMorning(state, events, choose, PERCENTILES, difficulties)
+      watch(state)
       daysPlayed += 1
       if (opens) {
         openDays += 1
@@ -394,12 +399,17 @@ export function playBakeryGame(
     }
   }
   const { ingredientCostCents } = difficulties.bakery[difficulty]
-  const croissantsMade = state.journal.entries
-    .filter(({ memo }) => memo === BAKERY_MEMO.ingredients)
-    .reduce(
-      (made, { lines }) => made + (lines[0]?.debit ?? 0) / ingredientCostCents,
-      0,
-    )
+  // Those the baker threw away and made again count once (#255).
+  const made = (memo: string) =>
+    state.journal.entries
+      .filter((entry) => entry.memo === memo)
+      .reduce(
+        (total, { lines }) =>
+          total + (lines[0]?.debit ?? 0) / ingredientCostCents,
+        0,
+      )
+  const croissantsMade =
+    made(BAKERY_MEMO.ingredients) - made(BAKERY_MEMO.wasted)
   return {
     game: {
       cashAtMonthEnds,
@@ -507,12 +517,12 @@ export function openDaysPerMonth(daysPerWeek: number): number {
 
 /**
  * What the baker `BAKER_HIRE` hires is paid in an average month, in the
- * books: their weekly wage at their role's starting wage, paid each week.
+ * books: their weekly wage at the wage they ask, paid each week.
  */
 export function monthlyBakerWage(staff: StaffContent = STAFF): number {
-  const { role } = BAKER_HIRE
-  const { start } = staff.roles[role].hourlyWageCents
-  return (weeklyWage({ role, hourlyWage: start }, staff) * 365) / 12 / 7
+  const { role, candidate } = BAKER_HIRE
+  const hourlyWage = askingWage(candidate, role, staff)
+  return (weeklyWage({ role, hourlyWage }, staff) * 365) / 12 / 7
 }
 
 /**

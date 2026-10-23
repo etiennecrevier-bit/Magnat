@@ -1,9 +1,15 @@
 {
-  "_note": "The first employees of #158, as Étienne decided them on October 16, 2026: three roles, each with the hours worked a week and an hourly wage the player sets within [min, max], starting at the issue's (17,50 $, 16 $ and 22 $); the min and max are P4-03's proposal. The baker works 16 hours a week since P4-11 (#166): the oven runs mornings only, and at 30 hours the baker cost more than the bakery saved, so no bakery ever paid back (docs/balance/phase-4.md). Hiring costs trainingWeeks of pay up front (« Formation »), firing noticeWeeks (« Préavis »); the wages are paid each payday of foodtruck.json, a full week each time. At most maxEmployees at once. An employee at the truck serves at truckSpeed of a rested owner's speed. The candidates are invented; a portrait id with no image shows none.",
+  "_note": "The first employees of #158, as Étienne decided them on October 16, 2026: three roles, each with the hours worked a week and an hourly wage the player sets within [min, max], starting at the issue's (17,50 $, 16 $ and 22 $); the min and max are P4-03's proposal. The baker works 16 hours a week since P4-11 (#166): the oven runs mornings only, and at 30 hours the baker cost more than the bakery saved, so no bakery ever paid back (docs/balance/phase-4.md). Hiring costs trainingWeeks of pay up front (« Formation »), firing noticeWeeks (« Préavis »); the wages are paid each payday of foodtruck.json, a full week each time. At most maxEmployees at once. An employee at the truck serves at truckSpeed of a rested owner's speed. The candidates are invented; a portrait id with no image shows none. Phase 5 (#255, decided by Étienne on October 22, 2026): each trait moves one number in the roles it lists, strong, normal or weak. Rapidité multiplies truckSpeed; minutie multiplies employeeBotchedShare at the truck and bakeryWasteShare at the bakery; fiabilité is the chance of an absence each working day; accueil multiplies the walk-ins of welcomedSegment, the regulars. Each candidate has one strength and one weakness, and asks their role's start plus the strength's askingPremiumCents less the weakness's askingDiscountCents an hour, within [min, max]. Fiabilité, which acts in every role, moves the asking wage most: tuned by the hiring run of docs/balance/phase-5.md so the candidates weak in it still pay their way as bakers. The weakness shows after discoveryDays on the job. Paid below the asking wage for underpaidWeeks, an employee warns, then quits warningWeeks later with no notice paid.",
   "maxEmployees": 3,
   "trainingWeeks": 1,
   "noticeWeeks": 2,
   "truckSpeed": 0.85,
+  "employeeBotchedShare": 0.02,
+  "bakeryWasteShare": 0.03,
+  "welcomedSegment": "habitue",
+  "discoveryDays": 14,
+  "underpaidWeeks": 8,
+  "warningWeeks": 1,
   "roles": {
     "camion": {
       "name": "Au camion",
@@ -21,18 +27,116 @@
       "hourlyWageCents": { "min": 1800, "start": 2200, "max": 3000 }
     }
   },
+  "traits": {
+    "rapidite": {
+      "name": "Rapidité",
+      "roles": ["camion"],
+      "strong": 1.15,
+      "normal": 1,
+      "weak": 0.85,
+      "askingPremiumCents": 150,
+      "askingDiscountCents": 100
+    },
+    "minutie": {
+      "name": "Minutie",
+      "roles": ["camion", "boulanger"],
+      "strong": 0.5,
+      "normal": 1,
+      "weak": 1.6,
+      "askingPremiumCents": 150,
+      "askingDiscountCents": 100
+    },
+    "fiabilite": {
+      "name": "Fiabilité",
+      "roles": ["camion", "livreur", "boulanger"],
+      "strong": 0,
+      "normal": 0.02,
+      "weak": 0.06,
+      "askingPremiumCents": 250,
+      "askingDiscountCents": 300
+    },
+    "accueil": {
+      "name": "Accueil",
+      "roles": ["camion"],
+      "strong": 1.04,
+      "normal": 1,
+      "weak": 0.96,
+      "askingPremiumCents": 150,
+      "askingDiscountCents": 100
+    }
+  },
   "candidates": {
-    "amelie": { "name": "Amélie Gagnon", "portrait": "amelieGagnon" },
-    "kevin": { "name": "Kevin Bouchard", "portrait": "kevinBouchard" },
-    "sophie": { "name": "Sophie Roy", "portrait": "sophieRoy" },
-    "mathieu": { "name": "Mathieu Pelletier", "portrait": "mathieuPelletier" },
-    "nadia": { "name": "Nadia Benali", "portrait": "nadiaBenali" },
-    "jonathan": { "name": "Jonathan Côté", "portrait": "jonathanCote" },
-    "isabelle": { "name": "Isabelle Fortin", "portrait": "isabelleFortin" },
-    "samuel": { "name": "Samuel Lavoie", "portrait": "samuelLavoie" },
-    "chloe": { "name": "Chloé Morin", "portrait": "chloeMorin" },
-    "olivier": { "name": "Olivier Girard", "portrait": "olivierGirard" },
-    "maude": { "name": "Maude Leblanc", "portrait": "maudeLeblanc" },
-    "thierry": { "name": "Thierry Nguyen", "portrait": "thierryNguyen" }
+    "amelie": {
+      "name": "Amélie Gagnon",
+      "portrait": "amelieGagnon",
+      "strength": "accueil",
+      "weakness": "rapidite"
+    },
+    "kevin": {
+      "name": "Kevin Bouchard",
+      "portrait": "kevinBouchard",
+      "strength": "rapidite",
+      "weakness": "minutie"
+    },
+    "sophie": {
+      "name": "Sophie Roy",
+      "portrait": "sophieRoy",
+      "strength": "fiabilite",
+      "weakness": "rapidite"
+    },
+    "mathieu": {
+      "name": "Mathieu Pelletier",
+      "portrait": "mathieuPelletier",
+      "strength": "minutie",
+      "weakness": "accueil"
+    },
+    "nadia": {
+      "name": "Nadia Benali",
+      "portrait": "nadiaBenali",
+      "strength": "rapidite",
+      "weakness": "fiabilite"
+    },
+    "jonathan": {
+      "name": "Jonathan Côté",
+      "portrait": "jonathanCote",
+      "strength": "fiabilite",
+      "weakness": "minutie"
+    },
+    "isabelle": {
+      "name": "Isabelle Fortin",
+      "portrait": "isabelleFortin",
+      "strength": "minutie",
+      "weakness": "rapidite"
+    },
+    "samuel": {
+      "name": "Samuel Lavoie",
+      "portrait": "samuelLavoie",
+      "strength": "rapidite",
+      "weakness": "accueil"
+    },
+    "chloe": {
+      "name": "Chloé Morin",
+      "portrait": "chloeMorin",
+      "strength": "accueil",
+      "weakness": "minutie"
+    },
+    "olivier": {
+      "name": "Olivier Girard",
+      "portrait": "olivierGirard",
+      "strength": "accueil",
+      "weakness": "fiabilite"
+    },
+    "maude": {
+      "name": "Maude Leblanc",
+      "portrait": "maudeLeblanc",
+      "strength": "fiabilite",
+      "weakness": "accueil"
+    },
+    "thierry": {
+      "name": "Thierry Nguyen",
+      "portrait": "thierryNguyen",
+      "strength": "minutie",
+      "weakness": "fiabilite"
+    }
   }
 }

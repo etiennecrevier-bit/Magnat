@@ -893,9 +893,12 @@ describe('two years with the bakery', () => {
       const { state, failures } = run(difficulty)
       expect(failures).toEqual([])
       const memos = new Set(state.journal.entries.map(({ memo }) => memo))
-      for (const memo of Object.values(BAKERY_MEMO)) {
+      // The owner bakes here, and wastes nothing (see bakeryWaste).
+      const { wasted, ...posted } = BAKERY_MEMO
+      for (const memo of Object.values(posted)) {
         expect(memos).toContain(memo)
       }
+      expect(memos).not.toContain(wasted)
       expect(state.bakery).toEqual({
         ...closedBakery(),
         ovenBoughtOnDay: 251,

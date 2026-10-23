@@ -126,15 +126,23 @@ const EVERY_APPEAL = perProduct(() => 1)
 /** A counter that serves everyone the moment they arrive: no one waits. */
 const INSTANT: Counter = {
   service: { baseSeconds: 0, perItemSeconds: 0, maxAheadInLine: 0 },
-  servers: [{ speed: 1, owner: true }],
-  botchedShare: 0,
+  servers: [{ speed: 1, owner: true, botchedShare: 0 }],
 }
 
 /** The shipped service, with the avatar alone at speed 1, rested. */
 const SHIPPED_COUNTER: Counter = {
   service: FOOD_TRUCK.service,
-  servers: [{ speed: 1, owner: true }],
-  botchedShare: 0,
+  servers: [{ speed: 1, owner: true, botchedShare: 0 }],
+}
+
+/** `counter` with the owner botching `botchedShare` of their units. */
+function botching(counter: Counter, botchedShare: number): Counter {
+  return {
+    ...counter,
+    servers: counter.servers.map((server) =>
+      server.owner ? { ...server, botchedShare } : server,
+    ),
+  }
 }
 
 /**
@@ -149,20 +157,25 @@ const TIMES: Service = {
 
 /**
  * A server at each speed, the owner first, then employees: `servers()`'s
- * order.
+ * order. The owner botches `botchedShare` of their units, the employees
+ * none.
  */
-function crew(speeds: readonly number[]): Server[] {
-  return speeds.map((speed, index) => ({ speed, owner: index === 0 }))
+function crew(speeds: readonly number[], botchedShare = 0): Server[] {
+  return speeds.map((speed, index) => ({
+    speed,
+    owner: index === 0,
+    botchedShare: index === 0 ? botchedShare : 0,
+  }))
 }
 
 /** A counter at `TIMES`, with a server at each speed, rested. */
 function timed(speeds = [1]): Counter {
-  return { service: TIMES, servers: crew(speeds), botchedShare: 0 }
+  return { service: TIMES, servers: crew(speeds) }
 }
 
 /**
  * The shipped service with `change` made, a server at each speed, and
- * `botchedShare` of the units made botched.
+ * `botchedShare` of the units the owner makes botched.
  */
 function counter(
   change: Partial<Service>,
@@ -171,8 +184,7 @@ function counter(
 ): Counter {
   return {
     service: { ...FOOD_TRUCK.service, ...change },
-    servers: crew(speeds),
-    botchedShare,
+    servers: crew(speeds, botchedShare),
   }
 }
 
@@ -623,7 +635,7 @@ describe('botched units', () => {
       customers: everyone({ base: 1, reference: 300, sensitivity: 4 }),
       price: () => cents(300),
       available: stock({ cafe }),
-      counter: { ...INSTANT, botchedShare },
+      counter: botching(INSTANT, botchedShare),
     })
   }
 
@@ -700,7 +712,7 @@ describe('botched units', () => {
     'botches one unit in %d of those made, by a quota rather than a draw',
     (share) => {
       const served = serve(weekday(300), {
-        counter: { ...INSTANT, botchedShare: share },
+        counter: botching(INSTANT, share),
       })
       const made = units(served.sold)
       expect(made).toBeGreaterThan(200)
@@ -751,7 +763,7 @@ describe('botched units', () => {
       customers: everyone({ base: 1, reference: 300, sensitivity: 4 }),
       price: () => cents(300),
       available,
-      counter: { ...INSTANT, botchedShare: 0.25 },
+      counter: botching(INSTANT, 0.25),
     })
     for (const product of PRODUCTS) {
       const taken = served.sold[product] + served.botched[product]
@@ -1507,12 +1519,12 @@ describe('the line, with the shipped content', () => {
 
 describe('the owner and the employees at the counter', () => {
   /** Everyone wants one of each product at 3 $; only café is on hand. */
-  function busy(servers: readonly Server[], botchedShare = 0) {
+  function busy(servers: readonly Server[]) {
     return serve(weekday(400, { productAppeal: perProduct(() => 1) }), {
       customers: everyone({ base: 1, reference: 300, sensitivity: 4 }),
       price: () => cents(300),
       available: stock({ cafe: 10_000 }),
-      counter: { service: TIMES, servers, botchedShare },
+      counter: { service: TIMES, servers },
     })
   }
 
@@ -1526,19 +1538,28 @@ describe('the owner and the employees at the counter', () => {
   })
 
   it("counts none as the owner's when an employee serves alone", () => {
-    const served = busy([{ speed: 0.85, owner: false }], 0.5)
+    const served = busy([{ speed: 0.85, owner: false, botchedShare: 0 }])
     expect(reached(served)).toBeGreaterThan(0)
     expect(served.servedByOwner).toBe(0)
     expect(served.botched).toEqual(stock(0))
   })
 
-  it('botches only the units the owner makes, by their quota', () => {
-    const served = busy(crew([1, 0.85]), 0.5)
-    // Each visit served is made one café: the owner's are botched by the
-    // quota, the employee's never.
-    expect(served.servedByOwner).toBeGreaterThan(0)
-    expect(served.servedByOwner).toBeLessThan(reached(served))
-    expect(served.botched.cafe).toBe(Math.floor(served.servedByOwner * 0.5))
+  it('botches the units each server makes by their own quota', () => {
+    const owner: Server = { speed: 1, owner: true, botchedShare: 0.5 }
+    const employee: Server = { speed: 0.85, owner: false, botchedShare: 0.25 }
+    // Each visit served is made one café, each server's botched by their
+    // own count of the units they made.
+    const both = busy([owner, employee])
+    const byEmployee = reached(both) - both.servedByOwner
+    expect(both.servedByOwner).toBeGreaterThan(0)
+    expect(byEmployee).toBeGreaterThan(0)
+    expect(both.botched.cafe).toBe(
+      Math.floor(both.servedByOwner * 0.5) + Math.floor(byEmployee * 0.25),
+    )
+    const careful = busy([owner, { ...employee, botchedShare: 0 }])
+    expect(careful.botched.cafe).toBe(Math.floor(careful.servedByOwner * 0.5))
+    const alone = busy([employee])
+    expect(alone.botched.cafe).toBe(Math.floor(reached(alone) * 0.25))
   })
 
   it('shortens the waits with a second server, from the same draws', () => {

@@ -394,6 +394,121 @@ describe('staffTriggers', () => {
   })
 })
 
+describe("the employees' own words (#255)", () => {
+  /**
+   * Kevin hired as deliverer at the role's start, below what he asks, from
+   * day 1: he warns on the morning of day 57 and quits on day 64.
+   */
+  function underpaid() {
+    const store = createGameStore(START, NO_EVENTS)
+    store
+      .getState()
+      .decide({ kind: 'hire', role: 'livreur', candidate: 'kevin' })
+    const sent: Message[] = []
+    const stop = startMessages(
+      store,
+      (message) => sent.push(message),
+      () => 0,
+    )
+    return { store, sent, stop }
+  }
+
+  const WARNING = {
+    kind: 'underpaid',
+    from: 'Kevin Bouchard',
+    text: MESSAGES.underpaid.kevin,
+    day: 57,
+  }
+  const GOODBYE = {
+    kind: 'quit',
+    from: 'Kevin Bouchard',
+    text: MESSAGES.quit.kevin,
+    day: 64,
+  }
+
+  it('sends his warning a week before he quits, then his goodbye, once each, day by day', () => {
+    const { store, sent, stop } = underpaid()
+    for (let day = 0; day < 70; day += 1) store.getState().advance(1)
+    expect(sent.filter(({ kind }) => kind !== 'hired')).toEqual([
+      { id: 1, ...WARNING },
+      { id: 2, ...GOODBYE },
+    ])
+    expect(store.getState().game.staff).toEqual([])
+    stop()
+  })
+
+  it('sends both when one advance goes through the two mornings', () => {
+    const { store, sent, stop } = underpaid()
+    store.getState().advance(50)
+    store.getState().advance(20)
+    expect(sent.map(({ kind, day }) => [kind, day])).toEqual([
+      ['hired', 1],
+      ['underpaid', 57],
+      ['quit', 64],
+    ])
+    stop()
+  })
+
+  it('sends both when one advance goes from his first morning past his last', () => {
+    // The code review's case: the staff before the advance does not hold
+    // him yet, and the staff after it no longer does.
+    const { store, sent, stop } = underpaid()
+    store.getState().advance(70)
+    expect(store.getState().game.day).toBe(70)
+    expect(store.getState().game.staff).toEqual([])
+    expect(sent.filter(({ kind }) => kind !== 'hired')).toEqual([
+      { id: 1, ...WARNING },
+      { id: 2, ...GOODBYE },
+    ])
+    stop()
+  })
+
+  it('sends the same words however the 70 days are cut into advances', () => {
+    const heard = (chunks: readonly number[]) => {
+      const { store, sent, stop } = underpaid()
+      for (const days of chunks) store.getState().advance(days)
+      stop()
+      expect(store.getState().game.day).toBe(70)
+      return sent.map(({ kind, day, from, text }) => [kind, day, from, text])
+    }
+    const dayByDay = heard(Array.from({ length: 70 }, () => 1))
+    expect(dayByDay.map(([kind]) => kind)).toEqual([
+      'hired',
+      'underpaid',
+      'quit',
+    ])
+    for (const chunks of [
+      [70],
+      [7, 7, 7, 7, 7, 7, 7, 7, 7, 7],
+      [56, 1, 13],
+      [57, 7, 6],
+      [63, 7],
+    ]) {
+      expect(heard(chunks)).toEqual(dayByDay)
+    }
+  })
+
+  it('hears nothing more once stopped', () => {
+    const { store, sent, stop } = underpaid()
+    store.getState().advance(2)
+    stop()
+    store.getState().advance(68)
+    expect(sent.map(({ kind }) => kind)).toEqual(['hired'])
+  })
+
+  it('sends no goodbye once he is raised to what he asks in the warning week', () => {
+    const { store, sent, stop } = underpaid()
+    store.getState().advance(58)
+    store
+      .getState()
+      .decide({ kind: 'setWage', candidate: 'kevin', hourlyWage: cents(1650) })
+    store.getState().advance(12)
+    expect(sent.map(({ kind }) => kind)).toEqual(['hired', 'underpaid'])
+    expect(store.getState().game.staff).toHaveLength(1)
+    stop()
+  })
+})
+
 describe('startMessages for the grocers and the employees', () => {
   it('sends who left and who came back in one stretch of days, both', () => {
     // The plan review's case: Amélie leaves on day 3 and starts again on

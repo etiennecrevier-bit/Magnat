@@ -1548,13 +1548,72 @@ const staffRoleSchema = z
 
 export type StaffRole = z.output<typeof staffRoleSchema>
 
+/**
+ * What sets employees apart (#255): how fast they serve (`rapidite`), how
+ * careful they are (`minutie`), how reliably they come (`fiabilite`) and
+ * how they welcome the regulars (`accueil`).
+ */
+export const traitIdSchema = z.enum([
+  'rapidite',
+  'minutie',
+  'fiabilite',
+  'accueil',
+])
+
+export type TraitId = z.infer<typeof traitIdSchema>
+
+/** How strong a trait is in someone: their strength, their weakness, or neither. */
+export type TraitLevel = 'strong' | 'normal' | 'weak'
+
+/**
+ * One trait: the number it moves in each role it lists, for someone strong,
+ * normal or weak in it, and what it does to the wage a candidate asks.
+ */
+const traitSchema = z
+  .strictObject({
+    /** The trait, as the player reads it. */
+    name: frenchText(),
+    /** The roles where it acts; it changes nothing in the others. */
+    roles: z.array(staffRoleIdSchema).min(1),
+    strong: z.number().nonnegative(),
+    normal: z.number().nonnegative(),
+    weak: z.number().nonnegative(),
+    /** What a candidate strong in it asks more an hour. */
+    askingPremiumCents: money,
+    /** What a candidate weak in it asks less an hour. */
+    askingDiscountCents: money,
+  })
+  .refine(
+    ({ strong, normal, weak }) =>
+      (strong < normal && normal < weak) || (strong > normal && normal > weak),
+    {
+      message: 'normal must lie strictly between strong and weak',
+      path: ['normal'],
+    },
+  )
+  .refine(({ roles }) => new Set(roles).size === roles.length, {
+    message: 'a role is listed twice',
+    path: ['roles'],
+  })
+
+export type Trait = z.output<typeof traitSchema>
+
 /** Someone the player may hire. */
-const candidateSchema = z.strictObject({
-  /** Their name, as the player and the journal read it. */
-  name: frenchText(),
-  /** Their portrait's id; one with no image shows none. */
-  portrait: idSchema,
-})
+const candidateSchema = z
+  .strictObject({
+    /** Their name, as the player and the journal read it. */
+    name: frenchText(),
+    /** Their portrait's id; one with no image shows none. */
+    portrait: idSchema,
+    /** The trait they are strong in, which shows at the interview. */
+    strength: traitIdSchema,
+    /** The trait they are weak in, which shows once on the job a while. */
+    weakness: traitIdSchema,
+  })
+  .refine(({ strength, weakness }) => strength !== weakness, {
+    message: 'a strength cannot also be the weakness',
+    path: ['weakness'],
+  })
 
 export type Candidate = z.output<typeof candidateSchema>
 
@@ -1573,8 +1632,39 @@ export const staffContentSchema = z
      * owner: 0.85 takes the content's service times ÷ 0.85.
      */
     truckSpeed: z.number().gt(0).max(1),
+    /**
+     * The share of the units an employee at the truck makes that are
+     * botched and made again, before their minutie.
+     */
+    employeeBotchedShare: share,
+    /**
+     * The share of the croissants an employee bakes that come out wrong and
+     * are made again, before their minutie.
+     */
+    bakeryWasteShare: share,
+    /** The segment, the regulars, whose walk-ins accueil multiplies. */
+    welcomedSegment: segmentIdSchema,
+    /** Days on the job before an employee's weakness shows. */
+    discoveryDays: z.int().positive(),
+    /** Weeks paid below the asking wage before an employee warns. */
+    underpaidWeeks: z.int().positive(),
+    /** Weeks from the warning to the morning they quit. */
+    warningWeeks: z.int().positive(),
     roles: z.record(staffRoleIdSchema, staffRoleSchema),
+    traits: z.record(traitIdSchema, traitSchema),
     candidates: z.record(candidateIdSchema, candidateSchema),
+  })
+  .superRefine(({ traits }, ctx) => {
+    const { fiabilite } = traits
+    for (const level of ['strong', 'normal', 'weak'] as const) {
+      if (fiabilite[level] > 1) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'a chance of absence is at most 1',
+          path: ['traits', 'fiabilite', level],
+        })
+      }
+    }
   })
   .superRefine(({ candidates }, ctx) => {
     const seen = new Set<string>()

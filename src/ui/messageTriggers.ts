@@ -9,11 +9,12 @@ import {
   loadMessages,
   type MessageKind,
   type Messages,
+  type OwnWordsKind,
 } from '../content/messages.ts'
 import { GROCERS } from '../engine/contracts.ts'
 import { ENERGY } from '../engine/day.ts'
 import { fatigueOf } from '../engine/energy.ts'
-import { STAFF_MEMO, staffMemo } from '../engine/staff.ts'
+import { STAFF, STAFF_MEMO, staffMemo, staffNotices } from '../engine/staff.ts'
 import type { Day, GameState } from '../engine/types.ts'
 import { entriesSince } from '../finance/journal.ts'
 import type { GameStore } from './store.ts'
@@ -35,7 +36,7 @@ export const MAX_MESSAGES = 3
 export interface Message {
   /** Unique among the messages received since the game screens opened. */
   readonly id: number
-  readonly kind: MessageKind | 'postcard'
+  readonly kind: MessageKind | OwnWordsKind | 'postcard'
   /** Who it is from, as the card shows it. */
   readonly from: string
   readonly text: string
@@ -54,19 +55,31 @@ export interface Message {
 }
 
 /** Something that calls for a message. */
-export interface Trigger {
-  readonly kind: MessageKind
-  /**
-   * The day it is about: the rent's, the morning the owner woke up on, the
-   * delivery's, or the morning the employee started or left.
-   */
-  readonly day: Day
-  /**
-   * Who it is from, when the game names them: « Normand, Épicerie Chez
-   * Normand », or the employee. The other kinds' sender is the content's.
-   */
-  readonly from?: string
-}
+export type Trigger =
+  | {
+      readonly kind: MessageKind
+      /**
+       * The day it is about: the rent's, the morning the owner woke up on,
+       * the delivery's, or the morning the employee started or left.
+       */
+      readonly day: Day
+      /**
+       * Who it is from, when the game names them: « Normand, Épicerie Chez
+       * Normand », or the employee. The other kinds' sender is the
+       * content's.
+       */
+      readonly from?: string
+    }
+  | {
+      /** An employee's own words (#255): their warning, or their goodbye. */
+      readonly kind: OwnWordsKind
+      /** The morning they warned or quit. */
+      readonly day: Day
+      /** The employee. */
+      readonly from: string
+      /** Their line, theirs alone. */
+      readonly text: string
+    }
 
 /** What the messages remember from one game to the next. */
 export interface MessageMemory {
@@ -88,12 +101,14 @@ export const NO_MEMORY: MessageMemory = {
  * What calls for a message once the game moves on from `previous` to
  * `next`, oldest first. Nothing does unless days were played. Each rent that
  * went unpaid on the days played calls for the landlord's. On those days
- * too, the grocers' and the employees' (see `contractTriggers` and
- * `staffTriggers`). Waking up exhausted, from a morning that was not
+ * too, the grocers' and the employees', theirs in their own words from
+ * `messages` included (see `contractTriggers`, `staffTriggers` and
+ * `ownWordsTriggers`). Waking up exhausted, from a morning that was not
  * (before a decision left the owner exhausted, as
  * `memory.exhaustedByDecision` keeps), calls for the owner's own, once a
- * game week at most: the week of `memory.exhaustedWeek` is skipped. Returns
- * the memory to keep.
+ * game week at most: the week of `memory.exhaustedWeek` is skipped. The
+ * employees' own words are `ownWords` when the caller heard them morning
+ * by morning (see `startMessages`). Returns the memory to keep.
  */
 export function triggersBetween(
   previous: GameState,
@@ -101,6 +116,8 @@ export function triggersBetween(
   memory: MessageMemory,
   energy: EnergyContent = ENERGY,
   grocers: GrocerContent = GROCERS,
+  messages: Messages = MESSAGES,
+  ownWords: readonly Trigger[] = ownWordsTriggers(previous, next, messages),
 ): { triggers: Trigger[]; memory: MessageMemory } {
   const exhausted = (state: GameState) =>
     fatigueOf(state.energy, energy) === 'exhausted'
@@ -117,6 +134,7 @@ export function triggersBetween(
       .map((day): Trigger => ({ kind: 'landlord', day })),
     ...contractTriggers(previous, next, grocers),
     ...staffTriggers(previous, next),
+    ...ownWords,
   ].sort((a, b) => a.day - b.day)
   const week = Math.floor(next.day / DAYS_PER_WEEK)
   const wokeExhausted =
@@ -205,6 +223,25 @@ export function staffTriggers(previous: GameState, next: GameState): Trigger[] {
 }
 
 /**
+ * What the employees say in their own words over the days played from
+ * `previous` to `next` (#255): each warning of an employee still underpaid,
+ * their `underpaid` line, and each quit, their `quit` line, dated that
+ * morning and signed with their name (see `staffNotices`).
+ */
+export function ownWordsTriggers(
+  previous: GameState,
+  next: GameState,
+  messages: Messages = MESSAGES,
+): Trigger[] {
+  return staffNotices(previous, next).map(({ kind, candidate, day }) => ({
+    kind,
+    day,
+    from: STAFF.candidates[candidate].name,
+    text: messages[kind][candidate],
+  }))
+}
+
+/**
  * The items of `list`, kept by day, from `day` on: read from the end, so a
  * long game's history costs no more than its last days.
  */
@@ -275,8 +312,11 @@ export function messageIds(from = 0): () => number {
  * Hands `onMessage` a message each time the game in `store` calls for one
  * (see `triggersBetween`), from the sender the game names or else the
  * content's, with a line of its kind picked with `random`, never the last
- * one of that kind shown, and an id from `nextId`, which other senders
- * may share. Returns a function that stops it.
+ * one of that kind shown, or else the employee's own words, and an id from
+ * `nextId`, which other senders may share. The employees' own words are
+ * heard on each morning `advance` plays, so someone hired and gone within
+ * one advance still warns and says goodbye. Returns a function that stops
+ * it.
  */
 export function startMessages(
   store: GameStore,
@@ -288,19 +328,47 @@ export function startMessages(
 ): () => void {
   let memory = NO_MEMORY
   const lastLine: Partial<Record<MessageKind, string>> = {}
-  return store.subscribe((state, previous) => {
+  // The last morning heard since the store last changed the game, and the
+  // own words heard up to it.
+  let heardUpTo: GameState | null = null
+  let heard: Trigger[] = []
+  const stopMornings = store.getState().watchMornings((morning) => {
+    const from = heardUpTo ?? store.getState().game
+    heard.push(...ownWordsTriggers(from, morning, messages))
+    heardUpTo = morning
+  })
+  const unsubscribe = store.subscribe((state, previous) => {
     if (state.game === previous.game) return
-    const found = triggersBetween(previous.game, state.game, memory, energy)
+    const ownWords = [
+      ...heard,
+      ...ownWordsTriggers(heardUpTo ?? previous.game, state.game, messages),
+    ]
+    heardUpTo = null
+    heard = []
+    const found = triggersBetween(
+      previous.game,
+      state.game,
+      memory,
+      energy,
+      GROCERS,
+      messages,
+      ownWords,
+    )
     memory = found.memory
-    for (const {
-      kind,
-      day,
-      from = senderOf(messages, kind),
-    } of found.triggers) {
+    for (const trigger of found.triggers) {
+      if ('text' in trigger) {
+        onMessage({ id: nextId(), ...trigger })
+        continue
+      }
+      const { kind, day, from = senderOf(messages, kind) } = trigger
       const { lines } = messages[kind]
       const text = pickLine(lines, random, lastLine[kind] ?? null)
       lastLine[kind] = text
       onMessage({ id: nextId(), kind, from, text, day })
     }
   })
+  return () => {
+    stopMornings()
+    unsubscribe()
+  }
 }

@@ -4,6 +4,9 @@
 // src/content/.
 const INCREMENT = 0x6d2b79f5
 const UINT32_RANGE = 2 ** 32
+// 2^32 ÷ the golden ratio: spreads a key's bits over the whole word before
+// it mixes into a keyed draw's state.
+const GOLDEN = 0x9e3779b9
 
 /** A drawn value and the generator state to draw the next one from. */
 export type Draw = [value: number, state: number]
@@ -30,6 +33,24 @@ export function next(state: number): Draw {
   t = Math.imul(t ^ (t >>> 15), t | 1)
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
   return [((t ^ (t >>> 14)) >>> 0) / UINT32_RANGE, nextState]
+}
+
+/**
+ * A value in [0, 1) that depends only on `seed` and `keys`, never on a game's
+ * generator state: the same seed and keys always give the same value, so a
+ * draw can be made, or made again, at any time, and leaves the stream the
+ * game draws from where it was. Each key, spread over the word, mixes into
+ * the state with one `next()`, then one more `next()` gives the value. Throws a RangeError
+ * unless `seed` and each key are integers in [0, 2^32).
+ */
+export function keyedDraw(seed: number, keys: readonly number[]): number {
+  let state = seedRng(seed)
+  for (const key of keys) {
+    assertUint32(key, 'key')
+    const [mixed] = next((state ^ Math.imul(key, GOLDEN)) >>> 0)
+    state = Math.floor(mixed * UINT32_RANGE)
+  }
+  return next(state)[0]
 }
 
 /**

@@ -188,6 +188,15 @@ describe('jobLabel', () => {
         months: 1,
       }),
     ).toBe('difficile contracts careful')
+    expect(
+      jobLabel({
+        kind: 'hiring',
+        role: 'boulanger',
+        difficulty: 'moyen',
+        games: 1,
+        months: 1,
+      }),
+    ).toBe('moyen hiring boulanger')
   })
 })
 

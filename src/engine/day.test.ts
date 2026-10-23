@@ -54,7 +54,7 @@ import {
   type DecisionChange,
 } from './decisions.ts'
 import { applyEffect } from './effects.ts'
-import { FULL_ENERGY, fatigueOf } from './energy.ts'
+import { FULL_ENERGY, effectsOf, fatigueOf } from './energy.ts'
 import { NO_EVENTS } from './events.ts'
 import { FINANCING, chargesOn, isFinancingMemo } from './financing.ts'
 import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
@@ -884,7 +884,6 @@ describe('the line', () => {
       {
         service: FOOD_TRUCK.service,
         servers: servers(from, ENERGY),
-        botchedShare: 0,
       },
     )
     expect(lastDay.visits).toEqual(expected.visits)
@@ -1350,7 +1349,10 @@ describe("the owner's energy", () => {
       const fatigue = fatigueOf(morning.energy, ENERGY)
       const speed =
         fatigue === 'rested' ? 1 : 1 / (1 + ENERGY[fatigue].serviceTimeIncrease)
-      expect(servers(morning, ENERGY)).toEqual([{ speed, owner: true }])
+      const { botchedShare } = effectsOf(morning.energy, ENERGY)
+      expect(servers(morning, ENERGY)).toEqual([
+        { speed, owner: true, botchedShare },
+      ])
       // The same day played by a rested owner: the same customers.
       const rested = summary(
         playDay(
@@ -1394,7 +1396,9 @@ describe("the owner's energy", () => {
     const sunday = week[5] as GameState
     expect(toCalendar(sunday.day).weekday).toBe(7)
     expect(sunday.energy).toBe(FULL_ENERGY)
-    expect(servers(sunday, ENERGY)).toEqual([{ speed: 1, owner: true }])
+    expect(servers(sunday, ENERGY)).toEqual([
+      { speed: 1, owner: true, botchedShare: 0 },
+    ])
     const played = summary(week[6] as GameState)
     expect(played.visits.length).toBeGreaterThan(0)
     expect(played.botched).toBe(0)
@@ -2173,8 +2177,9 @@ describe('the staff', () => {
     const day = summary(close)
     expect(day.revenue).toBeGreaterThan(0)
     expect(day.visits.length).toBeGreaterThan(0)
-    // An employee never tires, so they botch nothing, however tired the owner.
-    expect(day.botched).toBe(0)
+    // An employee never tires, so they botch no more, however tired the
+    // owner: their own share, by their minutie.
+    expect(day.botched).toBe(summary(tuesdayAway(game, 100)).botched)
     expect(close.energy).toBe(10)
     expect(day.energy).toBe(10)
     // The owner there, they serve too, and tire.

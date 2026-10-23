@@ -6,7 +6,7 @@ import type { DecisionChange } from '../../src/engine/decisions.ts'
 import { cents, type Cents } from '../../src/engine/money.ts'
 import type { Day, GameState } from '../../src/engine/types.ts'
 import { balance } from '../../src/finance/journal.ts'
-import { STAFF } from '../../src/engine/staff.ts'
+import { STAFF, askingWage } from '../../src/engine/staff.ts'
 import { simulate } from '../sim/simulate.ts'
 import {
   AT_TRUCK_HIRE,
@@ -100,13 +100,23 @@ describe('the grid', () => {
       { kind: 'openBakery', oven: 'acheter' },
       { kind: 'croissantSource', source: 'fabriquer' },
       { kind: 'bake', rule: { kind: 'buyDaily', quantity: 110 } },
-      { kind: 'hire', role: 'boulanger', candidate: 'sophie' },
+      {
+        kind: 'hire',
+        role: 'boulanger',
+        candidate: 'sophie',
+        hourlyWage: askingWage('sophie', 'boulanger'),
+      },
     ])
     // An employee at the truck, in the game and its twin alike.
     const helped = truckStrategy('busy, employee at the truck')
     expect(truckChanges(helped)).toEqual([
       ...truckChanges(busy),
-      { kind: 'hire', role: 'camion', candidate: 'amelie' },
+      {
+        kind: 'hire',
+        role: 'camion',
+        candidate: 'amelie',
+        hourlyWage: askingWage('amelie', 'camion'),
+      },
     ])
     expect(bakeryChanges(helped, 'louer')).toEqual([
       ...truckChanges(helped),
@@ -222,10 +232,10 @@ describe('the books of the bakery', () => {
     expect(savingPerCroissant(mid)).toBe(110 - 55)
   })
 
-  it("pays the baker a week's wage each week: their starting wage × their hours, in an average month", () => {
-    const { hourlyWageCents, hoursPerWeek } = STAFF.roles.boulanger
+  it("pays the baker a week's wage each week: the wage they ask × their hours, in an average month", () => {
+    const { hoursPerWeek } = STAFF.roles.boulanger
     expect(monthlyBakerWage()).toBeCloseTo(
-      (hourlyWageCents.start * hoursPerWeek * 365) / 12 / 7,
+      (askingWage('sophie', 'boulanger') * hoursPerWeek * 365) / 12 / 7,
       9,
     )
   })
@@ -272,8 +282,13 @@ describe('playBakeryGame', () => {
       expect(debited(state, JUNE_1, BAKERY_MEMO.rent)).toBe(
         prices.monthlyRentCents,
       )
+      // The baker throws some away and makes them again (#255).
+      const wasted = Math.floor(70 * STAFF.bakeryWasteShare)
       expect(debited(state, 1, BAKERY_MEMO.ingredients)).toBe(
-        70 * prices.ingredientCostCents,
+        (70 + wasted) * prices.ingredientCostCents,
+      )
+      expect(debited(state, 1, BAKERY_MEMO.wasted)).toBe(
+        wasted * prices.ingredientCostCents,
       )
     }
   })

@@ -11,6 +11,7 @@ import { GROCERS } from '../../src/engine/contracts.ts'
 import { DIFFICULTIES, FOOD_TRUCK } from '../../src/engine/day.ts'
 import { cents } from '../../src/engine/money.ts'
 import { STAFF, weeklyWage } from '../../src/engine/staff.ts'
+import type { Hire } from '../../src/engine/types.ts'
 import { formatDollars } from '../sim/cli.ts'
 import {
   AT_TRUCK_HIRE,
@@ -238,7 +239,7 @@ export function formatBakeryReport(run: BakeryReportRun): string {
     '',
     '## What each game plays',
     '',
-    `Each difficulty plays seeds 1 to ${run.games} with each truck strategy below. A game opens the bakery on day 0, Monday, May 1st, year 1, with its oven leased or bought, makes its croissants there from that day on, and plays ${run.months} months, to the close of the last day of month ${run.months}. It hires a baker that day (#158), « ${staffRole(BAKER_HIRE.role)} » at ${hourly(BAKER_HIRE.role)}, so the owner never bakes: the baker costs a week of training on day 0 and ${dollars(weekly(BAKER_HIRE.role))} each Friday. Its twin plays the same seed and the same truck, buying its croissants, with no baker: each morning, the bakery makes as many as the twin buys. A strategy with contracts signs them on day 0, game and twin alike, at the terms of \`src/content/grocers.json\`, and renews each one as it ends; each Monday the bakery makes the deliveries' croissants first, within its capacity, those of the grocer who pays more for them first, and the twin buys them. A strategy with an employee at the truck hires one on day 0, game and twin alike, « ${staffRole(AT_TRUCK_HIRE.role)} » at ${hourly(AT_TRUCK_HIRE.role)}, ${dollars(weekly(AT_TRUCK_HIRE.role))} a week, who serves beside the owner. No other event card comes up. Every difficulty plays every price set below, whatever \`src/content/difficulty.json\` holds, and, when that file gives it prices off this grid, those too, as « ${SHIPPED} »; the oven and the move are \`src/content/bakery.json\`'s, and the wages \`src/content/staff.json\`'s. The truck opens ${DAYS_OPEN} days a week, as the starting decisions have it, and keeps their other prices and the owner's pay.`,
+    `Each difficulty plays seeds 1 to ${run.games} with each truck strategy below. A game opens the bakery on day 0, Monday, May 1st, year 1, with its oven leased or bought, makes its croissants there from that day on, and plays ${run.months} months, to the close of the last day of month ${run.months}. It hires a baker that day (#158), « ${staffRole(BAKER_HIRE.role)} » at ${hourly(BAKER_HIRE)}, the wage they ask (#255), so the owner never bakes: the baker costs a week of training on day 0 and ${dollars(weekly(BAKER_HIRE))} each Friday. Its twin plays the same seed and the same truck, buying its croissants, with no baker: each morning, the bakery makes as many as the twin buys. A strategy with contracts signs them on day 0, game and twin alike, at the terms of \`src/content/grocers.json\`, and renews each one as it ends; each Monday the bakery makes the deliveries' croissants first, within its capacity, those of the grocer who pays more for them first, and the twin buys them. A strategy with an employee at the truck hires one on day 0, game and twin alike, « ${staffRole(AT_TRUCK_HIRE.role)} » at ${hourly(AT_TRUCK_HIRE)}, ${dollars(weekly(AT_TRUCK_HIRE))} a week, who serves beside the owner. No other event card comes up. Every difficulty plays every price set below, whatever \`src/content/difficulty.json\` holds, and, when that file gives it prices off this grid, those too, as « ${SHIPPED} »; the oven and the move are \`src/content/bakery.json\`'s, and the wages \`src/content/staff.json\`'s. The truck opens ${DAYS_OPEN} days a week, as the starting decisions have it, and keeps their other prices and the owner's pay.`,
     '',
     row([
       'Strategy',
@@ -445,19 +446,19 @@ function staffRole(role: StaffRoleId): string {
   return STAFF.roles[role].name
 }
 
-/** The role's starting wage an hour and its hours: `$22.00 an hour, 30 h a week`. */
-function hourly(role: StaffRoleId): string {
-  const { hourlyWageCents, hoursPerWeek } = STAFF.roles[role]
-  return `${dollars(hourlyWageCents.start)} an hour, ${hoursPerWeek} h a week`
+/** The hire's wage an hour and their role's hours: `$22.50 an hour, 16 h a week`. */
+function hourly({ role, hourlyWage }: StaffHire): string {
+  const { hoursPerWeek } = STAFF.roles[role]
+  return `${dollars(hourlyWage)} an hour, ${hoursPerWeek} h a week`
 }
 
-/** The role's weekly wage at its starting wage. */
-function weekly(role: StaffRoleId): number {
-  return weeklyWage({
-    role,
-    hourlyWage: STAFF.roles[role].hourlyWageCents.start,
-  })
+/** The hire's weekly wage. */
+function weekly(hire: StaffHire): number {
+  return weeklyWage(hire)
 }
+
+/** A hire of the tools, with the wage they get. */
+type StaffHire = Pick<Hire, 'role' | 'hourlyWage'>
 
 export function soldPerOpenDay(game: BakeryGame): number {
   return game.openDays === 0 ? 0 : game.croissantsSold / game.openDays

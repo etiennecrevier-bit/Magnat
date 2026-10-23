@@ -111,7 +111,7 @@ import { LABELS, isKept } from './personal.ts'
 import { PLACES, noTrips, takesTheDay } from './places.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
-import { STAFF } from './staff.ts'
+import { STAFF, askingWage, isAbsent, quitsOnDay } from './staff.ts'
 import { TUTORIAL, isProtected, tutorialDay, tutorialStep } from './tutorial.ts'
 import type {
   BakeryPlan,
@@ -329,8 +329,12 @@ const stafflessDaySummarySchema = z.strictObject({
   deliveries: z.array(deliverySchema),
 })
 
+// `checkStaff()` checks the absent and those who quit against the staff.
 const daySummarySchema = stafflessDaySummarySchema.extend({
   missed: z.array(missedSchema),
+  // A save from before the employees' traits (#255) has neither.
+  absent: z.array(candidateIdSchema).min(1).optional(),
+  quits: z.array(candidateIdSchema).min(1).optional(),
 })
 
 const restockRuleSchema = z.discriminatedUnion('kind', [
@@ -552,7 +556,12 @@ const contractsSchema = z.strictObject({
 
 // `checkStaff()` checks the wages, the days and the staff against the
 // decisions.
-const employeeSchema = hireSchema.extend({ hiredOnDay: gameDay })
+const employeeSchema = hireSchema.extend({
+  hiredOnDay: gameDay,
+  // A save from before the employees' traits (#255) has none: the next
+  // morning starts counting.
+  underpaidSince: gameDay.optional(),
+})
 
 // `checkFinancing()` checks the days, the rounds, the closes below zero and
 // the books.
@@ -2735,13 +2744,32 @@ function checkStaff(save: Save, content: StaffContent): void {
     hourlyWage,
   }))
   attempt('staff', () => validateStaff(hires, content))
-  staff.forEach(({ candidate, hiredOnDay }, index) => {
+  staff.forEach((employee, index) => {
+    const { candidate, role, hourlyWage, hiredOnDay, underpaidSince } = employee
     if (hiredOnDay < first || hiredOnDay > played) {
       invalid(
         `employee ${index + 1}, ${candidate}, was hired on day ${hiredOnDay}, not a day played from day ${first} to day ${played}`,
       )
     }
+    if (underpaidSince === undefined) return
+    if (underpaidSince < hiredOnDay || underpaidSince > played) {
+      invalid(
+        `employee ${index + 1}, ${candidate}, is underpaid since day ${underpaidSince}, not a day they worked from day ${hiredOnDay} to day ${played}`,
+      )
+    }
+    if (hourlyWage >= askingWage(candidate, role, content)) {
+      invalid(
+        `employee ${index + 1}, ${candidate}, is underpaid since day ${underpaidSince}, but earns what they ask`,
+      )
+    }
+    const quits = quitsOnDay(employee, content) ?? played
+    if (quits <= played) {
+      invalid(
+        `employee ${index + 1}, ${candidate}, would have quit on day ${quits}, by day ${played}`,
+      )
+    }
   })
+  checkAbsences(save, content)
   if (lastDay?.day === day) {
     if (!sameHires(hires, decisions.staff)) {
       invalid(
@@ -2753,6 +2781,36 @@ function checkStaff(save: Save, content: StaffContent): void {
   }
   if (pendingDecisions !== null) {
     keepsRoles('pendingDecisions', pendingDecisions.staff, decisions.staff)
+  }
+}
+
+/**
+ * The last day's absent are distinct employees on staff, each drawn absent
+ * that day (see `isAbsent`), and those who quit distinct ones no longer on
+ * staff.
+ */
+function checkAbsences(save: Save, content: StaffContent): void {
+  const { lastDay, staff, seed } = save
+  if (lastDay === null) return
+  const { day, absent = [], quits = [] } = lastDay
+  if (new Set(absent).size !== absent.length) {
+    invalid(`lastDay.absent names an employee twice`)
+  }
+  if (new Set(quits).size !== quits.length) {
+    invalid(`lastDay.quits names an employee twice`)
+  }
+  for (const candidate of absent) {
+    const employee = staff.find((on) => on.candidate === candidate)
+    if (employee === undefined) {
+      invalid(`lastDay.absent names ${candidate}, who is not on staff`)
+    } else if (!isAbsent(seed, day, employee, content)) {
+      invalid(`lastDay.absent names ${candidate}, who came on day ${day}`)
+    }
+  }
+  for (const candidate of quits) {
+    if (staff.some((on) => on.candidate === candidate)) {
+      invalid(`lastDay.quits names ${candidate}, who is still on staff`)
+    }
   }
 }
 

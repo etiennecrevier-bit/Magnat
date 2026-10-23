@@ -56,7 +56,7 @@ import { LABELS } from './personal.ts'
 import { goTo, noTrips, wentTo } from './places.ts'
 import { PROFILE_CONTENT } from './profile.ts'
 import { SAVE_VERSION, deserialize, serialize } from './save.ts'
-import { STAFF } from './staff.ts'
+import { STAFF, askingWage } from './staff.ts'
 import { completeStep, skipTutorial, tutorialStepOf } from './tutorial.ts'
 import type { GameState, Profile } from './types.ts'
 
@@ -5213,5 +5213,143 @@ describe('Réal’s postcards (#239)', () => {
     expectInvalid(JSON.stringify({ ...save, postcardsShown: ['ville'] }), [
       'postcardsShown',
     ])
+  })
+})
+
+describe("the employees' traits (#255)", () => {
+  /** A leased bakery making the croissants, from day 1. */
+  const BAKING: readonly DecisionChange[] = [
+    { kind: 'openBakery', oven: 'louer' },
+    { kind: 'croissantSource', source: 'fabriquer' },
+  ]
+  /** Seed 42 with `changes` made on day 0, in effect from day 1. */
+  const made = (...changes: DecisionChange[]) =>
+    changes.reduce(
+      (state, change) => applyDecision(state, change),
+      createInitialState(SEED),
+    )
+  /**
+   * Seed 42 with Nadia, weak in fiabilité, hired as baker on day 0 at the
+   * role's minimum, below what she asks, from day 1: she is absent on day
+   * 2, warns on the morning of day 57 and quits on day 64.
+   */
+  const HIRED = made(...BAKING, {
+    kind: 'hire',
+    role: 'boulanger',
+    candidate: 'nadia',
+    hourlyWage: cents(1800),
+  })
+  const ABSENT = played(3, HIRED)
+  const WARNED = played(57, HIRED)
+  const QUIT = played(65, HIRED)
+  const ABSENT_SAVE = serialize(ABSENT)
+  const WARNED_SAVE = serialize(WARNED)
+  /** Nadia paid what she asks, to the morning of day 100. */
+  const PAID = played(
+    100,
+    made(...BAKING, {
+      kind: 'hire',
+      role: 'boulanger',
+      candidate: 'nadia',
+      hourlyWage: askingWage('nadia', 'boulanger'),
+    }),
+  )
+
+  it('give back an absence, an underpaid employee and a quit, which then play on the same', () => {
+    expect(ABSENT.lastDay?.absent).toEqual(['nadia'])
+    expect(WARNED.staff).toMatchObject([
+      { candidate: 'nadia', hiredOnDay: 1, underpaidSince: 1 },
+    ])
+    expect(QUIT.lastDay?.quits).toEqual(['nadia'])
+    expect(QUIT.staff).toEqual([])
+    for (const state of [ABSENT, WARNED, QUIT]) {
+      const back = reloaded(state)
+      expect(back).toStrictEqual(state)
+      expect(serialize(back)).toBe(serialize(state))
+      expect(serialize(played(10, back))).toBe(serialize(played(10, state)))
+    }
+  })
+
+  it('load a save from before the traits, whose next morning starts counting', () => {
+    const older = edited(
+      'staff.0.underpaidSince',
+      (parent, key) => {
+        delete parent[key]
+      },
+      WARNED_SAVE,
+    )
+    const loaded = deserialize(older)
+    expect(loaded.staff[0]?.underpaidSince).toBeUndefined()
+    expect(played(1, loaded).staff[0]?.underpaidSince).toBe(WARNED.day)
+    // Counting again from the load, she does not quit a week later.
+    expect(played(8, loaded).staff).toHaveLength(1)
+  })
+
+  const wage = askingWage('nadia', 'boulanger')
+
+  it.each([
+    [
+      'an underpaid run that starts before the hire',
+      withValue('staff.0.underpaidSince', 0, WARNED_SAVE),
+      'employee 1, nadia, is underpaid since day 0, not a day they worked from day 1 to day 56',
+    ],
+    [
+      'an underpaid run that starts on a day not played',
+      withValue('staff.0.underpaidSince', 57, WARNED_SAVE),
+      'employee 1, nadia, is underpaid since day 57, not a day they worked from day 1 to day 56',
+    ],
+    [
+      'an employee underpaid at the wage they ask',
+      withValue(
+        'decisions.staff.0.hourlyWage',
+        wage,
+        withValue('staff.0.hourlyWage', wage, WARNED_SAVE),
+      ),
+      'employee 1, nadia, is underpaid since day 1, but earns what they ask',
+    ],
+    [
+      'an underpaid employee who should have quit',
+      [
+        ['staff.0.hourlyWage', 1800],
+        ['decisions.staff.0.hourlyWage', 1800],
+        ['staff.0.underpaidSince', 10],
+      ].reduce(
+        (text, [path, value]) => withValue(path as string, value, text),
+        serialize(PAID),
+      ),
+      'employee 1, nadia, would have quit on day 73, by day 99',
+    ],
+    [
+      'an absent employee not on staff',
+      withValue('lastDay.absent', ['kevin'], ABSENT_SAVE),
+      'lastDay.absent names kevin, who is not on staff',
+    ],
+    [
+      'an absent employee who came that day',
+      withValue('lastDay.absent', ['nadia'], serialize(played(4, HIRED))),
+      'lastDay.absent names nadia, who came on day 3',
+    ],
+    [
+      'an employee absent twice',
+      withValue('lastDay.absent', ['nadia', 'nadia'], ABSENT_SAVE),
+      'lastDay.absent names an employee twice',
+    ],
+    [
+      'an empty list of the absent',
+      withValue('lastDay.absent', [], ABSENT_SAVE),
+      '→ at lastDay.absent',
+    ],
+    [
+      'an unknown candidate absent',
+      withValue('lastDay.absent', ['gilles'], ABSENT_SAVE),
+      '→ at lastDay.absent[0]',
+    ],
+    [
+      'an employee who quit, still on staff',
+      withValue('lastDay.quits', ['nadia'], ABSENT_SAVE),
+      'lastDay.quits names nadia, who is still on staff',
+    ],
+  ])('reject %s', (_, text, reason) => {
+    expect(() => deserialize(text)).toThrow(reason)
   })
 })

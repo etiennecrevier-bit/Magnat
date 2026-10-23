@@ -90,6 +90,16 @@ export interface DaySummary {
   readonly deliveries: readonly Delivery[]
   /** The deliveries nobody could make that morning, in order. */
   readonly missed: readonly MissedDelivery[]
+  /**
+   * The employees absent that day whose role had work (#255), in the order
+   * of the staff; absent when there was none.
+   */
+  readonly absent?: readonly CandidateId[]
+  /**
+   * The employees who quit that morning, underpaid (#255), in the order of
+   * the staff; absent when none did.
+   */
+  readonly quits?: readonly CandidateId[]
 }
 
 /** One customer segment's visits on a business day. */
@@ -201,6 +211,11 @@ export interface Hire {
 export interface Employee extends Hire {
   /** The morning they started. */
   readonly hiredOnDay: Day
+  /**
+   * The first morning of the run they have been paid below the wage they
+   * ask (#255), up to now; absent when they are paid at least that.
+   */
+  readonly underpaidSince?: Day
 }
 
 /** The bakery the player wants running. */

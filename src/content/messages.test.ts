@@ -5,7 +5,9 @@ import {
   MAX_MESSAGE_LENGTH,
   messageKindSchema,
   MIN_LINES_PER_KIND,
+  OWN_WORDS,
 } from './messages.ts'
+import { candidateIdSchema } from './schema.ts'
 
 /** A deep copy of the shipped messages to break, one field at a time. */
 function shipped() {
@@ -25,10 +27,21 @@ const NAMED_BY_GAME = [
   'fired',
 ] as const
 
-/** Every shipped line. */
+/** Every shipped line, the employees' own words included. */
 function allLines(): string[] {
   const messages = loadMessages()
-  return messageKindSchema.options.flatMap((kind) => messages[kind].lines)
+  return [
+    ...messageKindSchema.options.flatMap((kind) => messages[kind].lines),
+    ...OWN_WORDS.flatMap((kind) => Object.values(messages[kind])),
+  ]
+}
+
+/** The shipped employees' own words, as plain records to break. */
+function ownWords() {
+  return structuredClone(messagesJson) as unknown as Record<
+    string,
+    Record<string, string>
+  >
 }
 
 const NO_BREAK_SPACE = ' '
@@ -129,5 +142,35 @@ describe('loadMessages', () => {
     const raw = shipped()
     raw.landlord!.tone = 'sec'
     expect(() => loadMessages(raw)).toThrow()
+  })
+})
+
+describe("the employees' own words (#255)", () => {
+  it('give each candidate one warning and one goodbye of their own', () => {
+    const messages = loadMessages()
+    for (const kind of OWN_WORDS) {
+      expect(Object.keys(messages[kind]), kind).toEqual(
+        candidateIdSchema.options,
+      )
+    }
+    expect(messages.underpaid.kevin).not.toBe(messages.quit.kevin)
+  })
+
+  it('reject a candidate missing, one the game does not know, or a line repeated', () => {
+    const missing = ownWords()
+    delete missing.underpaid!.kevin
+    expect(() => loadMessages(missing)).toThrow()
+
+    const unknown = ownWords()
+    unknown.quit!.gilles = 'Je pars.'
+    expect(() => loadMessages(unknown)).toThrow()
+
+    const repeated = ownWords()
+    repeated.quit!.kevin = repeated.underpaid!.nadia!
+    expect(() => loadMessages(repeated)).toThrow(/twice/)
+
+    const long = ownWords()
+    long.underpaid!.kevin = 'a'.repeat(MAX_MESSAGE_LENGTH + 1)
+    expect(() => loadMessages(long)).toThrow()
   })
 })

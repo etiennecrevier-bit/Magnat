@@ -17,6 +17,8 @@ import { TRUCK_STRATEGIES, type BakeryJob } from './bakery.ts'
 import { formatBakeryReport } from './bakeryReport.ts'
 import { CONTRACT_PLANS, type GrowthJob } from './growth.ts'
 import { GROWTH_MARKERS, formatGrowthSection } from './growthReport.ts'
+import { HIRING_ROLES, type HiringJob } from './hiring.ts'
+import { formatHiringReport } from './hiringReport.ts'
 import {
   DEFIS_MARKERS,
   formatDefiPercentileJson,
@@ -45,7 +47,9 @@ import {
 // and the Défis section of the phase-3 report; with `--bakery`, plays the
 // bakery against its twins at each difficulty and writes the phase-4
 // report; with `--growth`, plays the growth strategies at each difficulty
-// and writes their section of the phase-4 report. The time each job took
+// and writes their section of the phase-4 report; with `--hiring`, plays
+// each candidate in each role against their twins at Moyen and writes the
+// phase-5 report. The time each job took
 // goes to the console only, so the same options always write the same
 // files.
 
@@ -110,8 +114,19 @@ export interface GrowthArgs {
   readonly out: string
 }
 
+/** The hiring run, `--hiring` (#255). */
+export interface HiringArgs {
+  readonly mode: 'hiring'
+  /** Seeds each role and candidate plays. */
+  readonly games: number
+  /** Months each game plays. */
+  readonly months: number
+  /** Absolute path of the report. */
+  readonly out: string
+}
+
 export type BalanceArgs =
-  GridArgs | PercentileArgs | DefisArgs | BakeryArgs | GrowthArgs
+  GridArgs | PercentileArgs | DefisArgs | BakeryArgs | GrowthArgs | HiringArgs
 
 function repoFile(path: string): string {
   return fileURLToPath(new URL(`../../${path}`, import.meta.url))
@@ -147,12 +162,19 @@ const BAKERY_DEFAULTS = {
 
 const GROWTH_DEFAULTS = BAKERY_DEFAULTS
 
+const HIRING_DEFAULTS = {
+  games: 30,
+  months: 12,
+  out: repoFile('docs/balance/phase-5.md'),
+}
+
 export const USAGE = [
   `Usage: npm run balance -- [--years <n>] [--games <n>] [--events ${EVENT_POLICIES.join('|')}] [--contracts ${CONTRACT_POLICIES.join('|')}] [--financing ${FINANCING_POLICIES.join('|')}] [--out <file>]`,
   '       npm run balance -- --percentiles [--years <n>] [--games <n>] [--out <file>] [--json <file>]',
   '       npm run balance -- --defis [--games <n>] [--search <n>] [--out <file>] [--json <file>]',
   '       npm run balance -- --bakery [--games <n>] [--months <n>] [--out <file>]',
   '       npm run balance -- --growth [--games <n>] [--months <n>] [--out <file>]',
+  '       npm run balance -- --hiring [--games <n>] [--months <n>] [--out <file>]',
 ].join('\n')
 
 /**
@@ -166,14 +188,16 @@ export const USAGE = [
  * would); with it, `--json` (resolved the
  * same way), and other defaults. With `--defis`, `--games`, `--search` (a
  * whole number from 1), `--out` and `--json`, and defaults of their own.
- * With `--bakery` or `--growth`, `--games`, `--months` (a whole number
- * from 1) and `--out`, and defaults of their own. Throws on anything else,
+ * With `--bakery`, `--growth` or `--hiring`, `--games`, `--months` (a
+ * whole number from 1) and `--out`, and defaults of their own. Throws on
+ * anything else,
  * including
  * positional arguments, `--events` with `--percentiles` or `--defis`, whose
  * owners always answer at random, `--contracts` or `--financing` with
  * either, `--years` or `--percentiles` with
  * `--defis`, `--search` without it, `--json` with neither, any other option
- * with `--bakery` or `--growth`, and `--months` without either.
+ * with `--bakery`, `--growth` or `--hiring`, and `--months` without one of
+ * them.
  */
 export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
   const { values } = parseArgs({
@@ -183,6 +207,7 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
       defis: { type: 'boolean' },
       bakery: { type: 'boolean' },
       growth: { type: 'boolean' },
+      hiring: { type: 'boolean' },
       years: { type: 'string' },
       months: { type: 'string' },
       search: { type: 'string' },
@@ -196,6 +221,31 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
     strict: true,
     allowPositionals: false,
   })
+  if (values.hiring === true) {
+    for (const [option, value] of [
+      ['--percentiles', values.percentiles],
+      ['--defis', values.defis],
+      ['--bakery', values.bakery],
+      ['--growth', values.growth],
+      ['--years', values.years],
+      ['--search', values.search],
+      ['--events', values.events],
+      ['--contracts', values.contracts],
+      ['--financing', values.financing],
+      ['--json', values.json],
+    ] as const) {
+      if (value !== undefined) {
+        throw new RangeError(`${option} does not go with --hiring`)
+      }
+    }
+    const defaults = HIRING_DEFAULTS
+    return {
+      mode: 'hiring',
+      games: wholeNumber('--games', values.games, defaults.games, 1),
+      months: wholeNumber('--months', values.months, defaults.months, 1),
+      out: resolve(values.out ?? defaults.out),
+    }
+  }
   if (values.growth === true) {
     for (const [option, value] of [
       ['--percentiles', values.percentiles],
@@ -244,7 +294,9 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
     }
   }
   if (values.months !== undefined) {
-    throw new RangeError('--months goes only with --bakery or --growth')
+    throw new RangeError(
+      '--months goes only with --bakery, --growth or --hiring',
+    )
   }
   if (values.defis === true) {
     for (const [option, value] of [
@@ -356,6 +408,9 @@ export async function main(argv: readonly string[]): Promise<number> {
         break
       case 'growth':
         await writeGrowth(args, started)
+        break
+      case 'hiring':
+        await writeHiring(args, started)
         break
     }
     return 0
@@ -523,6 +578,28 @@ async function writeGrowth(
       GROWTH_MARKERS,
     ),
   )
+  console.log(`Wrote ${out} in ${seconds(performance.now() - started)}`)
+}
+
+async function writeHiring(
+  { games, months, out }: HiringArgs,
+  started: number,
+): Promise<void> {
+  const runs = await playAll(
+    HIRING_ROLES.map((role): HiringJob => ({
+      kind: 'hiring',
+      role,
+      difficulty: 'moyen',
+      games,
+      months,
+    })),
+    ({ role, cells }) => {
+      console.log(
+        `${role}: ${cells.length} candidates × ${games} games and their twins in ${seconds(performance.now() - started)}`,
+      )
+    },
+  )
+  writeReport(out, formatHiringReport({ games, months, runs }))
   console.log(`Wrote ${out} in ${seconds(performance.now() - started)}`)
 }
 

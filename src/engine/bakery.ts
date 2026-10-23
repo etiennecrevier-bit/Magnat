@@ -32,6 +32,7 @@ export const BAKED: ProductId = 'croissant'
 const CASH: AccountCode = '1000'
 const INVENTORY: AccountCode = '1200'
 const EQUIPMENT: AccountCode = '1500'
+const INVENTORY_LOSSES: AccountCode = '5100'
 const RENT_AND_PERMIT: AccountCode = '6100'
 const BAKERY_LEASE: AccountCode = '6130'
 const OTHER_CHARGES: AccountCode = '6900'
@@ -44,6 +45,7 @@ export const BAKERY_MEMO = {
   lease: 'Location du four',
   depreciation: 'Amortissement du four',
   ingredients: 'Ingrédients du fournil',
+  wasted: 'Croissants ratés au fournil',
 } as const
 
 /** A bakery that does not run and owns no oven, as a game starts. */
@@ -313,4 +315,38 @@ export function bakeryMonthlyCosts(
   return bakery.oven === 'louer'
     ? add(prices.monthlyRentCents, content.oven.monthlyLeaseCents)
     : prices.monthlyRentCents
+}
+
+/**
+ * The croissants an employee baker throws away on a morning they made
+ * `baked` (#255): ⌊`baked` × `share`⌋, `share` the content's
+ * `bakeryWasteShare` × their minutie, each made again at the ingredients'
+ * cost of `prices`, so the batch comes out whole and only the cost of the
+ * waste shows. Two entries, dated `day`: « Ingrédients du fournil », Dr 1200
+ * Stocks / Cr 1000 Encaisse, for the croissants made again, then
+ * « Croissants ratés au fournil », Dr 5100 Pertes sur stocks / Cr 1200, for
+ * the same amount. Posts nothing when none is thrown away. Also returns how
+ * many were.
+ */
+export function bakeryWaste(
+  journal: Journal,
+  day: Day,
+  baked: number,
+  share: number,
+  prices: BakeryPrices,
+): { journal: Journal; wasted: number } {
+  const wasted = Math.floor(baked * share)
+  if (wasted === 0) return { journal, wasted }
+  const cost = mulInt(prices.ingredientCostCents, wasted)
+  const books = post(journal, day, BAKERY_MEMO.ingredients, [
+    debit(INVENTORY, cost),
+    credit(CASH, cost),
+  ])
+  return {
+    journal: post(books, day, BAKERY_MEMO.wasted, [
+      debit(INVENTORY_LOSSES, cost),
+      credit(INVENTORY, cost),
+    ]),
+    wasted,
+  }
 }

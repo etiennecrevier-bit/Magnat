@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { int, isRngState, next, normal, seedRng } from './rng.ts'
+import { int, isRngState, keyedDraw, next, normal, seedRng } from './rng.ts'
 
 /** Draws `count` values in a row from `state`. */
 function draws(state: number, count: number): number[] {
@@ -166,5 +166,35 @@ describe('normal', () => {
     { mean: Number.NEGATIVE_INFINITY, sd: 1 },
   ])('rejects mean $mean, sd $sd', ({ mean, sd }) => {
     expect(() => normal(seedRng(42), mean, sd)).toThrow(RangeError)
+  })
+})
+
+describe('keyedDraw', () => {
+  it('gives a value in [0, 1) that depends only on the seed and the keys', () => {
+    const value = keyedDraw(42, [10, 3])
+    expect(value).toBeGreaterThanOrEqual(0)
+    expect(value).toBeLessThan(1)
+    expect(keyedDraw(42, [10, 3])).toBe(value)
+    expect(keyedDraw(43, [10, 3])).not.toBe(value)
+    expect(keyedDraw(42, [11, 3])).not.toBe(value)
+    expect(keyedDraw(42, [10, 4])).not.toBe(value)
+    expect(keyedDraw(42, [3, 10])).not.toBe(value)
+  })
+
+  it('spreads its values evenly over many keys', () => {
+    const values = Array.from({ length: 20_000 }, (_, day) =>
+      keyedDraw(7, [day, 5]),
+    )
+    const mean = values.reduce((total, value) => total + value, 0) / 20_000
+    expect(mean).toBeCloseTo(0.5, 2)
+    const below = values.filter((value) => value < 0.1).length / 20_000
+    expect(below).toBeCloseTo(0.1, 2)
+  })
+
+  it('rejects a key outside [0, 2^32)', () => {
+    for (const key of [-1, 0.5, 2 ** 32, Number.NaN]) {
+      expect(() => keyedDraw(1, [key])).toThrow(RangeError)
+    }
+    expect(() => keyedDraw(-1, [])).toThrow(RangeError)
   })
 })
