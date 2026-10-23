@@ -4,9 +4,15 @@ import {
   loadDreamContent,
   type CandidateId,
   type DreamContent,
+  type RungId,
 } from '../content/schema.ts'
 import { salesByTruck } from '../finance/byTruck.ts'
-import { entriesOf, type JournalEntry } from '../finance/journal.ts'
+import {
+  balance,
+  entriesOf,
+  postEntry,
+  type JournalEntry,
+} from '../finance/journal.ts'
 import { incomeStatement } from '../finance/statements.ts'
 import { BAKERY } from './bakery.ts'
 import { toCalendar } from './calendar.ts'
@@ -51,20 +57,45 @@ const SECOND = 'vieuxMontreal'
 
 /**
  * « Le rêve » with « Deuxième camion » for sale first in its ladder, at a
- * price a game can pay on day 0; the shipped one shows it « Bientôt ».
+ * price a game can pay on day 0; the shipped one sells it last, at 85 000 $.
  */
 const DREAM: DreamContent = loadDreamContent({
   ...dreamJson,
   company: [
     {
       ...dreamJson.company[2],
-      comingSoon: undefined,
       priceCents: 500_000,
     },
     dreamJson.company[0],
     dreamJson.company[1],
   ],
 })
+
+/** `state` with Encaisse brought to `target` by the owner putting money in or taking it out. */
+function withCash(state: GameState, target: number): GameState {
+  const gap = target - balance(state.journal, '1000', { toDay: state.day })
+  const amount = cents(Math.abs(gap))
+  const nothing = cents(0)
+  return {
+    ...state,
+    journal: postEntry(state.journal, {
+      day: state.day,
+      memo: 'Mise de fonds',
+      lines: [
+        {
+          account: '1000',
+          debit: gap > 0 ? amount : nothing,
+          credit: gap > 0 ? nothing : amount,
+        },
+        {
+          account: '3000',
+          debit: gap > 0 ? nothing : amount,
+          credit: gap > 0 ? amount : nothing,
+        },
+      ],
+    }),
+  }
+}
 
 /** `change` made with `DREAM`. */
 function decide(state: GameState, change: DecisionChange): GameState {
@@ -219,13 +250,31 @@ describe('the trucks of a game', () => {
 })
 
 describe('buying « Deuxième camion »', () => {
-  it('stays « Bientôt » in the shipped game', () => {
-    expect(() =>
-      applyDecision(createInitialState(SEED), {
-        kind: 'buy',
-        rung: 'deuxiemeCamion',
-      }),
-    ).toThrow('not for sale yet')
+  it('is for sale in the shipped game, after the rungs before it and once Encaisse covers it', () => {
+    const start = createInitialState(SEED)
+    const buy = (state: GameState, rung: RungId): GameState =>
+      applyDecision(state, { kind: 'buy', rung })
+    expect(() => buy(start, 'deuxiemeCamion')).toThrow(RangeError)
+    const before = buy(
+      buy(withCash(start, 20_000_000), 'espresso'),
+      'grandCamion',
+    )
+    expect(() => buy(before, 'deuxiemeCamion')).not.toThrow()
+    const short = withCash(before, 8_499_999)
+    expect(() => buy(short, 'deuxiemeCamion')).toThrow(RangeError)
+    const bought = buy(withCash(before, 8_500_000), 'deuxiemeCamion')
+    expect(truckIds(bought)).toEqual([FIRST_TRUCK, SECOND])
+    expect(bought.trucks).toEqual([
+      newTruck(SEED, { id: SECOND, district: 'vieuxMontreal' }, 0),
+    ])
+    expect(entriesOf(bought.journal).at(-1)).toEqual({
+      day: 0,
+      memo: 'Achat · Deuxième camion',
+      lines: [
+        { account: '1500', debit: 8_500_000, credit: 0 },
+        { account: '1000', debit: 0, credit: 8_500_000 },
+      ],
+    })
   })
 
   it('adds a truck in Vieux-Montréal, paid that morning, run as the first one', () => {

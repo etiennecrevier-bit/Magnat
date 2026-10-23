@@ -76,7 +76,7 @@ describe('dreamBoard', () => {
     expect(board.company.rungs.map(({ status }) => status)).toEqual([
       'next',
       'locked',
-      'comingSoon',
+      'locked',
     ])
     expect(
       board.company.rungs.every(
@@ -171,7 +171,7 @@ describe('the cards', () => {
     expect(board.company.rungs.map(({ after }) => after)).toEqual([
       null,
       'Machine à espresso pro',
-      null,
+      'Camion plus grand',
     ])
   })
 

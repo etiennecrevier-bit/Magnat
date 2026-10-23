@@ -250,11 +250,18 @@ describe('the purchases refused', () => {
     expect(() => buying(started(), ['yacht' as RungId])).toThrow(/no rung/)
   })
 
-  it('for the second truck, which comes soon', () => {
+  it('for a rung coming soon, shown next all the same', () => {
+    const soon = loadDreamContent({
+      ...dreamJson,
+      company: dreamJson.company.map((rung) =>
+        rung.id === 'deuxiemeCamion' ? { ...rung, comingSoon: true } : rung,
+      ),
+    })
     const rich = funded(started(), 100_000_000)
-    const both = buying(rich, ['espresso', 'grandCamion'])
-    expect(() => buying(both, ['deuxiemeCamion'])).toThrow(/not for sale/)
-    expect(nextRung(both.dream, 'company')?.id).toBe('deuxiemeCamion')
+    const both = buying(rich, ['espresso', 'grandCamion'], soon)
+    expect(() => buying(both, ['deuxiemeCamion'], soon)).toThrow(/not for sale/)
+    expect(nextRung(both.dream, 'company', soon)?.id).toBe('deuxiemeCamion')
+    expect(buying(both, ['deuxiemeCamion']).trucks).toHaveLength(1)
   })
 
   it('when Encaisse falls short of a company rung', () => {
@@ -708,12 +715,14 @@ describe.each(['facile', 'moyen', 'difficile'] as const)(
     const DAYS = 3 * 365
     const game = climbed(difficulty, DAYS)
 
-    it('buys them all but the one coming soon, and balances every day', () => {
+    it('buys them all, the second truck included, and balances every day', () => {
       expect(game.dream.bought.map(({ rung }) => rung)).toEqual([
         ...ALL_PERSONAL,
         'espresso',
         'grandCamion',
+        'deuxiemeCamion',
       ])
+      expect(game.trucks?.map(({ id }) => id)).toEqual(['vieuxMontreal'])
       expect(game.dream.magnatOn).not.toBeNull()
       // The état des flux de trésorerie reads every entry the dream posted.
       expect(() => cashFlowStatement(game.journal, 0, DAYS - 1)).not.toThrow()

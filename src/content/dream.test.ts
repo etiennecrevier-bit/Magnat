@@ -82,14 +82,13 @@ describe('dream.json', () => {
     })
     expect(maison?.sells).toBe('condo')
     expect(content.company[1]?.replacesTruck).toBe(true)
-    expect(content.company[2]?.comingSoon).toBe(true)
+    expect(content.company[2]?.comingSoon).toBeUndefined()
   })
 
-  it('adds the second truck, in Vieux-Montréal, still « Bientôt »', () => {
+  it('adds the second truck, in Vieux-Montréal, for sale', () => {
     const [, , second] = content.company
     expect(second).toMatchObject({
       id: 'deuxiemeCamion',
-      comingSoon: true,
       addsTruck: { id: 'vieuxMontreal', district: 'vieuxMontreal' },
     })
     expect(

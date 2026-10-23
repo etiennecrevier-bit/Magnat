@@ -39,7 +39,7 @@ const SECOND: TruckId = 'vieuxMontreal'
 const DREAM: DreamContent = loadDreamContent({
   ...dreamJson,
   company: [
-    { ...dreamJson.company[2], comingSoon: undefined, priceCents: 500_000 },
+    { ...dreamJson.company[2], priceCents: 500_000 },
     dreamJson.company[0],
     dreamJson.company[1],
   ],

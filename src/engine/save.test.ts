@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import dreamJson from '../content/dream.json'
 import eventsJson from '../content/events.json'
 import financingJson from '../content/financing.json'
 import grocersJson from '../content/grocers.json'
 import {
   loadDefiContent,
   loadDifficultyContent,
+  loadDreamContent,
   loadEventContent,
   loadFinancingContent,
   loadFoodTruckContent,
@@ -4743,7 +4745,7 @@ describe('the net worth of each week', () => {
 describe('« Le rêve »', () => {
   const JUNE_1 = 31
   // Facile, with the cash in the bank and the owner's savings to buy every
-  // rung but the second truck from the first days.
+  // rung from the first days.
   const { facile } = DIFFICULTIES.difficulties
   const RICH = loadDifficultyContent({
     ...DIFFICULTIES,
@@ -4806,11 +4808,14 @@ describe('« Le rêve »', () => {
     ['the close of a 1st with the big truck', FIRST_CLOSE],
     ['the morning after', SECOND],
     ['the close of its first month of depreciation', JULY_CLOSE],
-  ])('gives back %s from version 19, its depreciation naming the Plateau', (_, state) => {
-    expect(deserialize(v19(state), FOOD_TRUCK, EVENTS, RICH)).toStrictEqual(
-      state,
-    )
-  })
+  ])(
+    'gives back %s from version 19, its depreciation naming the Plateau',
+    (_, state) => {
+      expect(deserialize(v19(state), FOOD_TRUCK, EVENTS, RICH)).toStrictEqual(
+        state,
+      )
+    },
+  )
 
   it("names the Plateau on the big truck's depreciation, not on the espresso machine's", () => {
     const named = (memo: string) =>
@@ -4905,17 +4910,6 @@ describe('« Le rêve »', () => {
       'is bought before a rung before it in its ladder',
     ],
     [
-      'a rung that comes soon',
-      (save) => {
-        dreamOf(save).bought.push({
-          rung: 'deuxiemeCamion',
-          day: JUNE_1,
-          cost: 1,
-        })
-      },
-      'dream rung 7, deuxiemeCamion, is not for sale',
-    ],
-    [
       'a cost other than what the rung cost',
       (save) => {
         dreamOf(save).bought[5]!.cost = 1
@@ -4969,6 +4963,37 @@ describe('« Le rêve »', () => {
     ],
   ])('rejects %s', (_, change, reason) => {
     refused(changed(change), reason)
+  })
+
+  it('rejects a rung that comes soon', () => {
+    // The shipped second truck is for sale; a copy shows it « Bientôt ».
+    const soon = loadDreamContent({
+      ...dreamJson,
+      company: dreamJson.company.map((rung) =>
+        rung.id === 'deuxiemeCamion' ? { ...rung, comingSoon: true } : rung,
+      ),
+    })
+    const text = changed((save) => {
+      dreamOf(save).bought.push({
+        rung: 'deuxiemeCamion',
+        day: JUNE_1,
+        cost: 1,
+      })
+    })
+    expect(() =>
+      deserialize(
+        text,
+        FOOD_TRUCK,
+        EVENTS,
+        RICH,
+        DEFIS,
+        BAKERY,
+        GROCERS,
+        STAFF,
+        FINANCING,
+        soon,
+      ),
+    ).toThrow('dream rung 7, deuxiemeCamion, is not for sale')
   })
 
   it('rejects the old truck depreciated after it was replaced', () => {

@@ -458,7 +458,9 @@ function signContracts(
 /**
  * `state` with the next personal rung bought if the owner's cash covers
  * what it needs, then the next company rung if Encaisse, read by
- * `cashOf`, does. A rung coming soon is not for sale.
+ * `cashOf`, does. A rung coming soon is not for sale, and a rung that adds
+ * a truck is left alone: these players staff no truck but the first, so it
+ * would stay closed (#259).
  */
 function buyRungs(
   state: GameState,
@@ -468,6 +470,7 @@ function buyRungs(
   for (const ladder of ['personal', 'company'] as const) {
     const rung = nextRung(bought.dream, ladder)
     if (rung === null || rung.comingSoon === true) continue
+    if (!isPersonal(rung) && rung.addsTruck !== undefined) continue
     const held = isPersonal(rung)
       ? bought.personal.cash
       : cashOf(bought.journal)
