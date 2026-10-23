@@ -32,6 +32,10 @@ import type { GameState } from './types.ts'
 // its season in December, out of them, and the days read without it: out
 // of season, it changes nothing. Through May, the shipped game plays as
 // that one does.
+//
+// #298 raised the bargain hunters' reference price of chocolat, a change
+// of balance, not of rules, so the fingerprints were taken again then,
+// with the code otherwise as it was.
 
 const DAYS = 100
 const MAY = 31
@@ -123,9 +127,9 @@ describe('the Plateau after the districts (#260)', () => {
       moyen: fingerprint(game('moyen'), false),
       difficile: fingerprint(game('difficile'), false),
     }).toEqual({
-      facile: 'a79a0606',
-      moyen: 'ffadb5cd',
-      difficile: '87438442',
+      facile: 'e1b7db90',
+      moyen: '7d0570a9',
+      difficile: '2a9ef0e4',
     })
   })
 
@@ -137,7 +141,7 @@ describe('the Plateau after the districts (#260)', () => {
     expect({
       events: fingerprint(game('moyen'), true),
       marketing: fingerprint(marketing, false),
-    }).toEqual({ events: 'a00c58b6', marketing: 'e62fba6f' })
+    }).toEqual({ events: '7c34dff4', marketing: 'dcc2be7b' })
   })
 })
 

@@ -518,10 +518,12 @@ describe('the six Défis, scripted', () => {
       },
     ])
     // Played as it starts, it orders no lemonade, which customers ask for in
-    // July and wait in line for (#261): « Bronze » until #266 retunes it.
+    // July and wait in line for (#261): « Bronze » until the bargain
+    // hunters paid more for chocolat (#298), « Argent » since, until #266
+    // retunes it.
     expect(outcome(played('festivalDuPasPire', 42))).toMatchObject({
       status: 'reussi',
-      medal: 'bronze',
+      medal: 'argent',
     })
     expect(
       outcome(played('festivalDuPasPire', 42, { start: [croissants(70)] })),
@@ -535,15 +537,16 @@ describe('the six Défis, scripted', () => {
 
   describe('« Payé dans 60 jours »', () => {
     // With rarer events (#155), seed 42 meets only « Le 1er juillet » after
-    // Gilles's order: the starting pay of 700 $ a week leaves a middle medal.
+    // Gilles's order: the starting pay of 700 $ a week left a middle medal,
+    // and « Or » since the bargain hunters pay more for chocolat (#298).
     const careful: Script = { start: [pay(70_000), croissants(45)] }
     const gilles = 'Gilles Lacasse'
 
-    it('argent at the starting pay, Gilles paying on the last day; lost when 1 500 $ a week to the owner leaves the cash below zero', () => {
+    it('or at the starting pay, Gilles paying on the last day; lost when 1 500 $ a week to the owner leaves the cash below zero', () => {
       const ended = played('payeDans60Jours', 42, careful)
       expect(outcome(ended)).toEqual({
         status: 'reussi',
-        medal: 'argent',
+        medal: 'or',
         daysPlayed: 64,
         broken: null,
       })
@@ -565,7 +568,7 @@ describe('the six Défis, scripted', () => {
       ).toEqual({
         status: 'echoue',
         medal: null,
-        daysPlayed: 55,
+        daysPlayed: 62,
         broken: 'minCash',
       })
     })

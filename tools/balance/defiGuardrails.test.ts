@@ -138,43 +138,46 @@ function playedWith(
  * of #155: its counts are those of the cards as P4-14 left them, until the
  * Défi is retuned. From June 1st, customers ask for lemonade (#261), which
  * these owners never order: the summer Défis' counts are those with it,
- * until #266 retunes them.
+ * until #266 retunes them. #298 raised the bargain hunters' reference
+ * price of chocolat, and every Défi but the last moved with it, « Zéro
+ * gaspillage » with its « Argent » raised to stay above a truck with no
+ * croissants.
  */
 const P3_13_OWNERS: Readonly<Record<string, ReturnType<typeof medalCounts>>> = {
   travauxSaintDenis: {
     games: 200,
-    broken: 61,
-    or: 9,
-    argentOrBetter: 74,
-    bronzeOrBetter: 139,
+    broken: 60,
+    or: 10,
+    argentOrBetter: 77,
+    bronzeOrBetter: 140,
   },
   semaineDesMilleDollars: {
     games: 200,
     broken: 0,
-    or: 17,
-    argentOrBetter: 73,
-    bronzeOrBetter: 136,
+    or: 20,
+    argentOrBetter: 81,
+    bronzeOrBetter: 137,
   },
   zeroGaspillage: {
     games: 200,
     broken: 153,
-    or: 12,
+    or: 14,
     argentOrBetter: 31,
     bronzeOrBetter: 47,
   },
   festivalDuPasPire: {
     games: 200,
-    broken: 124,
-    or: 27,
-    argentOrBetter: 58,
-    bronzeOrBetter: 76,
+    broken: 123,
+    or: 29,
+    argentOrBetter: 60,
+    bronzeOrBetter: 77,
   },
   payeDans60Jours: {
     games: 200,
-    broken: 46,
-    or: 29,
-    argentOrBetter: 94,
-    bronzeOrBetter: 154,
+    broken: 44,
+    or: 32,
+    argentOrBetter: 95,
+    bronzeOrBetter: 156,
   },
   moisSansConge: {
     games: 200,

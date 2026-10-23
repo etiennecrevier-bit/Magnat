@@ -60,7 +60,7 @@
       "randomEvents": false,
       "goal": {
         "metric": "customersServed",
-        "medals": { "or": 1150, "argent": 875, "bronze": 520 }
+        "medals": { "or": 1150, "argent": 892, "bronze": 520 }
       },
       "conditions": [{ "kind": "maxSpoilageRate", "rate": 0.03 }]
     },
