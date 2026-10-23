@@ -263,3 +263,14 @@
   color: #7b6f63;
   cursor: not-allowed;
 }
+
+/* What the marketing spent and brought (#284), under the budget: a fact
+   line, the anchor of the last four weeks. */
+.manage__marketing-facts {
+  margin: 0.5rem 0 0;
+  color: #52606d;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}

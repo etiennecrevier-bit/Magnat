@@ -1116,6 +1116,85 @@ describe('startStreet: what customers carry', () => {
   })
 })
 
+/** Whether `walker` holds marketing's flyer, in the drawing that shows. */
+function holdsFlyer(walker: Container): boolean {
+  const figure = figureOf(walker)
+  return figure
+    .getChildrenByLabel('flyer', true)
+    .some((node) => showsIn(figure, node))
+}
+
+/**
+ * Plays 30 s of the day `store` replays, over again every 4 s, and counts
+ * the customers seen with a flyer before the counter, and those leaving
+ * it with one, or with a drink.
+ */
+function flyersAtCounter(
+  app: ReturnType<typeof createFakeApp>,
+  store: GameStore,
+): { before: number; leaving: number; drinks: number } {
+  const seen = { before: new Set<Container>(), leaving: 0, drinks: 0 }
+  for (let t = 16; t <= 30_000; t += 16) {
+    app.frame(16)
+    for (const walker of walkers(app)) {
+      if (!leavesCounter(walker)) {
+        if (holdsFlyer(walker)) seen.before.add(walker)
+        continue
+      }
+      if (holdsFlyer(walker)) seen.leaving += 1
+      if (holdsDrink(walker)) seen.drinks += 1
+    }
+    if (t % 4000 < 16) replayAgain(store)
+  }
+  return {
+    before: seen.before.size,
+    leaving: seen.leaving,
+    drinks: seen.drinks,
+  }
+}
+
+describe('startStreet: marketing’s flyer (#284)', () => {
+  it('has those marketing brought hold its flyer up to the counter, a drink or a croissant bought', async () => {
+    const app = createFakeApp()
+    const store = visitsStore((visit, i) => ({
+      ...ended(visit, 'bought', 0),
+      segment: SEGMENTS[i % SEGMENTS.length]!,
+      bought: { cafe: i % 2, chocolat: 0, croissant: 1 - (i % 2) },
+      fromMarketing: true,
+    }))
+    await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
+    const seen = flyersAtCounter(app, store)
+    expect(seen.before).toBeGreaterThan(0)
+    expect(seen.leaving).toBe(0)
+    // The café buyers still take their cup.
+    expect(seen.drinks).toBeGreaterThan(0)
+  })
+
+  it('draws no flyer for anyone else, and the same people either way', async () => {
+    const plain = createFakeApp()
+    const tagged = createFakeApp()
+    const change = (marketing: boolean) => (visit: Visit, i: number) => ({
+      ...ended(visit, 'bought', 0),
+      segment: SEGMENTS[i % SEGMENTS.length]!,
+      ...(marketing ? { fromMarketing: true as const } : {}),
+    })
+    const plainStore = visitsStore(change(false))
+    const taggedStore = visitsStore(change(true))
+    await startStreet(plain, plainStore, createLoaders(), ASSETS, busyCrowd())
+    await startStreet(tagged, taggedStore, createLoaders(), ASSETS, busyCrowd())
+    for (let t = 16; t <= 10_000; t += 16) {
+      plain.frame(16)
+      tagged.frame(16)
+      expect(walkers(plain).some(holdsFlyer)).toBe(false)
+      expect(poses(tagged)).toEqual(poses(plain))
+      expect(walkers(tagged).map(segmentOf)).toEqual(
+        walkers(plain).map(segmentOf),
+      )
+    }
+    expect(walkers(tagged).length).toBeGreaterThan(0)
+  })
+})
+
 /** Where `node` is drawn on the stage, whose pixels are the page's. */
 function boxOf(node: Container): Box {
   const { minX, minY, maxX, maxY } = node.getBounds()

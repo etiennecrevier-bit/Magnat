@@ -14,6 +14,7 @@ import {
   formatWeekdayName,
 } from './formatGameDate.ts'
 import { formatBriefMoney, formatMoney } from './formatMoney.ts'
+import { marketingText } from './marketingFacts.ts'
 import { BANKER, portraitUrl } from './portraits.ts'
 import { PrudhommeAdvice } from './PrudhommeAdvice.tsx'
 import { useGame } from './store.ts'
@@ -351,6 +352,11 @@ export function WeeklyReportView({
         {formatGamePeriod(report.firstDay, report.firstDay + DAYS_PER_WEEK - 1)}
       </p>
       <WeekFigures report={report} className="weekly-report__figures" />
+      {report.marketing !== undefined && (
+        <p className="weekly-report__marketing">
+          Marketing{COLON} {marketingText(report.marketing)}
+        </p>
+      )}
       {challenge?.status === 'enCours' && (
         <DefiInProgress challenge={challenge} />
       )}

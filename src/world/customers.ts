@@ -143,7 +143,9 @@ export interface CustomersSetup {
  * card closes once they walk off the screen or the street clears.
  *
  * A customer who bought a café or a chocolat holds its cup from when the
- * avatar serves them; no one holds one before.
+ * avatar serves them; no one holds one before. One whom marketing brought
+ * (#284) comes holding its flyer, which they drop at the counter, served
+ * or not.
  */
 export function startCustomers(setup: CustomersSetup): Customers {
   const { street, shadows, crowd: settings, random } = setup
@@ -359,6 +361,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
           shadows,
           drawBubble(c.mood, style),
           drawPickMark(look.height, style),
+          c.visit.fromMarketing === true,
         )
         views.set(c.id, view)
         root.addChild(view.root)
@@ -373,10 +376,13 @@ export function startCustomers(setup: CustomersSetup): Customers {
           spillClock.show()
           showSpill(1)
         }
+        // At the counter, served or not, a flyer drops; a drink served
+        // comes into the other hand.
         for (const { kind, customer } of arrived) {
           const view = views.get(customer.id)
-          if (kind === 'served' && view !== undefined && drinks(customer.visit))
-            holdCup(view, style, settings.looks)
+          if (view === undefined) continue
+          const cup = kind === 'served' && drinks(customer.visit)
+          if (cup || view.flyer) redraw(view, style, settings.looks, cup)
         }
       }
       avatar?.update(deltaMs * walking.pace)
@@ -432,6 +438,8 @@ interface CustomerView {
   readonly mark: Container
   /** The fan they hold, as drawn to face each way; none without one. */
   fans: readonly Container[]
+  /** Whether they hold marketing's flyer (#284), until the counter. */
+  flyer: boolean
   /**
    * The shadows on the ground of the customer and of the child they come
    * with, `at` that far right of their feet as they face right.
@@ -463,8 +471,9 @@ function createCustomerView(
   shadows: Shadows,
   bubble: Container,
   mark: Container,
+  flyer = false,
 ): CustomerView {
-  const [facesRight, facesLeft] = drawFacings(look, style, looks, false)
+  const [facesRight, facesLeft] = drawFacings(look, style, looks, false, flyer)
   const figure = new Container({
     label: 'figure',
     children: [facesRight, facesLeft],
@@ -502,20 +511,25 @@ function createCustomerView(
     bubble,
     mark,
     fans: fansOf(facesRight, facesLeft),
+    flyer,
     shadows: grounded,
     card: null,
   }
 }
 
-/** `look` drawn to face right, then left, holding a cup with `cup`. */
+/**
+ * `look` drawn to face right, then left, holding a cup with `cup` and
+ * marketing's flyer with `flyer`.
+ */
 function drawFacings(
   look: Look,
   style: PeopleStyle,
   looks: CrowdSettings['looks'],
   cup: boolean,
+  flyer = false,
 ): [Container, Container] {
-  const facesRight = drawCustomer(look, style, looks, 1, cup)
-  const facesLeft = drawCustomer(look, style, looks, -1, cup)
+  const facesRight = drawCustomer(look, style, looks, 1, cup, flyer)
+  const facesLeft = drawCustomer(look, style, looks, -1, cup, flyer)
   facesRight.label = 'facesRight'
   facesLeft.label = 'facesLeft'
   facesLeft.visible = false
@@ -528,21 +542,23 @@ function fansOf(...drawings: Container[]): Container[] {
 }
 
 /**
- * Draws `view`'s customer again, the same but holding the cup they were
- * served, in place of the drawings they had.
+ * Draws `view`'s customer again, the same but with no flyer, holding the
+ * cup they were served with `cup`, in place of the drawings they had.
  */
-function holdCup(
+function redraw(
   view: CustomerView,
   style: PeopleStyle,
   looks: CrowdSettings['looks'],
+  cup: boolean,
 ): void {
-  const [facesRight, facesLeft] = drawFacings(view.look, style, looks, true)
+  const [facesRight, facesLeft] = drawFacings(view.look, style, looks, cup)
   view.facesRight.destroy({ children: true })
   view.facesLeft.destroy({ children: true })
   view.figure.addChild(facesRight, facesLeft)
   view.facesRight = facesRight
   view.facesLeft = facesLeft
   view.fans = fansOf(facesRight, facesLeft)
+  view.flyer = false
 }
 
 /**

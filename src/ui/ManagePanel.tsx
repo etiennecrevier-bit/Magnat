@@ -27,6 +27,7 @@ import { DockPanel } from './DockFrame.tsx'
 import { useFieldDialog } from './fieldDialog.ts'
 import { formatAmount } from './formatMoney.ts'
 import { Icon } from './icons.tsx'
+import { marketingFacts, type MarketingFacts } from './marketingFacts.ts'
 import { NumberField } from './NumberField.tsx'
 import { ProductCard, StatusLineView, StepButton } from './ProductCard.tsx'
 import {
@@ -40,6 +41,7 @@ import {
 } from './productFacts.ts'
 import { ProductGlyph } from './productGlyphs.tsx'
 import { useGame, type TruckTab } from './store.ts'
+import Tooltip from './Tooltip.tsx'
 import './panel.css'
 import './ManagePanel.css'
 
@@ -99,6 +101,11 @@ interface ManagePanelViewProps {
    * « Améliorations » owned allow more.
    */
   units?: { readonly min: number; readonly max: number }
+  /**
+   * What the marketing spent and brought, under its budget; null before a
+   * day is kept.
+   */
+  marketing?: MarketingFacts | null
   onChange: OnChange
 }
 
@@ -118,6 +125,7 @@ export function ManagePanelView({
   locked,
   bakery,
   units = FOOD_TRUCK.decisionLimits.units,
+  marketing = null,
   onChange,
 }: ManagePanelViewProps) {
   return (
@@ -152,6 +160,7 @@ export function ManagePanelView({
         <PayMarketingTab
           decisions={decisions}
           locked={locked}
+          marketing={marketing}
           onChange={onChange}
         />
       )}
@@ -309,10 +318,12 @@ function StocksTab({
 function PayMarketingTab({
   decisions,
   locked,
+  marketing,
   onChange,
 }: {
   decisions: Decisions
   locked: readonly DecisionKind[]
+  marketing: MarketingFacts | null
   onChange: OnChange
 }) {
   const payLocked = locked.includes('ownerWeeklyPay')
@@ -346,6 +357,15 @@ function PayMarketingTab({
           read={(text) => marketingChange(text, decisions.marketingDaily)}
           onChange={onChange}
         />
+        {marketing !== null && (
+          <Tooltip content={marketing.tip}>
+            {(anchor) => (
+              <p className="manage__marketing-facts" tabIndex={0} {...anchor}>
+                {marketing.line}
+              </p>
+            )}
+          </Tooltip>
+        )}
       </section>
     </div>
   )
@@ -428,6 +448,11 @@ export default function ManagePanel() {
     () => dreamLimits(FOOD_TRUCK.decisionLimits, dreamBonuses(dream)).units,
     [dream],
   )
+  const marketingDays = useGame((state) => state.game.marketingDays)
+  const marketing = useMemo(
+    () => marketingFacts(marketingDays),
+    [marketingDays],
+  )
   const decide = useGame((state) => state.decide)
   const closePanel = useGame((state) => state.closePanel)
   const tab = useGame((state) => state.truckTab)
@@ -458,6 +483,7 @@ export default function ManagePanel() {
         locked={lockedKinds(game)}
         bakery={bakery}
         units={units}
+        marketing={marketing}
         onChange={onChange}
       />
     </DockPanel>

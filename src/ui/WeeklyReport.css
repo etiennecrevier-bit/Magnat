@@ -27,6 +27,12 @@
   margin: 0 0 1.25rem;
 }
 
+/* What the week's marketing spent and brought (#284), under the figures. */
+.weekly-report__marketing {
+  margin: -0.5rem 0 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .weekly-report__figures dt {
   color: #5c5048;
   font-size: 0.875rem;
