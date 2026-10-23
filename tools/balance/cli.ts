@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -13,11 +19,26 @@ import {
   type EventPolicy,
   type FinancingPolicy,
 } from '../sim/simulate.ts'
+import {
+  baselineJob,
+  checkDefinitions,
+  leverVerdicts,
+  plannedMoves,
+  sensitivityRows,
+  type DefinitionsJob,
+  type LeversJob,
+} from './audit.ts'
+import {
+  SENSITIVITY_MARKERS,
+  formatAuditReport,
+  handWrittenStart,
+} from './auditReport.ts'
 import { TRUCK_STRATEGIES, type BakeryJob } from './bakery.ts'
 import { formatBakeryReport } from './bakeryReport.ts'
 import { CONTRACT_PLANS, type GrowthJob } from './growth.ts'
 import { GROWTH_MARKERS, formatGrowthSection } from './growthReport.ts'
 import { HIRING_ROLES, type HiringJob } from './hiring.ts'
+import { SITUATIONS } from './levers.ts'
 import { formatHiringReport } from './hiringReport.ts'
 import {
   DEFIS_MARKERS,
@@ -26,6 +47,7 @@ import {
 } from './defisReport.ts'
 import { formatPercentileJson, formatPhase3Report } from './phase3.ts'
 import {
+  HAND_WRITTEN,
   formatReport,
   sectionOf,
   withHandWritten,
@@ -37,6 +59,7 @@ import {
   type GridJob,
   type OwnersJob,
 } from './threads.ts'
+import { classifyFiles, inventory } from './tunables.ts'
 
 // `npm run balance`: parses the options, plays every strategy at every
 // difficulty, each difficulty on its own worker thread, prints the progress
@@ -49,7 +72,8 @@ import {
 // report; with `--growth`, plays the growth strategies at each difficulty
 // and writes their section of the phase-4 report; with `--hiring`, plays
 // each candidate in each role against their twins at Moyen and writes the
-// phase-5 report. The time each job took
+// phase-5 report; with `--audit`, plays #298's audit of the whole game and
+// writes docs/balance/audit-2026-10.md. The time each job took
 // goes to the console only, so the same options always write the same
 // files.
 
@@ -125,8 +149,29 @@ export interface HiringArgs {
   readonly out: string
 }
 
+/** The audit of the whole game, `--audit` (#298). */
+export interface AuditArgs {
+  readonly mode: 'audit'
+  /** Seeds each difficulty plays, in every part of the audit. */
+  readonly games: number
+  /** Months each game plays. */
+  readonly months: number
+  /** Whether the sensitivity plays; without it, the report keeps its own. */
+  readonly sensitivity: boolean
+  /** Only the tunables whose label holds this, for quick checks; null: all. */
+  readonly tunables: string | null
+  /** Absolute path of the report. */
+  readonly out: string
+}
+
 export type BalanceArgs =
-  GridArgs | PercentileArgs | DefisArgs | BakeryArgs | GrowthArgs | HiringArgs
+  | GridArgs
+  | PercentileArgs
+  | DefisArgs
+  | BakeryArgs
+  | GrowthArgs
+  | HiringArgs
+  | AuditArgs
 
 function repoFile(path: string): string {
   return fileURLToPath(new URL(`../../${path}`, import.meta.url))
@@ -162,6 +207,12 @@ const BAKERY_DEFAULTS = {
 
 const GROWTH_DEFAULTS = BAKERY_DEFAULTS
 
+const AUDIT_DEFAULTS = {
+  games: 30,
+  months: 24,
+  out: repoFile('docs/balance/audit-2026-10.md'),
+}
+
 const HIRING_DEFAULTS = {
   games: 30,
   months: 12,
@@ -175,6 +226,7 @@ export const USAGE = [
   '       npm run balance -- --bakery [--games <n>] [--months <n>] [--out <file>]',
   '       npm run balance -- --growth [--games <n>] [--months <n>] [--out <file>]',
   '       npm run balance -- --hiring [--games <n>] [--months <n>] [--out <file>]',
+  '       npm run balance -- --audit [--games <n>] [--months <n>] [--no-sensitivity] [--tunables <text>] [--out <file>]',
 ].join('\n')
 
 /**
@@ -189,8 +241,9 @@ export const USAGE = [
  * same way), and other defaults. With `--defis`, `--games`, `--search` (a
  * whole number from 1), `--out` and `--json`, and defaults of their own.
  * With `--bakery`, `--growth` or `--hiring`, `--games`, `--months` (a
- * whole number from 1) and `--out`, and defaults of their own. Throws on
- * anything else,
+ * whole number from 1) and `--out`, and defaults of their own. With
+ * `--audit`, the same three, `--no-sensitivity` and `--tunables` (see
+ * `AuditArgs`). Throws on anything else,
  * including
  * positional arguments, `--events` with `--percentiles` or `--defis`, whose
  * owners always answer at random, `--contracts` or `--financing` with
@@ -208,6 +261,9 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
       bakery: { type: 'boolean' },
       growth: { type: 'boolean' },
       hiring: { type: 'boolean' },
+      audit: { type: 'boolean' },
+      'no-sensitivity': { type: 'boolean' },
+      tunables: { type: 'string' },
       years: { type: 'string' },
       months: { type: 'string' },
       search: { type: 'string' },
@@ -221,6 +277,46 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
     strict: true,
     allowPositionals: false,
   })
+  if (values.audit === true) {
+    for (const [option, value] of [
+      ['--percentiles', values.percentiles],
+      ['--defis', values.defis],
+      ['--bakery', values.bakery],
+      ['--growth', values.growth],
+      ['--hiring', values.hiring],
+      ['--years', values.years],
+      ['--search', values.search],
+      ['--events', values.events],
+      ['--contracts', values.contracts],
+      ['--financing', values.financing],
+      ['--json', values.json],
+    ] as const) {
+      if (value !== undefined) {
+        throw new RangeError(`${option} does not go with --audit`)
+      }
+    }
+    const noSensitivity = values['no-sensitivity'] === true
+    if (noSensitivity && values.tunables !== undefined) {
+      throw new RangeError('--tunables does not go with --no-sensitivity')
+    }
+    const defaults = AUDIT_DEFAULTS
+    return {
+      mode: 'audit',
+      games: wholeNumber('--games', values.games, defaults.games, 1),
+      months: wholeNumber('--months', values.months, defaults.months, 1),
+      sensitivity: !noSensitivity,
+      tunables: values.tunables ?? null,
+      out: resolve(values.out ?? defaults.out),
+    }
+  }
+  for (const [option, value] of [
+    ['--no-sensitivity', values['no-sensitivity']],
+    ['--tunables', values.tunables],
+  ] as const) {
+    if (value !== undefined) {
+      throw new RangeError(`${option} goes only with --audit`)
+    }
+  }
   if (values.hiring === true) {
     for (const [option, value] of [
       ['--percentiles', values.percentiles],
@@ -295,7 +391,7 @@ export function parseBalanceArgs(argv: readonly string[]): BalanceArgs {
   }
   if (values.months !== undefined) {
     throw new RangeError(
-      '--months goes only with --bakery, --growth or --hiring',
+      '--months goes only with --bakery, --growth, --hiring or --audit',
     )
   }
   if (values.defis === true) {
@@ -411,6 +507,9 @@ export async function main(argv: readonly string[]): Promise<number> {
         break
       case 'hiring':
         await writeHiring(args, started)
+        break
+      case 'audit':
+        await writeAudit(args, started)
         break
     }
     return 0
@@ -601,6 +700,109 @@ async function writeHiring(
   )
   writeReport(out, formatHiringReport({ games, months, runs }))
   console.log(`Wrote ${out} in ${seconds(performance.now() - started)}`)
+}
+
+async function writeAudit(
+  { games, months, sensitivity, tunables: only, out }: AuditArgs,
+  started: number,
+): Promise<void> {
+  const files = classifyFiles(readdirSync(repoFile('src/content')))
+  const unknown = files.filter(({ kind }) => kind === 'unknown')
+  if (unknown.length > 0) {
+    throw new Error(
+      `Classify every content file in tools/balance/tunables.ts first: ${unknown.map(({ file }) => file).join(', ')}`,
+    )
+  }
+  const tunables = inventory()
+  const done = (what: string) => {
+    console.log(`${what} in ${seconds(performance.now() - started)}`)
+  }
+  const definitions = await playAll(
+    difficultyIdSchema.options.map((difficulty): DefinitionsJob => ({
+      kind: 'audit-definitions',
+      difficulty,
+      games,
+      months,
+    })),
+    ({ difficulty }) => {
+      done(`${DIFFICULTIES.difficulties[difficulty].name}: definitions`)
+    },
+  )
+  const leverRuns = await playAll(
+    difficultyIdSchema.options.flatMap((difficulty) =>
+      SITUATIONS.map((situation): LeversJob => ({
+        kind: 'audit-levers',
+        difficulty,
+        situation,
+        games,
+        months,
+      })),
+    ),
+    ({ difficulty, situation }) => {
+      done(
+        `${DIFFICULTIES.difficulties[difficulty].name}: levers from ${situation}`,
+      )
+    },
+  )
+  let rows = null
+  let sensitivityRuns: Awaited<ReturnType<typeof playSensitivity>> = []
+  if (sensitivity) {
+    const moves = plannedMoves(
+      only === null
+        ? tunables
+        : tunables.filter(({ label }) => label.includes(only)),
+      games,
+      months,
+    )
+    sensitivityRuns = await playSensitivity(moves, games, months, done)
+    const [baseline, ...runs] = sensitivityRuns
+    if (baseline === undefined) throw new Error('The baseline did not play')
+    rows = sensitivityRows(moves, baseline, runs)
+  }
+  const verdicts = leverVerdicts(leverRuns)
+  const previous = readPrevious(out)
+  const report = formatAuditReport(
+    {
+      games,
+      months,
+      files,
+      tunables,
+      definitions: checkDefinitions(
+        { definitions, levers: leverRuns, sensitivity: sensitivityRuns },
+        verdicts,
+      ),
+      levers: verdicts,
+      sensitivity: rows,
+    },
+    sectionOf(previous, SENSITIVITY_MARKERS),
+  )
+  writeFile(
+    out,
+    previous?.split('\n').includes(HAND_WRITTEN) === true
+      ? withHandWritten(previous, report)
+      : `${report.trimEnd()}\n\n${handWrittenStart()}`,
+  )
+  console.log(`Wrote ${out} in ${seconds(performance.now() - started)}`)
+}
+
+/** Plays the baseline, then each move, and resolves to them in that order. */
+async function playSensitivity(
+  moves: ReturnType<typeof plannedMoves>,
+  games: number,
+  months: number,
+  done: (what: string) => void,
+) {
+  const jobs = [
+    baselineJob(games, months),
+    ...moves.flatMap(({ job }) => (job === null ? [] : [job])),
+  ]
+  let finished = 0
+  return playAll(jobs, ({ label, factor }) => {
+    finished += 1
+    if (finished % 50 === 0 || finished === jobs.length) {
+      done(`Sensitivity: ${finished} of ${jobs.length} (${label} × ${factor})`)
+    }
+  })
 }
 
 /** Writes `report` to `out`, keeping the hand-written part already there. */

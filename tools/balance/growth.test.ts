@@ -19,6 +19,8 @@ import {
   contractReserve,
   duventWorth,
   grocersBySize,
+  isLetter,
+  letterChooser,
   loanOnlyChooser,
   monthOf,
   plannedGrocers,
@@ -26,6 +28,7 @@ import {
   runGrowth,
   signingDay,
   strategyLabel,
+  withLetters,
   type GrowthGame,
   type GrowthStrategy,
 } from './growth.ts'
@@ -447,4 +450,52 @@ describe('runGrowth', () => {
     expect(games.some(({ game }) => game.withoutDuvent !== null)).toBe(true)
     expect(runGrowth(job)).toEqual(run)
   }, 30_000)
+})
+
+describe("Mme Prudhomme's letters in a growth game (#298)", () => {
+  const letters = FINANCING.bankruptcy.notices.map(({ event }) => event)
+  const lettered = withLetters(GROWTH_EVENTS)
+
+  it('adds the letters once, after the content', () => {
+    expect(GROWTH_EVENTS.events.some(isLetter)).toBe(false)
+    expect(lettered.events.filter(isLetter).map(({ id }) => id)).toEqual(
+      letters,
+    )
+    expect(withLetters(lettered)).toBe(lettered)
+  })
+
+  it('acknowledges a letter with its one choice, and nothing else', () => {
+    const [letter] = lettered.events.filter(isLetter)
+    if (letter === undefined) throw new Error('No letter')
+    expect(letterChooser(null)(letter)).toBe(letter.choices[0]?.id)
+    const loan = EVENTS.events.find(({ id }) => id === FINANCING.loanEvent)
+    if (loan === undefined) throw new Error('No loan card')
+    expect(() => letterChooser(null)(loan)).toThrow(RangeError)
+    expect(letterChooser(() => 'autre')(loan)).toBe('autre')
+    const twice = { ...letter, choices: [...letter.choices, ...letter.choices] }
+    expect(() => letterChooser(null)(twice)).toThrow(RangeError)
+  })
+
+  it('gets a letter when its content holds them, and none when it does not', () => {
+    const naive: GrowthStrategy = {
+      ...PLAIN,
+      contracts: 'three',
+      financing: 'refuse',
+    }
+    const { state } = playGrowthGame(
+      1,
+      'difficile',
+      naive,
+      6,
+      'refuse',
+      lettered,
+    )
+    expect(
+      state.events.history.filter(({ event }) => letters.includes(event)),
+    ).not.toEqual([])
+    const plain = playGrowthGame(1, 'difficile', naive, 6).state
+    expect(
+      plain.events.history.some(({ event }) => letters.includes(event)),
+    ).toBe(false)
+  })
 })

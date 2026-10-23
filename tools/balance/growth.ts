@@ -234,6 +234,53 @@ export function loanOnlyChooser(
 /** The content a growth game plays: the renewals and the financing. */
 export const GROWTH_EVENTS: EventContent = withFinancingCards(RENEWALS_ONLY)
 
+/** Whether `card` is one of Mme Prudhomme's letters (#160). */
+export function isLetter({ id }: EventCard): boolean {
+  return FINANCING.bankruptcy.notices.some(({ event }) => event === id)
+}
+
+/**
+ * `content` with Mme Prudhomme's letters of `from`, by default the shipped
+ * ones, after its own, unless it holds them already. No draw brings them,
+ * so the content's draws stay as they were (#298).
+ */
+export function withLetters(
+  content: EventContent,
+  from: EventContent = EVENTS,
+): EventContent {
+  const held = new Set(content.events.map(({ id }) => id))
+  const missing = from.events.filter(
+    (card) => isLetter(card) && !held.has(card.id),
+  )
+  return missing.length === 0
+    ? content
+    : { ...content, events: [...content.events, ...missing] }
+}
+
+/**
+ * Acknowledges each of Mme Prudhomme's letters with its one choice, and
+ * answers every other card with `fallback`. Throws a RangeError on another
+ * card when `fallback` is null, and on a letter that has more than one
+ * choice.
+ */
+export function letterChooser(
+  fallback: ((event: EventCard) => string) | null,
+): (event: EventCard) => string {
+  return (card) => {
+    if (isLetter(card)) {
+      const [only, ...others] = card.choices
+      if (only === undefined || others.length > 0) {
+        throw new RangeError(`${card.id} needs exactly one choice`)
+      }
+      return only.id
+    }
+    if (fallback === null) {
+      throw new RangeError(`Only the letters come up: ${card.id}`)
+    }
+    return fallback(card)
+  }
+}
+
 /** A contract the chain or the plan signed, and the morning it did. */
 export interface Signing {
   readonly grocer: GrocerId
@@ -346,7 +393,10 @@ function cashBook(): (journal: Journal) => Cents {
  * next rung of the company's when Encaisse does; a rung coming soon is not
  * for sale. Only the renewals and the financing's cards come up: each
  * renewal is accepted, and the financing answered by `chooser`, by default
- * the strategy's. Returns the last state too, for the tests.
+ * the strategy's. The cards come from `content`, by default
+ * `GROWTH_EVENTS`; Mme Prudhomme's letters, when it holds them (see
+ * `withLetters`), are acknowledged. Returns the last state too, for the
+ * tests.
  */
 export function playGrowthGame(
   seed: number,
@@ -354,6 +404,7 @@ export function playGrowthGame(
   strategy: GrowthStrategy,
   months: number,
   chooser: GrowthChooser = strategy.financing,
+  content: EventContent = GROWTH_EVENTS,
 ): { game: GrowthGame; state: GameState } {
   const ends = monthEnds(months)
   const lastDay = ends.at(-1) ?? 0
@@ -366,7 +417,7 @@ export function playGrowthGame(
   const bakeryDay = strategy.bakery === 'month4' ? endOfMonth(0, 2) + 1 : null
   const planned = plannedGrocers(strategy.contracts)
   const firstSigning = signingDay()
-  const renewals = contractChooser('all', null)
+  const renewals = contractChooser('all', letterChooser(null))
   const choose =
     chooser === 'loanOnly'
       ? loanOnlyChooser(renewals)
@@ -388,7 +439,7 @@ export function playGrowthGame(
       cash: cashOf(state.journal),
     })
     if (strategy.dream) state = buyRungs(state, cashOf)
-    state = playMorning(state, GROWTH_EVENTS, choose)
+    state = playMorning(state, content, choose)
     const close = cashOf(state.journal)
     if (lowestClose === null || close < lowestClose) lowestClose = close
     if (close < 0 && firstDayBelowZero === null) firstDayBelowZero = day
@@ -462,7 +513,7 @@ function signContracts(
  * a truck is left alone: these players staff no truck but the first, so it
  * would stay closed (#259).
  */
-function buyRungs(
+export function buyRungs(
   state: GameState,
   cashOf: (journal: Journal) => Cents,
 ): GameState {

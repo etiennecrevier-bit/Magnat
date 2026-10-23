@@ -5,6 +5,7 @@ import { runOwners } from './owners.ts'
 import { runBalance, type DifficultyRun } from './play.ts'
 import type { Strategy } from './strategies.ts'
 import { runDefi } from './defis.ts'
+import { baselineJob, runSensitivity } from './audit.ts'
 import { runGrowth } from './growth.ts'
 import {
   jobLabel,
@@ -400,4 +401,37 @@ describe('playInWorker', () => {
       await stop()
     }
   }, 30_000)
+
+  it('plays an audit job on its own thread, the content moved before the engine reads it (#298)', async () => {
+    const baseline = { ...baselineJob(1, 1), difficulties: ['moyen'] } as const
+    const moved = {
+      ...baseline,
+      label: 'difficulty.json difficulties.moyen.startingCashCents',
+      file: 'difficulty.json',
+      edits: [
+        {
+          path: ['difficulties', 'moyen', 'startingCashCents'],
+          value: 1_200_000,
+        },
+      ],
+      factor: 1.2,
+    }
+    expect(jobLabel(moved)).toBe(
+      'difficulty.json difficulties.moyen.startingCashCents × 1.2',
+    )
+    const plain = playInWorker(baseline)
+    const edited = playInWorker(moved)
+    try {
+      const [before, after] = await Promise.all([plain.run, edited.run])
+      // The shipped content, played here, is what the baseline's thread plays.
+      expect(before).toEqual(runSensitivity(baseline))
+      for (const policy of ['sensible', 'best'] as const) {
+        const [[was = 0] = []] = before.played.moyen?.[policy] ?? []
+        const [[is = 0] = []] = after.played.moyen?.[policy] ?? []
+        expect(is - was).toBe(200_000)
+      }
+    } finally {
+      await Promise.all([plain.stop(), edited.stop()])
+    }
+  }, 60_000)
 })
