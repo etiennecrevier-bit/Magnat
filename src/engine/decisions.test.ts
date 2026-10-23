@@ -793,9 +793,10 @@ describe('the staff', () => {
     const morning = tick(state)
     expect(morning.decisions.staff).toEqual(state.pendingDecisions?.staff)
     expect(morning.staff).toEqual([])
+    // Both ask more than their role's start (#255).
     expect(tick(morning).staff).toEqual([
-      { ...hireOf('amelie', 'camion'), hiredOnDay: 1 },
-      { ...hireOf('kevin', 'livreur'), hiredOnDay: 1 },
+      { ...hireOf('amelie', 'camion'), hiredOnDay: 1, underpaidSince: 1 },
+      { ...hireOf('kevin', 'livreur'), hiredOnDay: 1, underpaidSince: 1 },
     ])
   })
 
@@ -808,9 +809,9 @@ describe('the staff', () => {
     expect(raised.pendingDecisions?.staff).toEqual([
       { ...hireOf('amelie', 'camion'), hourlyWage: 2000 },
     ])
-    // Day 1 pays the old wage, day 2 the new one.
+    // Day 1 pays the old wage, below what she asks, day 2 the new one.
     expect(tick(raised).staff).toEqual([
-      { ...hireOf('amelie', 'camion'), hiredOnDay: 1 },
+      { ...hireOf('amelie', 'camion'), hiredOnDay: 1, underpaidSince: 1 },
     ])
     expect(tick(tick(raised)).staff).toEqual([
       { ...hireOf('amelie', 'camion'), hourlyWage: 2000, hiredOnDay: 1 },

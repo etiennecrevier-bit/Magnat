@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import messagesJson from './messages.fr.json'
+import { candidateIdSchema } from './schema.ts'
 
 // Rules the messages are held to, not tunables: each kind needs enough lines
 // that a player rarely reads the same one twice in a row, and a line has to
@@ -27,6 +28,14 @@ export const messageKindSchema = z.enum([
 
 export type MessageKind = z.infer<typeof messageKindSchema>
 
+/**
+ * The messages an employee writes in their own words, one line per
+ * candidate: `underpaid`, the warning, and `quit` (#255).
+ */
+export const OWN_WORDS = ['underpaid', 'quit'] as const
+
+export type OwnWordsKind = (typeof OWN_WORDS)[number]
+
 const lineSchema = z
   .string()
   .min(1)
@@ -47,6 +56,12 @@ const senderSchema = z.strictObject({
 /** A kind whose sender the game names: a grocer or an employee. */
 const namedByGameSchema = z.strictObject({ lines: linesSchema })
 
+/**
+ * What each employee says in their own voice (#255), one line each: they
+ * are not kinds the game picks a line of at random.
+ */
+const ownWordsSchema = z.record(candidateIdSchema, lineSchema)
+
 export const messagesSchema = z
   .strictObject({
     _note: z.string().optional(),
@@ -57,20 +72,33 @@ export const messagesSchema = z
     contractBroken: namedByGameSchema,
     hired: namedByGameSchema,
     fired: namedByGameSchema,
+    /**
+     * An employee paid below their asking wage, a week before they quit
+     * unless the player raises it (#255).
+     */
+    underpaid: ownWordsSchema,
+    /** An employee who quits, underpaid, the morning they leave (#255). */
+    quit: ownWordsSchema,
   })
   .superRefine((messages, ctx) => {
     const seen = new Set<string>()
+    const once = (line: string, path: (string | number)[]) => {
+      if (seen.has(line)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'the same line appears twice',
+          path,
+        })
+      }
+      seen.add(line)
+    }
     for (const kind of messageKindSchema.options) {
-      messages[kind].lines.forEach((line, i) => {
-        if (seen.has(line)) {
-          ctx.addIssue({
-            code: 'custom',
-            message: 'the same line appears twice',
-            path: [kind, 'lines', i],
-          })
-        }
-        seen.add(line)
-      })
+      messages[kind].lines.forEach((line, i) => once(line, [kind, 'lines', i]))
+    }
+    for (const kind of OWN_WORDS) {
+      for (const [candidate, line] of Object.entries(messages[kind])) {
+        once(line, [kind, candidate])
+      }
     }
   })
 

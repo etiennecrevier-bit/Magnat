@@ -875,8 +875,73 @@ describe('loadStaffContent', () => {
     [`${CAMION}.hourlyWageCents.start`, 1750.5],
     ['candidates.amelie.name', ' Amélie'],
     ['candidates.amelie.portrait', 'Amelie'],
+    ['candidates.amelie.strength', 'charme'],
+    ['candidates.amelie.weakness', 'lenteur'],
+    ['employeeBotchedShare', -0.01],
+    ['employeeBotchedShare', 1.5],
+    ['bakeryWasteShare', 2],
+    ['welcomedSegment', 'touriste'],
+    ['discoveryDays', 0],
+    ['underpaidWeeks', 1.5],
+    ['warningWeeks', 0],
+    ['traits.rapidite.name', ''],
+    ['traits.rapidite.roles', []],
+    ['traits.rapidite.strong', -1],
+    ['traits.rapidite.askingPremiumCents', 1.5],
+    ['traits.rapidite.askingDiscountCents', -100],
   ])('rejects %s = %j', (path, value) => {
     reject(withStaffValue(path, value), path)
+  })
+
+  it('loads the traits of #255, each candidate with one strength and one weakness', () => {
+    const staff = loadStaffContent()
+    expect(Object.keys(staff.traits)).toEqual([
+      'rapidite',
+      'minutie',
+      'fiabilite',
+      'accueil',
+    ])
+    expect(staff.traits.minutie).toMatchObject({
+      name: 'Minutie',
+      roles: ['camion', 'boulanger'],
+    })
+    expect(staff.candidates.kevin).toMatchObject({
+      strength: 'rapidite',
+      weakness: 'minutie',
+    })
+  })
+
+  it('rejects a candidate whose strength is their weakness', () => {
+    const raw = withStaffValue('candidates.kevin.weakness', 'rapidite')
+    reject(raw, 'candidates.kevin.weakness')
+    expect(() => loadStaff(raw)).toThrow(
+      'a strength cannot also be the weakness',
+    )
+  })
+
+  it('rejects a trait whose normal is not between its strong and weak, or a role listed twice', () => {
+    for (const normal of [0.5, 1.15, 2]) {
+      const raw = withStaffValue('traits.rapidite.normal', normal)
+      reject(raw, 'traits.rapidite.normal')
+    }
+    reject(
+      withStaffValue('traits.minutie.roles', ['camion', 'camion']),
+      'traits.minutie.roles',
+    )
+    reject(
+      withStaffValue('traits.minutie.roles', ['gerant']),
+      'traits.minutie.roles[0]',
+    )
+  })
+
+  it('rejects a trait missing, one the game does not know, and a chance of absence above 1', () => {
+    reject(without('traits.accueil', staffJson), 'traits.accueil')
+    expect(() =>
+      loadStaff(withStaffValue('traits.charme', staffJson.traits.accueil)),
+    ).toThrow(/charme/)
+    const raw = withStaffValue('traits.fiabilite.weak', 1.5)
+    reject(raw, 'traits.fiabilite.weak')
+    expect(() => loadStaff(raw)).toThrow('a chance of absence is at most 1')
   })
 
   it('rejects a starting wage outside its range', () => {

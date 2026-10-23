@@ -36,6 +36,7 @@ import {
   BAKERY,
   bake,
   bakeryMorning,
+  bakeryWaste,
   isBakeryRunning,
 } from './bakery.ts'
 import { endAtClose } from './bankruptcy.ts'
@@ -51,6 +52,7 @@ import {
   noWithdrawals,
   perSegment,
   serveWalkIns,
+  type CrowdChanges,
   type Served,
   type Withdrawal,
 } from './customers.ts'
@@ -67,7 +69,7 @@ import {
   type TruckOnBooks,
 } from './dream.ts'
 import { startOfDay } from './effects.ts'
-import { effectsOf, energyAtClose } from './energy.ts'
+import { energyAtClose } from './energy.ts'
 import { FINANCING, closingFinancing, financingCharges } from './financing.ts'
 import {
   PRODUCTS,
@@ -84,10 +86,18 @@ import { inDebt, livePersonalDay } from './personal.ts'
 import { PLACES, awayFromCounter, discountAtClose } from './places.ts'
 import { credit, debit, depreciate, pay, post } from './posting.ts'
 import { servers } from './service.ts'
-import { STAFF, crewOf, payWages, staffMorning } from './staff.ts'
-import { inEffect, streetOn } from './street.ts'
+import {
+  STAFF,
+  crewOf,
+  isAbsent,
+  payWages,
+  quitting,
+  staffMorning,
+  traitValue,
+} from './staff.ts'
+import { inEffect, streetOn, type Street } from './street.ts'
 import { isProtected } from './tutorial.ts'
-import type { Day, Decisions, GameState, Lot } from './types.ts'
+import type { Day, Decisions, Employee, GameState, Hire, Lot } from './types.ts'
 import { recordDay } from './week.ts'
 
 /** The shipped food truck content, validated once when the engine loads. */
@@ -273,8 +283,11 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * `financingCharges`). Then, open or closed, the bakery's morning with
  * `bakeryContent` and the prices of the game's difficulty (see
  * `bakeryMorning`), then the staff's with `staff`,
- * which hires and lets go as the decisions want (see `staffMorning`), and who
- * does what that day, the owner away all day or not (see `crewOf`). Then the
+ * which hires and lets go as the decisions want (see `staffMorning`), then
+ * lets go those who quit that morning, underpaid, out of the decisions and
+ * those waiting too (see `quitting`), and who does what that day, the owner
+ * away all day or not and the absent employees' work not done (see
+ * `isAbsent` and `crewOf`). Then the
  * deliveries of the contracts with `grocers`, missed when nobody delivers, the
  * bakery making their croissants first when it makes the truck's and someone
  * bakes (see `deliverContracts`). On a day the truck opens, one of the days
@@ -282,10 +295,12 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * the morning restock of every product the street leaves on sale, but the
  * croissants when they come from the bakery and it runs, which then makes them
  * with the capacity the deliveries left if someone bakes, and none otherwise
- * (see `bake`), then the walk-in customers,
+ * (see `bake`), but buys them by the bake rule, within the bakery's
+ * capacity, when the baker is absent, then the walk-in customers,
  * with those the marketing of the days before brings on top (see
  * `marketingCrowd`) and as the street, and the rungs owned, change them (see
- * `withDreamStreet`), lining up at the counter, at the times and with the
+ * `withDreamStreet`), the regulars × the accueil of each employee at the
+ * truck, lining up at the counter, at the times and with the
  * line the rungs owned leave (see `dreamService`),
  * where `servers()` serve them from the stock on hand, none of a product that
  * cannot be sold, the owner slower and botching units the more tired they are
@@ -296,7 +311,8 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * discount a trip to the mill left off each unit's cost, which its first
  * restock that buys anything uses up (see `discountAtClose`). On a day it is closed, nobody
  * comes, nothing is bought and nothing is spent on marketing, so the generator
- * does not move. On payday, open or closed, the owner's weekly pay, then each
+ * does not move. When an employee baked, the croissants they threw away (see
+ * `bakeryWaste`). On payday, open or closed, the owner's weekly pay, then each
  * employee's (see `payWages`). Every day: the
  * spoilage at the close. Every entry is dated `morning.day`. Then the owner's
  * own day, outside the books, with `personal` as their living costs (see
@@ -310,6 +326,7 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * state on the same day with the books, the bakery, the staff, the contracts,
  * the stock, the generator, the marketing history, `lastDay`, with the changes
  * to the street in effect that day, the deliveries and those missed, the
+ * employees absent whose role had work that day and those who quit, the
  * owner's personal account, their energy, the events, without the changes
  * whose last day it was, the financing with Encaisse at the close (see
  * `closingFinancing`), the game ended if that close ends it, by
@@ -395,16 +412,29 @@ export function playDay(
     day,
     staff,
   )
-  const crew = crewOf(staffed.staff, started.ownerAway)
-  const open =
-    decisions.daysOpen.includes(weekday) &&
-    !street.closed &&
-    (crew.ownerServes || crew.atTruck > 0)
+  const left = quitting(staffed.staff, day, staff)
+  const absent = left.staff
+    .filter((employee) => isAbsent(started.seed, day, employee, staff))
+    .map(({ candidate }) => candidate)
+  const crew = crewOf(left.staff, started.ownerAway, absent)
+  const truckDay = decisions.daysOpen.includes(weekday) && !street.closed
+  const open = truckDay && (crew.ownerServes || crew.atTruck > 0)
   const making =
     decisions.croissantSource === 'fabriquer' && isBakeryRunning(bakery.bakery)
   const baking = making && crew.bakes !== null
+  const bakerAbsent =
+    crew.baker === null && left.staff.some(({ role }) => role === BAKER)
   const delivered = deliverContracts(
-    { ...started, journal: staffed.journal, staff: staffed.staff },
+    {
+      ...started,
+      journal: staffed.journal,
+      staff: left.staff,
+      decisions: without(decisions, left.quits),
+      pendingDecisions:
+        started.pendingDecisions === null
+          ? null
+          : without(started.pendingDecisions, left.quits),
+    },
     baking,
     crew.delivers !== null,
     prices,
@@ -423,13 +453,20 @@ export function playDay(
   let discounted = false
 
   if (open) {
+    // With the baker absent, the croissants they would have made are bought.
+    const buyInstead = making && bakerAbsent
     const restocked = restock(
       lots,
       day,
-      decisions.restock,
+      buyInstead
+        ? { ...decisions.restock, [BAKED]: decisions.bake }
+        : decisions.restock,
       content,
-      making ? { ...street.unavailable, [BAKED]: true } : street.unavailable,
+      making && !buyInstead
+        ? { ...street.unavailable, [BAKED]: true }
+        : street.unavailable,
       discount,
+      buyInstead ? { [BAKED]: bakeryContent.capacityPerDay } : {},
     )
     discounted = restocked.units > 0
     journal = post(journal, day, MEMO.purchases, [
@@ -468,11 +505,11 @@ export function playDay(
           energy,
           staff,
           awayFromCounter(state, places, dream),
+          absent,
         ),
-        botchedShare: effectsOf(state.energy, energy).botchedShare,
       },
       marketingCrowd(state.marketingHistory, content.marketing),
-      street,
+      welcomed(street, crew.truckers, staff),
     )
 
     // The sale, its cost and what it costs to make are separate entries, so
@@ -507,6 +544,13 @@ export function playDay(
     )
     marketingSpent = decisions.marketingDaily
     journal = pay(journal, day, MEMO.marketing, MARKETING, marketingSpent)
+  }
+
+  if (baked > 0 && crew.baker !== null) {
+    const share =
+      staff.bakeryWasteShare *
+      traitValue(crew.baker.candidate, 'minutie', BAKER, staff)
+    journal = bakeryWaste(journal, day, baked, share, prices).journal
   }
 
   if (weekday === content.ownerPayWeekday) {
@@ -552,6 +596,18 @@ export function playDay(
     dreamEnergy(energy, bonuses),
   )
   const lasting = modifiers.filter(({ lastDay }) => lastDay > day)
+  const deliveriesDue =
+    delivered.deliveries.length + delivered.missed.length > 0
+  const missedWork = absent.filter((candidate) =>
+    hadWork(
+      left.staff.find((employee) => employee.candidate === candidate),
+      {
+        truck: truckDay,
+        deliveries: deliveriesDue,
+        bakery: making && (truckDay || deliveriesDue),
+      },
+    ),
+  )
 
   const closing: GameState = {
     ...state,
@@ -583,6 +639,8 @@ export function playDay(
       modifiers: inEffect(modifiers, day),
       deliveries: delivered.deliveries,
       missed: delivered.missed,
+      ...(missedWork.length > 0 ? { absent: missedWork } : {}),
+      ...(left.quits.length > 0 ? { quits: left.quits } : {}),
     },
     personal: account,
     energy: closingEnergy,
@@ -625,6 +683,69 @@ export function playDay(
     ...recorded,
     challenge: recordChallengeDay(recorded, defi, entriesOf(opening).length),
   }
+}
+
+const BAKER = 'boulanger'
+const AT_TRUCK = 'camion'
+const DELIVERER = 'livreur'
+
+/** `decisions` without the employees of `quits` in the staff they want. */
+function without(
+  decisions: Decisions,
+  quits: readonly Hire['candidate'][],
+): Decisions {
+  if (quits.length === 0) return decisions
+  return {
+    ...decisions,
+    staff: decisions.staff.filter(
+      ({ candidate }) => !quits.includes(candidate),
+    ),
+  }
+}
+
+/**
+ * Whether `employee`'s role had work on a day: the truck's on a day it
+ * opens, the deliverer's on a day of deliveries, the baker's on a day the
+ * bakery makes croissants for either.
+ */
+function hadWork(
+  employee: Employee | undefined,
+  work: { truck: boolean; deliveries: boolean; bakery: boolean },
+): boolean {
+  switch (employee?.role) {
+    case AT_TRUCK:
+      return work.truck
+    case DELIVERER:
+      return work.deliveries
+    case BAKER:
+      return work.bakery
+    default:
+      return false
+  }
+}
+
+/**
+ * `street` with the walk-ins of the content's `welcomedSegment`, the
+ * regulars, × each of the `truckers`' accueil (see `traitValue`), as a
+ * change to the street would make them: more of them come, or fewer.
+ */
+function welcomed(
+  street: Street,
+  truckers: readonly Employee[],
+  staff: StaffContent,
+): Street {
+  const factor = truckers.reduce(
+    (product, { candidate }) =>
+      product * traitValue(candidate, 'accueil', AT_TRUCK, staff),
+    1,
+  )
+  if (factor === 1) return street
+  const segment = staff.welcomedSegment
+  const walkIns: CrowdChanges['walkIns'] = {
+    ...street.walkIns,
+    [segment]: street.walkIns[segment] * factor,
+  }
+  return { ...street, walkIns }
 }
 
 /** The game's first day: day 0, or its Défi's first day. */
@@ -723,7 +844,8 @@ function closed(rngState: number): Served {
  * Buys each product its restock rule calls for, at today's unit cost less
  * `discount` of it, the discount rounded to the cent, as a new lot after the
  * others, but
- * none of a product that is `unavailable`. Also returns the units bought.
+ * none of a product that is `unavailable`, and no more of one than its cap
+ * in `caps`, if any. Also returns the units bought.
  */
 function restock(
   lots: readonly Lot[],
@@ -732,13 +854,17 @@ function restock(
   content: FoodTruckContent,
   unavailable: Readonly<Record<ProductId, boolean>>,
   discount: number,
+  caps: Partial<Readonly<Record<ProductId, number>>> = {},
 ): { lots: readonly Lot[]; cost: Cents; units: number } {
   const bought: Lot[] = []
   let cost = ZERO
   let units = 0
   for (const product of PRODUCTS) {
     if (unavailable[product]) continue
-    const quantity = orderSize(rules[product], onHand(lots, product))
+    const quantity = Math.min(
+      orderSize(rules[product], onHand(lots, product)),
+      caps[product] ?? Number.POSITIVE_INFINITY,
+    )
     if (quantity === 0) continue
     const listed = content.products[product].unitCostCents
     const unitCost = sub(listed, mulRatio(listed, discount))

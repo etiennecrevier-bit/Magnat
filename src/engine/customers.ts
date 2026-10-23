@@ -150,16 +150,13 @@ export function noWithdrawals(): Record<ProductId, Withdrawal[]> {
   ) as Record<ProductId, Withdrawal[]>
 }
 
-/** Who serves the walk-ins, how long serving takes, and how well. */
+/**
+ * Who serves the walk-ins and how long serving takes; each server botches
+ * their own `botchedShare` of the units they make.
+ */
 export interface Counter {
   readonly service: Service
   readonly servers: readonly Server[]
-  /**
-   * The share of the units the owner makes that are botched and made again:
-   * 0 when the owner is rested (see `effectsOf` in energy.ts). Employees
-   * botch none.
-   */
-  readonly botchedShare: number
 }
 
 /**
@@ -247,13 +244,14 @@ export const NO_CHANGES: CrowdChanges = {
  * counter, they buy each unit they want that is left; one sold out is a
  * lost sale, so a stockout hits the customers served later.
  *
- * Each unit the owner makes for a customer they serve, counted from 1 in the
- * order they are made that day, remakes aside, is botched when
- * ⌊n × `botchedShare`⌋ goes up at it: a fixed quota rather than a draw, so
- * at 0.02 every 50th unit. A botched unit leaves the stock and is thrown out,
- * then the next unit left is made in its place; with none left, the customer
- * loses it as a lost sale. Making it again takes no time, so the line never
- * depends on the stock or the fatigue. An employee botches nothing.
+ * Each unit a server makes for a customer they serve, counted from 1 in the
+ * order they make them that day, remakes aside, is botched when
+ * ⌊n × their `botchedShare`⌋ goes up at it: a fixed quota rather than a
+ * draw, so at 0.02 every 50th unit. A botched unit leaves the stock and is
+ * thrown out, then the next unit left is made in its place; with none
+ * left, the customer loses it as a lost sale. Making it again takes no
+ * time, so the line never depends on the stock, the fatigue or the
+ * minutie.
  *
  * Never mutates its arguments.
  */
@@ -332,9 +330,8 @@ export function serveWalkIns(
       runs.push({ units: 1, botched: asBotched })
     }
   }
-  const { botchedShare } = counter
-  /** The units the owner made, remakes aside. */
-  let made = 0
+  /** The units each server made, remakes aside. */
+  const made = new Map<Server, number>()
   const tally = perSegment<Record<keyof SegmentSummary, number>>(() => ({
     visits: 0,
     buyers: 0,
@@ -379,11 +376,11 @@ export function serveWalkIns(
             lost[product] += 1
             continue
           }
-          if (server.owner) made += 1
+          const n = (made.get(server) ?? 0) + 1
+          made.set(server, n)
+          const { botchedShare } = server
           if (
-            server.owner &&
-            Math.floor(made * botchedShare) >
-              Math.floor((made - 1) * botchedShare)
+            Math.floor(n * botchedShare) > Math.floor((n - 1) * botchedShare)
           ) {
             take(product, true)
             botched[product] += 1

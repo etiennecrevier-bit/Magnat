@@ -101,6 +101,8 @@ export type DecisionChange =
       readonly kind: 'hire'
       readonly role: StaffRoleId
       readonly candidate: CandidateId
+      /** What they earn an hour; the role's starting wage when absent. */
+      readonly hourlyWage?: Cents
     }
   | { readonly kind: 'fire'; readonly candidate: CandidateId }
   | {
@@ -184,7 +186,8 @@ export function latestDecisions(state: GameState): Decisions {
  * the bakery's changes.
  *
  * `hire` adds the candidate to the staff the player wants, after the
- * others, at their role's starting wage in `staff`; `fire` takes them out,
+ * others, at the hourly wage it names, or else their role's starting wage
+ * in `staff`; `fire` takes them out,
  * which costs nothing for a hire who has not started yet; `setWage` gives
  * them another hourly wage. The next morning hires, lets go and pays as the
  * staff then wants (see `staffMorning`). Throws a RangeError if `hire` names
@@ -462,14 +465,15 @@ function changed(
 }
 
 /**
- * The hire `change` makes, on top of `decisions`, at the role's starting
- * wage: the candidate may be neither wanted yet nor at work the day under
- * way, which would make them leave and start again the same morning.
+ * The hire `change` makes, on top of `decisions`, at the wage it names or
+ * else the role's starting wage: the candidate may be neither wanted yet
+ * nor at work the day under way, which would make them leave and start
+ * again the same morning.
  */
 function hired(
   state: GameState,
   decisions: Decisions,
-  { role, candidate }: Extract<DecisionChange, { kind: 'hire' }>,
+  { role, candidate, hourlyWage }: Extract<DecisionChange, { kind: 'hire' }>,
   staff: StaffContent,
 ): Hire {
   if (!staffRoleIdSchema.safeParse(role).success) {
@@ -489,7 +493,7 @@ function hired(
   return {
     candidate,
     role,
-    hourlyWage: staff.roles[role].hourlyWageCents.start,
+    hourlyWage: hourlyWage ?? staff.roles[role].hourlyWageCents.start,
   }
 }
 

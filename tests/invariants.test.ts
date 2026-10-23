@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import {
   isNoticeCard,
+  type CandidateId,
+  type StaffRoleId,
   type DifficultyId,
   type EventContent,
   type StreetModifierKind,
@@ -20,7 +22,7 @@ import { resolveEvent } from '../src/engine/events.ts'
 import { FINANCING, isLoanOpen } from '../src/engine/financing.ts'
 import { inventoryValue } from '../src/engine/inventory.ts'
 import { add, cents, sub, type Cents } from '../src/engine/money.ts'
-import { STAFF_MEMO } from '../src/engine/staff.ts'
+import { STAFF_MEMO, askingWage } from '../src/engine/staff.ts'
 import { MODIFIER_KINDS } from '../src/engine/street.ts'
 import { TUTORIAL, isProtected, tutorialDay } from '../src/engine/tutorial.ts'
 import type { Day, GameState } from '../src/engine/types.ts'
@@ -53,22 +55,44 @@ import {
 // offers and renewals all accepted (#156), so the contracts deliver and the
 // grocers pay through the ten years, the emergency loan and the shares the
 // engine offers when the encaisse closes below zero accepted too (#159), and
-// every other card at random. One game also hires an employee at the truck
-// and a deliverer on day 0 (#158), so their training and their wages post
-// through the ten years, and it runs short of cash and borrows, long enough
-// for Mme Prudhomme's letters before a bankruptcy (#160), though none of
-// the games ends. The essai card sells shares too, so the investor's
+// every other card at random. Two games hire on day 0 (#158), at the wage
+// each employee asks (#255), so their training and their wages post
+// through the ten years and nobody quits: the first opens a bakery with an
+// employee at the truck, a deliverer and a baker, so absences and the
+// bakery's waste come up in every role; the second an employee at the
+// truck, and it runs short of cash and borrows, long enough for Mme
+// Prudhomme's letters before a bankruptcy (#160), though none of the games
+// ends. The essai card sells shares too, so the investor's
 // dividends post in every game. The last game starts as the tutorial (#236)
 // on its own seed, its steps done each morning and Coralie's story taken,
 // then goes on unprotected from day 8.
 // The whole file must stay under BUDGET_MS in CI; if it gets slower, make
 // the slow part faster rather than checking fewer days or seeds.
 
-/** An employee at the truck and a deliverer, hired on day 0. */
+/** `candidate` hired as `role` on day 0, at the wage they ask (#255). */
+function hiring(role: StaffRoleId, candidate: CandidateId): DecisionChange {
+  return {
+    kind: 'hire',
+    role,
+    candidate,
+    hourlyWage: askingWage(candidate, role),
+  }
+}
+
+/**
+ * A bakery making the croissants, and three employees: one at the truck, a
+ * deliverer and a baker. Three are more than seed 42 at Moyen can pay.
+ */
 const STAFFED: readonly DecisionChange[] = [
-  { kind: 'hire', role: 'camion', candidate: 'amelie' },
-  { kind: 'hire', role: 'livreur', candidate: 'kevin' },
+  { kind: 'openBakery', oven: 'louer' },
+  { kind: 'croissantSource', source: 'fabriquer' },
+  hiring('camion', 'amelie'),
+  hiring('livreur', 'kevin'),
+  hiring('boulanger', 'sophie'),
 ]
+
+/** An employee at the truck, the game that borrows. */
+const AT_TRUCK: readonly DecisionChange[] = [hiring('camion', 'mathieu')]
 
 const GAMES: readonly {
   seed: number
@@ -76,8 +100,8 @@ const GAMES: readonly {
   changes: readonly DecisionChange[]
   tutorial: boolean
 }[] = [
-  { seed: 1, difficulty: 'facile', changes: [], tutorial: false },
-  { seed: 42, difficulty: 'moyen', changes: STAFFED, tutorial: false },
+  { seed: 1, difficulty: 'facile', changes: STAFFED, tutorial: false },
+  { seed: 42, difficulty: 'moyen', changes: AT_TRUCK, tutorial: false },
   { seed: 2026, difficulty: 'difficile', changes: [], tutorial: false },
   { seed: TUTORIAL.seed, difficulty: 'moyen', changes: [], tutorial: true },
 ]
@@ -171,6 +195,9 @@ interface Checked {
   grocerPayments: number
   /** The employees' weekly wages paid. */
   wages: number
+  /** Days an employee was absent from work, and employees who quit (#255). */
+  absences: number
+  quits: number
   /** The financing's cards that came up (#159). */
   financingCards: number
   /** Mme Prudhomme's letters before a bankruptcy that came up (#160). */
@@ -280,6 +307,8 @@ function check(
     deliveries: 0,
     grocerPayments: 0,
     wages: 0,
+    absences: 0,
+    quits: 0,
     financingCards: 0,
     notices: 0,
     scripted: 0,
@@ -434,6 +463,8 @@ function check(
     checked.grocerPayments += today.filter(({ memo }) =>
       grocerPayments.has(memo),
     ).length
+    checked.absences += state.lastDay?.absent?.length ?? 0
+    checked.quits += state.lastDay?.quits?.length ?? 0
     checked.wages += today.filter(({ memo }) =>
       memo.startsWith(`${STAFF_MEMO.wage} · `),
     ).length
@@ -588,11 +619,18 @@ describe.each(GAMES)(
     })
 
     it('pays the staff hired on day 0 each week, and no wage without', () => {
-      const hired = changes.length > 0
+      const hired = changes.some(({ kind }) => kind === 'hire')
       expect(checked.wages).toBeGreaterThanOrEqual(hired ? MIN_WAGES : 0)
       expect(checked.wages).toBeLessThanOrEqual(
         hired ? Number.POSITIVE_INFINITY : 0,
       )
+    })
+
+    it('keeps the staff paid what they ask, so none quits, though some days one is absent', () => {
+      const hired = changes.some(({ kind }) => kind === 'hire')
+      expect(checked.quits).toBe(0)
+      if (hired) expect(checked.absences).toBeGreaterThan(0)
+      else expect(checked.absences).toBe(0)
     })
 
     it('keeps the financing within its limits, its cards and the letters only after a close below zero', () => {

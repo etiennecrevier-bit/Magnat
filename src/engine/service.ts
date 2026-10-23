@@ -1,4 +1,5 @@
 import type {
+  CandidateId,
   DayType,
   EnergyContent,
   Segment,
@@ -6,7 +7,7 @@ import type {
   StaffContent,
 } from '../content/schema.ts'
 import { effectsOf } from './energy.ts'
-import { STAFF, crewOf } from './staff.ts'
+import { STAFF, crewOf, traitValue } from './staff.ts'
 import type { GameState } from './types.ts'
 
 // The line at the counter: who serves, how long serving takes, and how long
@@ -36,42 +37,54 @@ export interface Server {
    * never tires.
    */
   readonly owner: boolean
+  /**
+   * The share of the units they make that are botched and made again: the
+   * owner's by their fatigue, an employee's by their minutie.
+   */
+  readonly botchedShare: number
   /** When they leave the counter for a while (#164); never when absent. */
   readonly away?: Away
 }
 
 // Speed 1 is the unit the content's service times are written in, not a
 // tunable.
-const AVATAR: Server = { speed: 1, owner: true }
+const AVATAR: Server = { speed: 1, owner: true, botchedShare: 0 }
+
+const AT_TRUCK = 'camion'
 
 /**
  * Who serves at the counter on business day `state.day`, with `state.staff`
- * on staff that day: first the owner, unless away all day (see `crewOf`), at
- * speed 1 when rested, and `away` from the counter for that window of the
- * day, if any, such as a trip's. Tired, they take `serviceTimeIncrease`
- * longer (see `effectsOf` in energy.ts), so their speed is 1 ÷ (1 +
+ * on staff that day and those of `absent` away (see `crewOf`): first the
+ * owner, unless away all day, at speed 1 when rested, and `away` from the
+ * counter for that window of the day, if any, such as a trip's. Tired, they
+ * take `serviceTimeIncrease` longer and botch `botchedShare` of their units
+ * (see `effectsOf` in energy.ts), so their speed is 1 ÷ (1 +
  * `serviceTimeIncrease`), by their energy that morning, which holds for the
- * whole day. Then each employee at the truck, at `staff.truckSpeed`. Empty
- * when nobody serves.
+ * whole day. Then each employee at the truck who came, at `staff.truckSpeed`
+ * × their rapidité, botching `staff.employeeBotchedShare` × their minutie
+ * (see `traitValue`). Empty when nobody serves.
  */
 export function servers(
   state: GameState,
   energy: EnergyContent,
   staff: StaffContent = STAFF,
   away: Away | null = null,
+  absent: readonly CandidateId[] = [],
 ): readonly Server[] {
-  const crew = crewOf(state.staff, state.ownerAway)
-  const employees = Array.from({ length: crew.atTruck }, (): Server => ({
-    speed: staff.truckSpeed,
+  const crew = crewOf(state.staff, state.ownerAway, absent)
+  const employees = crew.truckers.map(({ candidate }): Server => ({
+    speed:
+      staff.truckSpeed * traitValue(candidate, 'rapidite', AT_TRUCK, staff),
     owner: false,
+    botchedShare:
+      staff.employeeBotchedShare *
+      traitValue(candidate, 'minutie', AT_TRUCK, staff),
   }))
   if (!crew.ownerServes) return employees
-  const { serviceTimeIncrease } = effectsOf(state.energy, energy)
+  const { serviceTimeIncrease, botchedShare } = effectsOf(state.energy, energy)
   const speed = AVATAR.speed / (1 + serviceTimeIncrease)
-  return [
-    away === null ? { speed, owner: true } : { speed, owner: true, away },
-    ...employees,
-  ]
+  const owner: Server = { speed, owner: true, botchedShare }
+  return [away === null ? owner : { ...owner, away }, ...employees]
 }
 
 /**
