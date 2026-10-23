@@ -5,7 +5,7 @@ import {
   type DifficultyId,
 } from '../../src/content/schema.ts'
 import { cents } from '../../src/engine/money.ts'
-import { STAFF } from '../../src/engine/staff.ts'
+import { STAFF, askingWage } from '../../src/engine/staff.ts'
 import { formatDollars } from '../sim/cli.ts'
 import {
   OVENS,
@@ -376,12 +376,13 @@ describe('formatBakeryReport', () => {
   })
 
   it('says who the baker and the employee at the truck are, and what they cost', () => {
-    const { hourlyWageCents, hoursPerWeek } = STAFF.roles.boulanger
+    const { hoursPerWeek } = STAFF.roles.boulanger
+    const asked = askingWage('sophie', 'boulanger')
     expect(report).toContain(
-      `It hires a baker that day (#158), « Boulanger » at ${dollars(hourlyWageCents.start)} an hour, ${hoursPerWeek} h a week, so the owner never bakes: the baker costs a week of training on day 0 and ${dollars(hourlyWageCents.start * hoursPerWeek)} each Friday.`,
+      `It hires a baker that day (#158), « Boulanger » at ${dollars(asked)} an hour, ${hoursPerWeek} h a week, the wage they ask (#255), so the owner never bakes: the baker costs a week of training on day 0 and ${dollars(asked * hoursPerWeek)} each Friday.`,
     )
     expect(report).toContain(
-      '« Au camion » at $17.50 an hour, 35 h a week, $612.50 a week, who serves beside the owner.',
+      '« Au camion » at $18.00 an hour, 35 h a week, $630.00 a week, who serves beside the owner.',
     )
     expect(report).toContain(
       `and the baker's wages, ${dollars(monthlyBakerWage())} in an average month`,
