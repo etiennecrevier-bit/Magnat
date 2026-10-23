@@ -159,6 +159,8 @@ export function refusalLine(game: GameState, refusal: TripRefusal): string {
       return 'Déplacement obligatoire'
     case 'nothingToFile':
       return 'Rien à déposer'
+    case 'tutorial':
+      return 'Pas pendant les jours avec Réal'
     case 'came':
       return 'Déjà reçu cette année'
     case 'mayNotLend':

@@ -13,6 +13,7 @@ import { resolveEvent } from '../engine/events.ts'
 import { FINANCING } from '../engine/financing.ts'
 import { cents } from '../engine/money.ts'
 import { goTo, wentTo } from '../engine/places.ts'
+import { openingTutorial } from '../engine/tutorial.ts'
 import type { GameState } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
@@ -211,6 +212,9 @@ describe('tripBoard', () => {
         'caisse',
       ).refusal,
     ).toBe('Un prêt déjà en cours')
+    expect(
+      row({ ...short, tutorial: openingTutorial() }, 'caisse').refusal,
+    ).toBe('Pas pendant les jours avec Réal')
   })
 })
 
