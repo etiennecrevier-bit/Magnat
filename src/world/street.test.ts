@@ -1091,7 +1091,7 @@ function drinksAtCounter(
 const SEGMENTS = Object.keys(SEGMENT_ACCESSORY) as SegmentId[]
 
 describe('startStreet: what customers carry', () => {
-  it.each(['cafe', 'chocolat'] as const)(
+  it.each(['cafe', 'chocolat', 'limonade'] as const)(
     'hands one who bought a %s a cup at the counter, never before',
     async (drink) => {
       const app = createFakeApp()
@@ -1102,7 +1102,7 @@ describe('startStreet: what customers carry', () => {
           cafe: drink === 'cafe' ? 1 : 0,
           chocolat: drink === 'chocolat' ? 1 : 0,
           croissant: 0,
-          limonade: 0,
+          limonade: drink === 'limonade' ? 1 : 0,
         },
       }))
       await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())

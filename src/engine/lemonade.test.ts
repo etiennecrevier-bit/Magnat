@@ -137,8 +137,12 @@ describe('lemonade out of its season', () => {
 
   it('buys none from September 16th, and leaves nothing of the 15th', () => {
     const played = closes(closeOf(ORDERED, JUNE_1 + 100), SEPTEMBER_16)
-    const fifteenth = played.find(({ day }) => day === SEPTEMBER_15)
+    const fifteenth = played.find(
+      ({ lastDay }) => lastDay?.day === SEPTEMBER_15,
+    )
     const sixteenth = played.at(-1)
+    expect(fifteenth?.lastDay?.day).toBe(SEPTEMBER_15)
+    expect(sixteenth?.lastDay?.day).toBe(SEPTEMBER_16)
     expect(fifteenth?.lastDay?.sold.limonade).toBeGreaterThan(0)
     // What was left of the 15th's 30 glasses spoiled at its close.
     expect(fifteenth?.lastDay?.spoiled.limonade).toBeGreaterThan(0)

@@ -450,7 +450,7 @@ interface CustomerView {
 }
 
 /** What a customer carries off in a cup. */
-const DRINKS: readonly ProductId[] = ['cafe', 'chocolat']
+const DRINKS: readonly ProductId[] = ['cafe', 'chocolat', 'limonade']
 
 /** Whether `visit` bought something to drink. */
 function drinks(visit: Visit): boolean {
