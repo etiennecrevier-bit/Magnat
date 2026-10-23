@@ -393,7 +393,15 @@ describe('the traits', () => {
 })
 
 describe('askingWage', () => {
-  it("asks the role's start, plus the strength's premium, less the weakness's discount", () => {
+  it('asks more of the reliable and less of the unreliable, as tuned (docs/balance/phase-5.md)', () => {
+    expect(askingWage('sophie', 'boulanger')).toBe(2350)
+    expect(askingWage('mathieu', 'boulanger')).toBe(2250)
+    expect(askingWage('olivier', 'boulanger')).toBe(2050)
+    // The deliverer's start is its minimum.
+    expect(askingWage('nadia', 'livreur')).toBe(1600)
+  })
+
+  it("asks the role's start, plus the strength's premium, less the weakness's discount, within the role's wages", () => {
     for (const candidate of candidateIdSchema.options) {
       const { strength, weakness } = STAFF.candidates[candidate]
       for (const role of staffRoleIdSchema.options) {
@@ -402,15 +410,14 @@ describe('askingWage', () => {
           start +
           STAFF.traits[strength].askingPremiumCents -
           STAFF.traits[weakness].askingDiscountCents
-        // Within the role's wages as shipped, so never clamped.
-        expect(asked).toBeGreaterThanOrEqual(min)
-        expect(asked).toBeLessThanOrEqual(max)
-        expect(askingWage(candidate, role)).toBe(asked)
+        expect(askingWage(candidate, role)).toBe(
+          Math.min(max, Math.max(min, asked)),
+        )
       }
     }
   })
 
-  it('stays within the role’s wages', () => {
+  it('stays within the role’s wages, however steep', () => {
     const steep = (premium: number, discount: number): StaffContent => ({
       ...STAFF,
       traits: {

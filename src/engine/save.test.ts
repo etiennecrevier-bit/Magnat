@@ -5217,15 +5217,27 @@ describe('Réal’s postcards (#239)', () => {
 })
 
 describe("the employees' traits (#255)", () => {
+  /** A leased bakery making the croissants, from day 1. */
+  const BAKING: readonly DecisionChange[] = [
+    { kind: 'openBakery', oven: 'louer' },
+    { kind: 'croissantSource', source: 'fabriquer' },
+  ]
+  /** Seed 42 with `changes` made on day 0, in effect from day 1. */
+  const made = (...changes: DecisionChange[]) =>
+    changes.reduce(
+      (state, change) => applyDecision(state, change),
+      createInitialState(SEED),
+    )
   /**
-   * Seed 42 with Nadia, weak in fiabilité, hired at the truck's start on
-   * day 0, below what she asks, from day 1: she is absent on day 2, warns
-   * on the morning of day 57 and quits on day 64.
+   * Seed 42 with Nadia, weak in fiabilité, hired as baker on day 0 at the
+   * role's minimum, below what she asks, from day 1: she is absent on day
+   * 2, warns on the morning of day 57 and quits on day 64.
    */
-  const HIRED = applyDecision(createInitialState(SEED), {
+  const HIRED = made(...BAKING, {
     kind: 'hire',
-    role: 'camion',
+    role: 'boulanger',
     candidate: 'nadia',
+    hourlyWage: cents(1800),
   })
   const ABSENT = played(3, HIRED)
   const WARNED = played(57, HIRED)
@@ -5235,11 +5247,11 @@ describe("the employees' traits (#255)", () => {
   /** Nadia paid what she asks, to the morning of day 100. */
   const PAID = played(
     100,
-    applyDecision(createInitialState(SEED), {
+    made(...BAKING, {
       kind: 'hire',
-      role: 'camion',
+      role: 'boulanger',
       candidate: 'nadia',
-      hourlyWage: askingWage('nadia', 'camion'),
+      hourlyWage: askingWage('nadia', 'boulanger'),
     }),
   )
 
@@ -5273,7 +5285,7 @@ describe("the employees' traits (#255)", () => {
     expect(played(8, loaded).staff).toHaveLength(1)
   })
 
-  const wage = askingWage('nadia', 'camion')
+  const wage = askingWage('nadia', 'boulanger')
 
   it.each([
     [
@@ -5298,8 +5310,8 @@ describe("the employees' traits (#255)", () => {
     [
       'an underpaid employee who should have quit',
       [
-        ['staff.0.hourlyWage', 1750],
-        ['decisions.staff.0.hourlyWage', 1750],
+        ['staff.0.hourlyWage', 1800],
+        ['decisions.staff.0.hourlyWage', 1800],
         ['staff.0.underpaidSince', 10],
       ].reduce(
         (text, [path, value]) => withValue(path as string, value, text),

@@ -154,7 +154,7 @@ Plays the bakery, le fournil (#157), against twins that buy their croissants, an
 | ---------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `--bakery` |                           | Plays the bakery. `--percentiles`, `--defis`, `--years`, `--search`, `--events`, `--contracts`, `--financing` and `--json` do not go with it. |
 | `--games`  | 30                        | Seeds each difficulty, truck, price set and oven plays, 1 to this, a whole number from 1.                           |
-| `--months` | 24                        | Months each game plays from May 1st, year 1, a whole number from 1; only here and with `--growth`.                  |
+| `--months` | 24                        | Months each game plays from May 1st, year 1, a whole number from 1; only here, with `--growth` and with `--hiring`.                  |
 | `--out`    | `docs/balance/phase-4.md` | File the report goes to, relative to the current folder (the repo root under `npm run`).                            |
 
 **Running it.** One worker thread a difficulty and truck, three at once at most; the default run takes about a minute. The same options always write the same file. After any change to the engine or the content that moves the numbers, run it again with the default options and commit the report.
@@ -181,12 +181,31 @@ Only the renewals and the financing's cards come up. Each game plays to the clos
 | ---------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--growth` |                           | Plays the growth. `--percentiles`, `--defis`, `--bakery`, `--years`, `--search`, `--events`, `--contracts`, `--financing` and `--json` do not go with it. |
 | `--games`  | 30                        | Seeds each difficulty and strategy plays, 1 to this, a whole number from 1.                                                                      |
-| `--months` | 24                        | Months each game plays from May 1st, year 1, a whole number from 1; only here and with `--bakery`.                                               |
+| `--months` | 24                        | Months each game plays from May 1st, year 1, a whole number from 1; only here, with `--bakery` and with `--hiring`.                                               |
 | `--out`    | `docs/balance/phase-4.md` | File the section goes in, relative to the current folder (the repo root under `npm run`).                                                        |
 
 **Running it.** One worker thread a difficulty and contract plan, three at once at most; the default run takes about five minutes. The same options always write the same section. After any change to the engine or the content that moves the numbers, run it again with the default options and commit the report.
 
 The code is in `balance/`: `growth.ts` plays the games and their twins, and `growthReport.ts` checks the targets and writes the section, both without I/O; `report.ts`'s `sectionOf()` and `withSection()` keep the sections `--growth` and `--defis` write.
+
+## Hiring
+
+```sh
+npm run balance -- --hiring
+```
+
+Plays each candidate in each role (#255) and writes `docs/balance/phase-5.md`, keeping its hand-written part. At Moyen, seeds 1 to `--games` hire the candidate on day 0, at the wage they ask (`askingWage()`), so none quits, and their twin plays the same seed and the same business with nobody hired: at the truck (« Au camion »), the busy truck of `--bakery`; delivering (« Livreur »), that truck with the two contracts of #157, signed on day 0 and renewed; baking (« Boulanger »), the truck making 150 croissants a day at a bakery with a leased oven, with the two contracts, the owner baking in the twin. Each game plays `--months` months, or to the close that ends it in bankruptcy. The gap is the game's Encaisse less its twin's at the end. The report checks the targets of #255's step 6, ties counted: no candidate is the best hire in every role, and the weakest, the one whose best role is the worst, beats no hire in one role; then shows each role's candidates by median gap, with their days absent, the units botched and the croissants thrown away.
+
+| Option     | Default                   | Meaning                                                                                                                                          |
+| ---------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--hiring` |                           | Plays the hiring run. `--percentiles`, `--defis`, `--bakery`, `--growth`, `--years`, `--search`, `--events`, `--contracts`, `--financing` and `--json` do not go with it. |
+| `--games`  | 30                        | Seeds each role and candidate plays, 1 to this, a whole number from 1.                                                                           |
+| `--months` | 12                        | Months each game plays from May 1st, year 1, a whole number from 1.                                                                              |
+| `--out`    | `docs/balance/phase-5.md` | File the report goes to, relative to the current folder (the repo root under `npm run`).                                                         |
+
+**Running it.** One worker thread a role, three at once; the default run takes under half a minute. The same options always write the same file. After any change to the engine or the content that moves the employees, run it again and commit the report.
+
+The code is in `balance/`: `hiring.ts` plays the games and their twins and reads the targets, and `hiringReport.ts` writes the report, both without I/O.
 
 ## The 10-year invariant test
 

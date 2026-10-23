@@ -351,8 +351,9 @@ export function monthEnds(months: number): number[] {
  * in order, and each renewal accepted; no other event card comes up. A game
  * that ends before, in bankruptcy (#160), plays no more: only the days it
  * played count, and the month ends after its last day read the Encaisse
- * of that day's close, which nothing moves since. Returns the last state
- * too, for the tests.
+ * of that day's close, which nothing moves since. `watch`, if any, reads
+ * each day played, as the morning after it. Returns the last state too, for
+ * the tests.
  */
 export function playBakeryGame(
   seed: number,
@@ -361,6 +362,7 @@ export function playBakeryGame(
   difficulties: DifficultyContent,
   months: number,
   contracts: readonly GrocerId[] = [],
+  watch: (state: GameState) => void = () => {},
 ): { game: BakeryGame; state: GameState } {
   const ends = monthEnds(months)
   const lastDay = ends.at(-1) ?? 0
@@ -384,6 +386,7 @@ export function playBakeryGame(
     if (state.ended === null) {
       const opens = state.decisions.daysOpen.includes(toCalendar(day).weekday)
       state = playMorning(state, events, choose, PERCENTILES, difficulties)
+      watch(state)
       daysPlayed += 1
       if (opens) {
         openDays += 1

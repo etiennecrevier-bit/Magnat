@@ -8,16 +8,17 @@ import type {
 import type { BakeryJob, BakeryRun } from './bakery.ts'
 import type { DefiRun } from './defis.ts'
 import type { GrowthJob, GrowthRun } from './growth.ts'
+import type { HiringJob, HiringRun } from './hiring.ts'
 import type { OwnersRun } from './owners.ts'
 import type { BalanceOptions, DifficultyRun } from './play.ts'
 import type { Strategy } from './strategies.ts'
 
 // Plays each difficulty of a run, each Défi, each difficulty and truck
-// strategy of the bakery's run, or each difficulty and contract plan of the
-// growth run, on its own worker thread (worker.ts), a few side by side.
-// Each job plays the same games in the same order as runBalance(),
-// runOwners(), runDefi(), runBakery() or runGrowth() would, so the run is
-// the same.
+// strategy of the bakery's run, each difficulty and contract plan of the
+// growth run, or each role of the hiring run, on its own worker thread
+// (worker.ts), a few side by side. Each job plays the same games in the
+// same order as runBalance(), runOwners(), runDefi(), runBakery(),
+// runGrowth() or runHiring() would, so the run is the same.
 
 /** Worker threads at once at most: the machine is shared. */
 export const MAX_WORKERS = 3
@@ -54,7 +55,8 @@ export interface DefisJob {
   readonly search: number
 }
 
-export type WorkerJob = GridJob | OwnersJob | DefisJob | BakeryJob | GrowthJob
+export type WorkerJob =
+  GridJob | OwnersJob | DefisJob | BakeryJob | GrowthJob | HiringJob
 
 /** What a worker posts back for `Job`. */
 export type JobRun<Job extends WorkerJob> = Job extends DefisJob
@@ -65,7 +67,9 @@ export type JobRun<Job extends WorkerJob> = Job extends DefisJob
       ? BakeryRun
       : Job extends GrowthJob
         ? GrowthRun
-        : DifficultyRun
+        : Job extends HiringJob
+          ? HiringRun
+          : DifficultyRun
 
 /**
  * What `job` plays, for its error messages: a difficulty, a Défi, or a
@@ -79,6 +83,8 @@ export function jobLabel(job: WorkerJob): string {
       return `${job.difficulty} ${job.strategy}`
     case 'growth':
       return `${job.difficulty} contracts ${job.contracts}`
+    case 'hiring':
+      return `${job.difficulty} hiring ${job.role}`
     default:
       return job.difficulty
   }

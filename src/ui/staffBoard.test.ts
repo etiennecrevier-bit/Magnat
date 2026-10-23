@@ -466,8 +466,15 @@ describe('the staff through the store', () => {
     expect(staffBoard(store.getState().game).members[0]?.status).toBe('atWork')
     store.getState().advance(1)
     const { game } = store.getState()
+    // At the role's start, below what she asks (#255).
     expect(game.staff).toEqual([
-      { candidate: 'amelie', role: 'camion', hourlyWage: 1750, hiredOnDay: 1 },
+      {
+        candidate: 'amelie',
+        role: 'camion',
+        hourlyWage: 1750,
+        hiredOnDay: 1,
+        underpaidSince: 1,
+      },
     ])
     expect(
       entriesSince(game.journal, 1).find(
