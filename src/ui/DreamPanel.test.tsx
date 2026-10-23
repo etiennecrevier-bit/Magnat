@@ -195,15 +195,16 @@ describe('DreamPanelView', () => {
     expect(html).not.toContain('<button')
   })
 
-  it('shows the second truck as coming soon, locked', () => {
+  it('locks the second truck until the rung before it, with no « Bientôt »', () => {
     const html = card(render(START, 'company'), 'Deuxième camion')
     expect(html).toMatch(
-      /^ dream__card--comingSoon"><div class="dream__anchor" tabindex="0"/,
+      /^ dream__card--locked"><div class="dream__anchor" tabindex="0"/,
     )
     expect(html).toContain('<span class="dream__lock">')
     expect(html).toContain(
-      '<div class="dream__foot"><p class="dream__note">Bientôt</p></div>',
+      `<div class="dream__foot"><p class="dream__note">Après${S}: Camion plus grand</p></div>`,
     )
+    expect(html).not.toContain('Bientôt')
   })
 
   it('shows a rung bought as « Acquis » and one sold back as « Revendu », with no button', () => {

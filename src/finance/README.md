@@ -26,3 +26,5 @@ How `receivables.ts` posts a sale on credit and the charges around it:
 - An other charge: Dr 6900 Autres charges / Cr 1000, with the caller's French description, on the « Autres charges » row in operating.
 
 Emballages shows under Charges on the état des résultats, not in the cost of goods sold, which stays a single account, so the Marge brute leaves packaging out.
+
+`byTruck.ts` reads the sales and the margin of each truck (#259) from the lines that name it: `salesByTruck()` nets Ventes (4000), and `marginByTruck()` Ventes less Coût des marchandises vendues (5000), for any period, with `null` for what no truck sold, so each map adds up to the état des résultats.

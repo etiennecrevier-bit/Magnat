@@ -7,6 +7,7 @@ import type {
   CandidateId,
   CroissantSource,
   DifficultyId,
+  DistrictId,
   EventEffect,
   GrocerId,
   Medal,
@@ -25,6 +26,12 @@ import type { Cents } from './money.ts'
 
 /** Game day index; day 0 is the first day of the game. */
 export type Day = number
+
+/**
+ * A truck, by its id (#259): `plateau` for the first, the one its rung of «
+ * Le rêve » names for each truck bought after it.
+ */
+export type TruckId = string
 
 /** A whole number of units for each product, such as the units sold. */
 export type PerProduct = Readonly<Record<ProductId, number>>
@@ -108,6 +115,47 @@ export interface DaySummary {
   readonly work?: readonly PersonDay[]
   /** Set when the owner was away all day (#283); absent otherwise. */
   readonly ownerAway?: true
+}
+
+/**
+ * A truck bought after the first (#259). Its decisions are in
+ * `Decisions.trucks`.
+ */
+export interface Truck {
+  readonly id: TruckId
+  /** Where it works. */
+  readonly district: DistrictId
+  /** The morning its rung was bought. */
+  readonly boughtOnDay: Day
+  /**
+   * Its own seeded generator's state (see rng.ts), which its walk-ins draw
+   * from, so the first truck's stream never moves for it.
+   */
+  readonly rngState: number
+  /** Its stock on hand, oldest lot first. */
+  readonly inventory: readonly Lot[]
+  /** Its last business day played; null until it has one. */
+  readonly lastDay: TruckDay | null
+}
+
+/** What happened at one truck on a business day, as of its close (#259). */
+export type TruckDay = Pick<
+  DaySummary,
+  | 'day'
+  | 'sold'
+  | 'revenue'
+  | 'lostSales'
+  | 'pricedOut'
+  | 'spoiled'
+  | 'segments'
+  | 'visits'
+  | 'leftLine'
+  | 'averageWaitSeconds'
+  | 'longestWaitSeconds'
+  | 'botched'
+> & {
+  /** Whether it opened. */
+  readonly open: boolean
 }
 
 /** Who did some work: the owner, or an employee by their candidate id. */
@@ -261,7 +309,21 @@ export interface Decisions {
    * longer in it.
    */
   readonly staff: readonly Hire[]
+  /**
+   * The truck the owner works at (#259), kept until changed; absent for the
+   * first truck. They are at one truck at most.
+   */
+  readonly ownerAt?: TruckId
+  /**
+   * How each truck after the first runs (#259), by its id; absent while
+   * there is none. The first truck's are `prices`, `restock` and `daysOpen`
+   * above.
+   */
+  readonly trucks?: Readonly<Record<TruckId, TruckDecisions>>
 }
+
+/** How one truck runs: its prices, its restock rules and its days open. */
+export type TruckDecisions = Pick<Decisions, 'prices' | 'restock' | 'daysOpen'>
 
 /** Someone the player hires, or wants to. */
 export interface Hire {
@@ -271,6 +333,11 @@ export interface Hire {
   readonly role: StaffRoleId
   /** What they earn an hour. */
   readonly hourlyWage: Cents
+  /**
+   * The truck an employee « Au camion » works at (#259); absent for the
+   * first truck, and for every other role.
+   */
+  readonly truck?: TruckId
 }
 
 /** An employee on staff. */
@@ -399,6 +466,12 @@ export interface GameState {
   readonly pendingDecisions: Decisions | null
   /** Who the player is; it never changes once the game has started. */
   readonly profile: Profile
+  /**
+   * The trucks bought after the first (#259), in the order they were;
+   * absent while there is none. The first truck, the Plateau's, is the
+   * game's own `rngState`, `inventory`, `lastDay` and decisions.
+   */
+  readonly trucks?: readonly Truck[]
   /** The owner's own money, outside the company's books. */
   readonly personal: PersonalAccount
   /**

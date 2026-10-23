@@ -722,3 +722,58 @@ describe('a journal that emptyJournal() and postEntry() did not make', () => {
     },
   )
 })
+
+describe("a line's truck (#259)", () => {
+  const tagged = { ...cr('4000', 500), truck: 'plateau' }
+
+  it('is kept on the line, after its amounts, and frozen with it', () => {
+    const lines = [dr('1000', 500), tagged]
+    const books = post(entry(1, 'Ventes au comptant', ...lines))
+    const [stored] = entriesOf(books)
+    expect(stored?.lines).toEqual(lines)
+    expect(Object.keys(stored?.lines[1] ?? {})).toEqual([
+      'account',
+      'debit',
+      'credit',
+      'truck',
+    ])
+    expect(Object.isFrozen(stored?.lines[1])).toBe(true)
+    // A line with none keeps the shape it always had.
+    expect(stored?.lines[0]).not.toHaveProperty('truck')
+    // A later change to the line posted does not reach the books.
+    lines[1] = { ...tagged, truck: 'laval' }
+    expect(entriesOf(books)[0]?.lines[1]?.truck).toBe('plateau')
+  })
+
+  it('leaves every balance as it was', () => {
+    const plain = post(entry(1, 'Ventes', dr('1000', 500), cr('4000', 500)))
+    const named = post(entry(1, 'Ventes', dr('1000', 500), tagged))
+    expect(trialBalance(named, 1)).toEqual(trialBalance(plain, 1))
+  })
+
+  it.each([
+    ['an empty one', ''],
+    ['a number', 7],
+    ['null', null],
+  ])('is rejected when it is %s', (_, truck) => {
+    expect(() =>
+      post(
+        entry(1, 'Ventes', dr('1000', 500), {
+          ...cr('4000', 500),
+          truck: truck as string,
+        }),
+      ),
+    ).toThrow('line 2: not a truck')
+  })
+
+  it('does not get an unbalanced entry past the check', () => {
+    expect(() =>
+      post(
+        entry(1, 'Ventes', dr('1000', 500), {
+          ...cr('4000', 400),
+          truck: 'plateau',
+        }),
+      ),
+    ).toThrow('debits of 500 do not equal credits of 400')
+  })
+})

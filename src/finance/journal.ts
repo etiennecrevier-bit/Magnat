@@ -1,5 +1,5 @@
 import { add, cents, sub, type Cents } from '../engine/money.ts'
-import type { Day } from '../engine/types.ts'
+import type { Day, TruckId } from '../engine/types.ts'
 import {
   ACCOUNTS,
   getAccount,
@@ -12,6 +12,12 @@ export interface JournalLine {
   readonly account: AccountCode
   readonly debit: Cents
   readonly credit: Cents
+  /**
+   * The truck whose sale or charge the line is (#259), so its sales and
+   * margin can be read from the books; absent on a line of the company as
+   * a whole. A tag, not an account: no balance reads it.
+   */
+  readonly truck?: TruckId
 }
 
 export interface JournalEntry {
@@ -103,8 +109,8 @@ export function emptyJournal(): Journal {
  * Throws an Error unless the memo is a string, the day is a game day no
  * earlier than the last entry's, the entry has at least one line, every line
  * is present (no hole, null or undefined), uses a known account and has a
- * whole, non-negative amount on exactly one side, and the debits add up to
- * the credits.
+ * whole, non-negative amount on exactly one side, with a truck, if any,
+ * named by a non-empty string, and the debits add up to the credits.
  */
 export function postEntry(journal: Journal, entry: JournalEntry): Journal {
   const { posted, count, nets } = booksOf(journal)
@@ -137,8 +143,11 @@ export function postEntry(journal: Journal, entry: JournalEntry): Journal {
     const where = `line ${index + 1}`
     const line = lines[index]
     if (typeof line !== 'object' || line === null) fail(`${where}: missing`)
-    const { account, debit, credit } = line
+    const { account, debit, credit, truck } = line
     if (!isAccountCode(account)) fail(`${where}: unknown account ${account}`)
+    if (truck !== undefined && (typeof truck !== 'string' || truck === '')) {
+      fail(`${where}: not a truck: ${String(truck)}`)
+    }
     for (const amount of [debit, credit]) {
       if (!Number.isSafeInteger(amount)) {
         fail(`${where}: not a whole number of cents: ${amount}`)
@@ -154,11 +163,14 @@ export function postEntry(journal: Journal, entry: JournalEntry): Journal {
     } catch {
       fail('its total is out of range')
     }
+    // The truck last, and only when there is one, so a line without one
+    // keeps the shape it always had.
     stored.push(
       Object.freeze({
         account,
         debit: cents(debit),
         credit: cents(credit),
+        ...(truck === undefined ? {} : { truck }),
       }),
     )
   }

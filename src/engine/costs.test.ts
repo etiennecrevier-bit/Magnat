@@ -276,7 +276,25 @@ function firstsOfMonth(days = TEN_YEARS): Day[] {
   return daysWhere((day) => toCalendar(day).dayOfMonth === 1, days)
 }
 
-/** A two-line entry moving `amount` from `credited` to `debited`. */
+/**
+ * The memos of the first truck's own charges, whose charge line names the
+ * truck (#259).
+ */
+const TRUCK_CHARGES: readonly string[] = [
+  MEMO.permit,
+  MEMO.insurance,
+  MEMO.lease,
+  MEMO.interest,
+  MEMO.depreciation,
+  MEMO.packaging,
+  MEMO.cardFees,
+  MEMO.fuel,
+]
+
+/**
+ * A two-line entry moving `amount` from `credited` to `debited`, the debit
+ * naming the Plateau truck when it is one of its own charges.
+ */
 function transfer(
   day: Day,
   memo: string,
@@ -284,11 +302,12 @@ function transfer(
   credited: AccountCode,
   amount: number,
 ): JournalEntry {
+  const truck = TRUCK_CHARGES.includes(memo) ? { truck: 'plateau' } : {}
   return {
     day,
     memo,
     lines: [
-      { account: debited, debit: cents(amount), credit: cents(0) },
+      { account: debited, debit: cents(amount), credit: cents(0), ...truck },
       { account: credited, debit: cents(0), credit: cents(amount) },
     ],
   }

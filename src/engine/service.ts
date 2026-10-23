@@ -8,7 +8,8 @@ import type {
 } from '../content/schema.ts'
 import { effectsOf } from './energy.ts'
 import { STAFF, crewOf, traitValue } from './staff.ts'
-import type { GameState, Worker } from './types.ts'
+import { FIRST_TRUCK, ownerAtOf, truckersAt } from './trucks.ts'
+import type { GameState, TruckId, Worker } from './types.ts'
 
 // The line at the counter: who serves, how long serving takes, and how long
 // customers wait for it.
@@ -58,14 +59,15 @@ const AVATAR: Server = { speed: 1, owner: true, botchedShare: 0, who: 'owner' }
 const AT_TRUCK = 'camion'
 
 /**
- * Who serves at the counter on business day `state.day`, with `state.staff`
- * on staff that day and those of `absent` away (see `crewOf`): first the
- * owner, unless away all day, at speed 1 when rested, and `away` from the
+ * Who serves at the counter of the truck `truck` on business day
+ * `state.day`, with `state.staff` on staff that day and those of `absent`
+ * away (see `crewOf`): first the owner, unless away all day or at another
+ * truck (#259), at speed 1 when rested, and `away` from the
  * counter for that window of the day, if any, such as a trip's. Tired, they
  * take `serviceTimeIncrease` longer and botch `botchedShare` of their units
  * (see `effectsOf` in energy.ts), so their speed is 1 ÷ (1 +
  * `serviceTimeIncrease`), by their energy that morning, which holds for the
- * whole day. Then each employee at the truck who came, at `staff.truckSpeed`
+ * whole day. Then each employee at that truck who came, at `staff.truckSpeed`
  * × their rapidité, botching `staff.employeeBotchedShare` × their minutie
  * (see `traitValue`). Empty when nobody serves.
  */
@@ -75,18 +77,23 @@ export function servers(
   staff: StaffContent = STAFF,
   away: Away | null = null,
   absent: readonly CandidateId[] = [],
+  truck: TruckId = FIRST_TRUCK,
 ): readonly Server[] {
   const crew = crewOf(state.staff, state.ownerAway, absent)
-  const employees = crew.truckers.map(({ candidate }): Server => ({
-    speed:
-      staff.truckSpeed * traitValue(candidate, 'rapidite', AT_TRUCK, staff),
-    owner: false,
-    botchedShare:
-      staff.employeeBotchedShare *
-      traitValue(candidate, 'minutie', AT_TRUCK, staff),
-    who: candidate,
-  }))
-  if (!crew.ownerServes) return employees
+  const employees = truckersAt(crew.truckers, truck).map(
+    ({ candidate }): Server => ({
+      speed:
+        staff.truckSpeed * traitValue(candidate, 'rapidite', AT_TRUCK, staff),
+      owner: false,
+      botchedShare:
+        staff.employeeBotchedShare *
+        traitValue(candidate, 'minutie', AT_TRUCK, staff),
+      who: candidate,
+    }),
+  )
+  if (!crew.ownerServes || ownerAtOf(state.decisions) !== truck) {
+    return employees
+  }
   const { serviceTimeIncrease, botchedShare } = effectsOf(state.energy, energy)
   const speed = AVATAR.speed / (1 + serviceTimeIncrease)
   const owner: Server = { speed, owner: true, botchedShare, who: 'owner' }

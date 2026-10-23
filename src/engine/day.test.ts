@@ -480,7 +480,11 @@ function entry(state: GameState, day: Day, memo: string): JournalEntry {
   return found[0] as JournalEntry
 }
 
-/** A two-line entry moving `amount` from `credited` to `debited`. */
+/**
+ * A two-line entry moving `amount` from `credited` to `debited`. Every memo
+ * here but the purchases is the first truck's own sale or charge, whose
+ * line of the état des résultats names the truck (#259).
+ */
 function transfer(
   day: Day,
   memo: string,
@@ -488,12 +492,26 @@ function transfer(
   credited: AccountCode,
   amount: number,
 ): JournalEntry {
+  const truck = (account: AccountCode) =>
+    memo !== MEMO.purchases && Number(account[0]) >= 4
+      ? { truck: 'plateau' }
+      : {}
   return {
     day,
     memo,
     lines: [
-      { account: debited, debit: cents(amount), credit: cents(0) },
-      { account: credited, debit: cents(0), credit: cents(amount) },
+      {
+        account: debited,
+        debit: cents(amount),
+        credit: cents(0),
+        ...truck(debited),
+      },
+      {
+        account: credited,
+        debit: cents(0),
+        credit: cents(amount),
+        ...truck(credited),
+      },
     ],
   }
 }

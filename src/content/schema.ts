@@ -1790,6 +1790,23 @@ export const rungIdSchema = z.enum([
 
 export type RungId = z.infer<typeof rungIdSchema>
 
+/**
+ * The districts a truck works in (#259): the Plateau, where the first truck
+ * is, and Vieux-Montréal, where the second goes.
+ */
+export const districtIdSchema = z.enum(['plateau', 'vieuxMontreal'])
+
+export type DistrictId = z.infer<typeof districtIdSchema>
+
+/** The first truck's id, the one every game starts with (#259). */
+export const FIRST_TRUCK_ID = 'plateau'
+
+/**
+ * A truck's id (#259): `plateau` for the first truck, the one its rung names
+ * for each truck bought after it. A word of letters, so it reads in a save.
+ */
+export const truckIdSchema = z.string().regex(/^[a-zA-Z]+$/, 'expected letters')
+
 /** The two ladders of « Améliorations »: the owner's and the company's. */
 export const ladderSchema = z.enum(['personal', 'company'])
 
@@ -1854,6 +1871,19 @@ const companyRungSchema = z.strictObject({
    * its depreciation, or its lease, ends.
    */
   replacesTruck: z.boolean().optional(),
+  /**
+   * It adds a truck (#259): its id, never the first truck's, and the
+   * district it works in.
+   */
+  addsTruck: z
+    .strictObject({
+      id: truckIdSchema.refine(
+        (id) => id !== FIRST_TRUCK_ID,
+        `the first truck is ${FIRST_TRUCK_ID}`,
+      ),
+      district: districtIdSchema,
+    })
+    .optional(),
 })
 
 export type CompanyRung = z.output<typeof companyRungSchema>
@@ -1916,6 +1946,24 @@ export const dreamContentSchema = z
           code: 'custom',
           message: `${sells} is not an earlier personal rung with housing`,
           path: ['personal', index, 'sells'],
+        })
+      }
+    })
+    company.forEach(({ addsTruck, replacesTruck }, index) => {
+      if (addsTruck === undefined) return
+      if (replacesTruck === true) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'a rung that adds a truck does not replace the first one',
+          path: ['company', index, 'addsTruck'],
+        })
+      }
+      const before = company.slice(0, index)
+      if (before.some((rung) => rung.addsTruck?.id === addsTruck.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `two rungs add the truck ${addsTruck.id}`,
+          path: ['company', index, 'addsTruck', 'id'],
         })
       }
     })
@@ -2771,7 +2819,8 @@ export function loadFinancingContent(
  * an Error naming every invalid field: besides each field, every rung is in
  * one ladder once, a rung coming soon comes after every rung for sale in its
  * ladder, a rung `sells` an earlier personal rung with housing, one company
- * rung at most replaces the truck, and each title needs a higher net worth
+ * rung at most replaces the truck, a rung that adds a truck adds one no
+ * other does, never the first, and does not replace it, and each title needs a higher net worth
  * than the one before. Pass `raw` only to check other data; by default it
  * reads `dream.json`.
  */

@@ -207,7 +207,9 @@ export function openingWeek(journal: Journal): WeekSoFar {
 
 /**
  * Adds the day `closing` closes, `closing.lastDay`, to the week under way,
- * with whether the truck opened and what the stock written off cost. Its
+ * with whether any truck opened and what the stock written off cost. Its
+ * customers, units written off and visits lost are every truck's (#259):
+ * the first truck's `lastDay` and each other's of that day. Its
  * ventes, the cash customers paid and the change in Encaisse come from the
  * day's entries, the last of the journal, so the Encaisse at its close is
  * the close before plus that change; the close before the first day of a
@@ -230,7 +232,15 @@ export function recordDay(
 ): Pick<GameState, 'weekSoFar' | 'lastWeek' | 'weekHistory'> {
   const { journal, lastDay, weekSoFar, lastWeek, weekHistory } = closing
   if (lastDay === null) throw new Error('No day was played')
-  const { day, segments } = lastDay
+  const { day } = lastDay
+  // Every truck's day (#259): the first truck's, then each other's.
+  const trucks = [
+    lastDay,
+    ...(closing.trucks ?? []).flatMap((truck) =>
+      truck.lastDay?.day === day ? [truck.lastDay] : [],
+    ),
+  ]
+  const segments = trucks.flatMap((truck) => Object.values(truck.segments))
   const before = weekSoFar.days.at(-1)
   const moved = movedOn(journal, day)
   const opened = day === 0 ? ZERO : weekSoFar.cashAtStart
@@ -240,17 +250,25 @@ export function recordDay(
     sales: moved.sales,
     cashReceived: moved.cashReceived,
     cashAtClose: add(before?.cashAtClose ?? opened, moved.cash),
-    customersServed: lastDay.visits.filter(
-      ({ servedMinute }) => servedMinute !== null,
-    ).length,
-    spoiled: lastDay.spoiled,
+    customersServed: trucks.reduce(
+      (served, { visits }) =>
+        served +
+        visits.filter(({ servedMinute }) => servedMinute !== null).length,
+      0,
+    ),
+    spoiled:
+      trucks.length === 1
+        ? lastDay.spoiled
+        : perProduct((product) =>
+            trucks.reduce((units, { spoiled }) => units + spoiled[product], 0),
+          ),
     spoiledCost,
-    lostToLine: lastDay.leftLine,
-    lostToPrices: Object.values(segments).reduce(
+    lostToLine: trucks.reduce((visits, { leftLine }) => visits + leftLine, 0),
+    lostToPrices: segments.reduce(
       (visits, { tooExpensive }) => visits + tooExpensive,
       0,
     ),
-    lostToStockouts: Object.values(segments).reduce(
+    lostToStockouts: segments.reduce(
       (visits, { soldOut }) => visits + soldOut,
       0,
     ),

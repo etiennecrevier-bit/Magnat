@@ -85,7 +85,7 @@ import {
   rememberMarketingDay,
   rememberSpend,
 } from './marketing.ts'
-import { add, cents, mulInt, mulRatio, sub, type Cents } from './money.ts'
+import { add, cents, mulInt, mulRatio, sub, sum, type Cents } from './money.ts'
 import { netWorth } from './netWorth.ts'
 import { inDebt, livePersonalDay } from './personal.ts'
 import { PLACES, awayFromCounter, discountAtClose } from './places.ts'
@@ -102,6 +102,15 @@ import {
   traitValue,
 } from './staff.ts'
 import { inEffect, streetOn, type Street } from './street.ts'
+import {
+  FIRST_TRUCK,
+  ownerAtOf,
+  truckDecisionsOf,
+  truckOf,
+  truckersAt,
+  trucksOf,
+  withTrucks,
+} from './trucks.ts'
 import { isProtected } from './tutorial.ts'
 import type {
   Day,
@@ -110,6 +119,9 @@ import type {
   GameState,
   Hire,
   Lot,
+  PerProduct,
+  TruckDay,
+  TruckId,
   Worker,
 } from './types.ts'
 import { recordDay } from './week.ts'
@@ -199,6 +211,35 @@ export const TRUCK_MEMO = {
   depreciation: MEMO.depreciation,
   lease: MEMO.lease,
 } as const
+
+/**
+ * The memos of the entries whose charge or sale is the first truck's own
+ * (#259), which name it on their line of the état des résultats: its day's
+ * sales and what they cost, but « Coût des marchandises vendues », which
+ * the grocers' and the events' sales post too (see `COST_OF_SALES_MEMO`),
+ * and its monthly charges.
+ */
+export const FIRST_TRUCK_MEMOS: readonly string[] = [
+  MEMO.sales,
+  MEMO.botched,
+  MEMO.packaging,
+  MEMO.cardFees,
+  MEMO.fuel,
+  MEMO.marketing,
+  MEMO.spoilage,
+  MEMO.permit,
+  MEMO.insurance,
+  MEMO.interest,
+  MEMO.depreciation,
+  MEMO.lease,
+]
+
+/**
+ * The memo of a truck's cash sales, and the memo of their cost, which a
+ * truck posts right after them and the grocers' and events' sales post too.
+ */
+export const SALES_MEMO = MEMO.sales
+export const COST_OF_SALES_MEMO = MEMO.costOfSales
 
 const ZERO = cents(0)
 
@@ -305,11 +346,16 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * lets go those who quit that morning, underpaid, out of the decisions and
  * those waiting too (see `quitting`), and who does what that day, the owner
  * away all day or not and the absent employees' work not done (see
- * `isAbsent` and `crewOf`). Then the
+ * `isAbsent` and `crewOf`), each employee « Au camion » at their own
+ * truck and the owner at theirs (see `truckOf` and `ownerAtOf`). Then the
  * deliveries of the contracts with `grocers`, missed when nobody delivers, the
  * bakery making their croissants first when it makes the truck's and someone
  * bakes (see `deliverContracts`). On a day the truck opens, one of the days
- * open the street does not close, with the owner or an employee at the truck:
+ * open the street does not close, with the owner or an employee at the truck,
+ * each truck in turn, the first one first (#259), the others each on its
+ * own generator and the street with no change, with no marketing, no
+ * bakery and no discount, each naming itself on its lines of the état des
+ * résultats:
  * the morning restock of every product the street leaves on sale, but the
  * croissants when they come from the bakery and it runs, which then makes them
  * with the capacity the deliveries left if someone bakes, and none otherwise
@@ -435,8 +481,17 @@ export function playDay(
     .filter((employee) => isAbsent(started.seed, day, employee, staff))
     .map(({ candidate }) => candidate)
   const crew = crewOf(left.staff, started.ownerAway, absent)
-  const truckDay = decisions.daysOpen.includes(weekday) && !street.closed
-  const open = truckDay && (crew.ownerServes || crew.atTruck > 0)
+  const ownerAt = ownerAtOf(decisions)
+  // Each truck's street: the first truck's with the events' changes and the
+  // rungs' bonuses, the others' the street with none (#259).
+  const streetOf = (truck: TruckId): Street =>
+    truck === FIRST_TRUCK ? street : streetOn([], day)
+  // Whether the truck opens that day, staffed or not: one of its days open
+  // that its street does not close.
+  const scheduled = (truck: TruckId): boolean =>
+    truckDecisionsOf(decisions, truck).daysOpen.includes(weekday) &&
+    !streetOf(truck).closed
+  const truckDay = scheduled(FIRST_TRUCK)
   const making =
     decisions.croissantSource === 'fabriquer' && isBakeryRunning(bakery.bakery)
   const baking = making && crew.bakes !== null
@@ -462,37 +517,54 @@ export function playDay(
   )
   const state = delivered.state
   journal = state.journal
-  const price = (product: ProductId) => currentPrice(state, product)
-  let lots = state.inventory
-  let served = closed(state.rngState)
-  let revenue = ZERO
-  let marketingSpent = ZERO
   let baked = delivered.baked
   const { trip, discount } = state.town
   let discounted = false
 
-  if (open) {
+  // Each truck in turn, the first one first: the first truck as the game
+  // has always played it, each other one on its own generator, with its
+  // own crew, the street with no change and no marketing, its croissants
+  // bought.
+  const away = awayFromCounter(state, places, dream)
+  const plays = trucksOf(state).map((truck): TruckPlay => {
+    const first = truck.id === FIRST_TRUCK
+    const own = truckDecisionsOf(decisions, truck.id)
+    const price = (product: ProductId) => own.prices[product]
+    const truckers = truckersAt(crew.truckers, truck.id)
+    const ownerHere = crew.ownerServes && ownerAt === truck.id
+    const open = scheduled(truck.id) && (ownerHere || truckers.length > 0)
+    if (!open) {
+      return {
+        id: truck.id,
+        open,
+        price,
+        lots: truck.inventory,
+        served: closed(truck.rngState),
+        revenue: ZERO,
+        marketingSpent: ZERO,
+      }
+    }
+    const truckStreet = streetOf(truck.id)
     // With the baker absent, the croissants they would have made are bought.
-    const buyInstead = making && bakerAbsent
+    const makes = first && making
+    const buyInstead = makes && bakerAbsent
     const restocked = restock(
-      lots,
+      truck.inventory,
       day,
-      buyInstead
-        ? { ...decisions.restock, [BAKED]: decisions.bake }
-        : decisions.restock,
+      buyInstead ? { ...own.restock, [BAKED]: decisions.bake } : own.restock,
       content,
-      making && !buyInstead
-        ? { ...street.unavailable, [BAKED]: true }
-        : street.unavailable,
-      discount,
+      makes && !buyInstead
+        ? { ...truckStreet.unavailable, [BAKED]: true }
+        : truckStreet.unavailable,
+      first ? discount : 0,
     )
-    discounted = restocked.units > 0
+    if (first) discounted = restocked.units > 0
     journal = post(journal, day, MEMO.purchases, [
       debit(INVENTORY, restocked.cost),
       credit(CASH, restocked.cost),
     ])
     const made =
-      baking && !street.unavailable[BAKED]
+      first && baking && !truckStreet.unavailable[BAKED]
         ? bake(
             journal,
             restocked.lots,
@@ -506,62 +578,84 @@ export function playDay(
     journal = made.journal
     baked += made.quantity
 
-    served = serveWalkIns(
-      state.rngState,
+    const served = serveWalkIns(
+      truck.rngState,
       content.walkIns,
       dayTypeOf(weekday),
       customers,
       price,
       perProduct((product) =>
-        street.unavailable[product] ? 0 : onHand(made.lots, product),
+        truckStreet.unavailable[product] ? 0 : onHand(made.lots, product),
       ),
       {
-        service: dreamService(content.service, bonuses),
-        servers: servers(
-          state,
-          energy,
-          staff,
-          awayFromCounter(state, places, dream),
-          absent,
-        ),
+        service: first
+          ? dreamService(content.service, bonuses)
+          : content.service,
+        servers: servers(state, energy, staff, away, absent, truck.id),
       },
-      marketingCrowd(state.marketingHistory, content.marketing),
-      welcomed(street, crew.truckers, staff),
+      first ? marketingCrowd(state.marketingHistory, content.marketing) : null,
+      welcomed(truckStreet, truckers, staff),
     )
 
     // The sale, its cost and what it costs to make are separate entries, so
     // each cash entry's other lines stay on one row of the état des flux de
-    // trésorerie.
+    // trésorerie. Each names the truck on its line of the état des
+    // résultats (#259).
     const sales = sell(made.lots, served.withdrawals, price, content.products)
     journal = post(journal, day, MEMO.sales, [
       debit(CASH, sales.revenue),
-      credit(SALES, sales.revenue),
+      credit(SALES, sales.revenue, truck.id),
     ])
     journal = post(journal, day, MEMO.costOfSales, [
-      debit(COST_OF_GOODS_SOLD, sales.cost),
+      debit(COST_OF_GOODS_SOLD, sales.cost, truck.id),
       credit(INVENTORY, sales.cost),
     ])
     journal = post(journal, day, MEMO.botched, [
-      debit(INVENTORY_LOSSES, sales.botchedCost),
+      debit(INVENTORY_LOSSES, sales.botchedCost, truck.id),
       credit(INVENTORY, sales.botchedCost),
     ])
-    journal = pay(journal, day, MEMO.packaging, PACKAGING, sales.packaging)
+    journal = pay(
+      journal,
+      day,
+      MEMO.packaging,
+      PACKAGING,
+      sales.packaging,
+      truck.id,
+    )
     const { share, feeRate } = content.cardPayments
     const cardFees = mulRatio(mulRatio(sales.revenue, share), feeRate)
-    journal = pay(journal, day, MEMO.cardFees, CARD_FEES, cardFees)
-    lots = sales.lots
-    revenue = sales.revenue
-
+    journal = pay(journal, day, MEMO.cardFees, CARD_FEES, cardFees, truck.id)
     journal = pay(
       journal,
       day,
       MEMO.fuel,
       FUEL_AND_MAINTENANCE,
       content.fuelAndMaintenancePerOpenDayCents,
+      truck.id,
     )
-    marketingSpent = decisions.marketingDaily
-    journal = pay(journal, day, MEMO.marketing, MARKETING, marketingSpent)
-  }
+    const marketingSpent = first ? decisions.marketingDaily : ZERO
+    journal = pay(
+      journal,
+      day,
+      MEMO.marketing,
+      MARKETING,
+      marketingSpent,
+      truck.id,
+    )
+    return {
+      id: truck.id,
+      open,
+      price,
+      lots: sales.lots,
+      served,
+      revenue: sales.revenue,
+      marketingSpent,
+    }
+  })
+  const [firstPlay, ...otherPlays] = plays
+  if (firstPlay === undefined) throw new Error('A game has a first truck')
+  const { served, revenue, marketingSpent, price } = firstPlay
+  const ownerPlay = plays.find(({ id }) => id === ownerAt) ?? firstPlay
 
   let wasted = 0
   if (baked > 0 && crew.baker !== null) {
@@ -578,15 +672,19 @@ export function playDay(
     journal = payWages(journal, state.staff, day, staff)
   }
 
-  const expired = removeExpired(
-    lots,
-    day,
-    perProduct((product) => content.products[product].shelfLifeDays),
+  const shelfLives = perProduct(
+    (product) => content.products[product].shelfLifeDays,
   )
-  journal = post(journal, day, MEMO.spoilage, [
-    debit(INVENTORY_LOSSES, expired.cost),
-    credit(INVENTORY, expired.cost),
-  ])
+  const closes = plays.map((play) => {
+    const expired = removeExpired(play.lots, day, shelfLives)
+    journal = post(journal, day, MEMO.spoilage, [
+      debit(INVENTORY_LOSSES, expired.cost, play.id),
+      credit(INVENTORY, expired.cost),
+    ])
+    return expired
+  })
+  const [expired] = closes
+  if (expired === undefined) throw new Error('A game has a first truck')
 
   const account = livePersonalDay(
     state.personal,
@@ -599,9 +697,10 @@ export function playDay(
   const closingEnergy = energyAtClose(
     state.energy,
     {
-      worked: open || street.working,
+      // The owner works at their own truck only (#259).
+      worked: ownerPlay.open || street.working,
       away: state.ownerAway,
-      customersServed: served.servedByOwner,
+      customersServed: ownerPlay.served.servedByOwner,
       stressed: weekday === content.ownerPayWeekday && inDebt(account),
       bakingCost:
         baked > 0 && crew.bakes === 'owner'
@@ -622,7 +721,9 @@ export function playDay(
     hadWork(
       left.staff.find((employee) => employee.candidate === candidate),
       {
-        truck: truckDay,
+        // An employee « Au camion » had work on a day their own truck was
+        // to open, whoever came to open it.
+        truck: (employee) => scheduled(truckOf(employee)),
         deliveries: deliveriesDue,
         bakery: making && (truckDay || deliveriesDue),
       },
@@ -635,6 +736,10 @@ export function playDay(
     came: left.staff.filter(({ candidate }) => !absent.includes(candidate)),
     visits: served.visits,
     price,
+    others: otherPlays.map((play) => ({
+      visits: play.served.visits,
+      price: play.price,
+    })),
     deliveries: delivered.deliveries,
     delivers: doerOf(crew.delivers, crew.deliverer),
     baked,
@@ -644,8 +749,20 @@ export function playDay(
     boughtCost: sub(listed, mulRatio(listed, discount)),
   })
 
+  const others = withTrucks(
+    state,
+    otherPlays.map((play, index) => {
+      const spoiled = closes[index + 1] ?? expired
+      return {
+        id: play.id,
+        rngState: play.served.rngState,
+        inventory: spoiled.lots,
+        lastDay: truckDayOf(day, play, spoiled.spoiled),
+      }
+    }),
+  )
   const closing: GameState = {
-    ...state,
+    ...others,
     rngState: served.rngState,
     journal,
     inventory: expired.lots,
@@ -678,10 +795,7 @@ export function playDay(
       averageWaitSeconds: served.averageWaitSeconds,
       longestWaitSeconds: served.longestWaitSeconds,
       energy: closingEnergy,
-      botched: PRODUCTS.reduce(
-        (total, product) => total + served.botched[product],
-        0,
-      ),
+      botched: botchedOf(served),
       modifiers: inEffect(modifiers, day),
       deliveries: delivered.deliveries,
       // In the order a save holds them, so a game saved and loaded writes
@@ -720,7 +834,12 @@ export function playDay(
   }
   const recorded = {
     ...ending,
-    ...recordDay(ending, open, expired.cost, dream),
+    ...recordDay(
+      ending,
+      plays.some((play) => play.open),
+      sum(closes.map(({ cost }) => cost)),
+      dream,
+    ),
   }
   if (challenge === null) return recorded
   const defi = defiById(defis, challenge.id)
@@ -732,6 +851,49 @@ export function playDay(
   return {
     ...recorded,
     challenge: recordChallengeDay(recorded, defi, entriesOf(opening).length),
+  }
+}
+
+/** What one truck's day did, before its close. */
+interface TruckPlay {
+  readonly id: TruckId
+  /** Whether it opened. */
+  readonly open: boolean
+  /** What one unit of each product sold for there. */
+  readonly price: (product: ProductId) => Cents
+  /** Its stock once its sales are taken out. */
+  readonly lots: readonly Lot[]
+  /** Its walk-ins, with its generator after them. */
+  readonly served: Served
+  readonly revenue: Cents
+  readonly marketingSpent: Cents
+}
+
+/** The units botched at the counter: `served.botched`, summed. */
+function botchedOf(served: Served): number {
+  return PRODUCTS.reduce((total, product) => total + served.botched[product], 0)
+}
+
+/**
+ * The last day of a truck after the first, in the order a save holds it,
+ * with `spoiled` the units written off at its close.
+ */
+function truckDayOf(day: Day, play: TruckPlay, spoiled: PerProduct): TruckDay {
+  const { served } = play
+  return {
+    day,
+    sold: served.sold,
+    revenue: play.revenue,
+    lostSales: served.lost,
+    pricedOut: served.pricedOut,
+    spoiled,
+    segments: served.segments,
+    visits: served.visits,
+    leftLine: served.leftLine,
+    averageWaitSeconds: served.averageWaitSeconds,
+    longestWaitSeconds: served.longestWaitSeconds,
+    botched: botchedOf(served),
+    open: play.open,
   }
 }
 
@@ -760,17 +922,22 @@ function without(
 }
 
 /**
- * Whether `employee`'s role had work on a day: the truck's on a day it
- * opens, the deliverer's on a day of deliveries, the baker's on a day the
- * bakery makes croissants for either.
+ * Whether `employee`'s role had work on a day: the truck's on a day their
+ * truck opens, the deliverer's on a day of deliveries, the baker's on a day
+ * the bakery makes croissants for either.
  */
 function hadWork(
   employee: Employee | undefined,
-  work: { truck: boolean; deliveries: boolean; bakery: boolean },
+  work: {
+    truck: (employee: Employee) => boolean
+    deliveries: boolean
+    bakery: boolean
+  },
 ): boolean {
-  switch (employee?.role) {
+  if (employee === undefined) return false
+  switch (employee.role) {
     case AT_TRUCK:
-      return work.truck
+      return work.truck(employee)
     case DELIVERER:
       return work.deliveries
     case BAKER:
@@ -826,29 +993,44 @@ function monthlyCharges(
   replacedOn: Day | null,
 ): Journal {
   const { permitParkingAndCommissary, insurance } = content.monthlyCostsCents
+  // Each charge is the first truck's own (#259): its permit and parking,
+  // its insurance, its loan's interest and its depreciation or lease.
   let books = pay(
     journal,
     day,
     MEMO.permit,
     RENT_AND_PERMIT,
     permitParkingAndCommissary,
+    FIRST_TRUCK,
   )
-  books = pay(books, day, MEMO.insurance, INSURANCE, insurance)
+  books = pay(books, day, MEMO.insurance, INSURANCE, insurance, FIRST_TRUCK)
   const replaced = replacedOn !== null && day >= replacedOn
+  const depreciated = (journal: Journal) =>
+    depreciate(
+      journal,
+      day,
+      month,
+      content.truck,
+      MEMO.depreciation,
+      FIRST_TRUCK,
+    )
   switch (truck.kind) {
     case 'owned':
-      return replaced
-        ? books
-        : depreciate(books, day, month, content.truck, MEMO.depreciation)
+      return replaced ? books : depreciated(books)
     case 'loan':
       books = repay(books, day, month, truck)
-      return replaced
-        ? books
-        : depreciate(books, day, month, content.truck, MEMO.depreciation)
+      return replaced ? books : depreciated(books)
     case 'lease':
       return replaced
         ? books
-        : pay(books, day, MEMO.lease, TRUCK_LEASE, truck.monthlyLeaseCents)
+        : pay(
+            books,
+            day,
+            MEMO.lease,
+            TRUCK_LEASE,
+            truck.monthlyLeaseCents,
+            FIRST_TRUCK,
+          )
   }
 }
 
@@ -868,7 +1050,14 @@ function repay(journal: Journal, day: Day, month: number, loan: Loan): Journal {
   )
   const payment = payments[month - 1]
   if (payment === undefined) return journal
-  const books = pay(journal, day, MEMO.interest, INTEREST, payment.interest)
+  const books = pay(
+    journal,
+    day,
+    MEMO.interest,
+    INTEREST,
+    payment.interest,
+    FIRST_TRUCK,
+  )
   return pay(books, day, MEMO.principal, BANK_LOANS, payment.principal)
 }
 

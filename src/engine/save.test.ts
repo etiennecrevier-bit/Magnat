@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import dreamJson from '../content/dream.json'
 import eventsJson from '../content/events.json'
 import financingJson from '../content/financing.json'
 import grocersJson from '../content/grocers.json'
 import {
   loadDefiContent,
   loadDifficultyContent,
+  loadDreamContent,
   loadEventContent,
   loadFinancingContent,
   loadFoodTruckContent,
@@ -335,10 +337,30 @@ function withoutWeek(save: Json): void {
 }
 
 /**
+ * Takes the trucks out of `save`, as version 19 wrote it: the save of a
+ * game with one truck, whose journal lines name none (#259).
+ */
+function withoutTrucks(save: Json): void {
+  expect(save.trucks).toBeUndefined()
+  for (const entry of save.journal as Json[]) {
+    for (const line of entry.lines as Json[]) delete line.truck
+  }
+}
+
+/** `state`, with one truck, saved as version 19, before the trucks. */
+function v19(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutTrucks(save)
+  return JSON.stringify({ ...save, saveVersion: 19 })
+}
+
+/**
  * Takes the trips in town out of `save`, as version 18 wrote it: the save
- * of a game with no trip that day and no discount waiting.
+ * of a game with no trip that day and no discount waiting, nor a truck
+ * named, which came later.
  */
 function withoutTown(save: Json): void {
+  withoutTrucks(save)
   expect(save.town).toEqual(noTrips())
   delete save.town
 }
@@ -581,8 +603,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(19)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 19 })
+    expect(SAVE_VERSION).toBe(20)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 20 })
   })
 
   it.each<Profile>([
@@ -1126,7 +1148,8 @@ describe('deserialize rejects', () => {
     0,
     1,
     6,
-    20,
+    21,
+    '20',
     '19',
     '18',
     '17',
@@ -3671,6 +3694,22 @@ describe("the grocers' contracts", () => {
     }
   })
 
+  it("load as version 19, the grocers' cost of their croissants naming no truck", () => {
+    for (const state of [MORNING, MONDAY_CLOSE]) {
+      expect(deserialize(v19(state))).toStrictEqual(state)
+    }
+    // Monday's deliveries, with the truck closed, then Tuesday's sales.
+    const costs = (on: number) =>
+      entriesOf(MORNING.journal)
+        .filter(
+          ({ day, memo }) =>
+            day === on && memo === 'Coût des marchandises vendues',
+        )
+        .map(({ lines }) => lines[0]?.truck)
+    expect(costs(28)).toEqual([undefined, undefined])
+    expect(costs(29)).toEqual(['plateau'])
+  })
+
   /** The load of `text` fails, naming `reason`, against `grocers`. */
   function rejects(
     text: string,
@@ -4597,6 +4636,23 @@ describe('the net worth of each week', () => {
     expect(FORTNIGHT.weekHistory[LAST]?.netWorth).toBe(netWorth(FORTNIGHT))
   })
 
+  it('load a version 19 game as one Plateau truck, its own lines naming it again', () => {
+    for (const state of [
+      createInitialState(SEED),
+      THURSDAY,
+      SUNDAY_CLOSE,
+      DAY_400,
+      BOTCHED,
+      MARKETED,
+    ]) {
+      expect(deserialize(v19(state))).toStrictEqual(state)
+    }
+    const tagged = entriesOf(DAY_400.journal).filter(({ lines }) =>
+      lines.some(({ truck }) => truck === 'plateau'),
+    )
+    expect(tagged.length).toBeGreaterThan(1000)
+  })
+
   it('load a version 18 game with no trip in town', () => {
     for (const state of [
       createInitialState(SEED),
@@ -4689,7 +4745,7 @@ describe('the net worth of each week', () => {
 describe('« Le rêve »', () => {
   const JUNE_1 = 31
   // Facile, with the cash in the bank and the owner's savings to buy every
-  // rung but the second truck from the first days.
+  // rung from the first days.
   const { facile } = DIFFICULTIES.difficulties
   const RICH = loadDifficultyContent({
     ...DIFFICULTIES,
@@ -4732,6 +4788,8 @@ describe('« Le rêve »', () => {
   const FIRST = buying(played(JUNE_1, START), ...ALL)
   const FIRST_CLOSE = playDay(FIRST)
   const SECOND = tick(FIRST)
+  // The close of July 1st, the big truck's first month of depreciation.
+  const JULY_CLOSE = playDay(played(61 - JUNE_1, FIRST))
 
   it.each<[string, GameState]>([
     ['a personal rung bought on day 0', buying(START, 'velo')],
@@ -4743,6 +4801,33 @@ describe('« Le rêve »', () => {
   ])('gives back %s', (_, state) => {
     expect(state.dream.bought.length).toBeGreaterThan(0)
     expect(back(state)).toStrictEqual(state)
+  })
+
+  it.each<[string, GameState]>([
+    ['the big truck bought on day 0', buying(START, 'espresso', 'grandCamion')],
+    ['the close of a 1st with the big truck', FIRST_CLOSE],
+    ['the morning after', SECOND],
+    ['the close of its first month of depreciation', JULY_CLOSE],
+  ])(
+    'gives back %s from version 19, its depreciation naming the Plateau',
+    (_, state) => {
+      expect(deserialize(v19(state), FOOD_TRUCK, EVENTS, RICH)).toStrictEqual(
+        state,
+      )
+    },
+  )
+
+  it("names the Plateau on the big truck's depreciation, not on the espresso machine's", () => {
+    const named = (memo: string) =>
+      entriesOf(JULY_CLOSE.journal)
+        .filter((entry) => entry.memo === memo)
+        .map(({ lines }) => lines.map(({ truck }) => truck))
+    expect(named('Amortissement · Camion plus grand')).toEqual([
+      ['plateau', undefined],
+    ])
+    expect(named('Amortissement · Machine à espresso pro')).toEqual([
+      [undefined, undefined],
+    ])
   })
 
   it('gives back the house bought after the last Sunday, its week worth what it was', () => {
@@ -4825,17 +4910,6 @@ describe('« Le rêve »', () => {
       'is bought before a rung before it in its ladder',
     ],
     [
-      'a rung that comes soon',
-      (save) => {
-        dreamOf(save).bought.push({
-          rung: 'deuxiemeCamion',
-          day: JUNE_1,
-          cost: 1,
-        })
-      },
-      'dream rung 7, deuxiemeCamion, is not for sale',
-    ],
-    [
       'a cost other than what the rung cost',
       (save) => {
         dreamOf(save).bought[5]!.cost = 1
@@ -4889,6 +4963,37 @@ describe('« Le rêve »', () => {
     ],
   ])('rejects %s', (_, change, reason) => {
     refused(changed(change), reason)
+  })
+
+  it('rejects a rung that comes soon', () => {
+    // The shipped second truck is for sale; a copy shows it « Bientôt ».
+    const soon = loadDreamContent({
+      ...dreamJson,
+      company: dreamJson.company.map((rung) =>
+        rung.id === 'deuxiemeCamion' ? { ...rung, comingSoon: true } : rung,
+      ),
+    })
+    const text = changed((save) => {
+      dreamOf(save).bought.push({
+        rung: 'deuxiemeCamion',
+        day: JUNE_1,
+        cost: 1,
+      })
+    })
+    expect(() =>
+      deserialize(
+        text,
+        FOOD_TRUCK,
+        EVENTS,
+        RICH,
+        DEFIS,
+        BAKERY,
+        GROCERS,
+        STAFF,
+        FINANCING,
+        soon,
+      ),
+    ).toThrow('dream rung 7, deuxiemeCamion, is not for sale')
   })
 
   it('rejects the old truck depreciated after it was replaced', () => {

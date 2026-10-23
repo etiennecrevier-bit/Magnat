@@ -20,7 +20,14 @@ import { perSegment } from './customers.ts'
 import { add, cents, sub, type Cents } from './money.ts'
 import { credit, debit, depreciate } from './posting.ts'
 import type { Street } from './street.ts'
-import type { BoughtRung, Day, DreamState, PersonalMovement } from './types.ts'
+import { FIRST_TRUCK } from './trucks.ts'
+import type {
+  BoughtRung,
+  Day,
+  DreamState,
+  PersonalMovement,
+  TruckId,
+} from './types.ts'
 
 // « Le rêve » (#162): two ladders the player climbs, each rung bought once
 // and in order. The owner's own rungs are paid from their personal cash and
@@ -475,10 +482,21 @@ export function truckReplacedOn(
 }
 
 /**
+ * The truck whose own the company rung `rung` is (#259): the first truck
+ * for the one that replaces it, the truck it adds for the one that adds
+ * one; null for equipment of the company as a whole.
+ */
+export function truckOfRung(rung: CompanyRung): TruckId | null {
+  if (rung.replacesTruck === true) return FIRST_TRUCK
+  return rung.addsTruck?.id ?? null
+}
+
+/**
  * The depreciation the 1st of the month `day` owes the company rungs
  * bought before it, in the order bought: each over its `usefulLifeMonths`
  * of what it cost, from the 1st after its purchase, « Amortissement ·
- * {name} », Dr 6400 / Cr 1510 (see `depreciate`). None on another day.
+ * {name} », Dr 6400 / Cr 1510 (see `depreciate`), the charge naming the
+ * truck whose the rung is, if any (see `truckOfRung`). None on another day.
  */
 export function dreamDepreciation(
   journal: Journal,
@@ -498,6 +516,7 @@ export function dreamDepreciation(
       month,
       { priceCents: cost, usefulLifeMonths: rung.usefulLifeMonths },
       dreamLabel(DREAM_MEMO.depreciation, rung.name),
+      truckOfRung(rung) ?? undefined,
     )
   }
   return books
