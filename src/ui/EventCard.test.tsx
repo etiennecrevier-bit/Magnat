@@ -420,6 +420,44 @@ describe('EventCard', () => {
     },
   )
 
+  it.each([
+    { event: 'gateauFete', portrait: 'mmeOuellette', name: 'Mme Ouellette' },
+    {
+      event: 'traiteurPresse',
+      portrait: 'rosaireGagnon',
+      name: 'Rosaire Gagnon',
+    },
+    {
+      event: 'placementMiracle',
+      portrait: 'stevieDuvent',
+      name: 'Stevie Duvent',
+    },
+    {
+      event: 'peintureLuxe',
+      portrait: 'ginettePelletier',
+      name: 'Ginette Pelletier',
+    },
+    {
+      event: 'contratBioLogique',
+      portrait: 'solangeTremblayLevesque',
+      name: 'Solange Tremblay-Lévesque',
+    },
+    { event: 'contratDepanneur', portrait: 'monsieurKim', name: 'M. Kim' },
+  ])(
+    'shows $name with their portrait on $event (#253)',
+    ({ event, portrait, name }) => {
+      gameStore.getState().startGame(waiting(event))
+      const html = renderToStaticMarkup(<EventCard />)
+      const url = portraitUrl(portrait)
+      expect(url).not.toBeNull()
+      expect(html).toContain(
+        `<img class="event-card__portrait" src="${url}" alt="" width="96" height="96"/>`,
+      )
+      expect(html).toContain(`<p class="event-card__name">${name}</p>`)
+      expect(html).not.toContain('event-card__silhouette')
+    },
+  )
+
   it('shows the terms of the emergency loan and of the share sale in their tags', () => {
     gameStore.getState().startGame(waiting('pretUrgence'))
     expect(choices(renderToStaticMarkup(<EventCard />))[0]?.tags).toEqual([
