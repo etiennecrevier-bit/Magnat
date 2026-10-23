@@ -22,6 +22,7 @@ import { applyEffect } from './effects.ts'
 import { resolveEvent } from './events.ts'
 import { FINANCING, noFinancing } from './financing.ts'
 import { cents } from './money.ts'
+import { goTo, tripRefusal } from './places.ts'
 import { defaultProfile } from './profile.ts'
 import {
   TUTORIAL,
@@ -330,6 +331,23 @@ describe('tick during the tutorial', () => {
     ).toBe(true)
     expect(after.some(({ event }) => event === 'tutoStory')).toBe(false)
   })
+
+  it.each([1, 2, 3, 4, 5])(
+    'at Difficile, on protected day %d, takes the trip to the Caisse only to bring her card the next morning',
+    (day) => {
+      // The tour's encaisse falls below a month of fixed costs at Difficile
+      // (#273): a trip the Caisse takes must not be for nothing.
+      const morning = doSteps(answer(playUntil(tutorialAt('difficile'), day)))
+      expect(isProtected(morning)).toBe(true)
+      if (tripRefusal(morning, 'caisse') !== null) return
+      const next = step(goTo(morning, 'caisse'))
+      expect(next.events.pending).toEqual({
+        event: FINANCING.appointmentEvent,
+        followUp: false,
+      })
+      expect(next.financing.lastLoanRequestDay).toBe(day + 1)
+    },
+  )
 
   it('ends no game while it protects it', () => {
     // An artificial tutorial still under way at the close of November 30,
