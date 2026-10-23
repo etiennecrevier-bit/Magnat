@@ -158,11 +158,16 @@ describe('startGameLoop', () => {
     fake.runFor(before)
 
     store.getState().togglePause()
+    // Paused, the loop asks the browser for no frame (#281).
+    expect(fake.pendingFrames()).toBe(0)
     fake.runFor(60_000)
     expect(day()).toBe(0)
 
     store.getState().togglePause()
     expect(store.getState().speed).toBe(3)
+    // The first frame after the pause only sets the baseline.
+    expect(fake.pendingFrames()).toBe(1)
+    fake.deliverFrame()
     const after = Math.ceil((msPerDay - before * 3) / 3)
     fake.runFor(after - 1)
     expect(day()).toBe(0)

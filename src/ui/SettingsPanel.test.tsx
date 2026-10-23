@@ -330,3 +330,18 @@ describe('« Refaire la visite »', () => {
     expect(renderToStaticMarkup(<SettingsPanel />)).not.toContain(replay.button)
   })
 })
+
+describe('« Fluidité » (#281)', () => {
+  it('offers 30 and 60 images a second, the one in effect checked', () => {
+    const html = renderToStaticMarkup(
+      <SettingsPanelView {...props()} frameRate={60} />,
+    )
+    expect(html).toContain('<legend>Fluidité</legend>')
+    expect(html).toContain(
+      '<input type="radio" name="frameRate" value="30"/>30 images par seconde',
+    )
+    expect(html).toContain(
+      '<input type="radio" name="frameRate" checked="" value="60"/>60 images par seconde',
+    )
+  })
+})

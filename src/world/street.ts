@@ -15,6 +15,7 @@ import {
 import { gameStore, type GameStore } from '../ui/store.ts'
 import { loadArt, type LoadTexture } from './art.ts'
 import { createAtmosphere } from './atmosphere.ts'
+import { bakeRenderer, createBackdrop, type Backdrop } from './backdrop.ts'
 import type { Span } from './crowd.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
 import { placeCard, type Point } from './customerCard.ts'
@@ -23,7 +24,7 @@ import { TITLE_FONT_ASSET } from './fonts.ts'
 import { fitStreet } from './layout.ts'
 import type { GameState } from '../engine/types.ts'
 import { ASSETS, LINES } from './manifest.ts'
-import type { WorldApp } from './mountWorld.ts'
+import { SKY_COLOR, type WorldApp } from './mountWorld.ts'
 import { PICKER, type Picker } from './picker.ts'
 import { buildScene, type MeasureWidth } from './scene.ts'
 import { filtersFor, type MakeFilters } from './shadows.ts'
@@ -86,7 +87,10 @@ export type StreetSettings = Pick<SettingsStore, 'getState' | 'subscribe'>
  * the tally, which shows numbers and so stays clear of its textures. The
  * visual effects follow `settings` as the player changes them: the simple
  * ones drop the grain, the painted unevenness and the shadows' soft edge,
- * and WebGL's back buffer, which only those blend with.
+ * and WebGL's back buffer, which only those blend with. Where the renderer
+ * draws into textures, every layer under the shadows is drawn once into
+ * one, again only when the screen or the street changes (see
+ * `createBackdrop`).
  *
  * It holds `picker` while it runs: the player picks a customer there, and
  * their card follows them on the page each frame, paused or not.
@@ -143,6 +147,9 @@ export async function startStreet(
     undo(() => customers.destroy())
     scene.root.addChild(customers.root)
 
+    // The backdrop drawn once, where the renderer can (see backdrop.ts).
+    let backdrop: Backdrop | null = null
+
     // The screen follows the window; each frame refits the scene if it moved.
     let fitted = { width: -1, height: -1, scale: 1, x: 0, y: 0 }
     // The part of the design on screen, where customers come and go.
@@ -158,6 +165,7 @@ export async function startStreet(
       }
       atmosphere.fit(width, height)
       span = { left: -x / scale, right: (width - x) / scale }
+      backdrop?.invalidate()
     }
     const showEffects = (effects: VisualEffects) => {
       scene.setEffects(effects)
@@ -243,6 +251,7 @@ export async function startStreet(
 
     const onFrame = (ticker: Ticker) => {
       fit()
+      backdrop?.update(app.screen.width, app.screen.height)
       scene.animate(ticker.deltaMS)
       customers.frame(ticker.deltaMS, store.getState().speed, span)
       // Where the cast shadows show through one texture, its pixels are the
@@ -255,6 +264,8 @@ export async function startStreet(
     const show = (game: GameState) => {
       const view = truckView(game)
       scene.update(view)
+      // A change to the street may show a piece of the backdrop or hide it.
+      backdrop?.invalidate()
       spots = spotsShown(manifest, {
         ...view,
         inChallenge: game.challenge !== null,
@@ -262,15 +273,38 @@ export async function startStreet(
       })
       customers.onGame(game)
     }
-    show(store.getState().game)
-    showEffects(settings.getState().visualEffects)
-    fit()
-    showMarks()
     const layers = [scene.root, atmosphere.root, customers.labels]
     undo(() => {
       for (const layer of layers) layer.removeFromParent()
     })
     app.stage.addChild(...layers)
+    // Every layer under the shadows, drawn once, where the renderer can
+    // draw into a texture.
+    const shadowLayer = scene.root.getChildByLabel(
+      `layer:${manifest.light.shadowLayer}`,
+    )
+    const renderer = bakeRenderer(app.renderer)
+    backdrop =
+      renderer === null || shadowLayer === null
+        ? null
+        : createBackdrop(
+            app.stage,
+            {
+              street: scene.root,
+              layers: scene.root.children.slice(
+                0,
+                scene.root.getChildIndex(shadowLayer),
+              ),
+              others: [atmosphere.root, customers.labels],
+            },
+            renderer,
+            SKY_COLOR,
+          )
+    undo(() => backdrop?.destroy())
+    show(store.getState().game)
+    showEffects(settings.getState().visualEffects)
+    fit()
+    showMarks()
     undo(
       store.subscribe((state, previous) => {
         if (state.game !== previous.game) show(state.game)

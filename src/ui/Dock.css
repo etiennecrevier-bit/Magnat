@@ -126,10 +126,14 @@ body {
 }
 
 /* A button one of Réal's postcards points at (#239): a soft amber glow
-   that swells and fades until the player opens it. Still, under reduced
-   motion, the glow stays on. */
+   that swells and fades a few times, then stays on until the player opens
+   it, so an idle page repaints nothing (#281). Under reduced motion, the
+   glow stays on from the start. */
 .dock__button--pulse .dock__tile {
-  animation: dock-pulse 1.6s ease-in-out infinite;
+  box-shadow:
+    0 5px 0 #2b2622,
+    0 0 0 4px rgb(240 138 62 / 55%);
+  animation: dock-pulse 1.6s ease-in-out 4;
 }
 
 @keyframes dock-pulse {
@@ -150,9 +154,6 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .dock__button--pulse .dock__tile {
     animation: none;
-    box-shadow:
-      0 5px 0 #2b2622,
-      0 0 0 4px rgb(240 138 62 / 55%);
   }
 }
 

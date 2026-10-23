@@ -21,6 +21,7 @@ import {
 } from './picker.ts'
 import { PIXI_LOADERS, startStreet, STREET_CROWD } from './street.ts'
 import type { WorldLink } from './streetSpots.ts'
+import { gatedScenes, gateWorld } from './worldGate.ts'
 import { startWorld } from './worldView.ts'
 import './WorldCanvas.css'
 
@@ -33,12 +34,18 @@ import './WorldCanvas.css'
  * street, reports its link to `onOpen`, which opens it; without one, as
  * before a game starts, nothing opens, and the street marks nothing. Over
  * the world and under the panels, the street's marks: the spot under the
- * pointer, outlined with its label, and the legend while it shows.
+ * pointer, outlined with its label, and the legend while it shows. It
+ * draws only while something moves on it, and once on each change (see
+ * `gateWorld`): on the start menu, while `playing` is false, it stands
+ * still.
  */
 export default function WorldCanvas({
   onOpen = null,
+  playing = true,
 }: {
   onOpen?: ((link: WorldLink) => void) | null
+  /** Whether a game is played: on the start menu, the world stands still. */
+  playing?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   // The world starts once; it asks for the latest at each press.
@@ -46,6 +53,13 @@ export default function WorldCanvas({
   useEffect(() => {
     opener.current = onOpen
   }, [onOpen])
+  // And whether it moves, which it asks at each change (see `gateWorld`).
+  const played = useRef(playing)
+  const invalidate = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    played.current = playing
+    invalidate.current?.()
+  }, [playing])
   const { live, open, said, marks } = useSyncExternalStore(
     PICKER.subscribe,
     PICKER.view,
@@ -61,22 +75,40 @@ export default function WorldCanvas({
       worldPicks(PICKER, CITY),
       (pointing) => world.classList.toggle('world--pointing', pointing),
     )
-    const unmount = mountWorld(world, worldOptions(window), (app) =>
-      startWorld(app, {
-        street: (scene) =>
-          startStreet(
-            scene,
-            gameStore,
-            PIXI_LOADERS,
-            ASSETS,
-            STREET_CROWD,
-            PICKER,
-            settingsStore,
-            () => openLater(opener),
-          ),
-        city: (scene) => startCity(scene, { onOpen: () => openLater(opener) }),
-      }),
-    )
+    const options = worldOptions(window, settingsStore.getState().visualEffects)
+    const unmount = mountWorld(world, options, async (app) => {
+      // Draws only while something moves, and a frame on each change.
+      const gate = gateWorld(app, {
+        game: gameStore,
+        settings: settingsStore,
+        playing: () => played.current,
+        picks: PICKER.subscribe,
+      })
+      invalidate.current = gate?.invalidate ?? null
+      const stopWorld = await startWorld(
+        app,
+        gatedScenes(gate, {
+          street: (scene) =>
+            startStreet(
+              scene,
+              gameStore,
+              PIXI_LOADERS,
+              ASSETS,
+              STREET_CROWD,
+              PICKER,
+              settingsStore,
+              () => openLater(opener),
+            ),
+          city: (scene) =>
+            startCity(scene, { onOpen: () => openLater(opener) }),
+        }),
+      )
+      return () => {
+        invalidate.current = null
+        gate?.stop()
+        return stopWorld()
+      }
+    })
     return () => {
       stopListening()
       unmount()

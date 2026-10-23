@@ -12,7 +12,8 @@ import {
   type InstructionSet,
   type Renderer,
   Text,
-  type Ticker,
+  Ticker,
+  UPDATE_PRIORITY,
   type ViewContainer,
 } from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -42,6 +43,8 @@ import { replayOf } from './replay.ts'
 import { startStreet, type StreetCrowd, type StreetLoaders } from './street.ts'
 import { spotAt, spotMark, spotsShown, type StreetLink } from './streetSpots.ts'
 import { staffAtTruck, truckView } from './truckView.ts'
+import { gatedScenes, gateWorld } from './worldGate.ts'
+import { startWorld } from './worldView.ts'
 
 /** A Pixi app with a real stage, a screen the test resizes and a ticker it runs. */
 function createFakeApp(width = 1440, height = 900) {
@@ -2319,5 +2322,239 @@ describe('startStreet: a day the street closes the truck', () => {
     store.getState().setSpeed(1)
     expect(play(app, store, 10_000)).toBe(0)
     expect(tally.visible).toBe(false)
+  })
+})
+
+/**
+ * The fake clock, with the browser's frames on it every 16 ms, which Node
+ * has none of.
+ */
+function fakeFrames(): void {
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'performance'],
+  })
+  vi.stubGlobal('requestAnimationFrame', (onFrame: FrameRequestCallback) =>
+    setTimeout(() => onFrame(performance.now()), 16),
+  )
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+}
+
+/**
+ * A Pixi app with a real stage and Pixi's own ticker, on the fake clock,
+ * whose renders are counted as Pixi's app adds its render: last in each
+ * frame. `rendered` holds what each render saw, from `look`.
+ */
+function createGatedApp<T>(look: (stage: Container) => T) {
+  const stage = new Container()
+  const ticker = new Ticker()
+  const rendered: T[] = []
+  ticker.add(() => rendered.push(look(stage)), null, UPDATE_PRIORITY.LOW)
+  const app = {
+    stage,
+    screen: { width: 1440, height: 900 },
+    ticker,
+    renderer: { type: RendererType.WEBGL, resolution: 2, resize: vi.fn() },
+    canvas: {} as HTMLCanvasElement,
+    init: async () => {},
+    destroy: () => {},
+  }
+  return {
+    app,
+    rendered,
+    shape: app as unknown as ReturnType<typeof createFakeApp>,
+  }
+}
+
+/** A page on the fake clock, whose resizes and visibility the test sets. */
+function createPage() {
+  const listeners = new Map<string, Set<() => void>>()
+  const page = {
+    devicePixelRatio: 2,
+    hidden: false,
+    requestFrame: (onFrame: () => void) =>
+      requestAnimationFrame(() => onFrame()),
+    cancelFrame: (id: number) => cancelAnimationFrame(id),
+    isHidden: () => page.hidden,
+    matches: () => false,
+    listen: (name: string, listener: () => void) => {
+      const set = listeners.get(name) ?? new Set()
+      set.add(listener)
+      listeners.set(name, set)
+      return () => set.delete(listener)
+    },
+    fire: (name: string) => {
+      for (const listener of listeners.get(name) ?? []) listener()
+    },
+  }
+  return page
+}
+
+describe('startStreet behind the frame gate (#281)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  /** The street, gated as the game gates it, on Wednesday at `speed`. */
+  async function gatedStreet(speed: number) {
+    fakeFrames()
+    const store = wednesdayStore(true)
+    store.getState().setSpeed(speed)
+    const settings = createSettingsStore(null)
+    const picker = createPicker()
+    const page = createPage()
+    const { app, rendered, shape } = createGatedApp((stage) => ({
+      walkers: stage
+        .getChildByLabel('customers', true)
+        ?.children.filter((c) => c.label === 'customer').length,
+      tally: stage.getChildByLabel('tally', true)?.visible,
+      scale: stage.getChildByLabel('street')?.scale.x,
+      city: stage.getChildByLabel('city', true) !== null,
+    }))
+    const gate = gateWorld(
+      app,
+      {
+        game: store,
+        settings,
+        playing: () => true,
+        picks: picker.subscribe,
+      },
+      page,
+    )!
+    const stopWorld = await startWorld(
+      app,
+      gatedScenes(gate, {
+        street: (scene) =>
+          startStreet(
+            scene,
+            store,
+            createLoaders(),
+            ASSETS,
+            busyCrowd(),
+            picker,
+            settings,
+          ),
+        city: async (scene) => {
+          const city = new Container({ label: 'city' })
+          scene.stage.addChild(city)
+          return () => city.destroy()
+        },
+      }),
+      settings,
+    )
+    const stop = () => {
+      gate.stop()
+      void stopWorld()
+      app.ticker.stop()
+    }
+    return { app, store, settings, page, gate, rendered, shape, stop }
+  }
+
+  it('clears the walkers and shows the tally in the one frame it draws at ×10', async () => {
+    const { app, store, rendered, stop } = await gatedStreet(1)
+    for (let t = 0; t < 12_000; t += 4000) {
+      vi.advanceTimersByTime(4000)
+      store.getState().advance(1)
+    }
+    expect(app.ticker.started).toBe(true)
+    expect(rendered.at(-1)?.walkers).toBeGreaterThan(0)
+
+    store.getState().setSpeed(10)
+    expect(app.ticker.started).toBe(false)
+    vi.advanceTimersByTime(100)
+    const drawn = rendered.length
+    expect(rendered.at(-1)).toMatchObject({ walkers: 0, tally: true })
+    vi.advanceTimersByTime(5000)
+    expect(rendered).toHaveLength(drawn)
+    stop()
+  })
+
+  it('takes the tally down in the one frame it draws on pause', async () => {
+    const { store, rendered, stop } = await gatedStreet(10)
+    vi.advanceTimersByTime(100)
+    expect(rendered.at(-1)?.tally).toBe(true)
+    store.getState().setSpeed(0)
+    vi.advanceTimersByTime(100)
+    expect(rendered.at(-1)?.tally).toBe(false)
+    const drawn = rendered.length
+    vi.advanceTimersByTime(5000)
+    expect(rendered).toHaveLength(drawn)
+    stop()
+  })
+
+  it('draws a new day at ×10, once', async () => {
+    const { store, rendered, stop } = await gatedStreet(10)
+    vi.advanceTimersByTime(100)
+    const drawn = rendered.length
+    store.getState().advance(1)
+    vi.advanceTimersByTime(100)
+    expect(rendered).toHaveLength(drawn + 1)
+    stop()
+  })
+
+  it('refits the street to a resized window while paused', async () => {
+    const { app, page, rendered, stop } = await gatedStreet(0)
+    vi.advanceTimersByTime(100)
+    const before = rendered.at(-1)?.scale
+    app.screen.width = 900
+    app.screen.height = 600
+    page.fire('resize')
+    vi.advanceTimersByTime(100)
+    expect(rendered.at(-1)?.scale).not.toBe(before)
+    stop()
+  })
+
+  it('shows the city as soon as it starts while paused, then the street again', async () => {
+    const { settings, rendered, stop } = await gatedStreet(0)
+    vi.advanceTimersByTime(100)
+    settings.getState().setWorldView('city')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(rendered.at(-1)?.city).toBe(true)
+    settings.getState().setWorldView('street')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(rendered.at(-1)).toMatchObject({ city: false, tally: false })
+    expect(rendered.at(-1)?.scale).toBeGreaterThan(0)
+    stop()
+  })
+
+  it('draws at most 30 frames a second while customers walk, 60 when picked', async () => {
+    const { settings, rendered, stop } = await gatedStreet(1)
+    vi.advanceTimersByTime(1000)
+    const first = rendered.length
+    vi.advanceTimersByTime(1000)
+    expect(rendered.length - first).toBeLessThanOrEqual(31)
+    settings.getState().setFrameRate(60)
+    const second = rendered.length
+    vi.advanceTimersByTime(1000)
+    expect(rendered.length - second).toBeGreaterThan(40)
+    stop()
+  })
+})
+
+describe('startStreet: its backdrop drawn once (#281)', () => {
+  it('draws the layers under the shadows once, then again only on a new day or a resize', async () => {
+    const app = createFakeApp()
+    const render = vi.fn()
+    const baking = {
+      ...app,
+      renderer: { type: RendererType.WEBGL, resolution: 1, render },
+    }
+    const store = wednesdayStore(true)
+    await startStreet(baking, store, createLoaders(), ASSETS, busyCrowd())
+    app.frame()
+    app.frame()
+    expect(render).toHaveBeenCalledOnce()
+    expect(app.stage.children[0]?.label).toBe('backdrop')
+    for (const id of ['sky', 'far', 'buildings', 'sidewalk', 'street']) {
+      expect(piece(app, `layer:${id}`).renderable).toBe(false)
+    }
+    expect(piece(app, 'layer:shadows').renderable).toBe(true)
+
+    store.getState().advance(1)
+    app.frame()
+    expect(render).toHaveBeenCalledTimes(2)
+    app.screen.width = 1000
+    app.frame()
+    expect(render).toHaveBeenCalledTimes(3)
   })
 })

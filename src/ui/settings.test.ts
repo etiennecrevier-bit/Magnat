@@ -43,6 +43,7 @@ describe('the settings', () => {
   it('start with the full visual effects, the weekly report in full only at first and the screens unfolded', () => {
     expect(DEFAULT_SETTINGS).toEqual({
       visualEffects: 'full',
+      frameRate: 30,
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: {},
@@ -61,6 +62,7 @@ describe('the settings', () => {
     expect(SETTINGS_KEY).toBe('magnat.reglages')
     expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
       visualEffects: 'simple',
+      frameRate: 30,
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: {},
@@ -76,6 +78,7 @@ describe('the settings', () => {
     createSettingsStore(storage).getState().setOpenReportEveryWeek(true)
     expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
       visualEffects: 'full',
+      frameRate: 30,
       openReportEveryWeek: true,
       reportCadence: 'week',
       bestMedals: {},
@@ -93,6 +96,7 @@ describe('the settings', () => {
     createSettingsStore(storage).getState().setReportCadence('month')
     expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
       visualEffects: 'full',
+      frameRate: 30,
       openReportEveryWeek: false,
       reportCadence: 'month',
       bestMedals: {},
@@ -109,6 +113,7 @@ describe('the settings', () => {
     createSettingsStore(storage).getState().setScreensFolded(true)
     expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
       visualEffects: 'simple',
+      frameRate: 30,
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: {},
@@ -122,6 +127,7 @@ describe('the settings', () => {
     reloaded.getState().setScreensFolded(false)
     expect(readSettings(storage)).toEqual({
       visualEffects: 'simple',
+      frameRate: 30,
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: {},
@@ -213,6 +219,7 @@ describe('the settings', () => {
     createSettingsStore(storage).getState().setOpenReportEveryWeek(true)
     expect(readSettings(storage)).toEqual({
       visualEffects: 'simple',
+      frameRate: 30,
       openReportEveryWeek: true,
       reportCadence: 'week',
       bestMedals: {},
@@ -224,6 +231,7 @@ describe('the settings', () => {
     createSettingsStore(storage).getState().setVisualEffects('full')
     expect(readSettings(storage)).toEqual({
       visualEffects: 'full',
+      frameRate: 30,
       openReportEveryWeek: true,
       reportCadence: 'week',
       bestMedals: {},
@@ -234,6 +242,7 @@ describe('the settings', () => {
     createSettingsStore(storage).getState().setOpenReportEveryWeek(false)
     expect(readSettings(storage)).toEqual({
       visualEffects: 'full',
+      frameRate: 30,
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: {},
@@ -245,6 +254,7 @@ describe('the settings', () => {
     createSettingsStore(storage).getState().setVisualEffects('simple')
     expect(readSettings(storage)).toEqual({
       visualEffects: 'simple',
+      frameRate: 30,
       openReportEveryWeek: false,
       reportCadence: 'month',
       bestMedals: {},
@@ -260,6 +270,7 @@ describe('the settings', () => {
     })
     expect(readSettings(storage)).toEqual({
       visualEffects: 'simple',
+      frameRate: 30,
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: {},
@@ -274,6 +285,7 @@ describe('the settings', () => {
       { visualEffects: 'ultra', openReportEveryWeek: true },
       {
         visualEffects: 'full',
+        frameRate: 30,
         openReportEveryWeek: true,
         reportCadence: 'week',
         bestMedals: {},
@@ -286,6 +298,7 @@ describe('the settings', () => {
       { visualEffects: 'simple', openReportEveryWeek: 'oui' },
       {
         visualEffects: 'simple',
+        frameRate: 30,
         openReportEveryWeek: false,
         reportCadence: 'week',
         bestMedals: {},
@@ -298,6 +311,7 @@ describe('the settings', () => {
       { reportCadence: 'year', openReportEveryWeek: true },
       {
         visualEffects: 'full',
+        frameRate: 30,
         openReportEveryWeek: true,
         reportCadence: 'week',
         bestMedals: {},
@@ -310,6 +324,7 @@ describe('the settings', () => {
       { visualEffects: 'ultra', reportCadence: 'month' },
       {
         visualEffects: 'full',
+        frameRate: 30,
         openReportEveryWeek: false,
         reportCadence: 'month',
         bestMedals: {},
@@ -322,6 +337,7 @@ describe('the settings', () => {
       { visualEffects: 'simple', screensFolded: 'oui' },
       {
         visualEffects: 'simple',
+        frameRate: 30,
         openReportEveryWeek: false,
         reportCadence: 'week',
         bestMedals: {},
@@ -334,6 +350,7 @@ describe('the settings', () => {
       { visualEffects: 'ultra', screensFolded: true },
       {
         visualEffects: 'full',
+        frameRate: 30,
         openReportEveryWeek: false,
         reportCadence: 'week',
         bestMedals: {},
@@ -346,6 +363,7 @@ describe('the settings', () => {
       { screensFolded: true, streetLegend: { seed: 'quarante-deux' } },
       {
         visualEffects: 'full',
+        frameRate: 30,
         openReportEveryWeek: false,
         reportCadence: 'week',
         bestMedals: {},
@@ -358,6 +376,7 @@ describe('the settings', () => {
       { screensFolded: true, streetLegend: 'vu' },
       {
         visualEffects: 'full',
+        frameRate: 30,
         openReportEveryWeek: false,
         reportCadence: 'week',
         bestMedals: {},
@@ -404,6 +423,7 @@ describe('the settings', () => {
     expect(
       writeSettings(BLOCKED, {
         visualEffects: 'simple',
+        frameRate: 60,
         openReportEveryWeek: true,
         reportCadence: 'week',
         bestMedals: {},
@@ -432,6 +452,7 @@ describe('the settings', () => {
     store.getState().recordMedal('zeroGaspillage', 'argent')
     expect(JSON.parse(storage.items[SETTINGS_KEY]!)).toEqual({
       visualEffects: 'simple',
+      frameRate: 30,
       openReportEveryWeek: false,
       reportCadence: 'week',
       bestMedals: { travauxSaintDenis: 'bronze', zeroGaspillage: 'argent' },
@@ -529,6 +550,7 @@ describe('the settings', () => {
       a.getState().setVisualEffects('simple')
       expect(readSettings(storage)).toEqual({
         visualEffects: 'simple',
+        frameRate: 30,
         openReportEveryWeek: false,
         reportCadence: 'week',
         bestMedals: { travauxSaintDenis: 'or' },
@@ -591,12 +613,14 @@ describe('the settings', () => {
       const storage = memory({
         [SETTINGS_KEY]: JSON.stringify({
           visualEffects: 'simple',
+          frameRate: 30,
           openReportEveryWeek: true,
           bestMedals,
         }),
       })
       expect(readSettings(storage)).toEqual({
         visualEffects: 'simple',
+        frameRate: 30,
         openReportEveryWeek: true,
         reportCadence: 'week',
         bestMedals: kept,
@@ -612,5 +636,31 @@ describe('the settings', () => {
     expect(settingsStore.getState().openReportEveryWeek).toBe(false)
     expect(settingsStore.getState().reportCadence).toBe('week')
     expect(settingsStore.getState().screensFolded).toBe(false)
+  })
+})
+
+describe('« Fluidité » (#281)', () => {
+  it('starts at the content’s rate and keeps the one the player picks', () => {
+    const storage = memory()
+    const store = createSettingsStore(storage)
+    expect(store.getState().frameRate).toBe(30)
+    store.getState().setFrameRate(60)
+    expect(store.getState().frameRate).toBe(60)
+    expect(JSON.parse(storage.items[SETTINGS_KEY] ?? '{}')).toMatchObject({
+      frameRate: 60,
+    })
+    expect(createSettingsStore(storage).getState().frameRate).toBe(60)
+  })
+
+  it('takes no rate the content does not offer, stored or picked', () => {
+    for (const frameRate of [45, '60', null, 0]) {
+      const storage = memory({
+        [SETTINGS_KEY]: JSON.stringify({ frameRate }),
+      })
+      expect(readSettings(storage).frameRate).toBe(30)
+    }
+    const store = createSettingsStore(memory())
+    store.getState().setFrameRate(120)
+    expect(store.getState().frameRate).toBe(30)
   })
 })
