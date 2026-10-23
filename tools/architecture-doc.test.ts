@@ -8,16 +8,30 @@ import {
   loadCustomerContent,
   loadFoodTruckContent,
 } from '../src/content/schema.ts'
+import { BAKERY, bakeryMorning, closedBakery } from '../src/engine/bakery.ts'
+import { toCalendar } from '../src/engine/calendar.ts'
 import { createInitialState, tick } from '../src/engine/clock.ts'
+import { deliverContracts, GROCERS } from '../src/engine/contracts.ts'
 import { SEGMENTS } from '../src/engine/customers.ts'
-import { FOOD_TRUCK, openingJournal } from '../src/engine/day.ts'
+import {
+  DIFFICULTIES as DIFFICULTY_CONTENT,
+  EVENTS,
+  FOOD_TRUCK,
+  openingJournal,
+} from '../src/engine/day.ts'
+import { resolveEvent } from '../src/engine/events.ts'
 import { PRODUCTS } from '../src/engine/inventory.ts'
 import { defaultProfile } from '../src/engine/profile.ts'
+import type { GameState } from '../src/engine/types.ts'
+import type { AccountCode } from '../src/finance/accounts.ts'
+import { emptyJournal, type JournalEntry } from '../src/finance/journal.ts'
 
 // Keeps docs/architecture.md in step with the code it describes: the frozen
 // header of src/engine/types.ts, a heading for each type it exports and a
 // table row for each field, every repo path the page cites, the entries the
-// books open with, and the order in which tick() posts a day's entries.
+// books open with, the order in which tick() posts a day's entries, and the
+// phase-4 rules it states: Max Duvent's price, which accounts only the cards
+// post to, and what a grocer's « Refuser » does.
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const DOC = 'docs/architecture.md'
@@ -27,6 +41,14 @@ const FROZEN =
 
 const SHAPE = '## The shape of `GameState`'
 const ORDER = '## Order of operations in `tick()`'
+const GROCER_CONTRACTS = "## The grocers' contracts"
+const FINANCING = '## The emergency loan and the share sale'
+const ENTRIES = '## How journal entries are created'
+const INVESTOR_EVENT = 'offreDuvent'
+const SHARE_CAPITAL: AccountCode = '3000'
+/** The accounts the page says the game posts to only through the cards. */
+const ONLY_THE_CARDS = /posts to ([^.]*?) only through the event cards/
+const DIGITS_PER_GROUP = /\B(?=(\d{3})+(?!\d))/g
 
 /** Text in single asterisks, which the page uses for journal memos. */
 const ITALIC = /(?<!\*)\*([^*\n]+)\*(?!\*)/g
@@ -136,6 +158,31 @@ function section(
       index > start && /^#+ /.test(line) && line.indexOf(' ') <= level,
   )
   return lines.slice(start + 1, end === -1 ? undefined : end).join('\n')
+}
+
+/** Whole dollars as the page writes them: `30 000 $`. */
+function dollars(amount: number): string {
+  return `${String(amount / 100).replace(DIGITS_PER_GROUP, ' ')} $`
+}
+
+/** The page's bullet that starts with `name` in a code span. */
+function bullet(markdown: string, name: string): string {
+  return (
+    markdown.split('\n').find((line) => line.startsWith(`- \`${name}\``)) ?? ''
+  )
+}
+
+/** `state` with `event` waiting for the player's choice. */
+function waiting(state: GameState, event: string): GameState {
+  return {
+    ...state,
+    events: { ...state.events, pending: { event, followUp: false } },
+  }
+}
+
+/** The accounts `entries` post to. */
+function accountsOf(entries: readonly JournalEntry[]): Set<AccountCode> {
+  return new Set(entries.flatMap(({ lines }) => lines.map((l) => l.account)))
 }
 
 function italics(markdown: string): string[] {
@@ -261,5 +308,87 @@ describe(DOC, () => {
       }
     }
     expect([...posted].sort()).toEqual([...documented].sort())
+  })
+
+  it('names the price Max Duvent pays at each difficulty', () => {
+    const shareSale = bullet(
+      section(doc, (heading) => heading === FINANCING) ?? '',
+      'shareSale',
+    )
+    const prices = DIFFICULTIES.map((level) => {
+      const state = waiting(
+        createInitialState(SEED, FOOD_TRUCK, {
+          ...defaultProfile(),
+          difficulty: level,
+        }),
+        INVESTOR_EVENT,
+      )
+      const sold = resolveEvent(state, 'accepter')
+      const raised = sold.journal.entries
+        .slice(state.journal.entries.length)
+        .flatMap(({ lines }) => lines)
+        .filter(({ account }) => account === SHARE_CAPITAL)
+        .reduce((sum, { credit }) => sum + credit, 0)
+      expect(raised).toBeGreaterThan(0)
+      return `${dollars(raised)} at ${DIFFICULTY_CONTENT.difficulties[level].name}`
+    })
+    expect(prices.filter((price) => !shareSale.includes(price))).toEqual([])
+  })
+
+  it('says only the cards post to an account only when no other entry does', () => {
+    const claim = (section(doc, (heading) => heading === ENTRIES) ?? '').match(
+      ONLY_THE_CARDS,
+    )
+    const onlyTheCards = new Set(claim?.[1]?.match(/\d{4}/g) ?? [])
+
+    // A grocer's weekly delivery and the bakery's opening, neither a card.
+    const signed = resolveEvent(
+      waiting(createInitialState(SEED), 'contratNormand'),
+      'accepter',
+    )
+    let monday = signed.day + 1
+    while (toCalendar(monday).weekday !== GROCERS.deliveryWeekday) monday += 1
+    const prices = DIFFICULTY_CONTENT.bakery[signed.profile.difficulty]
+    const delivered = deliverContracts(
+      { ...signed, day: monday },
+      false,
+      true,
+      prices,
+      FOOD_TRUCK,
+      BAKERY,
+    ).state
+    expect(delivered.journal.entries.length).toBeGreaterThan(
+      signed.journal.entries.length,
+    )
+    const opened = bakeryMorning(
+      emptyJournal(),
+      closedBakery(),
+      { oven: 'louer' },
+      monday,
+      prices,
+    ).journal
+    const posted = accountsOf([
+      ...delivered.journal.entries.slice(signed.journal.entries.length),
+      ...opened.entries,
+    ])
+    expect([...posted].filter((account) => onlyTheCards.has(account))).toEqual(
+      [],
+    )
+  })
+
+  it.each(
+    EVENTS.events.filter(({ conditions }) => conditions?.grocer !== undefined),
+  )("says what $id's « Refuser » does", ({ choices }) => {
+    const refuse = choices.find(({ id }) => id === 'refuser')
+    const effects = refuse?.outcomes.flatMap((outcome) => outcome.effects)
+    expect(effects).toEqual([
+      expect.objectContaining({ kind: 'energy', difficulties: ['difficile'] }),
+    ])
+    const said =
+      (section(doc, (heading) => heading === GROCER_CONTRACTS) ?? '').match(
+        /« Refuser » ([^.]*)/,
+      )?.[1] ?? ''
+    expect(said).toMatch(/energy/)
+    expect(said).toMatch(/Difficile/)
   })
 })
