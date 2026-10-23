@@ -10,7 +10,7 @@ import {
   type WalkIns,
 } from '../content/schema.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
-import { cents, mulRatio, type Cents } from './money.ts'
+import { add, cents, mulInt, mulRatio, type Cents } from './money.ts'
 import { next, normal } from './rng.ts'
 import {
   SECONDS_PER_MINUTE,
@@ -46,6 +46,17 @@ export function perSegment<T>(
     SegmentId,
     T
   >
+}
+
+/** What `visit` paid: each unit it bought at the day's `price`. */
+export function visitSales(
+  { bought }: Visit,
+  price: (product: ProductId) => Cents,
+): Cents {
+  return PRODUCTS.reduce(
+    (total, product) => add(total, mulInt(price(product), bought[product])),
+    cents(0),
+  )
 }
 
 /** The crowd an ISO `weekday` (1 = Monday) brings. */
@@ -168,6 +179,11 @@ export interface ExtraCrowd {
   readonly customers: number
   /** Each segment's share of them, summing to 1. */
   readonly segmentShares: Readonly<Record<SegmentId, number>>
+  /**
+   * Whether marketing brought them (#284): their visits say so (see
+   * `Visit.fromMarketing`). Tagging them draws nothing.
+   */
+  readonly fromMarketing?: boolean
 }
 
 /**
@@ -291,6 +307,7 @@ export function serveWalkIns(
           headcount(extra.customers),
           extra.segmentShares,
           draws,
+          extra.fromMarketing === true,
         )
   const street = streetCrowd(crowd, extra, changes.walkIns)
   const surge =
@@ -344,7 +361,8 @@ export function serveWalkIns(
   let reachedCounter = 0
   let totalWait = 0
   let longestWait = 0
-  for (const { arrivalMinute, segment, wanted, tooDear } of arrivals) {
+  for (const arrival of arrivals) {
+    const { arrivalMinute, segment, wanted, tooDear } = arrival
     // Nobody at the counter: they find the truck closed and never stop.
     if (!line.isOpen(arrivalMinute * SECONDS_PER_MINUTE)) continue
     for (const product of tooDear) pricedOut[product] += 1
@@ -353,6 +371,7 @@ export function serveWalkIns(
     let outcome: VisitOutcome = tooExpensive ? 'tooExpensive' : 'browsed'
     let servedMinute: number | null = null
     let leftMinute: number | null = null
+    let servedBy: Server['who'] = undefined
     let thrownOut = 0
     if (wanted.length > 0) {
       const second = arrivalMinute * SECONDS_PER_MINUTE
@@ -364,6 +383,7 @@ export function serveWalkIns(
       } else {
         const { start, server } = line.join(second, wanted.length)
         servedMinute = Math.floor(start / SECONDS_PER_MINUTE)
+        servedBy = server.who
         reachedCounter += 1
         if (server.owner) servedByOwner += 1
         totalWait += start - second
@@ -405,6 +425,8 @@ export function serveWalkIns(
       servedMinute,
       leftMinute,
       botched: thrownOut,
+      ...(servedBy === undefined ? {} : { servedBy }),
+      ...(arrival.fromMarketing === true ? { fromMarketing: true } : {}),
     })
 
     const counts = tally[segment]
@@ -486,13 +508,15 @@ interface Draws {
 
 /**
  * Draws `count` customers from `rngState`, one after the other, each from a
- * segment picked by `segmentShares` (see `serveWalkIns`).
+ * segment picked by `segmentShares` (see `serveWalkIns`), each tagged as
+ * marketing's with `fromMarketing`, which draws nothing more.
  */
 function drawArrivals(
   rngState: number,
   count: number,
   segmentShares: Readonly<Record<SegmentId, number>>,
   { walkIns, pickSlot, odds }: Draws,
+  fromMarketing = false,
 ): { arrivals: Arrival[]; rngState: number } {
   const { opensAtMinute, arrivalSlotMinutes } = walkIns
   const pickSegment = picker(SEGMENTS.map((id) => segmentShares[id]))
@@ -521,6 +545,7 @@ function drawArrivals(
       segment,
       wanted,
       tooDear,
+      ...(fromMarketing ? { fromMarketing: true } : {}),
     })
   }
   return { arrivals, rngState: state }
@@ -537,6 +562,8 @@ interface Arrival {
    * `PRODUCTS` order.
    */
   tooDear: ProductId[]
+  /** Whether marketing brought them; absent otherwise. */
+  fromMarketing?: true
 }
 
 interface Odds {

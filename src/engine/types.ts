@@ -100,6 +100,65 @@ export interface DaySummary {
    * the staff; absent when none did.
    */
   readonly quits?: readonly CandidateId[]
+  /**
+   * What each person did that day (#283): the owner unless away all day,
+   * then each employee who came, in the order of the staff. Absent from a
+   * day a save from before it played.
+   */
+  readonly work?: readonly PersonDay[]
+  /** Set when the owner was away all day (#283); absent otherwise. */
+  readonly ownerAway?: true
+}
+
+/** Who did some work: the owner, or an employee by their candidate id. */
+export type Worker = 'owner' | CandidateId
+
+/**
+ * What one person did on a business day (#283), by the job they did: the
+ * walk-ins they served at the counter, the deliveries they made, the
+ * croissants they baked. Zeros for a job they did not do.
+ */
+export interface PersonDay {
+  readonly who: Worker
+  /** Customers they served at the counter. */
+  readonly customers: number
+  /** What those customers paid. */
+  readonly sales: Cents
+  /** Deliveries they made to the grocers. */
+  readonly deliveries: number
+  /** What those deliveries invoiced. */
+  readonly invoiced: Cents
+  /** Croissants they made at the bakery. */
+  readonly baked: number
+  /**
+   * What making them cost in ingredients, those thrown away and made again
+   * included.
+   */
+  readonly bakedCost: Cents
+  /** What buying as many for the truck would have cost that day. */
+  readonly boughtCost: Cents
+}
+
+/** What `GameState.workDays` keeps of a business day (#283). */
+export interface WorkDay {
+  readonly day: Day
+  /** What each person did (see `DaySummary.work`). */
+  readonly people: readonly PersonDay[]
+  /** Whether the owner was away all day. */
+  readonly ownerAway: boolean
+  /** The employees absent that day whose role had work. */
+  readonly absent: readonly CandidateId[]
+}
+
+/** What `GameState.marketingDays` keeps of a business day (#284). */
+export interface MarketingDay {
+  readonly day: Day
+  /** What the marketing budget spent; 0 on a day the truck was closed. */
+  readonly spent: Cents
+  /** The walk-ins marketing brought, whatever their visit came to. */
+  readonly customers: number
+  /** What those walk-ins paid. */
+  readonly sales: Cents
 }
 
 /** One customer segment's visits on a business day. */
@@ -140,6 +199,13 @@ export interface Visit {
    * them.
    */
   readonly botched: number
+  /**
+   * Who served them at the counter (#283); absent when they never reached
+   * it, or on a day a save from before it played.
+   */
+  readonly servedBy?: Worker
+  /** Set when marketing brought them (#284); absent otherwise. */
+  readonly fromMarketing?: true
 }
 
 /**
@@ -313,6 +379,16 @@ export interface GameState {
    * the extra walk-ins it brings, follows it.
    */
   readonly marketingHistory: readonly Cents[]
+  /**
+   * What marketing spent and brought on each of the last 28 business days
+   * played (#284), oldest first; absent in a save from before it.
+   */
+  readonly marketingDays?: readonly MarketingDay[]
+  /**
+   * What each person did on each of the last 7 business days played
+   * (#283), oldest first; absent in a save from before it.
+   */
+  readonly workDays?: readonly WorkDay[]
   /** How the player runs the truck on business day `day`. */
   readonly decisions: Decisions
   /**
@@ -741,6 +817,20 @@ export interface WeekReport {
    * week has left `weekHistory`; null when no earlier week was reported.
    */
   readonly previousBest: Cents | null
+  /**
+   * What the marketing budget spent over the week and what it brought
+   * (#284), when it spent anything; absent otherwise.
+   */
+  readonly marketing?: MarketingWeek
+}
+
+/** What the marketing budget spent and brought over some days (#284). */
+export interface MarketingWeek {
+  readonly spent: Cents
+  /** The walk-ins it brought. */
+  readonly customers: number
+  /** What those walk-ins paid. */
+  readonly sales: Cents
 }
 
 /** What `weekHistory` keeps of a week. */

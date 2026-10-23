@@ -12,6 +12,7 @@ import { incomeStatement } from '../finance/statements.ts'
 import { mondayOf, sundayOf } from './calendar.ts'
 import { GROCERS } from './contracts.ts'
 import { DREAM } from './dream.ts'
+import { marketingOver } from './marketing.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
 import { add, cents, sub, sum, type Cents } from './money.ts'
 import { netWorth } from './netWorth.ts'
@@ -178,6 +179,20 @@ const FACTS: {
 }
 
 /**
+ * What the marketing budget spent from `fromDay` to `toDay` and what it
+ * brought, as a report's `marketing`, when it spent anything; nothing
+ * otherwise.
+ */
+function marketingOf(
+  { marketingDays }: GameState,
+  fromDay: Day,
+  toDay: Day,
+): Pick<WeekReport, 'marketing'> {
+  const week = marketingOver(marketingDays ?? [], fromDay, toDay)
+  return week.spent > 0 ? { marketing: week } : {}
+}
+
+/**
  * The week a game opens with: partial, no day played yet, and the
  * Encaisse of `journal`, the books the game opens with, as its start.
  */
@@ -202,7 +217,10 @@ export function openingWeek(journal: Journal): WeekSoFar {
  * bénéfice net from the état des résultats over its days, added to
  * `weekHistory` with the owner's net worth at the close (see `netWorth`,
  * with `dream`), of which the last `WEEKS_KEPT` are kept, and the next week
- * starts from the Sunday's close. Throws an Error unless a day was played.
+ * starts from the Sunday's close. The report says what the marketing
+ * budget spent over the week and what it brought, from
+ * `closing.marketingDays`, when it spent anything (#284). Throws an Error
+ * unless a day was played.
  */
 export function recordDay(
   closing: GameState,
@@ -285,6 +303,7 @@ export function recordDay(
     events: closing.events.history.filter(({ day: at }) => at >= first),
     modifiers,
     previousBest: bestBefore(lastWeek),
+    ...marketingOf(closing, first, day),
   }
   const record: WeekRecord = {
     firstDay: report.firstDay,

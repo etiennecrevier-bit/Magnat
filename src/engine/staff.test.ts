@@ -100,7 +100,7 @@ describe('crewOf', () => {
       string,
       readonly Employee[],
       boolean,
-      Omit<ReturnType<typeof crewOf>, 'truckers' | 'baker'>,
+      Omit<ReturnType<typeof crewOf>, 'truckers' | 'baker' | 'deliverer'>,
     ]
   >([
     [
@@ -156,11 +156,14 @@ describe('crewOf', () => {
       { ownerServes: false, atTruck: 2, delivers: null, bakes: null },
     ],
   ])('with %s', (_, staff, away, crew) => {
-    const { truckers, baker, ...rest } = crewOf(staff, away)
+    const { truckers, baker, deliverer, ...rest } = crewOf(staff, away)
     expect(rest).toEqual(crew)
     expect(truckers).toEqual(staff.filter(({ role }) => role === 'camion'))
     expect(baker).toEqual(
       staff.find(({ role }) => role === 'boulanger') ?? null,
+    )
+    expect(deliverer).toEqual(
+      staff.find(({ role }) => role === 'livreur') ?? null,
     )
   })
 })
@@ -309,6 +312,7 @@ describe('crewOf with absences', () => {
       delivers: null,
       bakes: null,
       baker: null,
+      deliverer: null,
     })
     expect(crewOf([AMELIE], true, ['amelie'])).toMatchObject({
       ownerServes: false,
@@ -322,6 +326,10 @@ describe('crewOf with absences', () => {
     const crew = crewOf([SOPHIE, other], false, ['sophie'])
     expect(crew.bakes).toBe('employee')
     expect(crew.baker).toEqual(other)
+    const second = employee('olivier', 'livreur')
+    const delivering = crewOf([KEVIN, second], false, ['kevin'])
+    expect(delivering.delivers).toBe('employee')
+    expect(delivering.deliverer).toEqual(second)
   })
 })
 

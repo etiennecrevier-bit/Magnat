@@ -28,6 +28,7 @@ const RESTED: Server = {
   speed: 1,
   owner: true,
   botchedShare: 0,
+  who: 'owner',
 }
 
 /** Each customer looks at the line, then joins it ordering `items` units. */
@@ -68,7 +69,7 @@ describe('servers', () => {
     const state = { ...createInitialState(42), energy }
     const { botchedShare } = effectsOf(energy, ENERGY)
     expect(servers(state, ENERGY)).toEqual([
-      { speed, owner: true, botchedShare },
+      { speed, owner: true, botchedShare, who: 'owner' },
     ])
   })
 
@@ -94,6 +95,7 @@ describe('servers', () => {
     speed: STAFF.truckSpeed * STAFF.traits.rapidite.weak,
     owner: false,
     botchedShare: STAFF.employeeBotchedShare,
+    who: 'amelie',
   }
 
   it('adds each employee at the truck after the owner, at truckSpeed × rapidité, botching by minutie', () => {
@@ -107,12 +109,14 @@ describe('servers', () => {
         speed: 1 / 1.8,
         owner: true,
         botchedShare: ENERGY.exhausted.botchedShare,
+        who: 'owner',
       },
       AMELIE,
       {
         speed: STAFF.truckSpeed * STAFF.traits.rapidite.strong,
         owner: false,
         botchedShare: STAFF.employeeBotchedShare * STAFF.traits.minutie.weak,
+        who: 'kevin',
       },
     ])
     expect(STAFF.truckSpeed).toBe(0.85)

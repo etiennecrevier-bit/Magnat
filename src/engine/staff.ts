@@ -74,6 +74,11 @@ export interface Crew {
   readonly bakes: Doer
   /** The employee who bakes, the first baker who came; null when none. */
   readonly baker: Employee | null
+  /**
+   * The employee who delivers, the first deliverer who came; null when
+   * none (#283).
+   */
+  readonly deliverer: Employee | null
 }
 
 /**
@@ -104,6 +109,7 @@ export function crewOf(
     delivers: doer(DELIVERS),
     bakes: doer(BAKES),
     baker: came.find(({ role }) => role === BAKES) ?? null,
+    deliverer: came.find(({ role }) => role === DELIVERS) ?? null,
   }
 }
 

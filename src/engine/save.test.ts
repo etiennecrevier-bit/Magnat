@@ -5353,3 +5353,107 @@ describe("the employees' traits (#255)", () => {
     expect(() => deserialize(text)).toThrow(reason)
   })
 })
+
+describe('what each person did and what marketing brought (#283, #284)', () => {
+  const SAVE = serialize(MARKETED)
+
+  /** `SAVE` as a save of this version written before #283 and #284. */
+  function before(): string {
+    const save = JSON.parse(SAVE) as Json
+    delete save.workDays
+    delete save.marketingDays
+    const lastDay = save.lastDay as Json
+    delete lastDay.work
+    delete lastDay.ownerAway
+    for (const visit of lastDay.visits as Json[]) {
+      delete visit.servedBy
+      delete visit.fromMarketing
+    }
+    delete (save.lastWeek as Json).marketing
+    return JSON.stringify(save)
+  }
+
+  it('give them back', () => {
+    expect(MARKETED.workDays).toHaveLength(7)
+    expect(MARKETED.marketingDays).toHaveLength(28)
+    expect(MARKETED.lastWeek?.marketing?.spent).toBeGreaterThan(0)
+    expect(
+      MARKETED.lastDay?.visits.some(({ fromMarketing }) => fromMarketing),
+    ).toBe(true)
+    expect(MARKETED.lastDay?.visits.some(({ servedBy }) => servedBy)).toBe(true)
+    expect(reloaded(MARKETED)).toStrictEqual(MARKETED)
+  })
+
+  it('load a save from before them, which then records them from its next day', () => {
+    const back = deserialize(before())
+    expect(back.workDays).toBeUndefined()
+    expect(back.marketingDays).toBeUndefined()
+    expect(back.lastDay?.work).toBeUndefined()
+    expect(back.lastWeek?.marketing).toBeUndefined()
+    const next = tick(back)
+    expect(next.workDays).toEqual([
+      {
+        day: next.lastDay?.day,
+        people: next.lastDay?.work,
+        ownerAway: false,
+        absent: [],
+      },
+    ])
+    expect(next.marketingDays).toHaveLength(1)
+    // Nothing else changes: the day plays as it would have.
+    expect(next.journal.entries).toEqual(tick(MARKETED).journal.entries)
+    expect(next.rngState).toBe(tick(MARKETED).rngState)
+    expect(reloaded(next)).toStrictEqual(next)
+  })
+
+  it.each([
+    [
+      'a day out of order',
+      (save: Json) => {
+        const days = save.workDays as Json[]
+        days.reverse()
+      },
+      'workDays day',
+    ],
+    [
+      'a last day not the last played',
+      (save: Json) => {
+        const days = save.marketingDays as Json[]
+        days.pop()
+      },
+      'marketingDays ends on day',
+    ],
+    [
+      'more than a week of work',
+      (save: Json) => {
+        const days = save.workDays as Json[]
+        days.unshift({ ...(days[0] as Json), day: 0 })
+      },
+      'workDays',
+    ],
+    [
+      'a negative spend',
+      (save: Json) => {
+        ;((save.marketingDays as Json[])[0] as Json).spent = -1
+      },
+      'marketingDays',
+    ],
+    [
+      'an unknown worker',
+      (save: Json) => {
+        ;(((save.lastDay as Json).work as Json[])[0] as Json).who = 'nobody'
+      },
+      'who',
+    ],
+  ])('rejects %s', (_, change, reason) => {
+    const save = JSON.parse(SAVE) as Json
+    change(save)
+    expectInvalid(JSON.stringify(save), [reason])
+  })
+
+  it('rejects days recorded before any is played', () => {
+    const save = JSON.parse(serialize(createInitialState(SEED))) as Json
+    save.workDays = [{ day: 0, people: [], ownerAway: false, absent: [] }]
+    expectInvalid(JSON.stringify(save), ['workDays holds days before'])
+  })
+})
