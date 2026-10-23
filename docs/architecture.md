@@ -55,6 +55,7 @@ Every function that takes a state returns a new one and never mutates it. The fi
 | `workDays` | `readonly WorkDay[]` (optional) | What each person did on each of the last 7 business days played (`WORK_DAYS_KEPT` in `src/engine/work.ts`), oldest first, the last one `lastDay`'s. For « Équipe »; no rule reads it. Absent in a save from before it. |
 | `decisions` | `Decisions` | How the player runs the truck on day `day`: what `tick()` plays the day with. |
 | `pendingDecisions` | `Decisions \| null` | What the player decided since day `day` began, waiting for the next morning. Null when nothing waits. |
+| `trucks` | `readonly Truck[]` (optional) | The trucks bought after the first, in the order they were ("The trucks" below); absent while there is none. The first truck, the Plateau's, is the game's own `rngState`, `inventory`, `lastDay` and decisions. |
 | `profile` | `Profile` | Who the player is: the business name, the avatar and the difficulty picked on the new game screen. It never changes once the game has started. |
 | `personal` | `PersonalAccount` | The owner's own money, outside the company's books (step 7 below). |
 | `energy` | `number` | The owner's energy, from 0 to 100 (`FULL_ENERGY` in `src/engine/energy.ts`): on the morning of `day`, or at its close in what `playDay()` returns. A tired owner serves slower and botches units (steps 2 and 8 below). An event's choice may change it, on the morning it is made or at the start of a later day. |
@@ -92,6 +93,8 @@ How the player runs the truck. `startingDecisions()` in `src/engine/decisions.ts
 | `croissantSource` | `CroissantSource` | Where the croissants come from: `'acheter'`, bought by the restock rule, or `'fabriquer'`, made at the bakery by the bake rule while it runs, and bought when it does not. The zod enum `croissantSourceSchema` in `src/content/schema.ts`; a game starts with `startingDecisions.croissantSource` in `src/content/bakery.json`. |
 | `bake` | `RestockRule` | How many croissants the bakery makes each morning the truck opens, when they come from it: a rule of either kind, as the restock rules read it, each count from 0 to the bakery's `capacityPerDay`. |
 | `staff` | `readonly Hire[]` | The employees the player wants, in the order they were hired: at most `maxEmployees`, each a different candidate at a wage within their role's range. The morning it takes effect hires those not on staff and lets go those no longer in it ("The staff" below). A game starts with nobody. |
+| `ownerAt` | `TruckId` (optional) | The truck the owner works at, kept until changed ("The trucks" below); absent for the first truck. |
+| `trucks` | `Readonly<Record<TruckId, TruckDecisions>>` (optional) | How each truck after the first runs, by its id, held to the same limits as the first truck's `prices`, `restock` and `daysOpen`; absent while there is none. |
 
 ### `BakeryPlan` and `BakeryState`
 
@@ -119,6 +122,7 @@ How the player runs the truck. `startingDecisions()` in `src/engine/decisions.ts
 | `candidate` | `CandidateId` | Who, by their id among the twelve of `src/content/staff.json`, the zod enum `candidateIdSchema` in `src/content/schema.ts`. Their name names their entries in the journal. |
 | `role` | `StaffRoleId` | What they do: `'camion'`, at the truck, `'livreur'`, the grocers' deliveries, or `'boulanger'`, the bakery's croissants. The zod enum `staffRoleIdSchema` in the same file. |
 | `hourlyWage` | `Cents` | What they earn an hour: whole cents within their role's `hourlyWageCents`, starting at its `start`. |
+| `truck` | `TruckId`, optional | The truck an employee `'camion'` works at ("The trucks" below); absent for the first truck, and for every other role. |
 
 `Employee` is a `Hire` on staff, in `GameState.staff`, with one more field:
 
@@ -126,6 +130,23 @@ How the player runs the truck. `startingDecisions()` in `src/engine/decisions.ts
 | --- | --- | --- |
 | `hiredOnDay` | `Day` | The morning they started, which paid their training. From it, `knownTraits()` says when their weakness shows ("The staff" below). |
 | `underpaidSince` | `Day`, optional | The first morning of the run they have been paid below the wage they ask, `askingWage()`, up to the last close; absent when they are paid at least that. They warn `underpaidWeeks` after it and quit `warningWeeks` later ("The staff" below). |
+
+### `TruckId`, `Truck`, `TruckDay` and `TruckDecisions`
+
+`TruckId` is a truck's id, a word of letters: `'plateau'` for the first truck (`FIRST_TRUCK` in `src/engine/trucks.ts`), and for each truck bought after it, the id its rung's `addsTruck` gives in `src/content/dream.json`. `TruckDecisions` is how one truck runs: the `prices`, `restock` and `daysOpen` of `Decisions`.
+
+`Truck` is a truck bought after the first, in `GameState.trucks`:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `id` | `TruckId` | Its id, never the first truck's. |
+| `district` | `DistrictId` | Where it works: `'plateau'` or `'vieuxMontreal'`, the zod enum `districtIdSchema` in `src/content/schema.ts`. |
+| `boughtOnDay` | `Day` | The morning its rung was bought. |
+| `rngState` | `number` | Its own generator's state, which its walk-ins draw from: a keyed draw of the seed and its id when it is bought (`truckStream()`), so the first truck's stream never moves for it. |
+| `inventory` | `readonly Lot[]` | Its stock on hand, oldest lot first. Every truck's lots together cost the balance of Stocks (1200). |
+| `lastDay` | `TruckDay \| null` | Its last business day played; null until it has one. |
+
+`TruckDay` is what happened at one truck on a business day: the `day`, `sold`, `revenue`, `lostSales`, `pricedOut`, `spoiled`, `segments`, `visits`, `leftLine`, `averageWaitSeconds`, `longestWaitSeconds` and `botched` of `DaySummary`, and `open`, whether it opened.
 
 ### `ContractsState`, `Contract`, `Delivery` and `MissedDelivery`
 
@@ -737,12 +758,22 @@ The « Finances » drawer shows the net worth on its « Valeur nette » tile (`s
 - A personal rung moves the owner's cash, outside the books (`purchaseMovements()`): « Vente · » followed by the rung it sells back, if any, at its price, then « Achat · » followed by its name, for its price. It counts in the net worth at its price from then on ("Net worth" above), so buying one leaves the net worth as it was. A rung with `housing` replaces the rent with its monthly payment on each 1st from then on; it owes no balance.
 - A company rung posts its entries, dated that morning, before the day's own (`purchaseEntries()`): « Achat · » followed by its name, Dr 1500 Équipement / Cr 1000 for what it cost. The truck that replaces the old one first takes the old one back at its book value, the truck's price less the *Amortissement du camion* posted before that morning (`truckOnBooks()` in `src/engine/day.ts`): « Vente de l'ancien camion », Dr 1000 for the book value, Dr 1510 for the depreciation so far, Cr 1500 for the truck's price; then « Achat · Camion plus grand » for its price plus that book value, which it depreciates over its own `usefulLifeMonths`. So the company pays its price, and a leased truck, which the books never carried, costs its price alone and ends the lease. Each company rung is depreciated from the 1st after its purchase (step 0 above). The état des flux de trésorerie puts every one of these entries in « Équipement ».
 - The rungs owned give their bonuses from that morning on (`dreamBonuses()`): `travelTime`, the best vehicle's factor, for the trips in town (`travelTimeFactor()`, "Trips in town" below); `serviceTime`, which multiplies the counter's seconds, and `line`, which multiplies `maxAheadInLine`, rounded (`dreamService()`); `stock`, which multiplies the units a restock rule may name, rounded (`dreamLimits()`, which `applyDecision()`, `deserialize()` and « Gérer le camion » read); `walkIns`, which multiplies a segment's walk-ins as a change to the street does (`withDreamStreet()`, step 2 above); and `closedDayRecovery`, energy a closed day gives back on top (`dreamEnergy()`). With nothing bought every factor is exactly 1, so a game that buys nothing plays as before, draw for draw.
-- The second truck is a stub: `comingSoon`, shown and never for sale.
+- « Deuxième camion » adds a truck (`addsTruck`, "The trucks" below). It is still `comingSoon` in the shipped content, shown and never for sale, until the screens that staff it.
 - The titles go up with the net worth (`titleOf()` and `nextTitle()`): the top bar shows the one it earns under « Valeur nette », and the « Bilan de la semaine » the one of its Sunday's close. The first close whose net worth reaches the last one sets `dream.magnatOn` (`crowned()`, at the close in `playDay()`, outside a Défi). The UI store then stops on the next morning and opens « Magnat » (`src/ui/MagnatScreen.tsx`), before that morning's report or event card; the game goes on.
 
 The « Le rêve » panel (`src/ui/DreamPanel.tsx`, from `dreamBoard()` in `src/ui/dreamBoard.ts`) opens from the top bar, outside a Défi: the title and the next one, then each ladder with who pays, a bar toward its next rung, and its rungs with their price and bonuses in plain facts; « Acheter » asks to confirm.
 
 `deserialize()` in `src/engine/save.ts` checks the dream (`checkDream()`): nothing in a Défi; each rung known, bought once, for sale, on a morning up to the save's day, the days going up, once every rung before it was; each cost its price, or price and book value for the truck; the journal holds exactly the purchases' entries, those of the old truck's sale and each 1st's depreciation of the company rungs, and no old truck's depreciation nor lease from the morning it was replaced; and `magnatOn` a day played. `checkPersonal()` holds the purchases' movements in the months kept to those the rungs bought made, and a home's payment to a 1st, once its rung was bought.
+
+## The trucks
+
+The game can run several trucks (#259), each in a district, with one set of books. `src/engine/trucks.ts` reads every truck the same way: `trucksOf()` gives the first truck, from the game's own generator and stock, then the others of `GameState.trucks`, and `withTrucks()` puts them back; `truckDecisionsOf()` reads a truck's decisions.
+
+- A company rung with `addsTruck` adds a truck the morning it is bought (`bought()` in `src/engine/decisions.ts`): with the id and district it names, its own generator, no stock, and the first truck's prices, restock rules and days open, in the decisions of the day under way and those waiting. It is paid and depreciated as the rung says.
+- The owner works at one truck, `decisions.ownerAt`, the first one by default; `applyDecision(state, { kind: 'ownerAt', truck })` moves them from the next morning. An employee « Au camion » works at the truck `applyDecision(state, { kind: 'assign', candidate, truck })` gives them, the first one by default. `price`, `restock` and `daysOpen` take a `truck` too. A truck the game does not have throws a RangeError.
+- Each morning, every truck plays in turn, the first one first (`playDay()`). A truck opens on one of its days open that its street does not close, with the owner or one of its employees at it; with nobody, it stays closed. The first truck plays as the game always has: the events' street and the rungs' bonuses, marketing, the bakery's croissants and the mill's discount. Each other one draws from its own generator, on the street with no change, with no marketing, its croissants bought, and pays its fuel each day it opens. Then the shared parts run once: the bakery's waste, payday, then each truck's spoilage in turn. A trip takes the owner away from their own truck, and a day away from every truck. The owner's energy counts the customers they served at their truck, and they worked when it opened. An absent employee « Au camion » missed work on a day their own truck was to open, whoever opened it.
+- One journal, one set of statements. A truck's own sale or charge names the truck on its line of the état des résultats (`JournalLine.truck`): its sales, their cost, the botched units and the stock written off, packaging, card fees, fuel and marketing, and the first truck's permit, insurance, loan interest, depreciation or lease, and the depreciation of the truck that replaces it or of a truck a rung adds. Cash, stock and the company's own lines name none. `salesByTruck()` and `marginByTruck()` in `src/finance/byTruck.ts` read Ventes, and Ventes less Coût des marchandises vendues, by truck for any period, with `null` for what no truck sold, the grocers' and the events' sales, so they add up to the état des résultats.
+- The week's customers, units written off and visits lost add up every truck's day; the first truck's is `lastDay`.
 
 ## Trips in town
 
@@ -832,7 +863,7 @@ Once the tutorial is done or skipped, or from day 0 in a game without one, Réal
 `src/finance/journal.ts` owns the books. A `Journal` is a branded type that only `emptyJournal()` and `postEntry(journal, entry)` make: a spread of a journal does not type-check as one, and `postEntry()`, `balance()`, `trialBalance()` and the statements throw a TypeError on any other object, such as a cast or untyped data. `postEntry` returns a new journal with the entry after the others. It throws an Error that names the memo and the day unless:
 - the day is a whole number of at least 0, no earlier than the last entry's day;
 - the entry has at least one line;
-- every line uses an account from the chart;
+- every line uses an account from the chart, and names a truck, if any, by a non-empty string;
 - every amount is a whole, non-negative number of cents, and every line has an amount on exactly one side;
 - the totals stay within the safe integer range, and the debits equal the credits.
 

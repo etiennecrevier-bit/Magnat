@@ -4,6 +4,7 @@ import {
   candidateIdSchema,
   croissantSourceSchema,
   difficultyIdSchema,
+  districtIdSchema,
   eventEffectSchema,
   grocerIdSchema,
   medalSchema,
@@ -15,6 +16,7 @@ import {
   segmentIdSchema,
   staffRoleIdSchema,
   streetChangeSchema,
+  truckIdSchema,
   type BakeryContent,
   type Defi,
   type DefiContent,
@@ -29,7 +31,11 @@ import {
   type StaffContent,
   type TutorialContent,
 } from '../content/schema.ts'
-import { isAccountCode, type AccountCode } from '../finance/accounts.ts'
+import {
+  getAccount,
+  isAccountCode,
+  type AccountCode,
+} from '../finance/accounts.ts'
 import {
   balance,
   emptyJournal,
@@ -65,6 +71,9 @@ import {
   DIFFICULTIES,
   EVENTS,
   FOOD_TRUCK,
+  COST_OF_SALES_MEMO,
+  FIRST_TRUCK_MEMOS,
+  SALES_MEMO,
   TRUCK_MEMO,
   openingJournal,
   truckOnBooks,
@@ -73,6 +82,7 @@ import {
   startingDecisions,
   validateDecisions,
   validateStaff,
+  validateTrucks,
 } from './decisions.ts'
 import {
   DREAM,
@@ -90,6 +100,7 @@ import {
   purchaseEntries,
   purchaseMovements,
   rungOf,
+  truckOfRung,
   truckReplacedOn,
 } from './dream.ts'
 import { FULL_ENERGY } from './energy.ts'
@@ -113,6 +124,7 @@ import { PLACES, noTrips, takesTheDay } from './places.ts'
 import { validateProfile } from './profile.ts'
 import { isRngState } from './rng.ts'
 import { STAFF, askingWage, isAbsent, quitsOnDay } from './staff.ts'
+import { FIRST_TRUCK, newTruck, truckIds } from './trucks.ts'
 import { TUTORIAL, isProtected, tutorialDay, tutorialStep } from './tutorial.ts'
 import type {
   BakeryPlan,
@@ -142,7 +154,12 @@ import { WORK_DAYS_KEPT } from './work.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 19 adds the
+ * change can no longer load (rule 8 in CLAUDE.md). Version 20 adds the
+ * trucks after the first (#259), the truck the owner and each employee «
+ * Au camion » work at, and the truck a journal line is: a version 19 game
+ * still loads, as one Plateau truck, with its truck's sales and charges
+ * named on their lines as the game names them now (see `firstTruckTags`).
+ * Version 19 adds the
  * owner's trips in town: a version 18 game still loads, with no trip and no
  * discount waiting. Version 18 adds « Le
  * rêve »: a version 17 game still loads, with nothing bought and no «
@@ -177,9 +194,10 @@ import { WORK_DAYS_KEPT } from './work.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 19
+export const SAVE_VERSION = 20
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const TRUCKLESS_VERSION = 19
 const TOWNLESS_VERSION = 18
 const DREAMLESS_VERSION = 17
 const NETWORTHLESS_VERSION = 16
@@ -234,13 +252,19 @@ const accountCode = z.custom<AccountCode>(
   'unknown account',
 )
 
-// `postEntry()` checks the rest: one side per line, balance, day order.
+// `postEntry()` checks the rest: one side per line, balance, day order;
+// `checkTrucks()` the trucks the lines name.
 const entrySchema = z.strictObject({
   day: gameDay,
   memo: z.string(),
   lines: z
     .array(
-      z.strictObject({ account: accountCode, debit: money, credit: money }),
+      z.strictObject({
+        account: accountCode,
+        debit: money,
+        credit: money,
+        truck: truckIdSchema.optional(),
+      }),
     )
     .min(1),
 })
@@ -350,6 +374,24 @@ const stafflessDaySummarySchema = z.strictObject({
   ownerAway: z.literal(true).optional(),
 })
 
+// `checkTrucks()` checks the day and the botched units.
+const truckDaySchema = stafflessDaySummarySchema
+  .pick({
+    day: true,
+    sold: true,
+    revenue: true,
+    lostSales: true,
+    pricedOut: true,
+    spoiled: true,
+    segments: true,
+    visits: true,
+    leftLine: true,
+    averageWaitSeconds: true,
+    longestWaitSeconds: true,
+    botched: true,
+  })
+  .extend({ open: z.boolean() })
+
 // `checkStaff()` checks the absent and those who quit against the staff.
 const daySummarySchema = stafflessDaySummarySchema.extend({
   missed: z.array(missedSchema),
@@ -399,18 +441,42 @@ const stafflessDecisionsSchema = bakerylessDecisionsSchema.extend({
   bake: restockRuleSchema,
 })
 
-// `validateDecisions()` checks the wages and that nobody is hired twice.
+// `validateDecisions()` checks the wages, the truck's role and that nobody
+// is hired twice, `validateTrucks()` the truck.
 const hireSchema = z.strictObject({
   candidate: candidateIdSchema,
   role: staffRoleIdSchema,
   hourlyWage: money,
+  truck: truckIdSchema.optional(),
 })
 
 // `validateDecisions()` checks the limits and the days open, `checkBakery()`
-// the bakery planned against the bakery, and `checkStaff()` the staff
-// against the staff on hand.
+// the bakery planned against the bakery, `checkStaff()` the staff against
+// the staff on hand, and `validateTrucks()` the trucks against the trucks.
 const decisionsSchema = stafflessDecisionsSchema.extend({
   staff: z.array(hireSchema),
+  ownerAt: truckIdSchema.optional(),
+  trucks: z
+    .record(
+      truckIdSchema,
+      bakerylessDecisionsSchema.pick({
+        prices: true,
+        restock: true,
+        daysOpen: true,
+      }),
+    )
+    .optional(),
+})
+
+// `checkTrucks()` checks the trucks against the rungs bought, their lots
+// and their days.
+const truckSchema = z.strictObject({
+  id: truckIdSchema,
+  district: districtIdSchema,
+  boughtOnDay: gameDay,
+  rngState: generatorState,
+  inventory: z.array(lotSchema),
+  lastDay: truckDaySchema.nullable(),
 })
 
 // `validateProfile()` checks the business name.
@@ -689,6 +755,8 @@ const saveSchema = z.strictObject({
   workDays: z.array(workDaySchema).max(WORK_DAYS_KEPT).optional(),
   decisions: decisionsSchema,
   pendingDecisions: decisionsSchema.nullable(),
+  // Absent until a truck is bought after the first.
+  trucks: z.array(truckSchema).min(1).optional(),
   profile: profileSchema,
   personal: personalSchema,
   energy: energyLevel,
@@ -732,8 +800,13 @@ type Parsed = Omit<Save, 'weekSoFar' | 'financing'> & {
   readonly financing: FinancingState | null
 }
 
-/** A save as parsed, as version 18 has it: no trip in town. */
-type Townless = Omit<Parsed, 'saveVersion' | 'town'> & {
+/** A save as parsed, as version 19 has it: one truck, no line named. */
+type Truckless = Omit<Parsed, 'saveVersion' | 'trucks'> & {
+  readonly saveVersion: typeof TRUCKLESS_VERSION
+}
+
+/** A save as parsed, as version 18 has it: no trip in town either. */
+type Townless = Omit<Truckless, 'saveVersion' | 'town'> & {
   readonly saveVersion: typeof TOWNLESS_VERSION
 }
 
@@ -742,8 +815,13 @@ type Dreamless = Omit<Townless, 'saveVersion' | 'dream'> & {
   readonly saveVersion: typeof DREAMLESS_VERSION
 }
 
-/** A version 18 save: no trip in town. */
-const townlessSchema = saveSchema
+/** A version 19 save: one truck. */
+const trucklessSchema = saveSchema
+  .omit({ trucks: true })
+  .extend({ saveVersion: z.literal(TRUCKLESS_VERSION) })
+
+/** A version 18 save: no trip in town either. */
+const townlessSchema = trucklessSchema
   .omit({ town: true, tutorial: true, postcardsShown: true })
   .extend({ saveVersion: z.literal(TOWNLESS_VERSION) })
 
@@ -841,6 +919,8 @@ export function serialize(state: GameState): string {
     workDays: state.workDays,
     decisions: state.decisions,
     pendingDecisions: state.pendingDecisions,
+    // JSON.stringify leaves it out of a game with one truck.
+    trucks: state.trucks,
     profile: state.profile,
     personal: state.personal,
     energy: state.energy,
@@ -953,7 +1033,7 @@ export function deserialize(
   places: PlacesContent = PLACES,
   tutorial: TutorialContent = TUTORIAL,
 ): GameState {
-  const loaded = parsed(text, bakery)
+  const loaded = parsed(text, bakery, dream)
   const journal = rebuilt(loaded.journal)
   checkBooks(loaded, journal)
   const defi = defiOf(loaded, defis)
@@ -980,6 +1060,7 @@ export function deserialize(
   checkDayHistory('marketingDays', save.marketingDays, save)
   checkDayHistory('workDays', save.workDays, save)
   checkDream(save, journal, content, dream, opening)
+  checkTrucks(save, dream)
   checkDecisions(
     'decisions',
     save.decisions,
@@ -1029,6 +1110,7 @@ export function deserialize(
     ...(save.workDays === undefined ? {} : { workDays: save.workDays }),
     decisions: save.decisions,
     pendingDecisions: save.pendingDecisions,
+    ...(save.trucks === undefined ? {} : { trucks: save.trucks }),
     profile: save.profile,
     personal: save.personal,
     energy: save.energy,
@@ -1053,7 +1135,11 @@ export function deserialize(
   }
 }
 
-function parsed(text: string, bakery: BakeryContent): Parsed {
+function parsed(
+  text: string,
+  bakery: BakeryContent,
+  dream: DreamContent,
+): Parsed {
   let raw: unknown
   try {
     raw = JSON.parse(text)
@@ -1066,7 +1152,73 @@ function parsed(text: string, bakery: BakeryContent): Parsed {
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
   if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  return withTruckTags(truckless(raw, saveVersion, bakery), dream)
+}
+
+/** An older save, up to version 19, as version 19. */
+function truckless(
+  raw: object,
+  saveVersion: unknown,
+  bakery: BakeryContent,
+): Truckless {
+  if (saveVersion === TRUCKLESS_VERSION) return checked(trucklessSchema, raw)
   return withTown(townless(raw, saveVersion, bakery))
+}
+
+/**
+ * A save from before the trucks after the first as the current version:
+ * one Plateau truck, its sales and charges naming it on their lines as
+ * the game names them now (see `firstTruckTags`).
+ */
+function withTruckTags(save: Truckless, dream: DreamContent): Parsed {
+  return {
+    ...save,
+    saveVersion: SAVE_VERSION,
+    journal: firstTruckTags(save.journal, dream),
+  }
+}
+
+/**
+ * `entries` with the lines of the état des résultats of the first truck's
+ * own entries naming it, and no other line naming a truck: the entries of
+ * `FIRST_TRUCK_MEMOS`, the depreciation of the rung of `dream` that
+ * replaces the truck (see `truckOfRung`), and a « Coût des marchandises
+ * vendues » right after the truck's cash sales of the same day, as a day
+ * posts it. A day posts no other entry between them, and the grocers' and
+ * events' cost of their sales never comes right after the truck's sales.
+ */
+function firstTruckTags(
+  entries: Parsed['journal'],
+  dream: DreamContent,
+): Parsed['journal'] {
+  const memos = new Set(FIRST_TRUCK_MEMOS)
+  for (const rung of dream.company) {
+    if (truckOfRung(rung) === FIRST_TRUCK) {
+      memos.add(dreamLabel(DREAM_MEMO.depreciation, rung.name))
+    }
+  }
+  return entries.map((entry, index) => {
+    const before = entries[index - 1]
+    const truck =
+      memos.has(entry.memo) ||
+      (entry.memo === COST_OF_SALES_MEMO &&
+        before?.day === entry.day &&
+        before.memo === SALES_MEMO)
+    return {
+      ...entry,
+      lines: entry.lines.map(({ account, debit, credit }) =>
+        truck && isIncomeStatement(account)
+          ? { account, debit, credit, truck: FIRST_TRUCK }
+          : { account, debit, credit },
+      ),
+    }
+  })
+}
+
+/** Whether `account` is a line of the état des résultats. */
+function isIncomeStatement(account: AccountCode): boolean {
+  const { type } = getAccount(account)
+  return type === 'produit' || type === 'charge'
 }
 
 /** An older save, up to version 18, as version 18. */
@@ -1174,18 +1326,18 @@ function dreamless(
 }
 
 /**
- * A save from before the trips in town as the current version: no trip,
- * no discount waiting.
+ * A save from before the trips in town as version 19: no trip, no
+ * discount waiting.
  */
 function withTown<
   Old extends { readonly saveVersion: typeof TOWNLESS_VERSION },
 >(
   save: Old,
 ): Omit<Old, 'saveVersion'> & {
-  readonly saveVersion: typeof SAVE_VERSION
+  readonly saveVersion: typeof TRUCKLESS_VERSION
   readonly town: TownState
 } {
-  return { ...save, saveVersion: SAVE_VERSION, town: noTrips() }
+  return { ...save, saveVersion: TRUCKLESS_VERSION, town: noTrips() }
 }
 
 /**
@@ -1392,27 +1544,143 @@ function checkBooks(
   attempt('the books', () => trialBalance(journal, save.day))
 }
 
+/**
+ * Each truck's lots are oldest first, none bought after the save's day,
+ * and every truck's lots together cost what the Stocks account carries.
+ */
 function checkInventory(save: Save, journal: Journal): void {
-  save.inventory.forEach((lot, index) => {
-    if (lot.boughtOnDay > save.day) {
-      invalid(
-        `lot ${index + 1} was bought on day ${lot.boughtOnDay}, after day ${save.day}`,
-      )
+  const stocks = [
+    { what: 'lot', lots: save.inventory },
+    ...(save.trucks ?? []).map(({ id, inventory }) => ({
+      what: `truck ${id}'s lot`,
+      lots: inventory,
+    })),
+  ]
+  for (const { what, lots } of stocks) {
+    lots.forEach((lot, index) => {
+      if (lot.boughtOnDay > save.day) {
+        invalid(
+          `${what} ${index + 1} was bought on day ${lot.boughtOnDay}, after day ${save.day}`,
+        )
+      }
+      const before = lots[index - 1]
+      if (before !== undefined && lot.boughtOnDay < before.boughtOnDay) {
+        invalid(
+          `${what} ${index + 1} is older than the lot before it: day ${lot.boughtOnDay} < day ${before.boughtOnDay}`,
+        )
+      }
+    })
+  }
+  const cost = attempt('the lots', () =>
+    inventoryValue(stocks.flatMap(({ lots }) => lots)),
+  )
+  // In range: checkBooks() already added up these same entries.
+  const books = balance(journal, STOCKS, { toDay: save.day })
+  if (books !== cost) {
+    invalid(
+      `the Stocks balance of ${books} does not equal the lots' cost of ${cost}`,
+    )
+  }
+}
+
+/**
+ * The trucks after the first (#259) are those the rungs of `dream` bought
+ * add, in the order bought, each with the id and district its rung gives,
+ * bought on its rung's morning, its generator still where it started
+ * before its first day (see `newTruck`) and its lots bought no earlier;
+ * its last day, null before its first, is `lastDay`'s, its botched units
+ * the sum of its visits'. Every journal line names the first truck or one
+ * of these, if any, and one of these only from the morning it was bought.
+ * The decisions, and those pending, run exactly these trucks, and name
+ * no other (see `validateTrucks`).
+ */
+function checkTrucks(save: Save, dream: DreamContent): void {
+  const trucks = save.trucks ?? []
+  const added = save.dream.bought.flatMap(({ rung: id, day }) => {
+    const { rung } = rungOf(id, dream)
+    return isCompany(rung) && rung.addsTruck !== undefined
+      ? [{ ...rung.addsTruck, day }]
+      : []
+  })
+  if (trucks.length !== added.length) {
+    invalid(
+      `the game has ${trucks.length} truck(s) after the first, not the ${added.length} the rungs bought add`,
+    )
+  }
+  const played = save.lastDay?.day
+  trucks.forEach((truck, index) => {
+    const what = `truck ${index + 1}, ${truck.id},`
+    const rung = added[index]
+    if (
+      rung === undefined ||
+      truck.id !== rung.id ||
+      truck.district !== rung.district ||
+      truck.boughtOnDay !== rung.day
+    ) {
+      invalid(`${what} is not the truck its rung adds`)
     }
-    const before = save.inventory[index - 1]
-    if (before !== undefined && lot.boughtOnDay < before.boughtOnDay) {
+    const { lastDay } = truck
+    if (lastDay === null) {
+      if (played !== undefined && played >= truck.boughtOnDay) {
+        invalid(`${what} has no last day, though day ${played} was played`)
+      }
+      if (
+        truck.rngState !==
+        newTruck(save.seed, truck, truck.boughtOnDay).rngState
+      ) {
+        invalid(`${what} has drawn from its generator before its first day`)
+      }
+    } else {
+      if (lastDay.day !== played || lastDay.day < truck.boughtOnDay) {
+        invalid(
+          `${what} last played day ${lastDay.day}, not the game's last day played, day ${String(played)}, from the day it was bought`,
+        )
+      }
+      const botched = lastDay.visits.reduce(
+        (total, visit) => total + visit.botched,
+        0,
+      )
+      if (lastDay.botched !== botched) {
+        invalid(
+          `${what} last day botched ${lastDay.botched}, not the ${botched} its visits botched`,
+        )
+      }
+    }
+    const early = truck.inventory.find(
+      ({ boughtOnDay }) => boughtOnDay < truck.boughtOnDay,
+    )
+    if (early !== undefined) {
       invalid(
-        `lot ${index + 1} is older than the lot before it: day ${lot.boughtOnDay} < day ${before.boughtOnDay}`,
+        `${what} has a lot bought on day ${early.boughtOnDay}, before the truck`,
       )
     }
   })
-  const cost = attempt('the lots', () => inventoryValue(save.inventory))
-  // In range: checkBooks() already added up these same entries.
-  const stocks = balance(journal, STOCKS, { toDay: save.day })
-  if (stocks !== cost) {
-    invalid(
-      `the Stocks balance of ${stocks} does not equal the lots' cost of ${cost}`,
+  const since = new Map<string, Day>([[FIRST_TRUCK, 0]])
+  for (const { id, boughtOnDay } of trucks) since.set(id, boughtOnDay)
+  save.journal.forEach(({ day, lines }, index) => {
+    for (const { truck } of lines) {
+      if (truck === undefined) continue
+      const from = since.get(truck)
+      if (from === undefined) {
+        invalid(
+          `journal entry ${index + 1} names the truck ${truck}, which the game does not have`,
+        )
+      }
+      if (day < from) {
+        invalid(
+          `journal entry ${index + 1} names the truck ${truck} on day ${day}, before it was bought`,
+        )
+      }
+    }
+  })
+  attempt('decisions', () => validateTrucks(save.decisions, save))
+  if (save.pendingDecisions !== null) {
+    attempt('pendingDecisions', () =>
+      validateTrucks(save.pendingDecisions ?? save.decisions, save),
     )
+  }
+  if (truckIds(save).length !== new Set(truckIds(save)).size) {
+    invalid('two trucks have the same id')
   }
 }
 
@@ -1730,11 +1998,20 @@ function checkDecisions(
     dreamBonuses(save.dream, dream),
   )
   attempt(field, () => validateDecisions(decisions, limits, bakery, staff))
-  for (const product of PRODUCTS) {
-    const { kind } = content.startingDecisions.restock[product]
-    const saved = decisions.restock[product].kind
-    if (saved !== kind) {
-      invalid(`${field}.restock.${product} must be a ${kind} rule: ${saved}`)
+  const trucks = [
+    { what: field, restock: decisions.restock },
+    ...Object.entries(decisions.trucks ?? {}).map(([id, { restock }]) => ({
+      what: `${field}.trucks.${id}`,
+      restock,
+    })),
+  ]
+  for (const { what, restock } of trucks) {
+    for (const product of PRODUCTS) {
+      const { kind } = content.startingDecisions.restock[product]
+      const saved = restock[product].kind
+      if (saved !== kind) {
+        invalid(`${what}.restock.${product} must be a ${kind} rule: ${saved}`)
+      }
     }
   }
 }
@@ -1830,7 +2107,12 @@ function checkDream(
     JSON.stringify([
       on,
       memo,
-      lines.map(({ account, debit, credit }) => [account, debit, credit]),
+      lines.map(({ account, debit, credit, truck }) => [
+        account,
+        debit,
+        credit,
+        truck ?? null,
+      ]),
     ])
   const owed = new Map<string, number>()
   for (const entry of expected) {
@@ -2829,10 +3111,11 @@ function checkStaff(save: Save, content: StaffContent): void {
   const { day, lastDay, staff, decisions, pendingDecisions } = save
   const first = firstDay(save)
   const played = lastDay?.day ?? first - 1
-  const hires = staff.map(({ candidate, role, hourlyWage }): Hire => ({
+  const hires = staff.map(({ candidate, role, hourlyWage, truck }): Hire => ({
     candidate,
     role,
     hourlyWage,
+    ...(truck === undefined ? {} : { truck }),
   }))
   attempt('staff', () => validateStaff(hires, content))
   staff.forEach((employee, index) => {
@@ -2905,7 +3188,10 @@ function checkAbsences(save: Save, content: StaffContent): void {
   }
 }
 
-/** Whether `a` and `b` hire the same people, in the same roles and order, at the same wages. */
+/**
+ * Whether `a` and `b` hire the same people, in the same roles and order, at
+ * the same wages and trucks.
+ */
 function sameHires(a: readonly Hire[], b: readonly Hire[]): boolean {
   return (
     a.length === b.length &&
@@ -2914,7 +3200,8 @@ function sameHires(a: readonly Hire[], b: readonly Hire[]): boolean {
       return (
         other?.candidate === hire.candidate &&
         other.role === hire.role &&
-        other.hourlyWage === hire.hourlyWage
+        other.hourlyWage === hire.hourlyWage &&
+        other.truck === hire.truck
       )
     })
   )

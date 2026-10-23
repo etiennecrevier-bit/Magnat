@@ -47,12 +47,21 @@ import { addMovement } from './personal.ts'
 import { PLACES, goTo } from './places.ts'
 import { completeStep } from './tutorial.ts'
 import { STAFF } from './staff.ts'
+import {
+  FIRST_TRUCK,
+  hasTruck,
+  newTruck,
+  truckDecisionsOf,
+  withTruckDecisions,
+} from './trucks.ts'
 import type {
   BakeryPlan,
   BakeryState,
   Decisions,
   GameState,
   Hire,
+  TruckDecisions,
+  TruckId,
 } from './types.ts'
 
 // The player's decisions: how the truck runs, from its prices to the days it
@@ -66,22 +75,45 @@ const SUNDAY = 7
 
 const CASH: AccountCode = '1000'
 
+/** The role whose employees work at a truck, the only one assigned to one. */
+const AT_TRUCK = 'camion'
+
 /** One change the player makes to how the truck runs. */
 export type DecisionChange =
   | {
       readonly kind: 'price'
       readonly product: ProductId
       readonly price: Cents
+      /** The truck whose price it is (#259); the first one when absent. */
+      readonly truck?: TruckId
     }
   | {
       readonly kind: 'restock'
       readonly product: ProductId
       readonly rule: RestockRule
+      /** The truck whose rule it is (#259); the first one when absent. */
+      readonly truck?: TruckId
     }
   | {
       readonly kind: 'daysOpen'
       /** The ISO weekdays the truck opens, in any order. */
       readonly weekdays: readonly number[]
+      /** The truck whose days they are (#259); the first one when absent. */
+      readonly truck?: TruckId
+    }
+  | {
+      /** The truck the owner works at from the next morning on (#259). */
+      readonly kind: 'ownerAt'
+      readonly truck: TruckId
+    }
+  | {
+      /**
+       * The truck an employee « Au camion », hired or wanted, works at from
+       * the next morning on (#259).
+       */
+      readonly kind: 'assign'
+      readonly candidate: CandidateId
+      readonly truck: TruckId
     }
   | { readonly kind: 'ownerWeeklyPay'; readonly pay: Cents }
   | { readonly kind: 'marketingDaily'; readonly budget: Cents }
@@ -199,6 +231,12 @@ export function latestDecisions(state: GameState): Decisions {
  * A restock rule may name the more units the rungs of « Le rêve » owned
  * allow, with `dream` (see `dreamLimits`).
  *
+ * `price`, `restock` and `daysOpen` change the truck they name, the first
+ * one when they name none (#259); `ownerAt` puts the owner at a truck, and
+ * `assign` an employee « Au camion » the player wants, at a truck. Throws a
+ * RangeError for a truck the game does not have, and for `assign`, for a
+ * candidate the player does not want, or in another role.
+ *
  * `buy` and `goTo` are the changes that do not wait: `buy` buys the rung
  * of `dream` on the morning of `state.day`, before the day is played (see
  * `bought`), and `goTo` sends the owner to a place of `places` that day,
@@ -244,7 +282,22 @@ export function applyDecision(
     bakery,
     staff,
   )
-  return { ...state, pendingDecisions: decisions }
+  validateTrucks(decisions, state)
+  return { ...state, pendingDecisions: ordered(decisions) }
+}
+
+/**
+ * `decisions` with the owner's truck and the other trucks' decisions last,
+ * in that order, when they are there: the order a save holds them in, so a
+ * game saved and loaded writes the same save.
+ */
+function ordered(decisions: Decisions): Decisions {
+  const { ownerAt, trucks, ...rest } = decisions
+  return {
+    ...rest,
+    ...(ownerAt === undefined ? {} : { ownerAt }),
+    ...(trucks === undefined ? {} : { trucks }),
+  }
 }
 
 /**
@@ -253,7 +306,11 @@ export function applyDecision(
  * back the rung it sells first; a company rung posts its entries, dated
  * that day, before the day's own (see `purchaseEntries`), with the truck on
  * the books that morning when it replaces it (see `truckOnBooks`). The rung
- * joins `dream.bought` with what it cost (see `purchaseCost`).
+ * joins `dream.bought` with what it cost (see `purchaseCost`). A rung that
+ * adds a truck (#259) adds it to `state.trucks`, with its own generator and
+ * no stock (see `newTruck`), run as the first truck is in the decisions of
+ * the day under way and in those waiting, if any, so it opens the first
+ * morning someone works there.
  *
  * Throws a RangeError in a Défi, once the game has ended or the day is
  * played, for an id that is no rung, one bought already, one coming
@@ -314,7 +371,7 @@ function bought(
     content,
     difficulties,
   )
-  return {
+  const purchased: GameState = {
     ...state,
     journal: purchaseEntries(rung, day, truck).reduce(postEntry, journal),
     dream: {
@@ -324,6 +381,34 @@ function bought(
         { rung: id, day, cost: purchaseCost(rung, truck) },
       ],
     },
+  }
+  const { addsTruck } = rung
+  if (addsTruck === undefined) return purchased
+  if (hasTruck(state, addsTruck.id))
+    refuse(`${addsTruck.id} is a truck already`)
+  const run = (decisions: Decisions): Decisions =>
+    ordered({
+      ...decisions,
+      trucks: {
+        ...decisions.trucks,
+        [addsTruck.id]: copiedTruck(truckDecisionsOf(decisions, FIRST_TRUCK)),
+      },
+    })
+  return {
+    ...purchased,
+    trucks: [...(state.trucks ?? []), newTruck(state.seed, addsTruck, day)],
+    decisions: run(state.decisions),
+    pendingDecisions:
+      state.pendingDecisions === null ? null : run(state.pendingDecisions),
+  }
+}
+
+/** A copy of `truck`, so two trucks never share their rules' objects. */
+function copiedTruck(truck: TruckDecisions): TruckDecisions {
+  return {
+    prices: { ...truck.prices },
+    restock: perProductRule((product) => truck.restock[product]),
+    daysOpen: [...truck.daysOpen],
   }
 }
 
@@ -344,7 +429,10 @@ function isLockable(kind: DecisionChange['kind']): kind is DecisionKind {
  * numbers of units from 0 to `bakery.capacityPerDay`, with `whenBelow` no
  * higher than `upTo`. The staff holds at most `staff.maxEmployees`, each a
  * different candidate of `staff`, in one of its roles, at an hourly wage of
- * whole cents within the role's range.
+ * whole cents within the role's range. Each truck after the first, if any,
+ * has its prices, restock rules and days open held to the same limits, and
+ * the owner's truck, if named, is a word; `validateTrucks` checks the
+ * trucks named exist.
  */
 export function validateDecisions(
   decisions: Decisions,
@@ -352,17 +440,22 @@ export function validateDecisions(
   bakery: BakeryContent = BAKERY,
   staff: StaffContent = STAFF,
 ): void {
-  expectProducts('prices', decisions.prices)
-  expectProducts('restock', decisions.restock)
-  for (const product of PRODUCTS) {
-    const price = decisions.prices[product]
-    expectWithin(`prices.${product}`, price, limits.priceCents)
-    if (price % limits.priceCents.step !== 0) {
+  expectTruck('', decisions, limits)
+  for (const [id, truck] of Object.entries(decisions.trucks ?? {})) {
+    if (id === FIRST_TRUCK) {
       throw new RangeError(
-        `Invalid decision: prices.${product} must be a multiple of ${limits.priceCents.step}: ${price}`,
+        `Invalid decision: trucks.${id} is the first truck, whose decisions are not in trucks`,
       )
     }
-    expectRule(`restock.${product}`, decisions.restock[product], limits.units)
+    expectTruck(`trucks.${id}.`, truck, limits)
+  }
+  if (
+    decisions.ownerAt !== undefined &&
+    (typeof decisions.ownerAt !== 'string' || decisions.ownerAt === '')
+  ) {
+    throw new RangeError(
+      `Invalid decision: ownerAt must name a truck: ${String(decisions.ownerAt)}`,
+    )
   }
   expectWithin(
     'ownerWeeklyPay',
@@ -374,7 +467,6 @@ export function validateDecisions(
     decisions.marketingDaily,
     limits.marketingDailyCents,
   )
-  expectDaysOpen(decisions.daysOpen, limits.minDaysOpen)
   expectPlan(decisions.bakery)
   if (!croissantSourceSchema.safeParse(decisions.croissantSource).success) {
     throw new RangeError(
@@ -388,6 +480,91 @@ export function validateDecisions(
   validateStaff(decisions.staff, staff)
 }
 
+/**
+ * Throws a RangeError naming the first field of a truck's decisions outside
+ * `limits`, its name after `field`: its prices, restock rules and days
+ * open (see `validateDecisions`).
+ */
+function expectTruck(
+  field: string,
+  truck: TruckDecisions,
+  limits: DecisionLimits,
+): void {
+  expectProducts(`${field}prices`, truck.prices)
+  expectProducts(`${field}restock`, truck.restock)
+  for (const product of PRODUCTS) {
+    const price = truck.prices[product]
+    expectWithin(`${field}prices.${product}`, price, limits.priceCents)
+    if (price % limits.priceCents.step !== 0) {
+      throw new RangeError(
+        `Invalid decision: ${field}prices.${product} must be a multiple of ${limits.priceCents.step}: ${price}`,
+      )
+    }
+    expectRule(
+      `${field}restock.${product}`,
+      truck.restock[product],
+      limits.units,
+    )
+  }
+  expectDaysOpen(`${field}daysOpen`, truck.daysOpen, limits.minDaysOpen)
+}
+
+/**
+ * Throws a RangeError unless every truck `decisions` name is one of
+ * `state`'s (#259): those it runs after the first, the owner's and each
+ * employee's « Au camion ». The first truck is never named.
+ */
+export function validateTrucks(
+  decisions: Decisions,
+  state: Pick<GameState, 'trucks'>,
+): void {
+  const ids = (state.trucks ?? []).map(({ id }) => id)
+  const run = Object.keys(decisions.trucks ?? {})
+  if (run.join() !== ids.join()) {
+    throw new RangeError(
+      `Invalid decision: trucks must run exactly ${ids.join(', ') || 'none'}, in order: ${run.join(', ') || 'none'}`,
+    )
+  }
+  if (decisions.ownerAt !== undefined && !ids.includes(decisions.ownerAt)) {
+    throw new RangeError(
+      `Invalid decision: ownerAt names no truck after the first: ${decisions.ownerAt}`,
+    )
+  }
+  decisions.staff.forEach(({ candidate, truck }, index) => {
+    if (truck !== undefined && !ids.includes(truck)) {
+      throw new RangeError(
+        `Invalid decision: staff.${index}.truck, ${candidate}'s, names no truck after the first: ${truck}`,
+      )
+    }
+  })
+}
+
+/** The truck `id` of `state`; throws a RangeError for one it does not have. */
+function existing(state: GameState, id: TruckId): TruckId {
+  if (!hasTruck(state, id)) {
+    throw new RangeError(`Invalid decision: unknown truck ${String(id)}`)
+  }
+  return id
+}
+
+/**
+ * `decisions` with the truck `id`, the first one when undefined, changed
+ * by `change`.
+ */
+function changedTruck(
+  state: GameState,
+  decisions: Decisions,
+  id: TruckId | undefined,
+  change: (truck: TruckDecisions) => TruckDecisions,
+): Decisions {
+  const truck = existing(state, id ?? FIRST_TRUCK)
+  return withTruckDecisions(
+    decisions,
+    truck,
+    change(truckDecisionsOf(decisions, truck)),
+  )
+}
+
 function changed(
   state: GameState,
   decisions: Decisions,
@@ -397,25 +574,53 @@ function changed(
 ): Decisions {
   switch (change.kind) {
     case 'price':
+      return changedTruck(state, decisions, change.truck, (truck) => ({
+        ...truck,
+        prices: { ...truck.prices, [known(change.product)]: change.price },
+      }))
+    case 'restock':
+      return changedTruck(state, decisions, change.truck, (truck) => {
+        const product = known(change.product)
+        const { kind } = truck.restock[product]
+        if (change.rule.kind !== kind) {
+          throw new RangeError(
+            `Invalid decision: restock.${product} must stay a ${kind} rule: ${change.rule.kind}`,
+          )
+        }
+        return {
+          ...truck,
+          restock: { ...truck.restock, [product]: copied(change.rule) },
+        }
+      })
+    case 'daysOpen':
+      return changedTruck(state, decisions, change.truck, (truck) => ({
+        ...truck,
+        daysOpen: ascending(change.weekdays),
+      }))
+    case 'ownerAt': {
+      const truck = existing(state, change.truck)
+      const rest = { ...decisions }
+      delete rest.ownerAt
+      return truck === FIRST_TRUCK ? rest : { ...rest, ownerAt: truck }
+    }
+    case 'assign': {
+      const truck = existing(state, change.truck)
+      planned(decisions, change.candidate)
       return {
         ...decisions,
-        prices: { ...decisions.prices, [known(change.product)]: change.price },
-      }
-    case 'restock': {
-      const product = known(change.product)
-      const { kind } = decisions.restock[product]
-      if (change.rule.kind !== kind) {
-        throw new RangeError(
-          `Invalid decision: restock.${product} must stay a ${kind} rule: ${change.rule.kind}`,
-        )
-      }
-      return {
-        ...decisions,
-        restock: { ...decisions.restock, [product]: copied(change.rule) },
+        staff: decisions.staff.map((hire) => {
+          if (hire.candidate !== change.candidate) return hire
+          if (hire.role !== AT_TRUCK) {
+            throw new RangeError(
+              `Invalid decision: ${hire.candidate} works as ${hire.role}, not at a truck`,
+            )
+          }
+          const rest = { ...hire }
+          delete rest.truck
+          return truck === FIRST_TRUCK ? rest : { ...rest, truck }
+        }),
       }
     }
-    case 'daysOpen':
-      return { ...decisions, daysOpen: ascending(change.weekdays) }
     case 'ownerWeeklyPay':
       return { ...decisions, ownerWeeklyPay: change.pay }
     case 'marketingDaily':
@@ -643,9 +848,12 @@ export function validateStaff(
   staff.forEach((hire, index) => {
     const field = `staff.${index}`
     const keys = typeof hire === 'object' ? Object.keys(hire).sort() : []
-    if (keys.join() !== 'candidate,hourlyWage,role') {
+    if (
+      keys.join() !== 'candidate,hourlyWage,role' &&
+      keys.join() !== 'candidate,hourlyWage,role,truck'
+    ) {
       throw new RangeError(
-        `Invalid decision: ${field} must name exactly candidate, hourlyWage, role: ${keys.join(', ')}`,
+        `Invalid decision: ${field} must name exactly candidate, hourlyWage, role, and a truck or not: ${keys.join(', ')}`,
       )
     }
     if (!candidateIdSchema.safeParse(hire.candidate).success) {
@@ -671,6 +879,17 @@ export function validateStaff(
       hire.hourlyWage,
       content.roles[role.data].hourlyWageCents,
     )
+    if (hire.truck === undefined) return
+    if (hire.role !== AT_TRUCK) {
+      throw new RangeError(
+        `Invalid decision: ${field}.truck is for an employee at a truck, not ${hire.role}`,
+      )
+    }
+    if (typeof hire.truck !== 'string' || hire.truck === FIRST_TRUCK) {
+      throw new RangeError(
+        `Invalid decision: ${field}.truck must name a truck after the first: ${String(hire.truck)}`,
+      )
+    }
   })
 }
 
@@ -687,12 +906,13 @@ function expectWithin(
 }
 
 function expectDaysOpen(
+  field: string,
   weekdays: readonly number[],
   minDaysOpen: number,
 ): void {
   if (weekdays.length < minDaysOpen) {
     throw new RangeError(
-      `Invalid decision: daysOpen needs at least ${minDaysOpen} day(s): ${weekdays.length}`,
+      `Invalid decision: ${field} needs at least ${minDaysOpen} day(s): ${weekdays.length}`,
     )
   }
   weekdays.forEach((weekday, index) => {
@@ -703,7 +923,7 @@ function expectDaysOpen(
       weekday <= previous
     ) {
       throw new RangeError(
-        `Invalid decision: daysOpen must be ascending weekdays from ${MONDAY} to ${SUNDAY}, each once: ${weekdays.join(', ')}`,
+        `Invalid decision: ${field} must be ascending weekdays from ${MONDAY} to ${SUNDAY}, each once: ${weekdays.join(', ')}`,
       )
     }
   })

@@ -251,7 +251,8 @@ export interface StaffMorning {
  * leaves at once with their notice, « Préavis · <nom> »: `noticeWeeks` of
  * their weekly wage. Then each one in it not on staff starts that day, after
  * a week of training paid up front, « Formation · <nom> »: `trainingWeeks`
- * of the weekly wage the plan gives. Those who stay take the plan's wage.
+ * of the weekly wage the plan gives. Those who stay take the plan's wage,
+ * and every employee the truck the plan gives them, if any (#259).
  * Every entry is Dr 6000 Salaires / Cr 1000 Encaisse, dated `day`. The staff
  * comes out in the plan's order. Returns the new books and staff; never
  * mutates its arguments. Throws an Error if the plan gives someone on staff
@@ -282,9 +283,15 @@ export function staffMorning(
       )
     }
   }
-  const next = plan.map(({ candidate, role, hourlyWage }): Employee => {
+  const next = plan.map(({ candidate, role, hourlyWage, truck }): Employee => {
     const on = staff.find((employee) => employee.candidate === candidate)
-    const hire = { candidate, role, hourlyWage }
+    // The truck an employee « Au camion » works at goes with them (#259).
+    const hire: Hire = {
+      candidate,
+      role,
+      hourlyWage,
+      ...(truck === undefined ? {} : { truck }),
+    }
     if (on === undefined) {
       books = pay(
         books,

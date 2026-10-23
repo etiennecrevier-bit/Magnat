@@ -85,6 +85,18 @@ describe('dream.json', () => {
     expect(content.company[2]?.comingSoon).toBe(true)
   })
 
+  it('adds the second truck, in Vieux-Montréal, still « Bientôt »', () => {
+    const [, , second] = content.company
+    expect(second).toMatchObject({
+      id: 'deuxiemeCamion',
+      comingSoon: true,
+      addsTruck: { id: 'vieuxMontreal', district: 'vieuxMontreal' },
+    })
+    expect(
+      content.company.filter(({ addsTruck }) => addsTruck !== undefined),
+    ).toHaveLength(1)
+  })
+
   it('holds the titles, the last one « Magnat »', () => {
     expect(content.titles).toEqual([
       { name: 'Débrouillard', netWorthCents: 2_500_000 },
@@ -157,6 +169,53 @@ describe('loadDreamContent rejects', () => {
         ;(dream.company[0] as Json).replacesTruck = true
       }),
       'one company rung at most replaces the truck',
+    )
+  })
+
+  it('a truck added as the first one, twice, by the rung that replaces it, or in no district', () => {
+    expectInvalid(
+      changed((dream) => {
+        ;(dream.company[2] as Json).addsTruck = {
+          id: 'plateau',
+          district: 'plateau',
+        }
+      }),
+      'the first truck is plateau',
+    )
+    expectInvalid(
+      changed((dream) => {
+        ;(dream.company[0] as Json).addsTruck = (
+          dream.company[2] as Json
+        ).addsTruck
+      }),
+      'two rungs add the truck vieuxMontreal',
+    )
+    expectInvalid(
+      changed((dream) => {
+        ;(dream.company[1] as Json).addsTruck = {
+          id: 'laval',
+          district: 'plateau',
+        }
+      }),
+      'a rung that adds a truck does not replace the first one',
+    )
+    expectInvalid(
+      changed((dream) => {
+        ;(dream.company[2] as Json).addsTruck = {
+          id: 'laval',
+          district: 'laval',
+        }
+      }),
+      'district',
+    )
+    expectInvalid(
+      changed((dream) => {
+        ;(dream.company[2] as Json).addsTruck = {
+          id: 'vieux montreal',
+          district: 'vieuxMontreal',
+        }
+      }),
+      'expected letters',
     )
   })
 

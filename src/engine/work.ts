@@ -28,10 +28,18 @@ export interface DayWork {
   readonly ownerAway: boolean
   /** The employees who came, in the order of the staff. */
   readonly came: readonly Employee[]
-  /** Every walk-in's visit (see `Visit.servedBy`). */
+  /** Every walk-in's visit at the first truck (see `Visit.servedBy`). */
   readonly visits: readonly Visit[]
-  /** What one unit of each product sold for that day. */
+  /** What one unit of each product sold for that day at the first truck. */
   readonly price: (product: ProductId) => Cents
+  /**
+   * Every other truck's visits, with what one unit sold for there (#259);
+   * none when absent.
+   */
+  readonly others?: readonly {
+    readonly visits: readonly Visit[]
+    readonly price: (product: ProductId) => Cents
+  }[]
   /** The croissants delivered to the grocers that morning. */
   readonly deliveries: readonly Delivery[]
   /** Who delivered; null when nobody did. */
@@ -51,8 +59,8 @@ export interface DayWork {
 /**
  * What each person did on a day (see `DaySummary.work`): the owner unless
  * away, then each employee who came. A person's customers are the visits
- * they served and their sales what those paid, so the people's sales add
- * up to the day's revenue. The one who delivered made every delivery, the
+ * they served, at any truck, and their sales what those paid there, so the
+ * people's sales add up to the day's revenue. The one who delivered made every delivery, the
  * one who baked every croissant, their cost being the ingredients of those
  * made and of those thrown away and made again, against what buying as
  * many would have cost.
@@ -62,8 +70,16 @@ export function workOf(day: DayWork): PersonDay[] {
     ...(day.ownerAway ? [] : ['owner' as const]),
     ...day.came.map(({ candidate }) => candidate),
   ]
+  const trucks = [
+    { visits: day.visits, price: day.price },
+    ...(day.others ?? []),
+  ]
   return people.map((who): PersonDay => {
-    const served = day.visits.filter(({ servedBy }) => servedBy === who)
+    const served = trucks.flatMap(({ visits, price }) =>
+      visits
+        .filter(({ servedBy }) => servedBy === who)
+        .map((visit) => ({ visit, price })),
+    )
     const delivered = day.delivers === who ? day.deliveries : []
     const baked = day.bakes === who ? day.baked : 0
     const wasted = day.bakes === who ? day.wasted : 0
@@ -71,7 +87,7 @@ export function workOf(day: DayWork): PersonDay[] {
       who,
       customers: served.length,
       sales: served.reduce(
-        (total, visit) => add(total, visitSales(visit, day.price)),
+        (total, { visit, price }) => add(total, visitSales(visit, price)),
         cents(0),
       ),
       deliveries: delivered.length,
