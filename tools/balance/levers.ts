@@ -26,7 +26,7 @@ import { cents, type Cents } from '../../src/engine/money.ts'
 import { netWorth } from '../../src/engine/netWorth.ts'
 import { PLACES } from '../../src/engine/places.ts'
 import { STAFF, askingWage } from '../../src/engine/staff.ts'
-import type { Day, GameState } from '../../src/engine/types.ts'
+import type { Day, GameState, TruckId } from '../../src/engine/types.ts'
 import { openingChanges } from './bakery.ts'
 import {
   GROWTH_EVENTS,
@@ -143,24 +143,28 @@ function step(
 
 /**
  * The morning of `situation` (not `affordable`) for seed `seed` at
- * `difficulty`; null when the game ended before it.
+ * `difficulty`; null when the game ended before it, or when that morning
+ * comes after `lastDay`, the audit's last day, which is then not played to.
  */
 export function reachSituation(
   situation: Exclude<SituationId, 'affordable'>,
   seed: number,
   difficulty: DifficultyId,
+  lastDay: Day = Number.POSITIVE_INFINITY,
 ): Situation | null {
   const start = startPlayer(seed, difficulty)
   const reached = (player: Player): Situation | null =>
-    player.state.ended === null
+    player.state.ended === null && player.state.day <= lastDay
       ? { id: situation, player, content: undefined, script: NO_SCRIPT }
       : null
   switch (situation) {
     case 'calm':
+      if (CALM_DAY > lastDay) return null
       return reached(
         playUntil(start, { ...sensiblePolicy(), offers: 'none' }, CALM_DAY - 1),
       )
     case 'summer':
+      if (SUMMER_DAY > lastDay) return null
       return reached(playUntil(start, sensiblePolicy(), SUMMER_DAY - 1))
     case 'crunch': {
       const naive: Policy = {
@@ -168,7 +172,7 @@ export function reachSituation(
         offers: 'none',
         signAllOn: signingDay(),
       }
-      const last = endOfMonth(0, CRUNCH_MONTHS - 1)
+      const last = Math.min(endOfMonth(0, CRUNCH_MONTHS - 1), lastDay - 1)
       let player = start
       let lowest: { day: Day; cash: Cents } | null = null
       while (player.state.day <= last && player.state.ended === null) {
@@ -386,6 +390,8 @@ function signAll({ state }: Player): GameState {
 }
 
 const TRIP_WEEKDAY = 3
+/** How long a branch plays before a setting undoes the setup: 13 weeks. */
+const LATER = 91
 
 /** Sends the owner to `place` on the mornings `when` picks, if it can. */
 function tripScript(
@@ -426,44 +432,82 @@ function tripLever(place: PlaceId): Lever {
   }
 }
 
-function rungLever(rung: RungId): Lever {
+/** The rungs before `rung` on its ladder, bought where they are not yet. */
+function rungsBefore(rung: RungId): (player: Player) => GameState {
   const { ladder, index } = rungOf(rung)
   const before = DREAM[ladder].slice(0, index).map(({ id }) => id)
+  return ({ state }) =>
+    before.reduce(
+      (each, id) =>
+        isBought(each.dream, id)
+          ? each
+          : applyDecision(each, { kind: 'buy', rung: id }),
+      state,
+    )
+}
+
+/** The employee hired at the first truck when a rung adds one. */
+const CREW = 'kevin'
+
+/** `rung` bought, and for a truck, `CREW` hired at the first one. */
+function bought(state: GameState, rung: RungId): GameState {
+  const after = applyDecision(state, { kind: 'buy', rung })
+  if (addedTruck(rung) === undefined) return after
+  return applyDecision(after, {
+    kind: 'hire',
+    role: 'camion',
+    candidate: CREW,
+    hourlyWage: askingWage(CREW, 'camion'),
+  })
+}
+
+/** The truck `rung` adds, if any. */
+function addedTruck(rung: RungId): TruckId | undefined {
+  return DREAM.company.find((each) => each.id === rung)?.addsTruck?.id
+}
+
+function rungLever(rung: RungId): Lever {
+  const truck = addedTruck(rung)
   const buy = (player: Player): GameState => {
-    let { state } = player
-    state = applyDecision(state, { kind: 'buy', rung })
-    const added = DREAM.company.find((each) => each.id === rung)?.addsTruck
-    if (added === undefined) return state
-    // A truck opens the morning someone works there: hire and send one.
-    const candidate = 'kevin'
-    state = applyDecision(state, {
-      kind: 'hire',
-      role: 'camion',
-      candidate,
-      hourlyWage: askingWage(candidate, 'camion'),
-    })
-    return applyDecision(state, {
-      kind: 'assign',
-      candidate,
-      truck: added.id,
-    })
+    const state = bought(player.state, rung)
+    // A truck opens the morning someone works there: send the employee.
+    return truck === undefined
+      ? state
+      : applyDecision(state, { kind: 'assign', candidate: CREW, truck })
   }
   return {
     id: `rung-${rung}`,
     label: `Buy « ${rungOf(rung).rung.name} »`,
     situations: ['affordable'],
     rung,
-    setup: ({ state }) =>
-      before.reduce(
-        (each, id) =>
-          isBought(each.dream, id)
-            ? each
-            : applyDecision(each, { kind: 'buy', rung: id }),
-        state,
-      ),
+    setup: rungsBefore(rung),
     baseline: 'skip',
     action: true,
     settings: [{ id: 'skip' }, { id: 'buy', decide: buy }],
+  }
+}
+
+/**
+ * Who works the truck `rung` adds, bought with `CREW` hired: the employee
+ * sent there, the owner going there and leaving the employee at the first
+ * truck, or nobody, the employee kept at the first truck with the owner.
+ */
+function crewLever(rung: RungId, truck: TruckId): Lever {
+  return {
+    id: `crew-${rung}`,
+    label: `Who works the truck « ${rungOf(rung).rung.name} » adds`,
+    situations: ['affordable'],
+    rung,
+    setup: (player) => bought(rungsBefore(rung)(player), rung),
+    baseline: 'employee',
+    settings: [
+      {
+        id: 'employee',
+        decide: decided({ kind: 'assign', candidate: CREW, truck }),
+      },
+      { id: 'owner', decide: decided({ kind: 'ownerAt', truck }) },
+      { id: 'nobody' },
+    ],
   }
 }
 
@@ -642,7 +686,30 @@ export function levers(): Lever[] {
         {
           id: 'fire',
           script: (startDay: Day) =>
-            changesOn(startDay + 91, [{ kind: 'fire', candidate: 'amelie' }]),
+            changesOn(startDay + LATER, [
+              { kind: 'fire', candidate: 'amelie' },
+            ]),
+        },
+      ],
+    },
+    {
+      id: 'close-bakery',
+      label: 'Close the bakery after 13 weeks',
+      situations: EVERYDAY,
+      setup: decided(
+        { kind: 'openBakery', oven: 'louer' },
+        { kind: 'croissantSource', source: 'fabriquer' },
+      ),
+      baseline: 'keep',
+      settings: [
+        { id: 'keep' },
+        {
+          id: 'close',
+          script: (startDay: Day) =>
+            changesOn(startDay + LATER, [
+              { kind: 'closeBakery' },
+              { kind: 'croissantSource', source: 'acheter' },
+            ]),
         },
       ],
     },
@@ -672,7 +739,51 @@ export function levers(): Lever[] {
     ...[...DREAM.personal, ...DREAM.company]
       .filter((rung) => rung.comingSoon !== true)
       .map(({ id }) => rungLever(id)),
+    ...DREAM.company.flatMap((rung) =>
+      rung.comingSoon === true || rung.addsTruck === undefined
+        ? []
+        : [crewLever(rung.id, rung.addsTruck.id)],
+    ),
   ]
+}
+
+/** The levers that sweep a kind of decision, or why none does. */
+export type Coverage =
+  { readonly levers: readonly string[] } | { readonly excluded: string }
+
+/**
+ * Each kind of decision the player can make, and the levers that sweep
+ * it, so a kind the engine adds and no lever sweeps is seen.
+ */
+export function decisionCoverage(): Readonly<
+  Record<DecisionChange['kind'], Coverage>
+> {
+  const ids = (prefix: string) =>
+    levers()
+      .map(({ id }) => id)
+      .filter((id) => id.startsWith(prefix))
+  return {
+    price: { levers: ids('price-') },
+    restock: { levers: ids('restock-') },
+    daysOpen: { levers: ['days-open'] },
+    storage: { levers: ['storage'] },
+    ownerAt: { levers: ids('crew-') },
+    assign: { levers: ids('crew-') },
+    ownerWeeklyPay: { levers: ['owner-pay'] },
+    marketingDaily: { levers: ['marketing'] },
+    openBakery: { levers: ['bakery'] },
+    closeBakery: { levers: ['close-bakery'] },
+    croissantSource: { levers: ['croissant-source'] },
+    bake: { levers: ['production'] },
+    hire: { levers: ids('hire-') },
+    fire: { levers: ['fire-camion'] },
+    setWage: { levers: ['wage-camion'] },
+    buy: { levers: ids('rung-') },
+    goTo: { levers: ids('trip-') },
+    tutorialStep: {
+      excluded: 'marks a step of the tutorial done, and changes no play',
+    },
+  }
 }
 
 /** One branch played, as the analysis reads it. */
@@ -693,7 +804,8 @@ export interface BranchGame {
  * month `months`: the lever's setup, then the setting's decision, through
  * `applyDecision`, then the situation's policy with the setting's over it.
  * Null when the setup or the setting cannot be decided there, as the game
- * would refuse it.
+ * would refuse it, and when the morning comes after the end of month
+ * `months`.
  */
 export function playBranch(
   situation: Situation,
@@ -703,6 +815,10 @@ export function playBranch(
 ): BranchGame | null {
   let player = situation.player
   const startDay = player.state.day
+  const last = lastDayOf(months)
+  // A morning after the end is not played: its decisions would be judged
+  // on days the audit does not cover.
+  if (startDay > last) return null
   try {
     if (lever.setup !== undefined) {
       player = { ...player, state: lever.setup(player) }
@@ -718,7 +834,6 @@ export function playBranch(
   const own = setting.script?.(startDay) ?? NO_SCRIPT
   const script: Script = (morning) =>
     own({ ...morning, state: situation.script(morning) })
-  const last = lastDayOf(months)
   let pricedOut = 0
   let opened = 0
   while (player.state.day <= last && player.state.ended === null) {

@@ -55,11 +55,20 @@ export interface AuditReport {
   readonly levers: readonly LeverVerdict[]
   /** The sensitivity's rows; null when the section is kept as it was. */
   readonly sensitivity: readonly SensitivityRow[] | null
+  /** The `--tunables` text the sensitivity was played for; null: all. */
+  readonly tunableFilter: string | null
 }
 
 /** The command that writes the report, with its options. */
-export function auditCommand({ games, months }: AuditReport): string {
-  return `npm run balance -- --audit --games ${games} --months ${months}`
+export function auditCommand(report: AuditReport): string {
+  const { games, months, sensitivity, tunableFilter } = report
+  const options =
+    sensitivity === null
+      ? ' --no-sensitivity'
+      : tunableFilter === null
+        ? ''
+        : ` --tunables ${JSON.stringify(tunableFilter)}`
+  return `npm run balance -- --audit --games ${games} --months ${months}${options}`
 }
 
 function difficultyName(difficulty: DifficultyId): string {
@@ -119,7 +128,7 @@ export function formatAuditReport(
   return [
     '# Audit of the whole game, October 2026 (#298)',
     '',
-    `Written by \`${auditCommand(report)}\`; the sensitivity section is played only without \`--no-sensitivity\`. Every game is deterministic: the same command writes the same file. Everything below the hand-written line is kept.`,
+    `Written by \`${auditCommand(report)}\`; the sensitivity section is played only without \`--no-sensitivity\`, and names the command that played it${report.sensitivity === null ? ': this run kept it from an earlier one' : ''}. Every game is deterministic: the same command writes the same file. Everything below the hand-written line is kept.`,
     '',
     ...howItPlays(report),
     '',
@@ -208,12 +217,14 @@ function formatLevers(verdicts: readonly LeverVerdict[]): string[] {
       '',
       '<details><summary>Median net worth of each setting</summary>',
       '',
-      '| Lever | Situation | Settings: median net worth (games, bankrupt; « trop cher » a day) |',
-      '| --- | --- | --- |',
+      'Medians and bankruptcies are over the matched seeds, those where every setting played somewhere was played, so the settings compare on the same games; the games in parentheses are those each setting was played in.',
+      '',
+      '| Lever | Situation | Matched seeds | Settings: median net worth (games played, bankrupt; « trop cher » a day) |',
+      '| --- | --- | --- | --- |',
       ...here.flatMap((each) =>
         each.situations.map(
-          ({ situation, settings }) =>
-            `| ${each.lever} | ${situation} | ${settings
+          ({ situation, settings, matched }) =>
+            `| ${each.lever} | ${situation} | ${matched} | ${settings
               .map(
                 ({
                   setting,
@@ -263,7 +274,7 @@ function formatSensitivity(
     '',
     '## Sensitivity',
     '',
-    `Each cell: the value played, then each policy's survival change in points and median net worth change, against the shipped content (${report.games} seeds, ${report.months} months).`,
+    `Played by \`${auditCommand(report)}\`${report.tunableFilter === null ? '' : `: only the tunables whose label holds « ${report.tunableFilter} »`}. Each cell: the value played, then each policy's survival change in points and median net worth change, against the shipped content (${report.games} seeds, ${report.months} months).`,
     '',
   ]
   for (const difficulty of difficultyIdSchema.options) {

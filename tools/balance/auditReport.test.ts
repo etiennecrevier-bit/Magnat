@@ -50,6 +50,7 @@ const VERDICT: LeverVerdict = {
           medianPricedOut: null,
         },
       ],
+      matched: 2,
       effect: 0.5,
       best: { setting: '30', gain: 0 },
     },
@@ -100,6 +101,7 @@ function report(extra: Partial<AuditReport> = {}): AuditReport {
         })),
       }),
     ),
+    tunableFilter: null,
     ...extra,
   }
 }
@@ -133,7 +135,7 @@ describe('formatAuditReport', () => {
       '| Marketing a day | 30 | 50 % | calm: 30 (0 %) | 30, 100 % of 2 | ✓ | ✗ |',
     )
     expect(text).toContain(
-      '| marketing | calm | 0 $1.00 (2), 30 $2.00 (2, 1 bankrupt) |',
+      '| marketing | calm | 2 | 0 $1.00 (2), 30 $2.00 (2, 1 bankrupt) |',
     )
     expect(text).toContain(
       '| energy.json | balance: every number in the inventory |',
@@ -175,6 +177,24 @@ describe('formatAuditReport', () => {
     expect(without).toContain(`\n${kept}\n`)
     expect(formatAuditReport(report({ sensitivity: null }))).toContain(
       'Not played yet',
+    )
+  })
+
+  it('names the command that played the report and its sensitivity', () => {
+    const only = report({ tunableFilter: 'startingCashCents' })
+    const filtered =
+      'npm run balance -- --audit --games 2 --months 24 --tunables "startingCashCents"'
+    expect(auditCommand(only)).toBe(filtered)
+    const text = formatAuditReport(only)
+    expect(text).toContain(`Written by \`${filtered}\``)
+    expect(text).toContain(
+      `Played by \`${filtered}\`: only the tunables whose label holds « startingCashCents »`,
+    )
+    expect(auditCommand(report({ sensitivity: null }))).toBe(
+      'npm run balance -- --audit --games 2 --months 24 --no-sensitivity',
+    )
+    expect(auditCommand(report())).toBe(
+      'npm run balance -- --audit --games 2 --months 24',
     )
   })
 

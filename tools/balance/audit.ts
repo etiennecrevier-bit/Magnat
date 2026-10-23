@@ -302,7 +302,7 @@ export function runLevers({
     const shared =
       situation === 'affordable'
         ? null
-        : reachSituation(situation, seed, difficulty)
+        : reachSituation(situation, seed, difficulty, lastDayOf(months))
     swept.forEach((lever, index) => {
       const from =
         mornings === null
@@ -337,6 +337,10 @@ export interface SettingSummary {
   readonly setting: string
   /** Games that reached the situation and could decide the setting. */
   readonly games: number
+  /**
+   * Over the situation's matched seeds (see `matchedSeeds`): null for a
+   * setting never played, or when no seed played every setting.
+   */
   readonly medianNetWorth: number | null
   readonly bankrupt: number
   /** Median « trop cher » a day, for a price lever. */
@@ -347,6 +351,8 @@ export interface SettingSummary {
 export interface SituationSummary {
   readonly situation: SituationId
   readonly settings: readonly SettingSummary[]
+  /** The seeds where every setting played somewhere was played. */
+  readonly matched: number
   /** (max − min median) ÷ the baseline's median (see `EFFECT_FLOOR`). */
   readonly effect: number | null
   /** The setting with the highest median, and its gain over the baseline. */
@@ -386,15 +392,15 @@ export function shareOf(amount: number, baseline: number): number {
 
 /**
  * Definition 4 for each lever of `runs` at each difficulty: in each
- * situation, each setting's median net worth, the effect (max − min) and
- * the best setting's gain over the baseline, as a share of the baseline's
- * median (see `shareOf`). The lever matters when some situation's effect
+ * situation, each setting's median net worth over the same seeds (see
+ * `matchedSeeds`), the effect (max − min) and the best setting's gain over
+ * the baseline, as a share of the baseline's median (see `shareOf`). The lever matters when some situation's effect
  * reaches `MATTERS`. Pooling its situations and seeds, a game counts for a
  * setting when it is strictly best there; a game where the best are tied
  * counts for none, and one where every setting ties is not counted. The
  * lever is dominated by a setting that is strictly best in more than
- * `DOMINATES` of the counted games. Only games where every setting was
- * played count.
+ * `DOMINATES` of the counted games. Only the matched seeds count, and a
+ * setting never played is left out of both.
  */
 export function leverVerdicts(
   runs: readonly LeversRun[],
@@ -416,15 +422,13 @@ export function leverVerdicts(
       const credits = new Map<string, number>()
       let decided = 0
       for (const { cell } of cells) {
-        const seeds = cell.settings[0]?.games.length ?? 0
-        for (let seed = 0; seed < seeds; seed += 1) {
-          const worths = cell.settings.map(
-            ({ games }) => games[seed]?.netWorth ?? null,
+        const { compared, seeds } = matchedSeeds(cell)
+        for (const seed of seeds) {
+          const values = compared.map(
+            ({ games }) => games[seed]?.netWorth ?? Number.NaN,
           )
-          if (worths.some((worth) => worth === null)) continue
-          const values = worths as number[]
           const best = Math.max(...values)
-          const winners = cell.settings.filter((_, at) => values[at] === best)
+          const winners = compared.filter((_, at) => values[at] === best)
           if (winners.length === values.length) continue
           decided += 1
           const [only] = winners
@@ -473,25 +477,53 @@ export function leverVerdicts(
   )
 }
 
+/**
+ * The settings of `cell` played in some game, and the seeds where each of
+ * them was played, so the settings compared are always played on the same
+ * seeds: a setting the game refuses on poorer seeds does not look richer
+ * than the baseline for being played on the rest alone.
+ */
+export function matchedSeeds(cell: LeverCell): {
+  readonly compared: LeverCell['settings']
+  readonly seeds: readonly number[]
+} {
+  const compared = cell.settings.filter(({ games }) =>
+    games.some((game) => game !== null),
+  )
+  const length = Math.max(0, ...compared.map(({ games }) => games.length))
+  const seeds = Array.from({ length }, (_, seed) => seed).filter((seed) =>
+    compared.every(({ games }) => (games[seed] ?? null) !== null),
+  )
+  return { compared: compared.length < 2 ? [] : compared, seeds }
+}
+
 function situationSummary(
   situation: SituationId,
   cell: LeverCell,
   lever: Lever,
 ): SituationSummary {
+  const { compared, seeds } = matchedSeeds(cell)
   const settings = cell.settings.map(({ setting, games }): SettingSummary => {
-    const played = games.filter((game) => game !== null)
+    const isCompared = compared.some((each) => each.setting === setting)
+    const matched = isCompared
+      ? seeds.flatMap((seed) => {
+          const game = games[seed] ?? null
+          return game === null ? [] : [game]
+        })
+      : []
     return {
       setting,
-      games: played.length,
+      games: games.filter((game) => game !== null).length,
       medianNetWorth:
-        played.length === 0 ? null : median(played.map((g) => g.netWorth)),
-      bankrupt: played.filter(({ bankrupt }) => bankrupt).length,
+        matched.length === 0 ? null : median(matched.map((g) => g.netWorth)),
+      bankrupt: matched.filter(({ bankrupt }) => bankrupt).length,
       medianPricedOut:
-        lever.product === undefined || played.length === 0
+        lever.product === undefined || matched.length === 0
           ? null
-          : median(played.map(({ pricedOut }) => pricedOut)),
+          : median(matched.map(({ pricedOut }) => pricedOut)),
     }
   })
+  const summary = { situation, settings, matched: seeds.length }
   const baseline = settings.find(({ setting }) => setting === lever.baseline)
   const medians = settings.flatMap(({ medianNetWorth }) =>
     medianNetWorth === null ? [] : [medianNetWorth],
@@ -501,7 +533,7 @@ function situationSummary(
     baseline === undefined ||
     medians.length < 2
   ) {
-    return { situation, settings, effect: null, best: null }
+    return { ...summary, effect: null, best: null }
   }
   const base = baseline.medianNetWorth
   const top = settings.reduce<SettingSummary | null>(
@@ -515,8 +547,7 @@ function situationSummary(
     null,
   )
   return {
-    situation,
-    settings,
+    ...summary,
     effect: shareOf(Math.max(...medians) - Math.min(...medians), base),
     best:
       top === null || top.medianNetWorth === null
@@ -1009,7 +1040,7 @@ export function checkDefinitions(
     },
     {
       definition: 4,
-      text: `Every lever matters (${percent(MATTERS)} of net worth in some situation) and no setting is strictly best in more than ${percent(DOMINATES)} of the games`,
+      text: `Every lever is played and matters (${percent(MATTERS)} of net worth in some situation) and no setting is strictly best in more than ${percent(DOMINATES)} of the games`,
       checks: at((difficulty, run) => {
         const here = verdicts.filter((each) => each.difficulty === difficulty)
         if (here.length === 0) return { verdict: 'n/a', measured: 'not played' }
@@ -1020,12 +1051,17 @@ export function checkDefinitions(
         const dominated = here.filter(({ dominates }) => dominates)
         const unpaid = here.filter(({ pays }) => pays === false)
         return {
-          verdict: verdict(idle.length === 0 && dominated.length === 0),
+          // A lever never played is no evidence that it matters.
+          verdict: verdict(
+            idle.length === 0 &&
+              dominated.length === 0 &&
+              unreachable.length === 0,
+          ),
           measured: [
             `${here.length - idle.length - unreachable.length} of ${here.length} matter`,
             unreachable.length === 0
               ? null
-              : `not reached in ${run.months} months: ${unreachable.map(({ lever }) => lever).join(', ')}`,
+              : `unplayed, so not shown to matter (settings never compared on the same seeds in ${run.months} months): ${unreachable.map(({ lever }) => lever).join(', ')}`,
             idle.length === 0
               ? null
               : `idle: ${idle.map(({ lever }) => lever).join(', ')}`,

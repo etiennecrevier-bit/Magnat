@@ -34,6 +34,10 @@ import { inventory } from './tunables.ts'
 // dominance, the sensitivity's dead and cliff flags and tornado, the
 // sensitivity's jobs, and definitions 1 to 7 on synthetic games.
 
+// Planning the sensitivity validates every move of every tunable through
+// the game's loaders: over Vitest's default on a loaded runner (#305).
+const SLOW = 60_000
+
 function branch(netWorth: number, extra: Partial<BranchGame> = {}): BranchGame {
   return {
     netWorth: cents(netWorth),
@@ -162,6 +166,49 @@ describe('leverVerdicts', () => {
     )
   })
 
+  it('compares the settings on the seeds both were played on', () => {
+    // The alternative was refused on the poorer seed: the one game both
+    // played is the same, so it has no effect and gains nothing.
+    const [verdict] = leverVerdicts(
+      [
+        run(
+          'moyen',
+          'calm',
+          { base: [1_000_000, 100_000_000], up: [null, 100_000_000] },
+          ACTION,
+        ),
+      ],
+      [ACTION],
+    )
+    const [calm] = verdict?.situations ?? []
+    expect(calm?.matched).toBe(1)
+    expect(calm?.settings.map(({ games }) => games)).toEqual([2, 1])
+    expect(calm?.settings.map(({ medianNetWorth }) => medianNetWorth)).toEqual([
+      100_000_000, 100_000_000,
+    ])
+    expect(verdict?.effect).toBe(0)
+    expect(calm?.best?.gain).toBe(0)
+    expect(verdict?.pays).toBe(false)
+  })
+
+  it('leaves a setting never played out, comparing the others', () => {
+    const [verdict] = leverVerdicts(
+      [
+        run('moyen', 'calm', {
+          base: [10_000_000, 10_000_000],
+          up: [12_000_000, 13_000_000],
+          down: [null, null],
+        }),
+      ],
+      [LEVER],
+    )
+    const [calm] = verdict?.situations ?? []
+    expect(calm?.matched).toBe(2)
+    expect(calm?.settings[2]?.medianNetWorth).toBeNull()
+    expect(verdict?.effect).toBeCloseTo(0.25)
+    expect(verdict?.top).toEqual({ setting: 'up', share: 1 })
+  })
+
   it('has no effect where no setting was played', () => {
     const [verdict] = leverVerdicts(
       [run('moyen', 'calm', { base: [null], up: [null], down: [null] })],
@@ -260,27 +307,35 @@ describe('the sensitivity', () => {
     expect(row.dead).toBe(false)
   })
 
-  it("plans one job per move, at the tunable's own difficulty, with its shares", () => {
-    const moves = plannedMoves(inventory(), 2, 1)
-    const cash = moves.find(
-      ({ tunable }) => tunable.label === 'difficulties.moyen.startingCashCents',
-    )
-    expect(cash?.job?.difficulties).toEqual(['moyen'])
-    expect(cash?.job?.edits).toEqual([
-      { path: ['difficulties', 'moyen', 'startingCashCents'], value: 800_000 },
-    ])
-    expect(moves.some(({ tunable }) => tunable.excluded !== null)).toBe(false)
-    const share = moves.find(({ tunable }) =>
-      tunable.label.endsWith('semaine.segmentShares.chic'),
-    )
-    expect(share?.job?.edits).toHaveLength(4)
-    const refused = moves.find(
-      ({ tunable, factor }) =>
-        tunable.label === 'walkIns.opensAtMinute' && factor === 1.2,
-    )
-    expect(refused?.job).toBeNull()
-    expect(refused?.invalid).toContain('the loaders refuse')
-  })
+  it(
+    "plans one job per move, at the tunable's own difficulty, with its shares",
+    () => {
+      const moves = plannedMoves(inventory(), 2, 1)
+      const cash = moves.find(
+        ({ tunable }) =>
+          tunable.label === 'difficulties.moyen.startingCashCents',
+      )
+      expect(cash?.job?.difficulties).toEqual(['moyen'])
+      expect(cash?.job?.edits).toEqual([
+        {
+          path: ['difficulties', 'moyen', 'startingCashCents'],
+          value: 800_000,
+        },
+      ])
+      expect(moves.some(({ tunable }) => tunable.excluded !== null)).toBe(false)
+      const share = moves.find(({ tunable }) =>
+        tunable.label.endsWith('semaine.segmentShares.chic'),
+      )
+      expect(share?.job?.edits).toHaveLength(4)
+      const refused = moves.find(
+        ({ tunable, factor }) =>
+          tunable.label === 'walkIns.opensAtMinute' && factor === 1.2,
+      )
+      expect(refused?.job).toBeNull()
+      expect(refused?.invalid).toContain('the loaders refuse')
+    },
+    SLOW,
+  )
 
   it('plays an event card the best strategy never sees for the sensible player only', () => {
     const cards = inventory().filter(({ file }) => file === 'events.json')
@@ -382,6 +437,45 @@ describe('checkDefinitions', () => {
     expect(verdict(checks, 3, 'moyen')).toBe('met')
     expect(verdict(checks, 4, 'moyen')).toBe('n/a')
     expect(verdict(checks, 6, 'moyen')).toBe('n/a')
+  })
+
+  it('misses definition 4 when a lever was never played, the others fine', () => {
+    const played = {
+      base: [10_000_000, 9_000_000],
+      up: [12_000_000, 8_000_000],
+      down: [9_000_000, 9_500_000],
+    }
+    const unplayed: Lever = { ...LEVER, id: 'never' }
+    const levers = [
+      run('moyen', 'calm', played),
+      {
+        ...run('moyen', 'calm', { base: [null, null], up: [null, null] }),
+        cells: [
+          {
+            lever: unplayed.id,
+            settings: [
+              { setting: 'base', games: [null, null] },
+              { setting: 'up', games: [null, null] },
+            ],
+          },
+        ],
+      },
+    ]
+    const both = checkDefinitions(
+      { definitions, levers, sensitivity: [] },
+      leverVerdicts(levers, [LEVER, unplayed]),
+    )
+    expect(verdict(both, 4, 'moyen')).toBe('missed')
+    const measured = both.find(({ definition }) => definition === 4)?.checks
+      .moyen.measured
+    expect(measured).toContain('1 of 2 matter')
+    expect(measured).toContain('unplayed')
+    expect(measured).toContain('never')
+    const alone = checkDefinitions(
+      { definitions, levers, sensitivity: [] },
+      leverVerdicts(levers, [LEVER]),
+    )
+    expect(verdict(alone, 4, 'moyen')).toBe('met')
   })
 
   it("misses definition 1 below the difficulty's survival, and 2 above 5 %", () => {

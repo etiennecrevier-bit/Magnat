@@ -687,19 +687,33 @@ describe('npm run balance', () => {
       )
       return readFileSync(report, 'utf8')
     }
+    const filtered =
+      'npm run balance -- --audit --games 1 --months 2 --tunables "difficulties.moyen.startingCashCents"'
     const first = play('--tunables', 'difficulties.moyen.startingCashCents')
-    expect(first).toContain(
-      'Written by `npm run balance -- --audit --games 1 --months 2`',
-    )
+    expect(first).toContain(`Written by \`${filtered}\``)
+    expect(first).toContain(`Played by \`${filtered}\``)
     expect(first).toContain(
       '| difficulty.json | difficulties.moyen.startingCashCents |',
     )
+    // Two months end before October 1 and June 1 of year 2: those
+    // situations are not played, and no seed compares their settings.
+    expect(first).toContain('| marketing | calm | 0 |')
+    expect(first).toContain('| marketing | summer | 0 |')
+    expect(first).toContain('| marketing | crunch | 1 |')
     expect(first.split('\n')).toContain(HAND_WRITTEN)
     writeFileSync(report, first.replace('## Findings', '## Findings\n\nMine.'))
     const second = play('--tunables', 'difficulties.moyen.startingCashCents')
     expect(second).toBe(first.replace('## Findings', '## Findings\n\nMine.'))
     const kept = play('--no-sensitivity')
-    expect(kept).toBe(second)
+    expect(kept).toContain(
+      'Written by `npm run balance -- --audit --games 1 --months 2 --no-sensitivity`',
+    )
+    expect(kept).toContain('this run kept it from an earlier one')
+    expect(kept).toContain(`Played by \`${filtered}\``)
+    const header = (text: string) => text.split('\n').slice(2)
+    expect(
+      header(kept).filter((line) => !line.startsWith('Written by')),
+    ).toEqual(header(second).filter((line) => !line.startsWith('Written by')))
     expect(kept.split(SENSITIVITY_START)).toHaveLength(2)
     expect(kept.split(SENSITIVITY_END)).toHaveLength(2)
   }, 120_000)

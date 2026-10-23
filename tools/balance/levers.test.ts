@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { endOfMonth, toCalendar } from '../../src/engine/calendar.ts'
 import { netWorth } from '../../src/engine/netWorth.ts'
 import {
@@ -7,6 +7,7 @@ import {
   CRUNCH_MONTHS,
   SUMMER_DAY,
   affordableMornings,
+  decisionCoverage,
   firstOf,
   levers,
   playBranch,
@@ -85,36 +86,23 @@ describe('levers', () => {
     expect(new Set(levers().map(({ id }) => id)).size).toBe(levers().length)
   })
 
-  it('cover every kind of decision a player makes in a game', () => {
-    const ids = levers().map(({ id }) => id)
-    for (const id of [
-      'price-cafe',
-      'price-chocolat',
-      'price-croissant',
-      'price-limonade',
-      'restock-croissant',
-      'restock-cafe',
-      'restock-chocolat',
-      'restock-limonade',
-      'days-open',
-      'owner-pay',
-      'marketing',
-      'contracts',
-      'bakery',
-      'croissant-source',
-      'production',
-      'hire-camion',
-      'hire-livreur',
-      'hire-boulanger',
-      'wage-camion',
-      'fire-camion',
-      'trip-meunerie',
-      'financing',
-      'storage',
-      'rung-espresso',
-      'rung-deuxiemeCamion',
-    ]) {
-      expect(ids).toContain(id)
+  it('sweep every kind of decision a player makes, or say why not', () => {
+    const ids = new Set(levers().map(({ id }) => id))
+    const coverage = decisionCoverage()
+    for (const [kind, covered] of Object.entries(coverage)) {
+      if ('excluded' in covered) {
+        expect(covered.excluded, kind).not.toBe('')
+        continue
+      }
+      expect(covered.levers.length, kind).toBeGreaterThan(0)
+      for (const id of covered.levers)
+        expect(ids.has(id), `${kind}: ${id}`).toBe(true)
+    }
+    expect(coverage.ownerAt).toEqual({ levers: ['crew-deuxiemeCamion'] })
+    expect(coverage.assign).toEqual({ levers: ['crew-deuxiemeCamion'] })
+    expect(coverage.closeBakery).toEqual({ levers: ['close-bakery'] })
+    for (const id of ['contracts', 'financing', 'trip-meunerie']) {
+      expect(ids.has(id)).toBe(true)
     }
   })
 })
@@ -168,6 +156,70 @@ describe('playBranch', () => {
         'espresso',
       ])
       expect(netWorth(bought ?? espresso.player.state)).toBeGreaterThan(0)
+    },
+    SLOW,
+  )
+
+  it('plays nothing from a morning after the end', () => {
+    const months = 2
+    const last = lastDayOf(months)
+    expect(reachSituation('calm', 1, 'moyen', last)).toBeNull()
+    expect(reachSituation('summer', 1, 'moyen', last)).toBeNull()
+    const crunch = reachSituation('crunch', 1, 'moyen', last)
+    expect(crunch?.player.state.day).toBeLessThanOrEqual(last)
+    const summer = reachSituation('summer', 1, 'moyen')
+    if (summer === null) throw new Error('No summer')
+    const marketing = lever('marketing')
+    const decide = vi.fn(marketing.settings[0]?.decide)
+    expect(
+      playBranch(summer, marketing, { id: 'x', decide }, months),
+    ).toBeNull()
+    expect(decide).not.toHaveBeenCalled()
+  })
+
+  it(
+    'closes the bakery 13 weeks on, its croissants bought again',
+    () => {
+      const calm = reachSituation('calm', 1, 'moyen')
+      if (calm === null) throw new Error('No calm')
+      const close = lever('close-bakery')
+      const [keep, closed] = close.settings.map((setting) =>
+        playBranch(calm, close, setting, 9),
+      )
+      expect(keep).not.toBeNull()
+      expect(closed).not.toBeNull()
+      expect(closed?.netWorth).not.toBe(keep?.netWorth)
+    },
+    SLOW,
+  )
+
+  it(
+    'sends the employee, the owner or nobody to the second truck',
+    () => {
+      const mornings = affordableMornings(1, 'moyen', 24)
+      const crew = lever('crew-deuxiemeCamion')
+      const morning = mornings.get('deuxiemeCamion')
+      if (morning === undefined) throw new Error('No second truck morning')
+      const setup = crew.setup?.(morning.player)
+      expect(setup?.dream.bought.map(({ rung }) => rung)).toContain(
+        'deuxiemeCamion',
+      )
+      const decided = crew.settings.map(
+        (setting) =>
+          setting.decide?.({
+            ...morning.player,
+            state: setup ?? morning.player.state,
+          }) ?? setup,
+      )
+      expect(decided[0]?.pendingDecisions?.staff).toContainEqual(
+        expect.objectContaining({ candidate: 'kevin', truck: 'vieuxMontreal' }),
+      )
+      expect(decided[1]?.pendingDecisions?.ownerAt).toBe('vieuxMontreal')
+      const played = crew.settings.map((setting) =>
+        playBranch(morning, crew, setting, 24),
+      )
+      expect(played.every((game) => game !== null)).toBe(true)
+      expect(new Set(played.map((game) => game?.netWorth)).size).toBe(3)
     },
     SLOW,
   )

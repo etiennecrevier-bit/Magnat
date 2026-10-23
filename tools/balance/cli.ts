@@ -773,6 +773,7 @@ async function writeAudit(
       ),
       levers: verdicts,
       sensitivity: rows,
+      tunableFilter: sensitivity ? only : null,
     },
     sectionOf(previous, SENSITIVITY_MARKERS),
   )
