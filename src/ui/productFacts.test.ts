@@ -263,14 +263,17 @@ describe("a seeded day's facts", () => {
     expect(value('Périmés')).toBe(String(day.spoiled.croissant))
     expect(value('Coût unitaire')).toBe(`1,15${S}$`)
     expect(value('Marge unitaire')).toBe(`2,60${S}$`)
-    const segments = rows.slice(-3)
+    // The tourists (#260) come last, none of them on the Plateau.
+    const segments = rows.slice(-4)
     expect(segments.map((row) => row.label)).toEqual([
       "Chasseurs d'aubaines",
       'Habitués',
       'Clientèle chic',
+      'Touristes',
     ])
     expect(segments.map((row) => row.divider === true)).toEqual([
       true,
+      false,
       false,
       false,
     ])

@@ -7,7 +7,7 @@ import {
   type Segment,
   type SegmentId,
   type Service,
-  type WalkIns,
+  type DistrictWalkIns,
 } from '../content/schema.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
 import { add, cents, mulInt, mulRatio, type Cents } from './money.ts'
@@ -218,9 +218,10 @@ export const NO_CHANGES: CrowdChanges = {
  *    crowd's `customers` × the same noise, and the street's the street
  *    crowd's × the same noise, each rounded and never below zero.
  * 2. Each base customer, one after the other, draws once for their arrival
- *    minute (a slot by its `arrivalWeights`, then the minute within it from
- *    where the draw fell), once for their segment (by the day type's
- *    share), then once per product, in `PRODUCTS` order. They want one unit
+ *    minute, once for their segment (by the day type's share), then once
+ *    per product, in `PRODUCTS` order. Their arrival draw picks a slot by
+ *    their segment's own `arrivalWeights`, or the day type's when it has
+ *    none, then the minute within it from where the draw fell. They want one unit
  *    when the draw is below `purchaseProbability()`, with the day type's
  *    appeal for the product × the street's, and their segment's reference
  *    price × the street's willingness for it, rounded to the cent. One who
@@ -273,7 +274,7 @@ export const NO_CHANGES: CrowdChanges = {
  */
 export function serveWalkIns(
   rngState: number,
-  walkIns: WalkIns,
+  walkIns: DistrictWalkIns,
   dayType: DayTypeId,
   customers: CustomerContent,
   price: (product: ProductId) => Cents,
@@ -283,9 +284,13 @@ export function serveWalkIns(
   changes: CrowdChanges = NO_CHANGES,
 ): Served {
   const crowd = walkIns.dayTypes[dayType]
+  const dayPicker = picker(crowd.arrivalWeights)
   const draws: Draws = {
     walkIns,
-    pickSlot: picker(crowd.arrivalWeights),
+    pickSlot: perSegment((id) => {
+      const own = customers.segments[id].arrivalWeights
+      return own === undefined ? dayPicker : picker(own)
+    }),
     odds: dayOdds(customers, crowd.productAppeal, price, changes),
   }
 
@@ -500,9 +505,12 @@ function thinned(
 
 /** What every customer of the day draws with. */
 interface Draws {
-  walkIns: WalkIns
-  /** Picks the arrival slot, by the day type's `arrivalWeights`. */
-  pickSlot: (draw: number) => [index: number, within: number]
+  walkIns: DistrictWalkIns
+  /**
+   * Picks each segment's arrival slot, by its own `arrivalWeights` or else
+   * the day type's.
+   */
+  pickSlot: Record<SegmentId, (draw: number) => [index: number, within: number]>
   odds: Record<SegmentId, readonly Odds[]>
 }
 
@@ -526,12 +534,12 @@ function drawArrivals(
     const [when, afterWhen] = next(state)
     const [who, afterWho] = next(afterWhen)
     state = afterWho
-    const [slot, within] = pickSlot(when)
+    const segment = SEGMENTS[pickSegment(who)[0]] as SegmentId
+    const [slot, within] = pickSlot[segment](when)
     const minute = Math.min(
       arrivalSlotMinutes - 1,
       Math.floor(within * arrivalSlotMinutes),
     )
-    const segment = SEGMENTS[pickSegment(who)[0]] as SegmentId
     const wanted: ProductId[] = []
     const tooDear: ProductId[] = []
     for (const { product, wants, wouldAtReference } of odds[segment]) {

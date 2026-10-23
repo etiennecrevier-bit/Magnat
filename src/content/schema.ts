@@ -4,6 +4,7 @@ import bakeryJson from './bakery.json'
 import defiPercentilesJson from './defis-percentiles.json'
 import defisJson from './defis.json'
 import difficultyJson from './difficulty.json'
+import districtsJson from './districts.json'
 import dreamJson from './dream.json'
 import energyJson from './energy.json'
 import eventsJson from './events.json'
@@ -70,9 +71,26 @@ export const productIdSchema = z.enum(['cafe', 'chocolat', 'croissant'])
 
 export type ProductId = z.infer<typeof productIdSchema>
 
-export const segmentIdSchema = z.enum(['aubaine', 'habitue', 'chic'])
+/**
+ * The customer segments. The tourists (#260) come last, so a crowd with
+ * none of them draws as it did before them.
+ */
+export const segmentIdSchema = z.enum([
+  'aubaine',
+  'habitue',
+  'chic',
+  'touriste',
+])
 
 export type SegmentId = z.infer<typeof segmentIdSchema>
+
+/**
+ * The districts a truck works in (#259): the Plateau, where the first truck
+ * is, and Vieux-Montréal, where the second goes.
+ */
+export const districtIdSchema = z.enum(['plateau', 'vieuxMontreal'])
+
+export type DistrictId = z.infer<typeof districtIdSchema>
 
 export const dayTypeIdSchema = z.enum(['semaine', 'finDeSemaine'])
 
@@ -124,9 +142,11 @@ const truckSchema = z.strictObject({
   usefulLifeMonths: z.int().positive(),
 })
 
-/** What every truck pays on the 1st of each month. */
+/**
+ * What every truck pays on the 1st of each month, stored or not. Its
+ * permit is its district's (see `districtSchema`).
+ */
 const monthlyCostsSchema = z.strictObject({
-  permitParkingAndCommissary: money,
   insurance: money,
 })
 
@@ -163,34 +183,41 @@ const segmentSharesSchema = z
     'segment shares must sum to 1',
   )
 
-/** The crowd one type of day brings to the truck. */
-const dayTypeSchema = z
-  .strictObject({
-    name: z.string().min(1),
-    /** Walk-in traffic before the day's noise. */
-    customers: count,
-    segmentShares: segmentSharesSchema,
-    /** Multiplies each segment's purchase probability for the product. */
-    productAppeal: z.record(productIdSchema, z.number().nonnegative()),
-    /** How long this crowd waits in line, relative to the usual. */
-    patienceMultiplier: z.number().positive(),
-    /** Relative arrivals in each slot of the opening hours, in order. */
-    arrivalWeights: z.array(z.number().nonnegative()).min(1),
-  })
-  .refine(({ arrivalWeights }) => sumOf(arrivalWeights) > 0, {
+/** Relative arrivals in each slot of the opening hours, in order. */
+const arrivalWeightsSchema = z
+  .array(z.number().nonnegative())
+  .min(1)
+  .refine((weights) => sumOf(weights) > 0, {
     message: 'at least one arrival weight must be above 0',
-    path: ['arrivalWeights'],
   })
+
+/** The crowd one type of day brings to the truck. */
+const dayTypeSchema = z.strictObject({
+  name: z.string().min(1),
+  /** Walk-in traffic before the day's noise. */
+  customers: count,
+  segmentShares: segmentSharesSchema,
+  /** Multiplies each segment's purchase probability for the product. */
+  productAppeal: z.record(productIdSchema, z.number().nonnegative()),
+  /** How long this crowd waits in line, relative to the usual. */
+  patienceMultiplier: z.number().positive(),
+  /** Relative arrivals in each slot of the opening hours, in order. */
+  arrivalWeights: arrivalWeightsSchema,
+})
 
 export type DayType = z.output<typeof dayTypeSchema>
 
-const walkInsSchema = z
+/**
+ * What every truck's walk-ins share, wherever it works: the day's noise
+ * and the opening hours, cut into arrival slots. Each district's crowd is
+ * in districts.json (#260).
+ */
+const walkInHoursSchema = z
   .strictObject({
     noiseStdDevRatio: z.number().nonnegative(),
     opensAtMinute: minuteOfDay,
     closesAtMinute: minuteOfDay,
     arrivalSlotMinutes: z.int().positive(),
-    dayTypes: z.record(dayTypeIdSchema, dayTypeSchema),
   })
   .superRefine((walkIns, ctx) => {
     const { opensAtMinute, closesAtMinute, arrivalSlotMinutes } = walkIns
@@ -209,21 +236,24 @@ const walkInsSchema = z
         message: 'the opening hours must hold a whole number of arrival slots',
         path: ['arrivalSlotMinutes'],
       })
-      return
-    }
-    const slots = open / arrivalSlotMinutes
-    for (const id of dayTypeIdSchema.options) {
-      if (walkIns.dayTypes[id].arrivalWeights.length !== slots) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `expected one arrival weight per slot: ${slots}`,
-          path: ['dayTypes', id, 'arrivalWeights'],
-        })
-      }
     }
   })
 
-export type WalkIns = z.output<typeof walkInsSchema>
+export type WalkIns = z.output<typeof walkInHoursSchema>
+
+/** One district's walk-ins on the hours every truck shares (#260). */
+export type DistrictWalkIns = WalkIns & {
+  readonly dayTypes: Readonly<Record<DayTypeId, DayType>>
+}
+
+/** The arrival slots of the opening hours of `hours`. */
+export function arrivalSlots({
+  opensAtMinute,
+  closesAtMinute,
+  arrivalSlotMinutes,
+}: WalkIns): number {
+  return (closesAtMinute - opensAtMinute) / arrivalSlotMinutes
+}
 
 /**
  * How long serving a customer takes at the counter, and how long a line
@@ -307,7 +337,7 @@ export const foodTruckSchema = z.strictObject({
   cardPayments: cardPaymentsSchema,
   /** The weekday the owner is paid, whether the truck opens or not. */
   ownerPayWeekday: weekday,
-  walkIns: walkInsSchema,
+  walkIns: walkInHoursSchema,
   service: serviceSchema,
   marketing: marketingSchema,
   startingDecisions: startingDecisionsSchema,
@@ -346,6 +376,12 @@ const segmentSchema = z.strictObject({
   patienceMinutes: z.number().positive(),
   products: z.record(productIdSchema, segmentProductSchema),
   tooCheap: tooCheapSchema.optional(),
+  /**
+   * When they come (#260), whatever the day type: relative arrivals in each
+   * slot of the opening hours. Absent, they come when the day type's crowd
+   * does.
+   */
+  arrivalWeights: arrivalWeightsSchema.optional(),
 })
 
 export type Segment = z.output<typeof segmentSchema>
@@ -401,6 +437,14 @@ export const difficultyContentSchema = z.strictObject({
   difficulties: z.record(difficultyIdSchema, difficultySchema),
   /** The bakery's prices at each difficulty. */
   bakery: z.record(difficultyIdSchema, bakeryPricesSchema),
+  /**
+   * The yearly permit of each district that has one (#260), at each
+   * difficulty: see districts.json.
+   */
+  districtPermits: z.record(
+    difficultyIdSchema,
+    z.partialRecord(districtIdSchema, positiveMoney),
+  ),
 })
 
 export type DifficultyContent = z.output<typeof difficultyContentSchema>
@@ -1790,14 +1834,6 @@ export const rungIdSchema = z.enum([
 
 export type RungId = z.infer<typeof rungIdSchema>
 
-/**
- * The districts a truck works in (#259): the Plateau, where the first truck
- * is, and Vieux-Montréal, where the second goes.
- */
-export const districtIdSchema = z.enum(['plateau', 'vieuxMontreal'])
-
-export type DistrictId = z.infer<typeof districtIdSchema>
-
 /** The first truck's id, the one every game starts with (#259). */
 export const FIRST_TRUCK_ID = 'plateau'
 
@@ -2606,6 +2642,143 @@ function financingContentFor(events: EventContent) {
   })
 }
 
+// A calendar fact, not a tunable: the months of the game's years.
+const MONTHS_PER_YEAR = MONTH_LENGTHS.length
+
+/** A month of the year: 1 = January to 12 = December. */
+const monthOfYear = z.int().min(1).max(MONTHS_PER_YEAR)
+
+/** A date every year of the game has, by its month and its day in it. */
+export const monthDaySchema = z
+  .strictObject({ month: monthOfYear, day: z.int().min(1) })
+  .refine(({ month, day }) => day <= (MONTH_LENGTHS[month - 1] ?? 0), {
+    message: 'expected a day of that month',
+    path: ['day'],
+  })
+
+export type MonthDay = z.output<typeof monthDaySchema>
+
+/**
+ * « Remiser pour l'hiver » (#260): a truck stored each year from `from` to
+ * `to`, both days included, over the year's end when `to` comes before
+ * `from`.
+ */
+export const winterStorageSchema = z.strictObject({
+  from: monthDaySchema,
+  to: monthDaySchema,
+})
+
+export type WinterStorage = z.output<typeof winterStorageSchema>
+
+/**
+ * What a district's permit costs (#260): `monthly`, the same amount on each
+ * 1st, or `yearly`, paid at once on the 1st of its `month`, its amount by
+ * difficulty in difficulty.json's `districtPermits`.
+ */
+const districtPermitSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('monthly'), monthlyCents: money }),
+  z.strictObject({ kind: z.literal('yearly'), month: monthOfYear }),
+])
+
+export type DistrictPermit = z.output<typeof districtPermitSchema>
+
+/**
+ * A rival already in the district (#260): in its `months`, it leaves
+ * `walkInsFactor` of one segment's walk-ins.
+ */
+const rivalSchema = z.strictObject({
+  name: frenchText(),
+  segment: segmentIdSchema,
+  months: z
+    .array(monthOfYear)
+    .min(1)
+    .refine((months) => new Set(months).size === months.length, {
+      message: 'each month once',
+    }),
+  walkInsFactor: share,
+})
+
+export type Rival = z.output<typeof rivalSchema>
+
+/** A district a truck works in (#260). */
+const districtSchema = z.strictObject({
+  name: frenchText(),
+  /** The crowd each type of day brings to a truck there. */
+  dayTypes: z.record(dayTypeIdSchema, dayTypeSchema),
+  /** What multiplies its crowd's customers each month, January first. */
+  monthlyWalkIns: z.array(z.number().nonnegative()).length(MONTHS_PER_YEAR),
+  permit: districtPermitSchema,
+  rival: rivalSchema.optional(),
+})
+
+export type District = z.output<typeof districtSchema>
+
+const districtContentSchema = z.strictObject({
+  _note: z.string().optional(),
+  /** The dates « Remiser pour l'hiver » starts from. */
+  winterStorage: winterStorageSchema,
+  districts: z.record(districtIdSchema, districtSchema),
+})
+
+export type DistrictContent = z.output<typeof districtContentSchema>
+
+/**
+ * The districts, checked against the opening hours of `foodTruck`, which
+ * every day type has one arrival weight per slot of, and the permits of
+ * `difficulties`, which every yearly permit has an amount in at each
+ * difficulty.
+ */
+function districtContentFor(
+  foodTruck: FoodTruckContent,
+  difficulties: DifficultyContent,
+) {
+  const slots = arrivalSlots(foodTruck.walkIns)
+  return districtContentSchema.superRefine(({ districts }, ctx) => {
+    for (const id of districtIdSchema.options) {
+      const district = districts[id]
+      for (const dayType of dayTypeIdSchema.options) {
+        if (district.dayTypes[dayType].arrivalWeights.length !== slots) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `expected one arrival weight per slot: ${slots}`,
+            path: ['districts', id, 'dayTypes', dayType, 'arrivalWeights'],
+          })
+        }
+      }
+      if (district.permit.kind !== 'yearly') continue
+      for (const difficulty of difficultyIdSchema.options) {
+        if (difficulties.districtPermits[difficulty][id] === undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `difficulty.json has no districtPermits.${difficulty}.${id}`,
+            path: ['districts', id, 'permit'],
+          })
+        }
+      }
+    }
+  })
+}
+
+/**
+ * The segments, checked against the opening hours of `foodTruck`: a
+ * segment's own arrival weights, if any, have one per slot.
+ */
+function customerContentFor(foodTruck: FoodTruckContent) {
+  const slots = arrivalSlots(foodTruck.walkIns)
+  return customerSchema.superRefine(({ segments }, ctx) => {
+    for (const id of segmentIdSchema.options) {
+      const weights = segments[id].arrivalWeights
+      if (weights !== undefined && weights.length !== slots) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `expected one arrival weight per slot: ${slots}`,
+          path: ['segments', id, 'arrivalWeights'],
+        })
+      }
+    }
+  })
+}
+
 /**
  * The places, checked against the truck's opening hours in `foodTruck`: the
  * owner leaves while the truck is open, and is back from each place, on
@@ -2665,14 +2838,39 @@ export function loadFoodTruckContent(
 }
 
 /**
- * Validates the customer segments and returns them typed, with money as
- * `Cents`. Throws an Error naming every invalid field. Pass `raw` only to
- * check other data; by default it reads `segments.json`.
+ * Validates the customer segments against the opening hours of
+ * `foodTruck` and returns them typed, with money as `Cents`. Throws an
+ * Error naming every invalid field: besides each field, a segment's own
+ * arrival weights, if any, have one per slot of the opening hours. Pass
+ * `raw` only to check other data; by default it reads `segments.json`,
+ * against `foodtruck.json`.
  */
 export function loadCustomerContent(
   raw: unknown = segmentsJson,
+  foodTruck: FoodTruckContent = loadFoodTruckContent(),
 ): CustomerContent {
-  return parsed(customerSchema, raw, 'segments.json')
+  return parsed(customerContentFor(foodTruck), raw, 'segments.json')
+}
+
+/**
+ * Validates the districts (#260) against the opening hours of `foodTruck`
+ * and the permits of `difficulties` and returns them typed, with money as
+ * `Cents`. Throws an Error naming every invalid field: besides each field,
+ * each day type has one arrival weight per slot of the opening hours, and
+ * each yearly permit an amount at each difficulty. Pass `raw` only to
+ * check other data; by default it reads `districts.json`, against
+ * `foodtruck.json` and `difficulty.json`.
+ */
+export function loadDistrictContent(
+  raw: unknown = districtsJson,
+  foodTruck: FoodTruckContent = loadFoodTruckContent(),
+  difficulties: DifficultyContent = loadDifficultyContent(),
+): DistrictContent {
+  return parsed(
+    districtContentFor(foodTruck, difficulties),
+    raw,
+    'districts.json',
+  )
 }
 
 /**

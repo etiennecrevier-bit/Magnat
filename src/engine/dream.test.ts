@@ -29,6 +29,7 @@ import {
   truckOnBooks,
 } from './day.ts'
 import { applyDecision } from './decisions.ts'
+import { permitOn } from './districts.ts'
 import {
   DREAM,
   crowned,
@@ -412,8 +413,8 @@ describe('the bigger truck', () => {
     const later = playDay(playedTo(JULY_1, bought))
     expect(memosOn(later, JUNE_1)).toContain(TRUCK_MEMO.lease)
     expect(memosOn(later, JULY_1)).not.toContain(TRUCK_MEMO.lease)
-    const { permitParkingAndCommissary, insurance } =
-      FOOD_TRUCK.monthlyCostsCents
+    const { insurance } = FOOD_TRUCK.monthlyCostsCents
+    const permit = permitOn('plateau', 61, 'difficile', DIFFICULTIES)
     const fixed = (replacedOn: Day | null) =>
       monthlyFixedCosts(
         50,
@@ -425,7 +426,7 @@ describe('the bigger truck', () => {
         BAKERY,
         replacedOn,
       )
-    expect(fixed(45)).toBe(permitParkingAndCommissary + insurance)
+    expect(fixed(45)).toBe(permit + insurance)
     expect(fixed(null)).toBeGreaterThan(fixed(45))
   })
 
@@ -454,6 +455,7 @@ describe('the bigger truck', () => {
       aubaine: 1,
       habitue: 1,
       chic: 1.1,
+      touriste: 1,
     })
 
     const restock = {
@@ -477,7 +479,7 @@ describe('the bonuses', () => {
       serviceTime: 1,
       line: 1,
       stock: 1,
-      walkIns: { aubaine: 1, habitue: 1, chic: 1 },
+      walkIns: { aubaine: 1, habitue: 1, chic: 1, touriste: 1 },
       closedDayRecovery: 0,
     })
     expect(dreamService(FOOD_TRUCK.service, bonuses)).toBe(FOOD_TRUCK.service)

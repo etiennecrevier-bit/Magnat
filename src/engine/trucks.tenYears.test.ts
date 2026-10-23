@@ -17,6 +17,7 @@ import {
   PERSONAL,
 } from './day.ts'
 import { applyDecision, type DecisionChange } from './decisions.ts'
+import { defaultWinterStorage, isStored } from './districts.ts'
 import { NO_EVENTS } from './events.ts'
 import { FINANCING } from './financing.ts'
 import { inventoryValue } from './inventory.ts'
@@ -29,7 +30,9 @@ import type { GameState, TruckId } from './types.ts'
 // The invariants of tests/invariants.test.ts, for a game of two trucks
 // (#259): ten years in which the balance sheet balances every day, every
 // truck's lots cost what Stocks carries, the sales by truck add up to
-// Ventes, and the game replays to the same books.
+// Ventes, and the game replays to the same books. The second truck, in
+// Vieux-Montréal, is stored each winter (#260): it sells nothing from
+// December 1st to April 30th, and pays its permit each April 1st.
 
 const SEED = 42
 const DAYS = 3650
@@ -60,9 +63,9 @@ function decide(state: GameState, change: DecisionChange): GameState {
 }
 
 /**
- * The second truck bought on day 0, Kevin « Au camion » there, and the
- * owner moving between the two trucks on each 1st, so each opens with and
- * without them. Calls `check` on each close.
+ * The second truck bought on day 0, stored each winter from then on, Kevin
+ * « Au camion » there, and the owner moving between the two trucks on each
+ * 1st, so each opens with and without them. Calls `check` on each close.
  */
 function tenYears(check: (state: GameState) => void = () => {}): GameState {
   let state = [
@@ -74,6 +77,7 @@ function tenYears(check: (state: GameState) => void = () => {}): GameState {
       hourlyWage: askingWage('kevin', 'camion'),
     },
     { kind: 'assign', candidate: 'kevin', truck: SECOND },
+    { kind: 'storage', truck: SECOND, storage: defaultWinterStorage() },
   ].reduce<GameState>(
     (game, change) => decide(game, change as DecisionChange),
     createInitialState(SEED),
@@ -143,14 +147,30 @@ describe('ten years of two trucks', () => {
       for (const truck of byTruck.keys()) {
         if (truck !== null) opened.set(truck, (opened.get(truck) ?? 0) + 1)
       }
+      if (isStored(defaultWinterStorage(), day) && byTruck.has(SECOND)) {
+        failures.push(`day ${day}: the stored truck sold`)
+      }
     })
     expect(failures).toEqual([])
     expect(game.ended).toBeNull()
     expect(game.day).toBe(DAYS)
     // The first truck sells in the months the owner is there, the second
-    // whenever Kevin comes, both closed on Mondays.
+    // whenever Kevin comes outside the winter, both closed on Mondays.
     expect(opened.get(FIRST_TRUCK)).toBeGreaterThan(DAYS / 3)
-    expect(opened.get(SECOND)).toBeGreaterThan((DAYS * 2) / 3)
+    expect(opened.get(SECOND)).toBeGreaterThan(DAYS / 3)
+    expect(opened.get(SECOND)).toBeLessThan((DAYS * 7) / 12)
+    // Its permit, on each April 1st, stored or not.
+    const permits = entriesOf(game.journal).filter(
+      ({ memo }) => memo === 'Permis annuel · Vieux-Montréal',
+    )
+    expect(permits.map(({ day }) => toCalendar(day))).toEqual(
+      Array.from({ length: 10 }, (_, n) => ({
+        year: n + 2,
+        month: 4,
+        dayOfMonth: 1,
+        weekday: toCalendar(335 + 365 * n).weekday,
+      })),
+    )
     expect(books(tenYears().journal) === books(game.journal)).toBe(true)
   }, 120_000)
 })

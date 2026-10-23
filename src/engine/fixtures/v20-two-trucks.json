@@ -1,0 +1,2082 @@
+{
+  "saveVersion": 20,
+  "day": 2,
+  "seed": 42,
+  "rngState": 2985838198,
+  "journal": [
+    {
+      "day": 0,
+      "memo": "Mise de fonds",
+      "lines": [
+        { "account": "1000", "debit": 2500000, "credit": 0 },
+        { "account": "3000", "debit": 0, "credit": 2500000 }
+      ]
+    },
+    {
+      "day": 0,
+      "memo": "Emprunt de démarrage",
+      "lines": [
+        { "account": "1000", "debit": 7000000, "credit": 0 },
+        { "account": "2500", "debit": 0, "credit": 7000000 }
+      ]
+    },
+    {
+      "day": 0,
+      "memo": "Achat du camion",
+      "lines": [
+        { "account": "1500", "debit": 8500000, "credit": 0 },
+        { "account": "1000", "debit": 0, "credit": 8500000 }
+      ]
+    },
+    {
+      "day": 0,
+      "memo": "Achat · Deuxième camion",
+      "lines": [
+        { "account": "1500", "debit": 500000, "credit": 0 },
+        { "account": "1000", "debit": 0, "credit": 500000 }
+      ]
+    },
+    {
+      "day": 0,
+      "memo": "Permis, stationnement et cuisine",
+      "lines": [
+        { "account": "6100", "debit": 150000, "credit": 0, "truck": "plateau" },
+        { "account": "1000", "debit": 0, "credit": 150000 }
+      ]
+    },
+    {
+      "day": 0,
+      "memo": "Assurances",
+      "lines": [
+        { "account": "6150", "debit": 25000, "credit": 0, "truck": "plateau" },
+        { "account": "1000", "debit": 0, "credit": 25000 }
+      ]
+    },
+    {
+      "day": 0,
+      "memo": "Amortissement du camion",
+      "lines": [
+        { "account": "6400", "debit": 70833, "credit": 0, "truck": "plateau" },
+        { "account": "1510", "debit": 0, "credit": 70833 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Formation · Kevin Bouchard",
+      "lines": [
+        { "account": "6000", "debit": 63000, "credit": 0 },
+        { "account": "1000", "debit": 0, "credit": 63000 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Achat de marchandises",
+      "lines": [
+        { "account": "1200", "debit": 29450, "credit": 0 },
+        { "account": "1000", "debit": 0, "credit": 29450 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Ventes au comptant",
+      "lines": [
+        { "account": "1000", "debit": 34450, "credit": 0 },
+        { "account": "4000", "debit": 0, "credit": 34450, "truck": "plateau" }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Coût des marchandises vendues",
+      "lines": [
+        { "account": "5000", "debit": 7255, "credit": 0, "truck": "plateau" },
+        { "account": "1200", "debit": 0, "credit": 7255 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Emballages",
+      "lines": [
+        { "account": "5200", "debit": 1350, "credit": 0, "truck": "plateau" },
+        { "account": "1000", "debit": 0, "credit": 1350 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Frais de cartes",
+      "lines": [
+        { "account": "6500", "debit": 732, "credit": 0, "truck": "plateau" },
+        { "account": "1000", "debit": 0, "credit": 732 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Carburant et entretien",
+      "lines": [
+        { "account": "6200", "debit": 2000, "credit": 0, "truck": "plateau" },
+        { "account": "1000", "debit": 0, "credit": 2000 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Achat de marchandises",
+      "lines": [
+        { "account": "1200", "debit": 29450, "credit": 0 },
+        { "account": "1000", "debit": 0, "credit": 29450 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Ventes au comptant",
+      "lines": [
+        { "account": "1000", "debit": 41175, "credit": 0 },
+        {
+          "account": "4000",
+          "debit": 0,
+          "credit": 41175,
+          "truck": "vieuxMontreal"
+        }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Coût des marchandises vendues",
+      "lines": [
+        {
+          "account": "5000",
+          "debit": 8735,
+          "credit": 0,
+          "truck": "vieuxMontreal"
+        },
+        { "account": "1200", "debit": 0, "credit": 8735 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Produits ratés",
+      "lines": [
+        {
+          "account": "5100",
+          "debit": 265,
+          "credit": 0,
+          "truck": "vieuxMontreal"
+        },
+        { "account": "1200", "debit": 0, "credit": 265 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Emballages",
+      "lines": [
+        {
+          "account": "5200",
+          "debit": 1595,
+          "credit": 0,
+          "truck": "vieuxMontreal"
+        },
+        { "account": "1000", "debit": 0, "credit": 1595 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Frais de cartes",
+      "lines": [
+        {
+          "account": "6500",
+          "debit": 875,
+          "credit": 0,
+          "truck": "vieuxMontreal"
+        },
+        { "account": "1000", "debit": 0, "credit": 875 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Carburant et entretien",
+      "lines": [
+        {
+          "account": "6200",
+          "debit": 2000,
+          "credit": 0,
+          "truck": "vieuxMontreal"
+        },
+        { "account": "1000", "debit": 0, "credit": 2000 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Marchandises périmées",
+      "lines": [
+        { "account": "5100", "debit": 3080, "credit": 0, "truck": "plateau" },
+        { "account": "1200", "debit": 0, "credit": 3080 }
+      ]
+    },
+    {
+      "day": 1,
+      "memo": "Marchandises périmées",
+      "lines": [
+        {
+          "account": "5100",
+          "debit": 1870,
+          "credit": 0,
+          "truck": "vieuxMontreal"
+        },
+        { "account": "1200", "debit": 0, "credit": 1870 }
+      ]
+    }
+  ],
+  "inventory": [
+    { "product": "cafe", "quantity": 250, "unitCost": 45, "boughtOnDay": 1 },
+    { "product": "chocolat", "quantity": 143, "unitCost": 55, "boughtOnDay": 1 }
+  ],
+  "lastDay": {
+    "day": 1,
+    "sold": { "cafe": 50, "chocolat": 7, "croissant": 42 },
+    "revenue": 34450,
+    "lostSales": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+    "pricedOut": { "cafe": 23, "chocolat": 7, "croissant": 21 },
+    "spoiled": { "cafe": 0, "chocolat": 0, "croissant": 28 },
+    "segments": {
+      "aubaine": {
+        "visits": 25,
+        "buyers": 3,
+        "tooExpensive": 21,
+        "soldOut": 0
+      },
+      "habitue": {
+        "visits": 39,
+        "buyers": 39,
+        "tooExpensive": 0,
+        "soldOut": 0
+      },
+      "chic": { "visits": 18, "buyers": 17, "tooExpensive": 0, "soldOut": 0 }
+    },
+    "visits": [
+      {
+        "arrivalMinute": 426,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 426,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 432,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 432,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 434,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 435,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 435,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 441,
+        "segment": "habitue",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 441,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 444,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 444,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 445,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 445,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 454,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 1, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 454,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 456,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 456,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 457,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 457,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 460,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 1, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 460,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 460,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 462,
+        "segment": "chic",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 462,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 465,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 466,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 466,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 469,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 1, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 469,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 471,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "browsed",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 474,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 474,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 476,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 476,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 478,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 479,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 481,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 483,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 483,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 483,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 484,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 484,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 485,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 485,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 486,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 486,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 489,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 489,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 491,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 493,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 493,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 496,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 499,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 1, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 499,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 501,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 501,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 501,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 502,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 504,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 504,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 507,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 508,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 508,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 508,
+        "segment": "aubaine",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 509,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 508,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 510,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 509,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 512,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 509,
+        "segment": "chic",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "leftLine",
+        "servedMinute": null,
+        "leftMinute": 509,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 510,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 514,
+        "segment": "chic",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 514,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 515,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 515,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 516,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 519,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 521,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 521,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 521,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 1, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 522,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 525,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 533,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 537,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 537,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 543,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 543,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 546,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 546,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 551,
+        "segment": "chic",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 551,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 591,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 594,
+        "segment": "habitue",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 594,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 601,
+        "segment": "habitue",
+        "bought": { "cafe": 0, "chocolat": 1, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 601,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 609,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 609,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 610,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 610,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 617,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 622,
+        "segment": "chic",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 622,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 630,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 648,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 648,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 659,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 659,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 683,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 685,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 685,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 690,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 690,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 698,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 698,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 706,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 706,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 711,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 711,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 719,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 719,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 728,
+        "segment": "chic",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 728,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 729,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 1, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 729,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 734,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 734,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 739,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 739,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 742,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 742,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 746,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 746,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 752,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 759,
+        "segment": "habitue",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 759,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 761,
+        "segment": "aubaine",
+        "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+        "outcome": "bought",
+        "servedMinute": 761,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      },
+      {
+        "arrivalMinute": 818,
+        "segment": "aubaine",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "outcome": "tooExpensive",
+        "servedMinute": null,
+        "leftMinute": null,
+        "botched": 0
+      },
+      {
+        "arrivalMinute": 880,
+        "segment": "habitue",
+        "bought": { "cafe": 0, "chocolat": 0, "croissant": 1 },
+        "outcome": "bought",
+        "servedMinute": 880,
+        "leftMinute": null,
+        "botched": 0,
+        "servedBy": "owner"
+      }
+    ],
+    "leftLine": 1,
+    "averageWaitSeconds": 14,
+    "longestWaitSeconds": 190,
+    "energy": 90.46000000000001,
+    "botched": 0,
+    "modifiers": [],
+    "deliveries": [],
+    "work": [
+      {
+        "who": "owner",
+        "customers": 59,
+        "sales": 34450,
+        "deliveries": 0,
+        "invoiced": 0,
+        "baked": 0,
+        "bakedCost": 0,
+        "boughtCost": 0
+      },
+      {
+        "who": "kevin",
+        "customers": 60,
+        "sales": 41175,
+        "deliveries": 0,
+        "invoiced": 0,
+        "baked": 0,
+        "bakedCost": 0,
+        "boughtCost": 0
+      }
+    ],
+    "missed": []
+  },
+  "marketingHistory": [0, 0],
+  "marketingDays": [
+    { "day": 0, "spent": 0, "customers": 0, "sales": 0 },
+    { "day": 1, "spent": 0, "customers": 0, "sales": 0 }
+  ],
+  "workDays": [
+    {
+      "day": 0,
+      "people": [
+        {
+          "who": "owner",
+          "customers": 0,
+          "sales": 0,
+          "deliveries": 0,
+          "invoiced": 0,
+          "baked": 0,
+          "bakedCost": 0,
+          "boughtCost": 0
+        }
+      ],
+      "ownerAway": false,
+      "absent": []
+    },
+    {
+      "day": 1,
+      "people": [
+        {
+          "who": "owner",
+          "customers": 59,
+          "sales": 34450,
+          "deliveries": 0,
+          "invoiced": 0,
+          "baked": 0,
+          "bakedCost": 0,
+          "boughtCost": 0
+        },
+        {
+          "who": "kevin",
+          "customers": 60,
+          "sales": 41175,
+          "deliveries": 0,
+          "invoiced": 0,
+          "baked": 0,
+          "bakedCost": 0,
+          "boughtCost": 0
+        }
+      ],
+      "ownerAway": false,
+      "absent": []
+    }
+  ],
+  "decisions": {
+    "prices": { "cafe": 325, "chocolat": 350, "croissant": 375 },
+    "restock": {
+      "cafe": { "kind": "topUp", "whenBelow": 100, "upTo": 300 },
+      "chocolat": { "kind": "topUp", "whenBelow": 50, "upTo": 150 },
+      "croissant": { "kind": "buyDaily", "quantity": 70 }
+    },
+    "daysOpen": [2, 3, 4, 5, 6, 7],
+    "ownerWeeklyPay": 70000,
+    "marketingDaily": 0,
+    "bakery": null,
+    "croissantSource": "acheter",
+    "bake": { "kind": "buyDaily", "quantity": 70 },
+    "staff": [
+      {
+        "candidate": "kevin",
+        "role": "camion",
+        "hourlyWage": 1800,
+        "truck": "vieuxMontreal"
+      }
+    ],
+    "trucks": {
+      "vieuxMontreal": {
+        "prices": { "cafe": 325, "chocolat": 350, "croissant": 375 },
+        "restock": {
+          "cafe": { "kind": "topUp", "whenBelow": 100, "upTo": 300 },
+          "chocolat": { "kind": "topUp", "whenBelow": 50, "upTo": 150 },
+          "croissant": { "kind": "buyDaily", "quantity": 70 }
+        },
+        "daysOpen": [2, 3, 4, 5, 6, 7]
+      }
+    }
+  },
+  "pendingDecisions": null,
+  "trucks": [
+    {
+      "id": "vieuxMontreal",
+      "district": "vieuxMontreal",
+      "boughtOnDay": 0,
+      "rngState": 3881037393,
+      "inventory": [
+        {
+          "product": "cafe",
+          "quantity": 243,
+          "unitCost": 45,
+          "boughtOnDay": 1
+        },
+        {
+          "product": "chocolat",
+          "quantity": 139,
+          "unitCost": 55,
+          "boughtOnDay": 1
+        }
+      ],
+      "lastDay": {
+        "day": 1,
+        "sold": { "cafe": 56, "chocolat": 11, "croissant": 51 },
+        "revenue": 41175,
+        "lostSales": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "pricedOut": { "cafe": 18, "chocolat": 5, "croissant": 8 },
+        "spoiled": { "cafe": 0, "chocolat": 0, "croissant": 17 },
+        "segments": {
+          "aubaine": {
+            "visits": 17,
+            "buyers": 1,
+            "tooExpensive": 16,
+            "soldOut": 0
+          },
+          "habitue": {
+            "visits": 48,
+            "buyers": 47,
+            "tooExpensive": 0,
+            "soldOut": 0
+          },
+          "chic": {
+            "visits": 14,
+            "buyers": 12,
+            "tooExpensive": 0,
+            "soldOut": 0
+          }
+        },
+        "visits": [
+          {
+            "arrivalMinute": 422,
+            "segment": "chic",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 422,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 423,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+            "outcome": "bought",
+            "servedMinute": 423,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 424,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 424,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 430,
+            "segment": "chic",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+            "outcome": "bought",
+            "servedMinute": 430,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 430,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 1, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 431,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 438,
+            "segment": "chic",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 438,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 443,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 443,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 447,
+            "segment": "chic",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 447,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 448,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 448,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 450,
+            "segment": "chic",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 450,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 451,
+            "segment": "chic",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 451,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 452,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 453,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 453,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 453,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 456,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 459,
+            "segment": "chic",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 459,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 461,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 464,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 464,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 465,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 466,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 466,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 467,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 467,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 467,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 472,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 473,
+            "segment": "chic",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 473,
+            "leftMinute": null,
+            "botched": 1,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 475,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 475,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 478,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 478,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 478,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 1, "croissant": 0 },
+            "outcome": "bought",
+            "servedMinute": 479,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 479,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 481,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 480,
+            "segment": "chic",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "leftLine",
+            "servedMinute": null,
+            "leftMinute": 480,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 487,
+            "segment": "habitue",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 487,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 490,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 1, "croissant": 0 },
+            "outcome": "bought",
+            "servedMinute": 490,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 491,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 494,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 494,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 494,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 495,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 494,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 495,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 497,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 497,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 498,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 498,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 500,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 498,
+            "segment": "habitue",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "leftLine",
+            "servedMinute": null,
+            "leftMinute": 498,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 501,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+            "outcome": "bought",
+            "servedMinute": 501,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 501,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 502,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 506,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 506,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 508,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 508,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 509,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 1, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 509,
+            "leftMinute": null,
+            "botched": 1,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 509,
+            "segment": "chic",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "leftLine",
+            "servedMinute": null,
+            "leftMinute": 509,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 510,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 511,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 513,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 513,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 514,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 514,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 519,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 519,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 528,
+            "segment": "habitue",
+            "bought": { "cafe": 0, "chocolat": 1, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 528,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 531,
+            "segment": "aubaine",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 531,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 534,
+            "segment": "chic",
+            "bought": { "cafe": 1, "chocolat": 1, "croissant": 0 },
+            "outcome": "bought",
+            "servedMinute": 534,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 535,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 536,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 536,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 537,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 537,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 541,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 1, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 541,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 563,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 568,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 568,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 618,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+            "outcome": "bought",
+            "servedMinute": 618,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 627,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 627,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 659,
+            "segment": "chic",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 659,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 676,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 678,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 678,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 691,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 691,
+            "leftMinute": null,
+            "botched": 1,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 694,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 1, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 694,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 699,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 699,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 706,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 1, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 706,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 714,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 725,
+            "segment": "chic",
+            "bought": { "cafe": 1, "chocolat": 1, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 725,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 731,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 735,
+            "segment": "chic",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 735,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 740,
+            "segment": "habitue",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 740,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 747,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 747,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 749,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 749,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 756,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 0 },
+            "outcome": "bought",
+            "servedMinute": 756,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 801,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 0, "croissant": 1 },
+            "outcome": "bought",
+            "servedMinute": 801,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 814,
+            "segment": "habitue",
+            "bought": { "cafe": 1, "chocolat": 1, "croissant": 0 },
+            "outcome": "bought",
+            "servedMinute": 814,
+            "leftMinute": null,
+            "botched": 0,
+            "servedBy": "kevin"
+          },
+          {
+            "arrivalMinute": 838,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          },
+          {
+            "arrivalMinute": 859,
+            "segment": "aubaine",
+            "bought": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+            "outcome": "tooExpensive",
+            "servedMinute": null,
+            "leftMinute": null,
+            "botched": 0
+          }
+        ],
+        "leftLine": 3,
+        "averageWaitSeconds": 20,
+        "longestWaitSeconds": 128,
+        "botched": 3,
+        "open": true
+      }
+    }
+  ],
+  "profile": {
+    "businessName": "Le P'tit Camion",
+    "avatar": "femme",
+    "difficulty": "moyen"
+  },
+  "personal": {
+    "cash": 120000,
+    "movements": [{ "day": 0, "label": "Loyer", "amount": -130000 }],
+    "unpaidRents": []
+  },
+  "energy": 95.46000000000001,
+  "events": {
+    "pending": null,
+    "delayed": [],
+    "followUps": [],
+    "history": [],
+    "lastDrawnDay": null,
+    "headlines": [],
+    "modifiers": []
+  },
+  "receivables": [],
+  "weekSoFar": {
+    "cashAtStart": 1000000,
+    "partial": true,
+    "days": [
+      {
+        "day": 0,
+        "open": false,
+        "sales": 0,
+        "cashReceived": 0,
+        "cashAtClose": 325000,
+        "customersServed": 0,
+        "spoiled": { "cafe": 0, "chocolat": 0, "croissant": 0 },
+        "spoiledCost": 0,
+        "lostToLine": 0,
+        "lostToPrices": 0,
+        "lostToStockouts": 0
+      },
+      {
+        "day": 1,
+        "open": true,
+        "sales": 75625,
+        "cashReceived": 75625,
+        "cashAtClose": 270173,
+        "customersServed": 119,
+        "spoiled": { "cafe": 0, "chocolat": 0, "croissant": 45 },
+        "spoiledCost": 4950,
+        "lostToLine": 4,
+        "lostToPrices": 37,
+        "lostToStockouts": 0
+      }
+    ],
+    "modifiers": []
+  },
+  "lastWeek": null,
+  "weekHistory": [],
+  "challenge": null,
+  "bakery": {
+    "openedOnDay": null,
+    "oven": null,
+    "closesAfterDay": null,
+    "ovenBoughtOnDay": null
+  },
+  "contracts": { "running": [], "deliveries": [], "missed": [], "away": {} },
+  "staff": [
+    {
+      "candidate": "kevin",
+      "role": "camion",
+      "hourlyWage": 1800,
+      "truck": "vieuxMontreal",
+      "hiredOnDay": 1
+    }
+  ],
+  "ownerAway": false,
+  "financing": {
+    "loans": [],
+    "shareSales": [],
+    "belowZeroSince": null,
+    "lastLoanRequestDay": null
+  },
+  "ended": null,
+  "dream": {
+    "bought": [{ "rung": "deuxiemeCamion", "day": 0, "cost": 500000 }],
+    "magnatOn": null
+  },
+  "town": { "trip": null, "discount": 0 }
+}

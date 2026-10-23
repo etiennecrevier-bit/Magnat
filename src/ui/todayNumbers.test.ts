@@ -34,6 +34,7 @@ const DAY: DaySummary = {
     aubaine: { visits: 1, buyers: 0, tooExpensive: 0, soldOut: 0 },
     habitue: { visits: 4, buyers: 2, tooExpensive: 0, soldOut: 1 },
     chic: { visits: 0, buyers: 0, tooExpensive: 0, soldOut: 0 },
+    touriste: { visits: 0, buyers: 0, tooExpensive: 0, soldOut: 0 },
   },
   visits: [
     visit('bought', 425),

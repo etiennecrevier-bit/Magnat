@@ -12,6 +12,7 @@ import {
   type Difficulty,
   type DifficultyContent,
   type DifficultyId,
+  type DistrictContent,
   type DreamContent,
   type EnergyContent,
   type EventContent,
@@ -28,6 +29,7 @@ import {
   balance,
   emptyJournal,
   entriesOf,
+  postEntry,
   type Journal,
 } from '../finance/journal.ts'
 import { loanSchedule } from '../finance/loan.ts'
@@ -56,6 +58,15 @@ import {
   type Served,
   type Withdrawal,
 } from './customers.ts'
+import {
+  DISTRICTS,
+  districtWalkIns,
+  isStored,
+  permitMemo,
+  permitOn,
+  truckChargesOn,
+  withRival,
+} from './districts.ts'
 import {
   DREAM,
   crowned,
@@ -103,6 +114,7 @@ import {
 } from './staff.ts'
 import { inEffect, streetOn, type Street } from './street.ts'
 import {
+  FIRST_DISTRICT,
   FIRST_TRUCK,
   ownerAtOf,
   truckDecisionsOf,
@@ -333,10 +345,12 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * delayed effects of the events' choices due that day, then the receivables
  * due (see `startOfDay`). Then the street that day, with the changes in
  * effect folded together (see `streetOn`).
- * On the 1st of the month, open or closed: the month's charges (see
- * `monthlyCharges`), the truck's counted in months from the game's first day,
+ * On the 1st of the month, open, closed or stored: the month's charges (see
+ * `monthlyCharges`), the first truck's permit its district's in `districts`
+ * (see `permitOn`), the truck's counted in months from the game's first day,
  * day 0 or a Défi's first day, as if the truck came to the business then,
  * and none once a rung of `dream` replaced it (see `truckReplacedOn`), then
+ * each later truck's permit due and insurance (see `truckChargesOn`), then
  * the depreciation of the company's rungs (see `dreamDepreciation`), then
  * what the emergency loans and the shares sold owe (see
  * `financingCharges`). Then, open or closed, the bakery's morning with
@@ -351,7 +365,8 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * deliveries of the contracts with `grocers`, missed when nobody delivers, the
  * bakery making their croissants first when it makes the truck's and someone
  * bakes (see `deliverContracts`). On a day the truck opens, one of the days
- * open the street does not close, with the owner or an employee at the truck,
+ * open outside the dates it is stored (see `isStored`) that the street does
+ * not close, with the owner or an employee at the truck,
  * each truck in turn, the first one first (#259), the others each on its
  * own generator and the street with no change, with no marketing, no
  * bakery and no discount, each naming itself on its lines of the état des
@@ -360,7 +375,8 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * croissants when they come from the bakery and it runs, which then makes them
  * with the capacity the deliveries left if someone bakes, and none otherwise
  * (see `bake`), but buys them by the bake rule when the baker is absent,
- * then the walk-in customers,
+ * then the walk-in customers of its district that month (see
+ * `districtWalkIns`), with its rival's share taken (see `withRival`),
  * with those the marketing of the days before brings on top (see
  * `marketingCrowd`) and as the street, and the rungs owned, change them (see
  * `withDreamStreet`), the regulars × the accueil of each employee at the
@@ -419,6 +435,7 @@ export function playDay(
   financing: FinancingContent = FINANCING,
   dream: DreamContent = DREAM,
   places: PlacesContent = PLACES,
+  districts: DistrictContent = DISTRICTS,
 ): GameState {
   const { pending } = morning.events
   if (pending !== null) {
@@ -440,27 +457,46 @@ export function playDay(
   }
   const started = startOfDay(morning, content, grocers, places)
   const { day, decisions } = started
-  const { dayOfMonth, weekday } = toCalendar(day)
+  const { month, dayOfMonth, weekday } = toCalendar(day)
+  const { difficulty } = started.profile
   const { modifiers } = started.events
   const bonuses = dreamBonuses(started.dream, dream)
   const street = withDreamStreet(streetOn(modifiers, day), bonuses)
   let journal = started.journal
 
   if (dayOfMonth === 1) {
-    const { truck } = difficulties.difficulties[started.profile.difficulty]
-    const month = monthsSinceStart(day) - monthsSinceStart(firstDay(started))
+    const { truck } = difficulties.difficulties[difficulty]
+    const months = monthsSinceStart(day) - monthsSinceStart(firstDay(started))
     journal = monthlyCharges(
       journal,
       day,
-      month,
+      months,
       content,
       truck,
       truckReplacedOn(started.dream, dream),
+      {
+        memo: permitMemo(FIRST_DISTRICT, districts),
+        amount: permitOn(
+          FIRST_DISTRICT,
+          day,
+          difficulty,
+          difficulties,
+          districts,
+        ),
+      },
     )
+    journal = truckChargesOn(
+      started.trucks ?? [],
+      day,
+      difficulty,
+      content,
+      difficulties,
+      districts,
+    ).reduce(postEntry, journal)
     journal = dreamDepreciation(journal, day, started.dream, dream)
     journal = financingCharges(journal, started.financing, day)
   }
-  const prices = difficulties.bakery[started.profile.difficulty]
+  const prices = difficulties.bakery[difficulty]
   const bakery = bakeryMorning(
     journal,
     started.bakery,
@@ -482,15 +518,29 @@ export function playDay(
     .map(({ candidate }) => candidate)
   const crew = crewOf(left.staff, started.ownerAway, absent)
   const ownerAt = ownerAtOf(decisions)
+  const districtOf = new Map(
+    trucksOf(started).map(({ id, district }) => [id, district]),
+  )
   // Each truck's street: the first truck's with the events' changes and the
-  // rungs' bonuses, the others' the street with none (#259).
+  // rungs' bonuses, the others' the street with none (#259), then its
+  // district's rival that month, if any (#260).
   const streetOf = (truck: TruckId): Street =>
-    truck === FIRST_TRUCK ? street : streetOn([], day)
-  // Whether the truck opens that day, staffed or not: one of its days open
-  // that its street does not close.
-  const scheduled = (truck: TruckId): boolean =>
-    truckDecisionsOf(decisions, truck).daysOpen.includes(weekday) &&
-    !streetOf(truck).closed
+    withRival(
+      truck === FIRST_TRUCK ? street : streetOn([], day),
+      districtOf.get(truck) ?? FIRST_DISTRICT,
+      month,
+      districts,
+    )
+  // Whether the truck opens that day, staffed or not: one of its days open,
+  // outside the dates it is stored (#260), that its street does not close.
+  const scheduled = (truck: TruckId): boolean => {
+    const own = truckDecisionsOf(decisions, truck)
+    return (
+      own.daysOpen.includes(weekday) &&
+      !isStored(own.storage, day) &&
+      !streetOf(truck).closed
+    )
+  }
   const truckDay = scheduled(FIRST_TRUCK)
   const making =
     decisions.croissantSource === 'fabriquer' && isBakeryRunning(bakery.bakery)
@@ -580,7 +630,7 @@ export function playDay(
 
     const served = serveWalkIns(
       truck.rngState,
-      content.walkIns,
+      districtWalkIns(truck.district, month, content.walkIns, districts),
       dayTypeOf(weekday),
       customers,
       price,
@@ -977,12 +1027,13 @@ function firstDay({ challenge }: GameState): Day {
 }
 
 /**
- * What the 1st of the month costs, open or closed: the permit, parking and
- * commissary, the insurance, then the truck's own charges, which depend on
- * how it came to the business. `month` counts from the month the truck
- * came, its month 0. A truck replaced on `replacedOn` takes no depreciation
- * nor lease from that morning on, a purchase on the morning of a 1st coming
- * before that day's charges, but a loan is still repaid.
+ * What the 1st of the month costs the first truck, open, closed or
+ * stored: `permit`, its district's that day (see `permitOn`), the
+ * insurance, then the truck's own charges, which depend on how it came to
+ * the business. `month` counts from the month the truck came, its month 0.
+ * A truck replaced on `replacedOn` takes no depreciation nor lease from
+ * that morning on, a purchase on the morning of a 1st coming before that
+ * day's charges, but a loan is still repaid.
  */
 function monthlyCharges(
   journal: Journal,
@@ -991,16 +1042,17 @@ function monthlyCharges(
   content: FoodTruckContent,
   truck: Difficulty['truck'],
   replacedOn: Day | null,
+  permit: { readonly memo: string; readonly amount: Cents },
 ): Journal {
-  const { permitParkingAndCommissary, insurance } = content.monthlyCostsCents
+  const { insurance } = content.monthlyCostsCents
   // Each charge is the first truck's own (#259): its permit and parking,
   // its insurance, its loan's interest and its depreciation or lease.
   let books = pay(
     journal,
     day,
-    MEMO.permit,
+    permit.memo,
     RENT_AND_PERMIT,
-    permitParkingAndCommissary,
+    permit.amount,
     FIRST_TRUCK,
   )
   books = pay(books, day, MEMO.insurance, INSURANCE, insurance, FIRST_TRUCK)

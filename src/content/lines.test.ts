@@ -40,6 +40,7 @@ describe('lines.fr.json', () => {
     expect(segments.aubaine.name).toBe("Chasseur d'aubaines")
     expect(segments.habitue.name).toBe('Habitué')
     expect(segments.chic.name).toBe('Clientèle chic')
+    expect(segments.touriste.name).toBe('Touriste')
   })
 
   it(`holds at least ${MIN_LINES_PER_OUTCOME} lines for every segment and outcome, 120 in all`, () => {
@@ -87,7 +88,7 @@ describe('loadCustomerLines', () => {
     expect(() => loadCustomerLines(missing)).toThrow()
 
     const unknown = shipped()
-    unknown.segments.touriste = unknown.segments.chic!
+    unknown.segments.enfant = unknown.segments.chic!
     expect(() => loadCustomerLines(unknown)).toThrow()
   })
 

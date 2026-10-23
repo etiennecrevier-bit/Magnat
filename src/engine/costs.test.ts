@@ -7,6 +7,7 @@ import {
   type DayType,
   type DifficultyContent,
   type DifficultyId,
+  type DistrictContent,
   type FinancingContent,
   type FoodTruckContent,
   type ProductId,
@@ -35,13 +36,17 @@ import {
   openingJournal,
 } from './day.ts'
 import { applyDecision } from './decisions.ts'
+import { DISTRICTS } from './districts.ts'
+import { DREAM } from './dream.ts'
 import { NO_EVENTS } from './events.ts'
 import { FINANCING } from './financing.ts'
 import { PRODUCTS } from './inventory.ts'
 import { cents, mulRatio } from './money.ts'
 import { PERCENTILES } from './percentiles.ts'
+import { PLACES } from './places.ts'
 import { defaultProfile } from './profile.ts'
 import { STAFF } from './staff.ts'
+import { TUTORIAL } from './tutorial.ts'
 import type { Day, GameState } from './types.ts'
 
 // The real costs of #44, charge by charge and difficulty by difficulty: the
@@ -91,12 +96,14 @@ interface Setup {
   truck: FoodTruckContent
   customers: CustomerContent
   difficulties: DifficultyContent
+  districts: DistrictContent
 }
 
 const SHIPPED: Setup = {
   truck: FOOD_TRUCK,
   customers: CUSTOMERS,
   difficulties: DIFFICULTIES,
+  districts: DISTRICTS,
 }
 
 function byProduct<T>(value: (product: ProductId) => T): Record<ProductId, T> {
@@ -116,18 +123,30 @@ function deciding(
   })
 }
 
-/** Every type of day brings `customers` walk-ins, with no noise. */
+/** The shipped opening hours, with no noise. */
+const NO_NOISE: FoodTruckContent['walkIns'] = {
+  ...FOOD_TRUCK.walkIns,
+  noiseStdDevRatio: 0,
+}
+
+/** Every type of day on the Plateau brings `customers` walk-ins. */
 function crowd(
   customers: number,
   change: Partial<DayType> = {},
-): FoodTruckContent['walkIns'] {
-  const { walkIns } = FOOD_TRUCK
+): DistrictContent {
+  const { plateau } = DISTRICTS.districts
+  const { semaine, finDeSemaine } = plateau.dayTypes
   return {
-    ...walkIns,
-    noiseStdDevRatio: 0,
-    dayTypes: {
-      semaine: { ...walkIns.dayTypes.semaine, customers, ...change },
-      finDeSemaine: { ...walkIns.dayTypes.finDeSemaine, customers, ...change },
+    ...DISTRICTS,
+    districts: {
+      ...DISTRICTS.districts,
+      plateau: {
+        ...plateau,
+        dayTypes: {
+          semaine: { ...semaine, customers, ...change },
+          finDeSemaine: { ...finDeSemaine, customers, ...change },
+        },
+      },
     },
   }
 }
@@ -143,8 +162,9 @@ const QUIET: Setup = {
       restock: byProduct(() => ({ kind: 'buyDaily', quantity: 0 })),
       daysOpen: CLOSED_MONDAYS,
     },
-    loadFoodTruckContent({ ...FOOD_TRUCK, walkIns: crowd(0) }),
+    loadFoodTruckContent({ ...FOOD_TRUCK, walkIns: NO_NOISE }),
   ),
+  districts: crowd(0),
 }
 
 /**
@@ -164,7 +184,7 @@ function selling(customers: number): Setup {
       packagingCents: packaging[product],
     })),
     cardPayments: { share: 0.85, feeRate: 0.025 },
-    walkIns: crowd(customers, { productAppeal: byProduct(() => 1) }),
+    walkIns: NO_NOISE,
     // Served the moment they arrive, so no one leaves the line.
     service: { ...FOOD_TRUCK.service, baseSeconds: 0, perItemSeconds: 0 },
   })
@@ -178,6 +198,7 @@ function selling(customers: number): Setup {
       },
       truck,
     ),
+    districts: crowd(customers, { productAppeal: byProduct(() => 1) }),
     // Each segment finds the price fair, so it buys with exactly the chance
     // it wants the product: always or never.
     customers: loadCustomerContent({
@@ -231,6 +252,10 @@ function play(setup: Setup, days: number, from: GameState): GameState[] {
       GROCERS,
       STAFF,
       NO_BANKRUPTCY,
+      DREAM,
+      PLACES,
+      TUTORIAL,
+      setup.districts,
     )
     states.push(state)
   }
@@ -446,8 +471,9 @@ describe('the 1st of the month', () => {
     'charges %s the permit, parking and commissary, then the insurance, open or closed',
     (level) => {
       const state = tenYears(level)
-      const { permitParkingAndCommissary, insurance } =
-        FOOD_TRUCK.monthlyCostsCents
+      const { insurance } = FOOD_TRUCK.monthlyCostsCents
+      const { permit } = DISTRICTS.districts.plateau
+      if (permit.kind !== 'monthly') throw new Error('A monthly permit')
       // Day 0 is a Monday, which the quiet truck closes.
       expect(CLOSED_MONDAYS).not.toContain(toCalendar(0).weekday)
       const opened = openingJournal(level).entries.length
@@ -457,7 +483,7 @@ describe('the 1st of the month', () => {
       ])
       expect(withMemo(state, MEMO.permit)).toEqual(
         firsts.map((day) =>
-          transfer(day, MEMO.permit, '6100', CASH, permitParkingAndCommissary),
+          transfer(day, MEMO.permit, '6100', CASH, permit.monthlyCents),
         ),
       )
       expect(withMemo(state, MEMO.insurance)).toEqual(

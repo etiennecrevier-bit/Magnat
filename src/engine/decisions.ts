@@ -4,6 +4,7 @@ import {
   decisionKindSchema,
   ovenTermsSchema,
   staffRoleIdSchema,
+  winterStorageSchema,
   type BakeryContent,
   type CandidateId,
   type CroissantSource,
@@ -21,6 +22,7 @@ import {
   type RungId,
   type StaffContent,
   type StaffRoleId,
+  type WinterStorage,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance, postEntry } from '../finance/journal.ts'
@@ -99,6 +101,16 @@ export type DecisionChange =
       /** The ISO weekdays the truck opens, in any order. */
       readonly weekdays: readonly number[]
       /** The truck whose days they are (#259); the first one when absent. */
+      readonly truck?: TruckId
+    }
+  | {
+      /**
+       * « Remiser pour l'hiver » (#260): the dates the truck is stored each
+       * year from the next morning on, or null to store it no more.
+       */
+      readonly kind: 'storage'
+      readonly storage: WinterStorage | null
+      /** The truck stored (#260); the first one when absent. */
       readonly truck?: TruckId
     }
   | {
@@ -237,6 +249,10 @@ export function latestDecisions(state: GameState): Decisions {
  * RangeError for a truck the game does not have, and for `assign`, for a
  * candidate the player does not want, or in another role.
  *
+ * `storage` stores the truck it names, the first one when it names none,
+ * each year from its `from` to its `to`, both included (see `isStored`),
+ * or no more when null (#260). Throws a RangeError for a date no year has.
+ *
  * `buy` and `goTo` are the changes that do not wait: `buy` buys the rung
  * of `dream` on the morning of `state.day`, before the day is played (see
  * `bought`), and `goTo` sends the owner to a place of `places` that day,
@@ -287,16 +303,17 @@ export function applyDecision(
 }
 
 /**
- * `decisions` with the owner's truck and the other trucks' decisions last,
- * in that order, when they are there: the order a save holds them in, so a
+ * `decisions` with the owner's truck, the other trucks' decisions and the
+ * first truck's storage last, in that order, when they are there: the order a save holds them in, so a
  * game saved and loaded writes the same save.
  */
 function ordered(decisions: Decisions): Decisions {
-  const { ownerAt, trucks, ...rest } = decisions
+  const { ownerAt, trucks, storage, ...rest } = decisions
   return {
     ...rest,
     ...(ownerAt === undefined ? {} : { ownerAt }),
     ...(trucks === undefined ? {} : { trucks }),
+    ...(storage === undefined ? {} : { storage }),
   }
 }
 
@@ -403,6 +420,12 @@ function bought(
   }
 }
 
+/** A copy of `storage`, which `validateDecisions` checks. */
+function storedFrom(storage: WinterStorage): WinterStorage {
+  const { from, to } = storage
+  return { from: { ...from }, to: { ...to } }
+}
+
 /** A copy of `truck`, so two trucks never share their rules' objects. */
 function copiedTruck(truck: TruckDecisions): TruckDecisions {
   return {
@@ -483,7 +506,8 @@ export function validateDecisions(
 /**
  * Throws a RangeError naming the first field of a truck's decisions outside
  * `limits`, its name after `field`: its prices, restock rules and days
- * open (see `validateDecisions`).
+ * open (see `validateDecisions`), and its storage, if any, unless both its
+ * dates are days of a year.
  */
 function expectTruck(
   field: string,
@@ -507,6 +531,14 @@ function expectTruck(
     )
   }
   expectDaysOpen(`${field}daysOpen`, truck.daysOpen, limits.minDaysOpen)
+  if (
+    truck.storage !== undefined &&
+    !winterStorageSchema.safeParse(truck.storage).success
+  ) {
+    throw new RangeError(
+      `Invalid decision: ${field}storage must run between two days of a year: ${JSON.stringify(truck.storage)}`,
+    )
+  }
 }
 
 /**
@@ -597,6 +629,14 @@ function changed(
         ...truck,
         daysOpen: ascending(change.weekdays),
       }))
+    case 'storage':
+      return changedTruck(state, decisions, change.truck, (truck) => {
+        const rest = { ...truck }
+        delete rest.storage
+        return change.storage === null
+          ? rest
+          : { ...rest, storage: storedFrom(change.storage) }
+      })
     case 'ownerAt': {
       const truck = existing(state, change.truck)
       const rest = { ...decisions }

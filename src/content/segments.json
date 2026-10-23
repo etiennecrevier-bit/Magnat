@@ -1,5 +1,5 @@
 {
-  "_note": "Tuned in P2-19 (#58) with the balance bot: see docs/balance/phase-2.md",
+  "_note": "Tuned in P2-19 (#58) with the balance bot: see docs/balance/phase-2.md. The tourists (#260) never come back as regulars, care less about the price and come mostly from 11 h, by their own `arrivalWeights` over the slots of the opening hours; the others come when their day type brings its crowd. Starting values, tuned in #266.",
   "segments": {
     "aubaine": {
       "name": "Chasseurs d'aubaines",
@@ -64,6 +64,28 @@
         }
       },
       "tooCheap": { "belowRatio": 0.4, "steepness": 15 }
+    },
+    "touriste": {
+      "name": "Touristes",
+      "patienceMinutes": 4,
+      "products": {
+        "cafe": {
+          "referencePriceCents": 400,
+          "purchaseProbability": 0.7,
+          "sensitivity": 2
+        },
+        "chocolat": {
+          "referencePriceCents": 450,
+          "purchaseProbability": 0.5,
+          "sensitivity": 2
+        },
+        "croissant": {
+          "referencePriceCents": 475,
+          "purchaseProbability": 0.6,
+          "sensitivity": 2
+        }
+      },
+      "arrivalWeights": [0, 0, 0, 1, 1, 2, 3, 4, 8, 9, 10, 10, 9, 8, 7, 6]
     }
   }
 }

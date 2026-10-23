@@ -20,6 +20,7 @@ import type {
   SegmentId,
   StaffRoleId,
   StreetChange,
+  WinterStorage,
 } from '../content/schema.ts'
 import type { Journal } from '../finance/journal.ts'
 import type { Cents } from './money.ts'
@@ -320,10 +321,23 @@ export interface Decisions {
    * above.
    */
   readonly trucks?: Readonly<Record<TruckId, TruckDecisions>>
+  /**
+   * « Remiser pour l'hiver » (#260): the dates the first truck is stored
+   * each year, kept until changed; absent while it is never stored. A
+   * stored truck sells nothing and needs nobody, but its charges keep
+   * running.
+   */
+  readonly storage?: WinterStorage
 }
 
-/** How one truck runs: its prices, its restock rules and its days open. */
-export type TruckDecisions = Pick<Decisions, 'prices' | 'restock' | 'daysOpen'>
+/**
+ * How one truck runs: its prices, its restock rules, its days open and the
+ * dates it is stored, if any.
+ */
+export type TruckDecisions = Pick<
+  Decisions,
+  'prices' | 'restock' | 'daysOpen' | 'storage'
+>
 
 /** Someone the player hires, or wants to. */
 export interface Hire {

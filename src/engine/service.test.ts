@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Service } from '../content/schema.ts'
 import { createInitialState, tick } from './clock.ts'
-import { CUSTOMERS, ENERGY, FOOD_TRUCK } from './day.ts'
+import { CUSTOMERS, ENERGY } from './day.ts'
+import { DISTRICTS } from './districts.ts'
 import { SEGMENTS } from './customers.ts'
 import { FULL_ENERGY, effectsOf } from './energy.ts'
 import { STAFF } from './staff.ts'
@@ -173,7 +174,7 @@ describe('servers', () => {
 
 describe('patienceSeconds', () => {
   it("is the segment's minutes × the day type's multiplier, in seconds", () => {
-    const { semaine } = FOOD_TRUCK.walkIns.dayTypes
+    const { semaine } = DISTRICTS.districts.plateau.dayTypes
     for (const id of SEGMENTS) {
       const segment = CUSTOMERS.segments[id]
       expect(patienceSeconds(segment, semaine)).toBeCloseTo(
@@ -184,7 +185,7 @@ describe('patienceSeconds', () => {
   })
 
   it.each(SEGMENTS)('is shorter on weekdays than on weekends for %s', (id) => {
-    const { semaine, finDeSemaine } = FOOD_TRUCK.walkIns.dayTypes
+    const { semaine, finDeSemaine } = DISTRICTS.districts.plateau.dayTypes
     const segment = CUSTOMERS.segments[id]
     expect(patienceSeconds(segment, semaine)).toBeLessThan(
       patienceSeconds(segment, finDeSemaine),

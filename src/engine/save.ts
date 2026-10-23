@@ -17,6 +17,7 @@ import {
   staffRoleIdSchema,
   streetChangeSchema,
   truckIdSchema,
+  winterStorageSchema,
   type BakeryContent,
   type Defi,
   type DefiContent,
@@ -154,7 +155,11 @@ import { WORK_DAYS_KEPT } from './work.ts'
 
 /**
  * The format `serialize()` writes. Bump it when a save written before a
- * change can no longer load (rule 8 in CLAUDE.md). Version 20 adds the
+ * change can no longer load (rule 8 in CLAUDE.md). Version 21 adds the
+ * districts (#260): the
+ * tourists, a segment of their own, and the dates each truck is stored for
+ * the winter: a version 20 game still loads, with no tourist on its last
+ * days and no truck stored. Version 20 adds the
  * trucks after the first (#259), the truck the owner and each employee «
  * Au camion » work at, and the truck a journal line is: a version 19 game
  * still loads, as one Plateau truck, with its truck's sales and charges
@@ -194,9 +199,10 @@ import { WORK_DAYS_KEPT } from './work.ts'
  * truck and no loan, so it would repay a loan it never took and depreciate
  * a truck it never bought.
  */
-export const SAVE_VERSION = 20
+export const SAVE_VERSION = 21
 
 /** The older formats `deserialize()` still loads: see `SAVE_VERSION`. */
+const TOURISTLESS_VERSION = 20
 const TRUCKLESS_VERSION = 19
 const TOWNLESS_VERSION = 18
 const DREAMLESS_VERSION = 17
@@ -325,7 +331,51 @@ const personDaySchema = z.strictObject({
   boughtCost: money,
 })
 
-/** The last day of a version 13 save, before the missed deliveries. */
+/** The segments of a save from before the tourists (#260). */
+const touristlessSegmentSchema = segmentIdSchema.exclude(['touriste'])
+
+/** Each segment's visits, of the segments of `segments`, by how they ended. */
+function segmentTallies<Segments extends z.ZodEnum>(segments: Segments) {
+  return z.record(
+    segments,
+    z.strictObject({
+      visits: count,
+      buyers: count,
+      tooExpensive: count,
+      soldOut: count,
+    }),
+  )
+}
+
+/** A day's visits, of customers of the segments of `segments`. */
+function visitsOf<Segments extends z.ZodEnum>(segments: Segments) {
+  return z.array(
+    z.strictObject({
+      arrivalMinute: minuteOfDay,
+      segment: segments,
+      bought: unitsPerProduct,
+      outcome: visitOutcome,
+      // Service may run past closing time, even past midnight.
+      servedMinute: count.nullable(),
+      leftMinute: minuteOfDay.nullable(),
+      botched: count,
+      // A save from before #283 and #284 has neither.
+      servedBy: workerSchema.optional(),
+      fromMarketing: z.literal(true).optional(),
+    }),
+  )
+}
+
+/** The segments and visits of a day with the tourists (#260). */
+const withTouristsShape = {
+  segments: segmentTallies(segmentIdSchema),
+  visits: visitsOf(segmentIdSchema),
+}
+
+/**
+ * The last day of a version 13 save, before the missed deliveries, and
+ * before the tourists.
+ */
 const stafflessDaySummarySchema = z.strictObject({
   day: gameDay,
   sold: unitsPerProduct,
@@ -338,30 +388,8 @@ const stafflessDaySummarySchema = z.strictObject({
     croissant: 0,
   })),
   spoiled: unitsPerProduct,
-  segments: z.record(
-    segmentIdSchema,
-    z.strictObject({
-      visits: count,
-      buyers: count,
-      tooExpensive: count,
-      soldOut: count,
-    }),
-  ),
-  visits: z.array(
-    z.strictObject({
-      arrivalMinute: minuteOfDay,
-      segment: segmentIdSchema,
-      bought: unitsPerProduct,
-      outcome: visitOutcome,
-      // Service may run past closing time, even past midnight.
-      servedMinute: count.nullable(),
-      leftMinute: minuteOfDay.nullable(),
-      botched: count,
-      // A save from before #283 and #284 has neither.
-      servedBy: workerSchema.optional(),
-      fromMarketing: z.literal(true).optional(),
-    }),
-  ),
+  segments: segmentTallies(touristlessSegmentSchema),
+  visits: visitsOf(touristlessSegmentSchema),
   leftLine: count,
   averageWaitSeconds: count,
   longestWaitSeconds: count,
@@ -374,8 +402,8 @@ const stafflessDaySummarySchema = z.strictObject({
   ownerAway: z.literal(true).optional(),
 })
 
-// `checkTrucks()` checks the day and the botched units.
-const truckDaySchema = stafflessDaySummarySchema
+/** A truck's last day in a version 20 save, before the tourists. */
+const touristlessTruckDaySchema = stafflessDaySummarySchema
   .pick({
     day: true,
     sold: true,
@@ -392,13 +420,21 @@ const truckDaySchema = stafflessDaySummarySchema
   })
   .extend({ open: z.boolean() })
 
-// `checkStaff()` checks the absent and those who quit against the staff.
-const daySummarySchema = stafflessDaySummarySchema.extend({
+// `checkTrucks()` checks the day and the botched units.
+const truckDaySchema = touristlessTruckDaySchema.extend(withTouristsShape)
+
+/** The last day of a version 14 to 20 save, before the tourists. */
+const touristlessDaySummarySchema = stafflessDaySummarySchema.extend({
   missed: z.array(missedSchema),
   // A save from before the employees' traits (#255) has neither.
   absent: z.array(candidateIdSchema).min(1).optional(),
   quits: z.array(candidateIdSchema).min(1).optional(),
 })
+
+type TouristlessDay = z.output<typeof touristlessDaySummarySchema>
+
+// `checkStaff()` checks the absent and those who quit against the staff.
+const daySummarySchema = touristlessDaySummarySchema.extend(withTouristsShape)
 
 // `checkWorkDays()` checks the days and their order.
 const workDaySchema = z.strictObject({
@@ -450,10 +486,8 @@ const hireSchema = z.strictObject({
   truck: truckIdSchema.optional(),
 })
 
-// `validateDecisions()` checks the limits and the days open, `checkBakery()`
-// the bakery planned against the bakery, `checkStaff()` the staff against
-// the staff on hand, and `validateTrucks()` the trucks against the trucks.
-const decisionsSchema = stafflessDecisionsSchema.extend({
+/** The decisions of a version 20 save, before the storage. */
+const touristlessDecisionsSchema = stafflessDecisionsSchema.extend({
   staff: z.array(hireSchema),
   ownerAt: truckIdSchema.optional(),
   trucks: z
@@ -468,14 +502,35 @@ const decisionsSchema = stafflessDecisionsSchema.extend({
     .optional(),
 })
 
-// `checkTrucks()` checks the trucks against the rungs bought, their lots
-// and their days.
-const truckSchema = z.strictObject({
+// `validateDecisions()` checks the limits, the days open and the storage,
+// `checkBakery()` the bakery planned against the bakery, `checkStaff()` the
+// staff against the staff on hand, and `validateTrucks()` the trucks
+// against the trucks.
+const decisionsSchema = touristlessDecisionsSchema.extend({
+  trucks: z
+    .record(
+      truckIdSchema,
+      bakerylessDecisionsSchema
+        .pick({ prices: true, restock: true, daysOpen: true })
+        .extend({ storage: winterStorageSchema.optional() }),
+    )
+    .optional(),
+  storage: winterStorageSchema.optional(),
+})
+
+/** A truck of a version 20 save, before the tourists. */
+const touristlessTruckSchema = z.strictObject({
   id: truckIdSchema,
   district: districtIdSchema,
   boughtOnDay: gameDay,
   rngState: generatorState,
   inventory: z.array(lotSchema),
+  lastDay: touristlessTruckDaySchema.nullable(),
+})
+
+// `checkTrucks()` checks the trucks against the rungs bought, their lots
+// and their days.
+const truckSchema = touristlessTruckSchema.extend({
   lastDay: truckDaySchema.nullable(),
 })
 
@@ -800,8 +855,18 @@ type Parsed = Omit<Save, 'weekSoFar' | 'financing'> & {
   readonly financing: FinancingState | null
 }
 
+/**
+ * A save as parsed, as version 20 has it: no tourist on its last days, nor
+ * a truck stored.
+ */
+type Touristless = Omit<Parsed, 'saveVersion' | 'lastDay' | 'trucks'> & {
+  readonly saveVersion: typeof TOURISTLESS_VERSION
+  readonly lastDay: TouristlessDay | null
+  readonly trucks?: z.output<typeof touristlessTruckSchema>[]
+}
+
 /** A save as parsed, as version 19 has it: one truck, no line named. */
-type Truckless = Omit<Parsed, 'saveVersion' | 'trucks'> & {
+type Truckless = Omit<Touristless, 'saveVersion' | 'trucks'> & {
   readonly saveVersion: typeof TRUCKLESS_VERSION
 }
 
@@ -815,8 +880,17 @@ type Dreamless = Omit<Townless, 'saveVersion' | 'dream'> & {
   readonly saveVersion: typeof DREAMLESS_VERSION
 }
 
+/** A version 20 save: no tourist and no storage. */
+const touristlessSchema = saveSchema.extend({
+  saveVersion: z.literal(TOURISTLESS_VERSION),
+  lastDay: touristlessDaySummarySchema.nullable(),
+  decisions: touristlessDecisionsSchema,
+  pendingDecisions: touristlessDecisionsSchema.nullable(),
+  trucks: z.array(touristlessTruckSchema).min(1).optional(),
+})
+
 /** A version 19 save: one truck. */
-const trucklessSchema = saveSchema
+const trucklessSchema = touristlessSchema
   .omit({ trucks: true })
   .extend({ saveVersion: z.literal(TRUCKLESS_VERSION) })
 
@@ -953,7 +1027,9 @@ export function serialize(state: GameState): string {
  * nothing was played: the books open on day 0 either way.
  *
  * Throws an Error that starts with "Invalid save:" and names the problem
- * unless: the text is JSON of the current `SAVE_VERSION`, or of version 18,
+ * unless: the text is JSON of the current `SAVE_VERSION`, or of version 20,
+ * which loads with no tourist on its last days and no truck stored, or of
+ * version 19, which also loads as one Plateau truck, or of version 18,
  * which loads with no trip in town, or of version 17, which also loads with
  * nothing of « Le rêve », or of version 16,
  * which also loads with no net worth for the weeks it reported, or of version 15,
@@ -1152,7 +1228,55 @@ function parsed(
   // Before the schema, so a save from another version says so plainly.
   const { saveVersion } = raw as { saveVersion?: unknown }
   if (saveVersion === SAVE_VERSION) return checked(saveSchema, raw)
+  return withTourists(touristless(raw, saveVersion, bakery, dream))
+}
+
+/** An older save, up to version 20, as version 20. */
+function touristless(
+  raw: object,
+  saveVersion: unknown,
+  bakery: BakeryContent,
+  dream: DreamContent,
+): Touristless {
+  if (saveVersion === TOURISTLESS_VERSION) {
+    return checked(touristlessSchema, raw)
+  }
   return withTruckTags(truckless(raw, saveVersion, bakery), dream)
+}
+
+/**
+ * A save from before the tourists (#260) as the current version: none on
+ * its last day, nor on each truck's, and no truck stored.
+ */
+function withTourists(save: Touristless): Parsed {
+  const { trucks, ...rest } = save
+  return {
+    ...rest,
+    saveVersion: SAVE_VERSION,
+    lastDay: withNoTourist(save.lastDay),
+    ...(trucks === undefined
+      ? {}
+      : {
+          trucks: trucks.map((truck) => ({
+            ...truck,
+            lastDay: withNoTourist(truck.lastDay),
+          })),
+        }),
+  }
+}
+
+/** `day` with no tourist among its segments; null for no day. */
+function withNoTourist<Day extends { readonly segments: object }>(
+  day: Day | null,
+) {
+  if (day === null) return null
+  return {
+    ...day,
+    segments: {
+      ...day.segments,
+      touriste: { visits: 0, buyers: 0, tooExpensive: 0, soldOut: 0 },
+    },
+  }
 }
 
 /** An older save, up to version 19, as version 19. */
@@ -1166,14 +1290,14 @@ function truckless(
 }
 
 /**
- * A save from before the trucks after the first as the current version:
- * one Plateau truck, its sales and charges naming it on their lines as
- * the game names them now (see `firstTruckTags`).
+ * A save from before the trucks after the first as version 20: one Plateau
+ * truck, its sales and charges naming it on their lines as the game names
+ * them now (see `firstTruckTags`).
  */
-function withTruckTags(save: Truckless, dream: DreamContent): Parsed {
+function withTruckTags(save: Truckless, dream: DreamContent): Touristless {
   return {
     ...save,
-    saveVersion: SAVE_VERSION,
+    saveVersion: TOURISTLESS_VERSION,
     journal: firstTruckTags(save.journal, dream),
   }
 }
@@ -1424,7 +1548,7 @@ function withStaff<
   'saveVersion' | 'lastDay' | 'decisions' | 'pendingDecisions' | 'contracts'
 > & {
   readonly saveVersion: typeof FINANCINGLESS_VERSION
-  readonly lastDay: Save['lastDay']
+  readonly lastDay: TouristlessDay | null
   readonly decisions: SavedDecisions
   readonly pendingDecisions: SavedDecisions | null
   readonly contracts: Save['contracts']

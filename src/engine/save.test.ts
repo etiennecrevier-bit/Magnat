@@ -27,6 +27,7 @@ import { BAKERY, closedBakery } from './bakery.ts'
 import { endOfMonth } from './calendar.ts'
 import { allowedChoices } from './challenge.ts'
 import { GROCERS, grocerAway, noContracts, startContract } from './contracts.ts'
+import { SEGMENTS } from './customers.ts'
 import {
   createInitialState,
   startChallenge,
@@ -336,11 +337,46 @@ function withoutWeek(save: Json): void {
   withoutBakery(save)
 }
 
+/** A segment no visit came from, as a last day counts it. */
+const NO_VISITS = { visits: 0, buyers: 0, tooExpensive: 0, soldOut: 0 }
+
+/**
+ * Takes the tourists out of `save`, as version 20 wrote it (#260): the save
+ * of a game whose last days, its own and each truck's, had none, with no
+ * truck stored for the winter.
+ */
+function withoutTourists(save: Json): void {
+  const trucks = (save.trucks as Json[] | undefined) ?? []
+  for (const day of [save.lastDay, ...trucks.map(({ lastDay }) => lastDay)]) {
+    if (day === null) continue
+    const { segments } = day as { segments: Json }
+    expect(segments.touriste).toEqual(NO_VISITS)
+    delete segments.touriste
+  }
+  for (const decisions of [save.decisions, save.pendingDecisions]) {
+    if (decisions === null) continue
+    const { storage, trucks: run } = decisions as Json
+    expect(storage).toBeUndefined()
+    for (const truck of Object.values((run as Json | undefined) ?? {})) {
+      expect((truck as Json).storage).toBeUndefined()
+    }
+  }
+}
+
+/** `state`, saved as version 20, before the tourists. */
+function v20(state: GameState): string {
+  const save = JSON.parse(serialize(state)) as Json
+  withoutTourists(save)
+  return JSON.stringify({ ...save, saveVersion: 20 })
+}
+
 /**
  * Takes the trucks out of `save`, as version 19 wrote it: the save of a
- * game with one truck, whose journal lines name none (#259).
+ * game with one truck, whose journal lines name none (#259), nor the
+ * tourists, which came later.
  */
 function withoutTrucks(save: Json): void {
+  withoutTourists(save)
   expect(save.trucks).toBeUndefined()
   for (const entry of save.journal as Json[]) {
     for (const line of entry.lines as Json[]) delete line.truck
@@ -603,8 +639,8 @@ function expectInvalid(
 
 describe('serialize and deserialize', () => {
   it('write the current save version', () => {
-    expect(SAVE_VERSION).toBe(20)
-    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 20 })
+    expect(SAVE_VERSION).toBe(21)
+    expect(JSON.parse(serialize(DAY_400))).toMatchObject({ saveVersion: 21 })
   })
 
   it.each<Profile>([
@@ -1148,7 +1184,8 @@ describe('deserialize rejects', () => {
     0,
     1,
     6,
-    21,
+    22,
+    '21',
     '20',
     '19',
     '18',
@@ -2622,10 +2659,7 @@ describe('deserialize rejects', () => {
       it.each([
         [{ kind: 'walkIns', factor: 0 }, 'change.factor'],
         [{ kind: 'walkIns', factor: -0.5 }, 'change.factor'],
-        [
-          { kind: 'walkIns', factor: 0.5, segment: 'touriste' },
-          'change.segment',
-        ],
+        [{ kind: 'walkIns', factor: 0.5, segment: 'enfant' }, 'change.segment'],
         [{ kind: 'appeal', product: 'poutine', factor: 2 }, 'change.product'],
         [{ kind: 'unavailable' }, 'change.product'],
         [{ kind: 'pluie' }, 'change.kind'],
@@ -4634,6 +4668,83 @@ describe('the net worth of each week', () => {
     }
     // Nothing came up on the Monday morning, so nothing moved since.
     expect(FORTNIGHT.weekHistory[LAST]?.netWorth).toBe(netWorth(FORTNIGHT))
+  })
+
+  it('load a version 20 game with no tourist on its last day and no truck stored (#260)', () => {
+    for (const state of [
+      createInitialState(SEED),
+      THURSDAY,
+      SUNDAY_CLOSE,
+      DAY_400,
+      BOTCHED,
+      MARKETED,
+    ]) {
+      expect(deserialize(v20(state))).toStrictEqual(state)
+    }
+  })
+
+  it('load every older version with no tourist on its last day, the segments in their order (#260)', () => {
+    for (const [version, text] of [
+      [20, v20(THURSDAY)],
+      [19, v19(THURSDAY)],
+      [18, v18(THURSDAY)],
+      [17, v17(THURSDAY)],
+      [16, v16(THURSDAY)],
+      [15, v15(THURSDAY)],
+      [14, v14(THURSDAY)],
+      [13, v13(THURSDAY)],
+      [12, v12(THURSDAY)],
+      [11, v11(THURSDAY)],
+      [10, v10(THURSDAY)],
+      [9, v9(THURSDAY)],
+    ] as const) {
+      const saved = JSON.parse(text) as { lastDay: { segments: Json } }
+      expect(Object.keys(saved.lastDay.segments), `v${version}`).toEqual([
+        'aubaine',
+        'habitue',
+        'chic',
+      ])
+      const segments = deserialize(text).lastDay?.segments
+      expect(Object.keys(segments ?? {}), `v${version}`).toEqual(SEGMENTS)
+      expect(segments?.touriste, `v${version}`).toEqual(NO_VISITS)
+    }
+  })
+
+  it.each([
+    ['lastDay.segments.touriste', NO_VISITS, 'Unrecognized key: "touriste"'],
+    ['lastDay.visits.0.segment', 'touriste', '→ at lastDay.visits[0].segment'],
+    [
+      'decisions.storage',
+      { from: { month: 12, day: 1 }, to: { month: 4, day: 30 } },
+      'Unrecognized key: "storage"',
+    ],
+  ])(
+    'reject a version 20 game with %s, which came in version 21',
+    (path, value, reason) => {
+      expectInvalid(withValue(path, value, v20(THURSDAY)), [reason])
+    },
+  )
+
+  it('keep the first truck stored for the winter through a save (#260)', () => {
+    const storage = { from: { month: 12, day: 1 }, to: { month: 4, day: 30 } }
+    const waiting = applyDecision(THURSDAY, { kind: 'storage', storage })
+    expect(deserialize(serialize(waiting))).toStrictEqual(waiting)
+    const stored = tick(waiting)
+    expect(stored.decisions.storage).toEqual(storage)
+    expect(deserialize(serialize(stored))).toStrictEqual(stored)
+    expect(JSON.parse(serialize(stored))).toMatchObject({
+      saveVersion: 21,
+      decisions: { storage },
+    })
+  })
+
+  it.each([
+    { from: { month: 2, day: 30 }, to: { month: 4, day: 30 } },
+    { from: { month: 12, day: 1 }, to: { month: 4 } },
+  ])('reject a truck stored between days no year has: %j', (storage) => {
+    expectInvalid(withValue('decisions.storage', storage), [
+      'decisions.storage',
+    ])
   })
 
   it('load a version 19 game as one Plateau truck, its own lines naming it again', () => {

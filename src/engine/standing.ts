@@ -10,6 +10,7 @@ import { balance } from '../finance/journal.ts'
 import { incomeStatement } from '../finance/statements.ts'
 import { BAKERY } from './bakery.ts'
 import { DIFFICULTIES, FOOD_TRUCK } from './day.ts'
+import { DISTRICTS } from './districts.ts'
 import { truckReplacedOn } from './dream.ts'
 import { monthlyFixedCosts } from './fixedCosts.ts'
 import { PERCENTILES, percentileOf } from './percentiles.ts'
@@ -53,6 +54,8 @@ export function standingOf(
     state.bakery,
     BAKERY,
     truckReplacedOn(state.dream),
+    DISTRICTS,
+    state.trucks,
   )
   const cash = balance(journal, CASH, { toDay: day })
   if (cash < fixedCosts * rules.behindBelowMonthsOfFixedCosts) return 'behind'
