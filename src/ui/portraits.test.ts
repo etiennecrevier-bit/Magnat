@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import eventsJson from '../content/events.json'
+import staffJson from '../content/staff.json'
 import { TUTORIAL } from '../engine/tutorial.ts'
 import { BANKER, PORTRAIT_URLS, portraitUrl } from './portraits.ts'
 
@@ -31,18 +32,15 @@ const TEST_CHARACTER = 'essai'
 
 // Characters whose portrait is not drawn yet: their card shows the silhouette.
 // Take a character off the list when its file lands.
-const AWAITING_PORTRAIT: readonly string[] = [
-  'mmeOuellette',
-  'rosaireGagnon',
-  'stevieDuvent',
-  'ginettePelletier',
-  'solangeTremblayLevesque',
-  'monsieurKim',
-]
+const AWAITING_PORTRAIT: readonly string[] = []
 
 const CHARACTERS: readonly string[] = [
   ...new Set(eventsJson.events.map((event) => event.character.id)),
 ]
+
+const CANDIDATE_PORTRAITS: readonly string[] = Object.values(
+  staffJson.candidates,
+).map((candidate) => candidate.portrait)
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
@@ -77,6 +75,13 @@ describe('the shipped portraits', () => {
         id !== TEST_CHARACTER &&
         !AWAITING_PORTRAIT.includes(id) &&
         !PORTRAIT_FILES.includes(`${id}.png`),
+    )
+    expect(missing).toEqual([])
+  })
+
+  it('include one for every candidate of staff.json', () => {
+    const missing = CANDIDATE_PORTRAITS.filter(
+      (id) => !PORTRAIT_FILES.includes(`${id}.png`),
     )
     expect(missing).toEqual([])
   })

@@ -12,6 +12,7 @@ import {
   staffBoard,
 } from './staffBoard.ts'
 import StaffPanel, { StaffPanelView } from './StaffPanel.tsx'
+import { portraitUrl } from './portraits.ts'
 import { gameStore, type GameStoreState } from './store.ts'
 
 // A static render reads a Zustand store's initial state, so the connected
@@ -116,6 +117,13 @@ describe('StaffPanelView', () => {
       `<p class="staff__yesterday">Hier${S}: 30 clients servis · 178${S}$ de ventes</p>`,
     )
     expect(html).toContain('<li class="chip">Au camion</li>')
+    // Her face from staff.json's portrait id; only the owner keeps the silhouette.
+    const portrait = portraitUrl('amelieGagnon')
+    expect(portrait).not.toBeNull()
+    expect(html).toContain(
+      `<img class="staff__portrait" src="${portrait}" alt="" width="48" height="48"/>`,
+    )
+    expect(html.match(/staff__silhouette/g)).toHaveLength(1)
     expect(html.match(/<div class="staff__row" tabindex="0"/g)).toHaveLength(1)
     expect(html).toMatch(
       /<input id="staff-wage-amelie" class="field__input" type="text" inputMode="decimal" autoComplete="off" aria-invalid="false" aria-describedby="staff-wage-amelie-unit [^"]+" value="17,50"\/>/,
@@ -249,7 +257,11 @@ describe('StaffPanelView', () => {
 describe('StaffPanel', () => {
   it('is a modal dialog in the dock’s frame, labelled by its title « Équipe », for the app store', () => {
     gameStore.getState().startGame(amelieAtWork())
-    const html = renderToStaticMarkup(<StaffPanel />)
+    // React hoists a preload of Amélie's portrait ahead of the dialog.
+    const html = renderToStaticMarkup(<StaffPanel />).replace(
+      `<link rel="preload" as="image" href="${portraitUrl('amelieGagnon')}"/>`,
+      '',
+    )
     expect(html).toMatch(
       /^<dialog class="panel dock-frame dock-panel staff" aria-labelledby="([^"]+)"><div class="dock-frame__header"><h2 id="\1" class="dock-frame__title">Équipe<\/h2>.*<div class="panel__content">.*<\/dialog>$/,
     )
