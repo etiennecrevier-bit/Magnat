@@ -1,37 +1,66 @@
 /* « Équipe »: the card itself is the shared .panel (panel.css), its note
    and fields those of « Le camion » (ManagePanel.css). Text colours keep at
-   least 4.5:1 against its cream #fff7e8 and the rows' white. */
+   least 4.5:1 against its cream #fff7e8 and the cards' white. */
 .staff {
   --panel-width: 56rem;
 }
 
-/* The owner and each employee, one row each. */
-.staff__team {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* « L'équipe »: a card for the owner and for each employee, two to a row,
+   room for the wage's stepper; « Embaucher »: one for each candidate, three
+   to a row. One to a row on a phone. */
+.staff__team,
+.staff__candidates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
   margin: 12px 0 0;
   padding: 0;
   list-style: none;
 }
 
-/* A row: the portrait, the name and role over the status line, today's
-   chips, the wage, then « Congédier » or what replaces it. */
-.staff__row {
+.staff__candidates {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 699px) {
+  .staff__team,
+  .staff__candidates {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.staff__team > li,
+.staff__candidates > li {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 14px;
-  padding: 10px 14px;
+}
+
+/* A card: the portrait beside the name, the role and the status line,
+   then today's chips, the wage, the traits, yesterday and the actions. */
+.staff__card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 14px 12px;
   border: 2px solid #2b2622;
   border-radius: 14px;
   background: #ffffff;
 }
 
-.staff__row:hover,
-.staff__row:focus-within {
+.staff__card:hover,
+.staff__card:focus-within,
+.staff__card:focus-visible {
   outline: 3px solid #2f6fb0;
   outline-offset: 2px;
+}
+
+.staff__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
 }
 
 .staff__portrait {
@@ -69,7 +98,8 @@
   font-size: 0.875rem;
 }
 
-.staff__tasks {
+.staff__tasks,
+.staff__traits {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -84,22 +114,75 @@
   font-weight: 700;
 }
 
-/* The wage: « Salaire horaire » small over its field. */
-.staff__row .field {
+/* The strength, green with ▲, and the weakness, amber with ▼: the arrow
+   says it as well as the colour. Text keeps 4.5:1 on each fill. */
+.staff__traits .chip {
+  gap: 0.3em;
+}
+
+.chip--strong {
+  border-color: #2e7d4f;
+  background: #e3f2e8;
+  color: #1d5a37;
+}
+
+.chip--weak {
+  border-color: #c27a00;
+  background: #fdf0d5;
+  color: #8a5300;
+}
+
+/* The wage: « Salaire horaire » small over its stepper, what they ask
+   under it. */
+.staff__wage {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.staff__card .field {
   margin: 0;
 }
 
-.staff__row .field__label {
+.staff__card .field__label {
   font-size: 0.8125rem;
   font-weight: 700;
 }
 
-.staff__row .field__input {
-  width: 5.5rem;
+.staff__card .field__input {
+  width: 5rem;
+}
+
+.staff__asking {
+  margin: 0;
+  color: #5c5048;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Paid below what they ask: amber, with ⚠︎, never the colour alone. */
+.staff__asking--under {
+  color: #8a5300;
+  font-weight: 700;
+}
+
+/* A candidate's ask and training, one fact a line. */
+.staff__fact {
+  margin: 0;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .staff__actions {
-  margin-left: auto;
+  margin-top: auto;
+}
+
+.staff__actions:empty {
+  display: none;
+}
+
+.staff__hire {
+  margin-top: auto;
 }
 
 .staff__confirm {
@@ -114,19 +197,9 @@
   font-weight: 700;
 }
 
-.staff section {
-  margin-top: 1.25rem;
-}
-
 .staff__full {
+  margin: 0.75rem 0 0;
   font-weight: 600;
-}
-
-.staff__roles,
-.staff__candidates {
-  margin: 0 0 0.75rem;
-  padding: 0;
-  list-style: none;
 }
 
 /* The roles as pills in a row; what each pays is in its tooltip. */
@@ -134,24 +207,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-
-.staff__candidates {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: 0.5rem 1rem;
-}
-
-/* A candidate: their portrait, their name, then « Embaucher ». */
-.staff__candidates li {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-}
-
-.staff__candidate {
-  flex: 1;
-  min-width: 0;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
 }
 
 .staff .button:disabled {
@@ -162,15 +220,14 @@
 }
 
 /* The dot stays beside its words as they wrap. */
-.staff__row .status-line {
+.staff__card .status-line {
   flex-wrap: nowrap;
+  padding: 0;
 }
 
-/* What they did yesterday (#283): one fact line, under the wage, across
-   the row. #52606d keeps 4.5:1 on white. */
+/* What they did yesterday (#283): one fact line, under the traits.
+   #52606d keeps 4.5:1 on white. */
 .staff__yesterday {
-  flex-basis: 100%;
-  order: 10;
   margin: 0;
   color: #52606d;
   font-size: 0.8125rem;

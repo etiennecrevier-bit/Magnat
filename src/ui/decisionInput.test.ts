@@ -17,6 +17,8 @@ import {
   restockChange,
   restockFields,
   stepPrice,
+  stepWage,
+  WAGE_STEP_TEXT,
   wageChange,
   type FieldResult,
 } from './decisionInput.ts'
@@ -175,6 +177,28 @@ describe('stepPrice', () => {
     expect(stepPrice(cents(min), 1)).toBe(min + 5)
     expect(stepPrice(cents(max), 1)).toBeNull()
     expect(stepPrice(cents(max), -1)).toBe(max - 5)
+  })
+})
+
+describe('stepWage (#256)', () => {
+  it('moves an hourly wage by the content step', () => {
+    expect(STAFF.wageStepCents).toBe(50)
+    expect(stepWage('camion', cents(1750), 1)).toBe(1800)
+    expect(stepWage('camion', cents(1750), -1)).toBe(1700)
+    expect(WAGE_STEP_TEXT).toBe(`0,50${S}$`)
+  })
+
+  it('lands a wage typed between two steps on the next one', () => {
+    expect(stepWage('camion', cents(1753), 1)).toBe(1800)
+    expect(stepWage('camion', cents(1753), -1)).toBe(1750)
+  })
+
+  it("stops at the role's limits", () => {
+    const { min, max } = STAFF.roles.boulanger.hourlyWageCents
+    expect(stepWage('boulanger', cents(min), -1)).toBeNull()
+    expect(stepWage('boulanger', cents(min), 1)).toBe(min + 50)
+    expect(stepWage('boulanger', cents(max), 1)).toBeNull()
+    expect(stepWage('boulanger', cents(max), -1)).toBe(max - 50)
   })
 })
 

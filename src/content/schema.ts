@@ -1650,6 +1650,8 @@ export const staffContentSchema = z
     underpaidWeeks: z.int().positive(),
     /** Weeks from the warning to the morning they quit. */
     warningWeeks: z.int().positive(),
+    /** How far one press of « − » or « + » moves an hourly wage (#256). */
+    wageStepCents: positiveMoney,
     roles: z.record(staffRoleIdSchema, staffRoleSchema),
     traits: z.record(traitIdSchema, traitSchema),
     candidates: z.record(candidateIdSchema, candidateSchema),

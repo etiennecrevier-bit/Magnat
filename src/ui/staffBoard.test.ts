@@ -11,11 +11,16 @@ import {
 import { NO_EVENTS } from '../engine/events.ts'
 import { cents } from '../engine/money.ts'
 import { defaultProfile } from '../engine/profile.ts'
-import { STAFF } from '../engine/staff.ts'
+import { STAFF, isAbsent } from '../engine/staff.ts'
 import type { Day, GameState, StreetModifier } from '../engine/types.ts'
 import { entriesOf, entriesSince } from '../finance/journal.ts'
 import { accepts } from './bakeryBoard.ts'
-import { staffBoard, todayWork, type TodayWork } from './staffBoard.ts'
+import {
+  memberLine,
+  staffBoard,
+  todayWork,
+  type TodayWork,
+} from './staffBoard.ts'
 import { createGameStore } from './store.ts'
 
 const START = createInitialState(42)
@@ -132,10 +137,17 @@ describe('staffBoard', () => {
     expect(board.candidates.map(({ candidate }) => candidate)).toEqual(
       Object.keys(STAFF.candidates),
     )
+    // Strong in accueil (+1,50 $), weak in rapidité (−1,00 $): she asks
+    // 18,00 $ at the truck.
+    expect(board.role).toBe('camion')
     expect(board.candidates[0]).toEqual({
       candidate: 'amelie',
       name: 'Amélie Gagnon',
       portrait: 'amelieGagnon',
+      strength: 'accueil',
+      askingWage: 1800,
+      weeklyWage: 1800 * 35,
+      training: 1800 * 35,
     })
     expect(board).toMatchObject({ full: false, maxEmployees: 3 })
   })
@@ -156,7 +168,12 @@ describe('staffBoard', () => {
         roleName: 'Au camion',
         hourlyWage: 1750,
         weeklyWage: AT_TRUCK_WEEK,
+        askingWage: 1800,
         status: 'startsTomorrow',
+        // Not started: only her strength shows.
+        strength: 'accueil',
+        weakness: null,
+        leaving: false,
         tasks: [],
         fireCost: 0,
         training: AT_TRUCK_WEEK,
@@ -232,6 +249,145 @@ describe('staffBoard', () => {
   })
 })
 
+describe('staffBoard: traits, asking wages and leaving (#256)', () => {
+  /** Amélie at the truck from day 1, at `wage`, played to `day`. */
+  function amelieTo(day: Day, wage = 1750): GameState {
+    const hired = decided(START, {
+      kind: 'hire',
+      role: 'camion',
+      candidate: 'amelie',
+      hourlyWage: cents(wage),
+    })
+    return playedTo(hired, day)
+  }
+
+  it('shows her strength from the start, her weakness two weeks on the job', () => {
+    expect(STAFF.discoveryDays).toBe(14)
+    expect(staffBoard(amelieTo(1)).members[0]).toMatchObject({
+      strength: 'accueil',
+      weakness: null,
+    })
+    expect(staffBoard(amelieTo(14)).members[0]?.weakness).toBeNull()
+    expect(staffBoard(amelieTo(15)).members[0]?.weakness).toBe('rapidite')
+  })
+
+  it('gives each employee what they ask in their role', () => {
+    const game = decided(
+      START,
+      { kind: 'hire', role: 'camion', candidate: 'amelie' },
+      { kind: 'hire', role: 'livreur', candidate: 'kevin' },
+      { kind: 'hire', role: 'boulanger', candidate: 'sophie' },
+    )
+    expect(
+      staffBoard(tick(game)).members.map(({ askingWage }) => askingWage),
+    ).toEqual([
+      1750 + 150 - 100,
+      1600 + 150 - 100,
+      // Strong in fiabilité (+2,50 $), weak in rapidité (−1,00 $).
+      2200 + 250 - 100,
+    ])
+  })
+
+  it('gives each candidate what they ask, a week of it and their training in the role picked', () => {
+    const kevin = staffBoard(START, 'boulanger').candidates.find(
+      ({ candidate }) => candidate === 'kevin',
+    )
+    expect(kevin).toMatchObject({
+      strength: 'rapidite',
+      askingWage: 2250,
+      weeklyWage: 2250 * 16,
+      training: 2250 * 16 * STAFF.trainingWeeks,
+    })
+    expect(staffBoard(START, 'boulanger').role).toBe('boulanger')
+  })
+
+  it('shows an underpaid employee leaving once she warned, until her latest wage is what she asks', () => {
+    // Underpaid from day 1, she warns on the morning of day 57.
+    expect(staffBoard(amelieTo(56)).members[0]?.leaving).toBe(false)
+    const warned = amelieTo(57)
+    const amelie = staffBoard(warned).members[0]!
+    expect(amelie).toMatchObject({ status: 'atWork', leaving: true })
+    expect(memberLine(amelie).fact).toEqual({
+      tone: 'warn',
+      text: 'Pense à partir',
+    })
+    const raised = decided(warned, {
+      kind: 'setWage',
+      candidate: 'amelie',
+      hourlyWage: cents(1800),
+    })
+    expect(staffBoard(raised).members[0]?.leaving).toBe(false)
+    expect(memberLine(staffBoard(raised).members[0]!).fact).toBeNull()
+    // Paid what she asks from the start, she never thinks of leaving.
+    expect(staffBoard(amelieTo(57, 1800)).members[0]?.leaving).toBe(false)
+  })
+
+  it('shows someone who quit this morning gone, with no work today, as the engine plays it', () => {
+    // Day 64, a Tuesday: she quits, underpaid, a week after warning.
+    const quitting = amelieTo(64)
+    expect(quitting.day % 7).toBe(1)
+    const board = staffBoard(quitting)
+    const amelie = board.members[0]!
+    expect(amelie).toMatchObject({
+      status: 'quitsToday',
+      tasks: [],
+      fireCost: null,
+      leaving: false,
+    })
+    expect(memberLine(amelie).fact).toEqual({
+      tone: 'bad',
+      text: 'Parti ce matin',
+    })
+    expect(board.owner.tasks).toEqual(['truck'])
+    expect(todayWork(quitting)).toMatchObject({
+      opens: true,
+      quits: ['amelie'],
+    })
+    expect(tick(quitting).lastDay?.quits).toEqual(['amelie'])
+
+    // The owner away, nobody is left at the truck: it stays closed.
+    const away = { ...quitting, ownerAway: true }
+    expect(todayWork(away).opens).toBe(false)
+    expect(staffBoard(away).members[0]?.tasks).toEqual([])
+    expect(openedOn(tick(away), 64)).toBe(false)
+  })
+
+  it('shows an employee absent on a day their job has work, as the engine plays it', () => {
+    // Seed 42: Nadia, weak in fiabilité, misses day 2, a Wednesday.
+    const game = playedTo(
+      decided(START, { kind: 'hire', role: 'camion', candidate: 'nadia' }),
+      2,
+    )
+    expect(isAbsent(game.seed, 2, { candidate: 'nadia', role: 'camion' })).toBe(
+      true,
+    )
+    const work = todayWork(game)
+    expect(work).toMatchObject({ absent: ['nadia'], opens: true })
+    expect(work.hadWork.truck).toBe(true)
+    expect(staffBoard(game).members[0]?.tasks).toEqual(['absent'])
+    expect(tick(game).lastDay?.absent).toEqual(['nadia'])
+
+    // The owner away too, nobody serves: the truck stays closed.
+    const away = { ...game, ownerAway: true }
+    expect(todayWork(away).opens).toBe(false)
+    expect(openedOn(tick(away), 2)).toBe(false)
+  })
+
+  it('shows an employee absent on a day their job has none on leave, as the engine counts it', () => {
+    // Seed 42: Olivier, deliverer, misses day 4, a Friday, with nothing due.
+    const game = playedTo(
+      decided(START, { kind: 'hire', role: 'livreur', candidate: 'olivier' }),
+      4,
+    )
+    expect(todayWork(game)).toMatchObject({
+      absent: ['olivier'],
+      deliveriesDue: false,
+    })
+    expect(staffBoard(game).members[0]?.tasks).toEqual([])
+    expect(tick(game).lastDay?.absent).toBeUndefined()
+  })
+})
+
 describe('todayWork', () => {
   const MONDAY = 7
 
@@ -242,7 +398,7 @@ describe('todayWork', () => {
       todayWork(signed(playedTo(game, MONDAY), 'chezNormand')),
     ).toMatchObject({ deliveriesDue: false })
     const due = playedTo(signed(game, 'chezNormand'), MONDAY)
-    expect(todayWork(due)).toEqual({
+    expect(todayWork(due)).toMatchObject({
       ownerAway: false,
       opens: false,
       deliveriesDue: true,
@@ -257,7 +413,7 @@ describe('todayWork', () => {
   it('misses the deliveries when the owner is away and nobody delivers', () => {
     const due = playedTo(signed(tick(START), 'chezNormand'), MONDAY)
     const away = { ...due, ownerAway: true }
-    expect(todayWork(away)).toEqual({
+    expect(todayWork(away)).toMatchObject({
       ownerAway: true,
       opens: false,
       deliveriesDue: true,
@@ -276,7 +432,7 @@ describe('todayWork', () => {
       { kind: 'hire', role: 'boulanger', candidate: 'sophie' },
     )
     const due = { ...playedTo(game, MONDAY), ownerAway: true }
-    expect(todayWork(due)).toEqual({
+    expect(todayWork(due)).toMatchObject({
       ownerAway: true,
       opens: false,
       deliveriesDue: true,
@@ -355,7 +511,15 @@ interface Seen {
   bakedByOwner: number
   bakedByEmployee: number
   bakingIdle: number
+  missedWork: number
 }
+
+/** The job of each role. */
+const JOB = {
+  camion: 'truck',
+  livreur: 'deliveries',
+  boulanger: 'bakery',
+} as const
 
 describe('todayWork against the engine', () => {
   it('predicts each day of a scripted year: the truck, the deliveries and the bakery', () => {
@@ -389,6 +553,7 @@ describe('todayWork against the engine', () => {
       bakedByOwner: 0,
       bakedByEmployee: 0,
       bakingIdle: 0,
+      missedWork: 0,
     }
     const tryTo = (game: GameState, change: DecisionChange) =>
       accepts(game, change) ? applyDecision(game, change) : game
@@ -444,12 +609,22 @@ describe('todayWork against the engine', () => {
       expect(work.deliveriesDue && work.delivers === null, at).toBe(missed > 0)
       const baked = bakedOn(next, day)
       expect(work.bakes !== null, at).toBe(baked)
+      // The absences that missed work (#256), as the engine records them.
+      const missedWork = work.absent.filter((candidate) => {
+        const role = game.decisions.staff.find(
+          (hire) => hire.candidate === candidate,
+        )?.role
+        return role !== undefined && work.hadWork[JOB[role]]
+      })
+      expect(missedWork, at).toEqual(next.lastDay?.absent ?? [])
+      expect(work.quits, at).toEqual(next.lastDay?.quits ?? [])
 
       seen[opened ? 'opened' : 'closed'] += 1
       if (delivered > 0) seen.delivered += 1
       if (missed > 0) seen.missed += 1
       if (work.bakes === 'owner') seen.bakedByOwner += 1
       if (work.bakes === 'employee') seen.bakedByEmployee += 1
+      if (missedWork.length > 0) seen.missedWork += 1
       const assigned =
         latestDecisions(game).croissantSource === 'fabriquer' && opened
       if (assigned && !baked) seen.bakingIdle += 1

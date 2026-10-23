@@ -1,22 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CandidateId, StaffRoleId } from '../content/schema.ts'
+import type { CandidateId, StaffRoleId, TraitId } from '../content/schema.ts'
 import type { DecisionChange } from '../engine/decisions.ts'
-import { wageChange } from './decisionInput.ts'
-import { describedBy } from './describedBy.ts'
+import { STAFF } from '../engine/staff.ts'
+import { stepWage, WAGE_STEP_TEXT, wageChange } from './decisionInput.ts'
+import { describedBy, type Lock } from './describedBy.ts'
+import { STAFF_TABS, type StaffTab } from './dockFrame.ts'
 import { DockPanel } from './DockFrame.tsx'
 import { useFieldDialog } from './fieldDialog.ts'
-import { formatAmount, formatMoney } from './formatMoney.ts'
+import { formatAmount, formatBriefMoney, formatMoney } from './formatMoney.ts'
 import { NumberField } from './NumberField.tsx'
 import { portraitUrl } from './portraits.ts'
-import { StatusLineView } from './ProductCard.tsx'
+import { StatusLineView, StepButton } from './ProductCard.tsx'
 import { Silhouette } from './Silhouette.tsx'
 import {
+  candidateTip,
   memberLine,
   memberTip,
   ownerTip,
   roleTip,
   staffBoard,
   TASK_NAMES,
+  trainingText,
+  type CandidateRow,
   type MemberRow,
   type OwnerRow,
   type RoleOffer,
@@ -32,14 +37,22 @@ import './StaffPanel.css'
 
 const FULL_ID = 'staff-full'
 
-/** The size of a portrait on a row, in CSS pixels. */
+/** The size of a portrait on a card, in CSS pixels. */
 const PORTRAIT_SIZE = 48
+
+// A no-break space (U+00A0) goes before a colon.
+const COLON = '\u00a0:'
+
+/** Nothing locks the wages: no Défi does. */
+const UNLOCKED: Lock = { disabled: false, describedBy: undefined }
 
 type OnChange = (change: DecisionChange) => void
 
 interface StaffPanelViewProps {
   board: StaffBoard
-  /** The role the player hires for. */
+  /** The tab shown: the team, or the candidates to hire. */
+  tab: StaffTab
+  /** The role the player hires for, which `board` was made for. */
   role: StaffRoleId
   onRoleChange: (role: StaffRoleId) => void
   /** The employee whose firing waits for « Confirmer »; null if none. */
@@ -49,76 +62,47 @@ interface StaffPanelViewProps {
 }
 
 /**
- * « Qui fait quoi »: a row for the owner and for each employee, with what
- * they do today, then « Embaucher » with the roles and the candidates.
- * What a row leaves out, such as the training or the notice, is in its
- * tooltip. « Congédier » asks to confirm.
+ * « Équipe » (#256): on « L'équipe », a card for the owner and for each
+ * employee, with what they do today, their wage, what they ask and what
+ * the player knows of their strength and weakness; on « Embaucher », the
+ * roles, then a card for each candidate. What a card leaves out, such as
+ * what a trait does, the training or the notice, is in its tooltip.
+ * « Congédier » asks to confirm.
  */
 export function StaffPanelView({
   board,
+  tab,
   role,
   onRoleChange,
   confirming,
   onConfirmingChange,
   onChange,
 }: StaffPanelViewProps) {
-  const offer = board.roles.find((option) => option.role === role)
   return (
     <div className="panel__content">
       <p className="manage__note">Les changements s'appliquent demain matin</p>
-      <ul className="staff__team" aria-label="L'équipe">
-        <OwnerRowView owner={board.owner} />
-        {board.members.map((member) => (
-          <MemberRowView
-            key={member.candidate}
-            member={member}
-            hours={hoursOf(board, member.role)}
-            confirming={confirming === member.candidate}
-            onConfirmingChange={onConfirmingChange}
-            onChange={onChange}
-          />
-        ))}
-      </ul>
-      <section aria-labelledby="staff-hire">
-        <h3 id="staff-hire">Embaucher</h3>
-        {board.full && (
-          <p id={FULL_ID} className="staff__full">
-            L'équipe est complète.
-          </p>
-        )}
-        <ul className="staff__roles" aria-label="Rôle">
-          {board.roles.map((option) => (
-            <RoleOption
-              key={option.role}
-              offer={option}
-              pressed={option.role === role}
-              onPress={() => onRoleChange(option.role)}
+      {tab === 'team' ? (
+        <ul className="staff__team" aria-label="L'équipe">
+          <OwnerCard owner={board.owner} />
+          {board.members.map((member) => (
+            <MemberCard
+              key={member.candidate}
+              member={member}
+              hours={hoursOf(board, member.role)}
+              confirming={confirming === member.candidate}
+              onConfirmingChange={onConfirmingChange}
+              onChange={onChange}
             />
           ))}
         </ul>
-        {board.candidates.length === 0 ? (
-          <p>Personne d'autre à embaucher.</p>
-        ) : (
-          <ul className="staff__candidates">
-            {board.candidates.map(({ candidate, name, portrait }) => (
-              <li key={candidate}>
-                <Portrait url={portraitUrl(portrait)} />
-                <span className="staff__candidate">{name}</span>{' '}
-                <button
-                  type="button"
-                  className="button"
-                  aria-label={`Embaucher ${name}${offer === undefined ? '' : `, ${offer.name}`}`}
-                  disabled={board.full}
-                  aria-describedby={board.full ? FULL_ID : undefined}
-                  onClick={() => onChange({ kind: 'hire', role, candidate })}
-                >
-                  Embaucher
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      ) : (
+        <HireTab
+          board={board}
+          role={role}
+          onRoleChange={onRoleChange}
+          onChange={onChange}
+        />
+      )}
     </div>
   )
 }
@@ -130,7 +114,8 @@ function hoursOf(board: StaffBoard, role: StaffRoleId): number {
 
 /**
  * Today's work as chips, one per task, « Congé » when none, or «
- * Ailleurs » for the owner away all day.
+ * Ailleurs » for the owner away all day. « Absent » is amber, so it shows
+ * among the others.
  */
 function TaskChips({
   tasks,
@@ -139,20 +124,61 @@ function TaskChips({
   tasks: readonly Task[]
   away?: boolean
 }) {
-  const words = away
-    ? ['Ailleurs']
+  const words: { word: string; className: string }[] = away
+    ? [{ word: 'Ailleurs', className: 'chip chip--off' }]
     : tasks.length === 0
-      ? ['Congé']
-      : tasks.map((task) => TASK_NAMES[task])
-  const idle = away || tasks.length === 0
+      ? [{ word: 'Congé', className: 'chip chip--off' }]
+      : tasks.map((task) => ({
+          word: TASK_NAMES[task],
+          className: task === 'absent' ? 'chip chip--weak' : 'chip',
+        }))
   return (
     <ul className="staff__tasks" aria-label="Aujourd'hui">
-      {words.map((word) => (
-        <li key={word} className={idle ? 'chip chip--off' : 'chip'}>
+      {words.map(({ word, className }) => (
+        <li key={word} className={className}>
           {word}
         </li>
       ))}
     </ul>
+  )
+}
+
+/**
+ * A strength or a weakness as a chip: ▲ and green for the strength, ▼ and
+ * amber for the weakness, « ? » dashed for a weakness not known yet. The
+ * arrows are hidden from screen readers, which hear « Force » or
+ * « Faiblesse » instead.
+ */
+function TraitChip({
+  trait,
+  level,
+}: {
+  trait: TraitId | null
+  level: 'strong' | 'weak'
+}) {
+  const said = level === 'strong' ? 'Force' : 'Faiblesse'
+  if (trait === null) {
+    return (
+      <li className="chip chip--off">
+        <span className="visually-hidden">
+          {said}
+          {COLON} inconnue
+        </span>
+        <span aria-hidden="true">?</span>
+      </li>
+    )
+  }
+  return (
+    <li
+      className={level === 'strong' ? 'chip chip--strong' : 'chip chip--weak'}
+    >
+      <span aria-hidden="true">{level === 'strong' ? '▲' : '▼'}</span>
+      <span className="visually-hidden">
+        {said}
+        {COLON}
+      </span>{' '}
+      {STAFF.traits[trait].name}
+    </li>
   )
 }
 
@@ -174,16 +200,19 @@ function Portrait({ url }: { url: string | null }) {
   )
 }
 
-function OwnerRowView({ owner }: { owner: OwnerRow }) {
+/** The owner's card, first: their pay stays a decision of « Le camion ». */
+function OwnerCard({ owner }: { owner: OwnerRow }) {
   return (
     <li>
       <Tooltip content={ownerTip(owner)}>
         {(anchor) => (
-          <div className="staff__row" tabIndex={0} {...anchor}>
-            <Portrait url={null} />
-            <div className="staff__who">
-              <h3 className="staff__name">Vous</h3>
-              <p className="staff__role">Propriétaire</p>
+          <div className="staff__card" tabIndex={0} {...anchor}>
+            <div className="staff__head">
+              <Portrait url={null} />
+              <div className="staff__who">
+                <h3 className="staff__name">Vous</h3>
+                <p className="staff__role">Propriétaire</p>
+              </div>
             </div>
             <TaskChips tasks={owner.tasks} away={owner.away} />
             <p className="staff__pay">
@@ -200,10 +229,11 @@ function OwnerRowView({ owner }: { owner: OwnerRow }) {
 }
 
 /**
- * An employee's row, the anchor of their tooltip. Someone leaving tomorrow
- * has no control left, so their row takes the focus itself.
+ * An employee's card, the anchor of their tooltip. Someone leaving
+ * tomorrow, or gone this morning, has no control left, so their card
+ * takes the focus itself.
  */
-function MemberRowView({
+function MemberCard({
   member,
   hours,
   confirming,
@@ -216,15 +246,35 @@ function MemberRowView({
   onConfirmingChange: (candidate: CandidateId | null) => void
   onChange: OnChange
 }) {
-  const { candidate, name, role, roleName, hourlyWage, status } = member
+  const { candidate, name, role, roleName, hourlyWage, askingWage, status } =
+    member
   const statusId = `staff-${candidate}-status`
+  const askingId = `staff-${candidate}-asking`
   const line = memberLine(member)
   const shown = line.fact === null ? undefined : statusId
   const fire = () => {
     onConfirmingChange(null)
     onChange({ kind: 'fire', candidate })
   }
-  const portrait = portraitUrl(member.portrait)
+  const settled = status === 'leavesTomorrow' || status === 'quitsToday'
+  const under = hourlyWage < askingWage
+  const step = (direction: 1 | -1, text: string, verb: string) => {
+    const next = stepWage(role, hourlyWage, direction)
+    return (
+      <StepButton
+        label={`${name}${COLON} ${verb} le salaire de ${WAGE_STEP_TEXT}`}
+        text={text}
+        change={
+          next === null
+            ? null
+            : { kind: 'setWage', candidate, hourlyWage: next }
+        }
+        lock={UNLOCKED}
+        describedBy={describedBy(shown, askingId)}
+        onChange={onChange}
+      />
+    )
+  }
   return (
     <li>
       <Tooltip content={memberTip(member, hours)}>
@@ -232,35 +282,58 @@ function MemberRowView({
           const described = describedBy(shown, anchor['aria-describedby'])
           return (
             <div
-              className="staff__row"
-              tabIndex={status === 'leavesTomorrow' ? 0 : undefined}
+              className="staff__card"
+              tabIndex={settled ? 0 : undefined}
               {...anchor}
             >
-              <Portrait url={portrait} />
-              <div className="staff__who">
-                <h3 className="staff__name">{name}</h3>
-                <p className="staff__role">{roleName}</p>
-                <StatusLineView id={statusId} line={line} />
+              <div className="staff__head">
+                <Portrait url={portraitUrl(member.portrait)} />
+                <div className="staff__who">
+                  <h3 className="staff__name">{name}</h3>
+                  <p className="staff__role">{roleName}</p>
+                  <StatusLineView id={statusId} line={line} />
+                </div>
               </div>
-              {status !== 'startsTomorrow' && (
+              {status !== 'startsTomorrow' && status !== 'quitsToday' && (
                 <TaskChips tasks={member.tasks} />
               )}
-              {status === 'leavesTomorrow' ? (
+              {settled ? (
                 <p className="staff__pay">
                   {formatMoney(hourlyWage)} de l'heure
                 </p>
               ) : (
-                <NumberField
-                  id={`staff-wage-${candidate}`}
-                  label="Salaire horaire"
-                  unit="$ de l'heure"
-                  inputMode="decimal"
-                  value={formatAmount(hourlyWage)}
-                  read={(text) => wageChange(candidate, role, text, hourlyWage)}
-                  onChange={onChange}
-                  describedBy={described}
-                />
+                <div className="staff__wage">
+                  <NumberField
+                    id={`staff-wage-${candidate}`}
+                    label="Salaire horaire"
+                    unit="$ de l'heure"
+                    inputMode="decimal"
+                    value={formatAmount(hourlyWage)}
+                    read={(text) =>
+                      wageChange(candidate, role, text, hourlyWage)
+                    }
+                    onChange={onChange}
+                    describedBy={describedBy(askingId, described)}
+                    before={step(-1, '−', 'baisser')}
+                    after={step(1, '+', 'augmenter')}
+                  />
+                  <p
+                    id={askingId}
+                    className={
+                      under
+                        ? 'staff__asking staff__asking--under'
+                        : 'staff__asking'
+                    }
+                  >
+                    {under && <span aria-hidden="true">⚠︎ </span>}
+                    demande {formatBriefMoney(askingWage)}
+                  </p>
+                </div>
               )}
+              <ul className="staff__traits" aria-label="Force et faiblesse">
+                <TraitChip trait={member.strength} level="strong" />
+                <TraitChip trait={member.weakness} level="weak" />
+              </ul>
               {member.yesterday !== null && (
                 <p className="staff__yesterday">{member.yesterday}</p>
               )}
@@ -306,7 +379,7 @@ function MemberRowView({
 
 /**
  * « Congédier {name}? » with « Confirmer » and « Annuler ». As it shows,
- * « Confirmer » takes the focus and the row's tooltip opens, with the
+ * « Confirmer » takes the focus and the card's tooltip opens, with the
  * notice firing costs: through `tip`, since a focus that follows a press
  * does not open it.
  */
@@ -348,6 +421,128 @@ function ConfirmFire({
   )
 }
 
+/**
+ * « Embaucher »: the roles as pills, then a card for each candidate, for
+ * the role picked, three to a row.
+ */
+function HireTab({
+  board,
+  role,
+  onRoleChange,
+  onChange,
+}: {
+  board: StaffBoard
+  role: StaffRoleId
+  onRoleChange: (role: StaffRoleId) => void
+  onChange: OnChange
+}) {
+  const offer = board.roles.find((option) => option.role === role)
+  return (
+    <>
+      <ul className="staff__roles" aria-label="Rôle">
+        {board.roles.map((option) => (
+          <RoleOption
+            key={option.role}
+            offer={option}
+            pressed={option.role === role}
+            onPress={() => onRoleChange(option.role)}
+          />
+        ))}
+      </ul>
+      {board.full && (
+        <p id={FULL_ID} className="staff__full">
+          L'équipe est complète.
+        </p>
+      )}
+      {board.candidates.length === 0 ? (
+        <p>Personne d'autre à embaucher.</p>
+      ) : (
+        <ul className="staff__candidates" aria-label="Candidats">
+          {board.candidates.map((row) => (
+            <CandidateCard
+              key={row.candidate}
+              row={row}
+              role={role}
+              roleName={offer?.name ?? ''}
+              full={board.full}
+              onChange={onChange}
+            />
+          ))}
+        </ul>
+      )}
+    </>
+  )
+}
+
+/**
+ * A candidate's card, the anchor of their tooltip: their face, their
+ * name, their strength, a weakness not known yet, what they ask, their
+ * training and « Embaucher », which hires them at what they ask. With the
+ * team full, the card takes the focus itself, its button disabled.
+ */
+function CandidateCard({
+  row,
+  role,
+  roleName,
+  full,
+  onChange,
+}: {
+  row: CandidateRow
+  role: StaffRoleId
+  roleName: string
+  full: boolean
+  onChange: OnChange
+}) {
+  const { candidate, name, askingWage } = row
+  return (
+    <li>
+      <Tooltip content={candidateTip(row, role)}>
+        {(anchor) => (
+          <div
+            className="staff__card staff__card--candidate"
+            tabIndex={full ? 0 : undefined}
+            {...anchor}
+          >
+            <div className="staff__head">
+              <Portrait url={portraitUrl(row.portrait)} />
+              <div className="staff__who">
+                <h3 className="staff__name">{name}</h3>
+              </div>
+            </div>
+            <ul className="staff__traits" aria-label="Force et faiblesse">
+              <TraitChip trait={row.strength} level="strong" />
+              <li className="chip chip--off">Faiblesse{COLON} ?</li>
+            </ul>
+            <p className="staff__fact">
+              Demande {formatBriefMoney(askingWage)} de l'heure
+            </p>
+            <p className="staff__fact">
+              Formation{COLON} {trainingText()}
+            </p>
+            <button
+              type="button"
+              className="button staff__hire"
+              aria-label={`Embaucher ${name}${roleName === '' ? '' : `, ${roleName}`}`}
+              disabled={full}
+              aria-describedby={full ? FULL_ID : undefined}
+              onClick={() =>
+                onChange({
+                  kind: 'hire',
+                  role,
+                  candidate,
+                  hourlyWage: askingWage,
+                })
+              }
+            >
+              Embaucher
+            </button>
+          </div>
+        )}
+      </Tooltip>
+    </li>
+  )
+}
+
 function RoleOption({
   offer,
   pressed,
@@ -378,31 +573,41 @@ function RoleOption({
 
 /**
  * « Équipe », the panel wired to the app store, in the dock's frame, a
- * modal dialog (see `useFieldDialog`), the role picked and the firing to
- * confirm kept while it is open.
+ * modal dialog (see `useFieldDialog`), with its tabs « L'équipe » and
+ * « Embaucher », opening on the team. The tab, the role picked and the
+ * firing to confirm are kept while it is open; a field holding invalid
+ * text keeps its tab shown.
  */
 export default function StaffPanel() {
   const game = useGame((state) => state.game)
   const decide = useGame((state) => state.decide)
   const closePanel = useGame((state) => state.closePanel)
-  const board = useMemo(() => staffBoard(game), [game])
-  const [role, setRole] = useState<StaffRoleId>(
-    () => board.roles[0]?.role ?? 'camion',
-  )
+  const [tab, setTab] = useState<StaffTab>('team')
+  const [role, setRole] = useState<StaffRoleId>('camion')
+  const board = useMemo(() => staffBoard(game, role), [game, role])
   const [confirming, setConfirming] = useState<CandidateId | null>(null)
-  const { dialogRef, onChange, close, onCancel } = useFieldDialog(decide)
+  const { dialogRef, onChange, settle, close, onCancel } =
+    useFieldDialog(decide)
 
   return (
     <DockPanel
       dialogRef={dialogRef}
       className="staff"
       title="Équipe"
+      tabs={STAFF_TABS}
+      tab={tab}
+      onTab={(next) => {
+        if (!settle()) return false
+        setConfirming(null)
+        setTab(next)
+      }}
       onCancel={onCancel}
       onClose={closePanel}
       onDismiss={close}
     >
       <StaffPanelView
         board={board}
+        tab={tab}
         role={role}
         onRoleChange={setRole}
         confirming={confirming}

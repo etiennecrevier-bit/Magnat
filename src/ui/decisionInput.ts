@@ -308,3 +308,25 @@ export function wageChange(
   if (hourlyWage === current) return UNCHANGED
   return change({ kind: 'setWage', candidate, hourlyWage })
 }
+
+/**
+ * The hourly wage one step up (`1`) or down (`-1`) from `current` in
+ * `role`, the wage steppers' move: to the next multiple of the content's
+ * `wageStepCents`, so a wage typed between two steps lands on one. Null
+ * when that would leave the role's range.
+ */
+export function stepWage(
+  role: StaffRoleId,
+  current: Cents,
+  direction: 1 | -1,
+): Cents | null {
+  const step = STAFF.wageStepCents
+  const next =
+    direction === 1
+      ? (Math.floor(current / step) + 1) * step
+      : (Math.ceil(current / step) - 1) * step
+  return within(next, STAFF.roles[role].hourlyWageCents) ? cents(next) : null
+}
+
+/** The size of the wage steppers' step, e.g. `0,50 $`. */
+export const WAGE_STEP_TEXT = formatMoney(cents(STAFF.wageStepCents))
