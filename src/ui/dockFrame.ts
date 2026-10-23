@@ -29,6 +29,15 @@ export const TRUCK_TABS: readonly FrameTab<TruckTab>[] = [
   { id: 'bakery', label: 'Fournil' },
 ]
 
+/** A tab of « Équipe ». */
+export type StaffTab = 'team' | 'hire'
+
+/** The tabs of « Équipe »: the team, then the candidates to hire (#256). */
+export const STAFF_TABS: readonly FrameTab<StaffTab>[] = [
+  { id: 'team', label: "L'équipe" },
+  { id: 'hire', label: 'Embaucher' },
+]
+
 /** The tabs of « Ville »: where the owner goes, and whom they deliver to. */
 export const CITY_TABS: readonly FrameTab<CityTab>[] = [
   { id: 'trip', label: 'Aller à…' },

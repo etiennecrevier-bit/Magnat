@@ -76,15 +76,19 @@ export type Trigger =
       readonly portrait?: string
     }
   | {
-      /** An employee's own words (#255): their warning, or their goodbye. */
+      /**
+       * A line written for one employee: their own words (#255), their
+       * warning or their goodbye, or the owner's, the morning their
+       * weakness shows (#256).
+       */
       readonly kind: OwnWordsKind
-      /** The morning they warned or quit. */
+      /** The morning they warned, quit or showed their weakness. */
       readonly day: Day
-      /** The employee. */
+      /** The employee, or « Vous » for the owner's. */
       readonly from: string
-      /** Their portrait id (see portraits.ts). */
+      /** The employee's portrait id (see portraits.ts). */
       readonly portrait: string
-      /** Their line, theirs alone. */
+      /** The line, theirs alone. */
       readonly text: string
     }
 
@@ -260,23 +264,63 @@ export function portraitOfEmployee(
 }
 
 /**
- * What the employees say in their own words over the days played from
- * `previous` to `next` (#255): each warning of an employee still underpaid,
- * their `underpaid` line, and each quit, their `quit` line, dated that
- * morning and signed with their name (see `staffNotices`).
+ * What is said of each employee in words written for them over the days
+ * played from `previous` to `next`: each warning of an employee still
+ * underpaid, their `underpaid` line, and each quit, their `quit` line,
+ * dated that morning and signed with their name (#255, see
+ * `staffNotices`); then the owner's `discovered` line on each weakness
+ * that showed (#256, see `discoveryTriggers`). Oldest first.
  */
 export function ownWordsTriggers(
   previous: GameState,
   next: GameState,
   messages: Messages = MESSAGES,
 ): Trigger[] {
-  return staffNotices(previous, next).map(({ kind, candidate, day }) => ({
-    kind,
-    day,
-    from: STAFF.candidates[candidate].name,
-    portrait: STAFF.candidates[candidate].portrait,
-    text: messages[kind][candidate],
-  }))
+  return [
+    ...staffNotices(previous, next).map(
+      ({ kind, candidate, day }): Trigger => ({
+        kind,
+        day,
+        from: STAFF.candidates[candidate].name,
+        portrait: STAFF.candidates[candidate].portrait,
+        text: messages[kind][candidate],
+      }),
+    ),
+    ...discoveryTriggers(previous, next, messages),
+  ].sort((a, b) => a.day - b.day)
+}
+
+/**
+ * The owner's `discovered` line for each employee of `next.staff` whose
+ * weakness showed on a morning from the one after `previous.day` to
+ * `next.day`: `discoveryDays` after they started (see `knownTraits`), and
+ * still working that morning, by `next.decisions`. From « Vous », with the
+ * employee's portrait, so their face shows whom it is about. Nothing when
+ * no day was played.
+ */
+export function discoveryTriggers(
+  previous: GameState,
+  next: GameState,
+  messages: Messages = MESSAGES,
+  content: StaffContent = STAFF,
+): Trigger[] {
+  if (next.day <= previous.day) return []
+  return next.staff.flatMap(({ candidate, hiredOnDay }): Trigger[] => {
+    const day = hiredOnDay + content.discoveryDays
+    const working =
+      day < next.day ||
+      next.decisions.staff.some((hire) => hire.candidate === candidate)
+    if (day <= previous.day || day > next.day || !working) return []
+    return [
+      {
+        kind: 'discovered',
+        day,
+        from: messages.exhausted.from,
+        portrait: content.candidates[candidate].portrait,
+        text: messages.discovered[candidate],
+      },
+    ]
+  })
 }
 
 /**

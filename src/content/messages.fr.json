@@ -1,5 +1,5 @@
 {
-  "_note": "Short messages the player receives during a game (#84, #163): the landlord's when the owner's rent goes unpaid, the owner's own thoughts the first time each week they wake up exhausted, a grocer's when a delivery is missed (missedDelivery), when their contract runs out (contractEnded) or when the last missed delivery they allow ends it (contractBroken), and an employee's when they start (hired) or are let go (fired). Each employee also speaks in their own voice, one line each, a week before they quit when paid below their asking wage (underpaid) and the morning they quit (quit) (#255). The game names the grocer and the employee, so those kinds have no from. Standard French, no amounts. The owner's lines are gender-neutral, since the avatar may be a woman or a man; so are the grocers' and the employees', who may be either too, and so is what they say of the owner.",
+  "_note": "Short messages the player receives during a game (#84, #163): the landlord's when the owner's rent goes unpaid, the owner's own thoughts the first time each week they wake up exhausted, a grocer's when a delivery is missed (missedDelivery), when their contract runs out (contractEnded) or when the last missed delivery they allow ends it (contractBroken), and an employee's when they start (hired) or are let go (fired). Each employee also speaks in their own voice, one line each, a week before they quit when paid below their asking wage (underpaid) and the morning they quit (quit) (#255); and the owner says what they found out the morning an employee's weakness shows, one line per candidate (discovered, #256). The game names the grocer and the employee, so those kinds have no from. Standard French, no amounts. The owner's lines are gender-neutral, since the avatar may be a woman or a man; so are the grocers' and the employees', who may be either too, and so is what they say of the owner.",
   "landlord": {
     "from": "Votre propriétaire",
     "lines": [
@@ -98,5 +98,19 @@
     "olivier": "J'ai trouvé une place mieux payée. Les clients vont me manquer, vous un peu aussi.",
     "maude": "Vous ne pouviez pas me donner une augmentation. Moi, je ne peux plus vous donner mes matins. Je pars.",
     "thierry": "J'ai tout laissé en ordre avant de partir. Ma démission est sur le comptoir."
+  },
+  "discovered": {
+    "amelie": "Les habitués adorent Amélie, mais la file avance lentement quand elle sert.",
+    "kevin": "Kevin va vite, mais il échappe des choses.",
+    "sophie": "Sophie ne manque jamais une journée, mais elle prend son temps avec chaque client.",
+    "mathieu": "Mathieu ne rate rien, mais il oublie de sourire aux habitués.",
+    "nadia": "Nadia sert à toute vitesse, les jours où elle se présente.",
+    "jonathan": "Jonathan est toujours là, mais il est un peu brouillon.",
+    "isabelle": "Isabelle soigne chaque détail, et la file s'allonge pendant ce temps-là.",
+    "samuel": "Samuel sert vite, mais il parle à peine aux habitués.",
+    "chloe": "Chloé charme les clients, mais elle se trompe souvent dans les commandes.",
+    "olivier": "Olivier connaît tous les habitués par leur nom. Dommage qu'il manque des journées.",
+    "maude": "Maude arrive toujours à l'heure, mais elle accueille les habitués du bout des lèvres.",
+    "thierry": "Thierry fait un travail impeccable, les jours où il vient."
   }
 }

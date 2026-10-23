@@ -7,7 +7,7 @@ import {
   MIN_LINES_PER_KIND,
   OWN_WORDS,
 } from './messages.ts'
-import { candidateIdSchema } from './schema.ts'
+import { candidateIdSchema, loadStaffContent } from './schema.ts'
 
 /** A deep copy of the shipped messages to break, one field at a time. */
 function shipped() {
@@ -172,5 +172,28 @@ describe("the employees' own words (#255)", () => {
     const long = ownWords()
     long.underpaid!.kevin = 'a'.repeat(MAX_MESSAGE_LENGTH + 1)
     expect(() => loadMessages(long)).toThrow()
+  })
+})
+
+describe("the owner's discoveries (#256)", () => {
+  it('name each candidate and say their weakness in a line of their own', () => {
+    const messages = loadMessages()
+    expect(Object.keys(messages.discovered)).toEqual(candidateIdSchema.options)
+    expect(messages.discovered.kevin).toBe(
+      'Kevin va vite, mais il échappe des choses.',
+    )
+    for (const candidate of candidateIdSchema.options) {
+      const line = messages.discovered[candidate]
+      expect(line.length, candidate).toBeLessThanOrEqual(MAX_MESSAGE_LENGTH)
+      expect(line, candidate).toContain(
+        loadStaffContent().candidates[candidate].name.split(' ')[0],
+      )
+    }
+  })
+
+  it('rejects a line the employees already say', () => {
+    const repeated = ownWords()
+    repeated.discovered!.kevin = repeated.quit!.kevin!
+    expect(() => loadMessages(repeated)).toThrow(/twice/)
   })
 })

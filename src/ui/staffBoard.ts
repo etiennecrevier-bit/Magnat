@@ -3,6 +3,7 @@ import type {
   GrocerContent,
   StaffContent,
   StaffRoleId,
+  TraitId,
 } from '../content/schema.ts'
 import {
   BAKED,
@@ -17,9 +18,21 @@ import { latestDecisions } from '../engine/decisions.ts'
 import { startOfDay } from '../engine/effects.ts'
 import { onHand, orderSize } from '../engine/inventory.ts'
 import { cents, mulInt, sub, type Cents } from '../engine/money.ts'
-import { STAFF, crewOf, weeklyWage, type Doer } from '../engine/staff.ts'
+import {
+  STAFF,
+  askingWage,
+  crewOf,
+  hasWarned,
+  isAbsent,
+  knownTraits,
+  quitting,
+  staffMorning,
+  weeklyWage,
+  type Doer,
+} from '../engine/staff.ts'
 import { streetOn } from '../engine/street.ts'
 import type {
+  Day,
   Employee,
   GameState,
   Hire,
@@ -31,6 +44,7 @@ import { formatDayOfMonth, formatShortWeekdayName } from './formatGameDate.ts'
 import { formatCount, formatMoney, formatWholeMoney } from './formatMoney.ts'
 import type { StatusLine } from './productFacts.ts'
 import type { TipContent, TipRow } from './tooltip.ts'
+import { discoveryText, traitTip } from './traitText.ts'
 
 // What the « Qui fait quoi » panel shows (#163): the owner and the
 // employees, what each does today, and who may be hired. The engine plays
@@ -43,17 +57,21 @@ const NBSP = '\u00a0'
 const COLON = `${NBSP}:`
 
 /** A job of the day. */
-export type Task = 'truck' | 'deliveries' | 'bakery'
+export type Job = 'truck' | 'deliveries' | 'bakery'
 
-/** The jobs, as the player reads them. */
+/** What someone does today: a job, or nothing, absent when it was there. */
+export type Task = Job | 'absent'
+
+/** The jobs and an absence, as the player reads them. */
 export const TASK_NAMES: Readonly<Record<Task, string>> = {
   truck: 'Au camion',
-  deliveries: 'Livraisons aux épiceries',
+  deliveries: 'Livraisons',
   bakery: 'Fournil',
+  absent: 'Absent',
 }
 
 /** The job each role does, when there is one to do. */
-const ROLE_TASKS: Readonly<Record<StaffRoleId, Task>> = {
+const ROLE_TASKS: Readonly<Record<StaffRoleId, Job>> = {
   camion: 'truck',
   livreur: 'deliveries',
   boulanger: 'bakery',
@@ -71,14 +89,30 @@ export interface TodayWork {
   readonly delivers: Doer
   /** Who bakes, when the bakery makes any croissant; null otherwise. */
   readonly bakes: Doer
+  /**
+   * The staff of the morning as the engine's staff morning leaves it,
+   * before anyone quits: each keeping the day they started.
+   */
+  readonly staff: readonly Employee[]
+  /** Those who quit this morning, underpaid (see `quitting`). */
+  readonly quits: readonly CandidateId[]
+  /** Those of the staff left who are absent today (see `isAbsent`). */
+  readonly absent: readonly CandidateId[]
+  /**
+   * Whether each job has work today, done or not, as the engine counts an
+   * absence that missed some: the truck on a day it may open, the
+   * deliveries when due, the bakery when it makes croissants for either.
+   */
+  readonly hadWork: Readonly<Record<Job, boolean>>
 }
 
 /**
  * What happens today, on the morning of `game.day`, as `playDay` will play
  * it: the morning started as the engine starts it (see `startOfDay`), on a
  * copy that is never kept, with the effects of earlier choices due today.
- * Who works comes from today's staff and whether the owner is away (see
- * `crewOf`). The truck opens on a day open the street does not close, with
+ * Who works comes from today's staff, as the engine's staff morning
+ * leaves it once the underpaid quit, those absent today and whether the
+ * owner is away (see `crewOf`). The truck opens on a day open the street does not close, with
  * someone at it. Deliveries are due on the grocers' delivery weekday, for
  * each contract signed before today. The bakery makes croissants when they
  * come from it, it runs today and someone bakes: those of the deliveries
@@ -93,18 +127,27 @@ export function todayWork(
   const { day, decisions } = started
   const { weekday } = toCalendar(day)
   const street = streetOn(started.events.modifiers, day)
-  const crew = crewOf(todayStaff(started), started.ownerAway)
-  const opens =
-    decisions.daysOpen.includes(weekday) &&
-    !street.closed &&
-    (crew.ownerServes || crew.atTruck > 0)
+  // The books the staff morning pays from are thrown away.
+  const { staff } = staffMorning(
+    started.journal,
+    started.staff,
+    decisions.staff,
+    day,
+  )
+  const left = quitting(staff, day)
+  const absent = left.staff
+    .filter((employee) => isAbsent(started.seed, day, employee))
+    .map(({ candidate }) => candidate)
+  const crew = crewOf(left.staff, started.ownerAway, absent)
+  const truckDay = decisions.daysOpen.includes(weekday) && !street.closed
+  const opens = truckDay && (crew.ownerServes || crew.atTruck > 0)
   const due = started.contracts.running.filter(({ startDay }) => startDay < day)
   const deliveriesDue = weekday === grocers.deliveryWeekday && due.length > 0
   const delivers = deliveriesDue ? crew.delivers : null
-  const baking =
+  const making =
     decisions.croissantSource === 'fabriquer' &&
-    isBakeryRunning(morningBakery(started.bakery, decisions.bakery, day)) &&
-    crew.bakes !== null
+    isBakeryRunning(morningBakery(started.bakery, decisions.bakery, day))
+  const baking = making && crew.bakes !== null
   const forDeliveries =
     baking && delivers !== null
       ? Math.min(
@@ -128,11 +171,23 @@ export function todayWork(
     deliveriesDue,
     delivers,
     bakes: forDeliveries + forTruck > 0 ? crew.bakes : null,
+    staff,
+    quits: left.quits,
+    absent,
+    hadWork: {
+      truck: truckDay,
+      deliveries: deliveriesDue,
+      bakery: making && (truckDay || deliveriesDue),
+    },
   }
 }
 
-/** Where an employee stands. */
-export type MemberStatus = 'atWork' | 'startsTomorrow' | 'leavesTomorrow'
+/**
+ * Where an employee stands: at work, starting or leaving tomorrow, or gone
+ * this morning, having quit underpaid.
+ */
+export type MemberStatus =
+  'atWork' | 'startsTomorrow' | 'leavesTomorrow' | 'quitsToday'
 
 /** An employee, at work today or tomorrow. */
 export interface MemberRow {
@@ -146,10 +201,21 @@ export interface MemberRow {
   readonly hourlyWage: Cents
   /** What that comes to a week. */
   readonly weeklyWage: Cents
+  /** What they ask an hour in their role (see `askingWage`). */
+  readonly askingWage: Cents
   readonly status: MemberStatus
+  /** Their strength, which shows from the interview on. */
+  readonly strength: TraitId
+  /** Their weakness, null until it shows on the job (see `knownTraits`). */
+  readonly weakness: TraitId | null
   /**
-   * What they do today, leaving tomorrow or not; none for a hire who has
-   * not started.
+   * Whether they warned they will quit, underpaid (see `hasWarned`), and
+   * the wage the player last left them is still below what they ask.
+   */
+  readonly leaving: boolean
+  /**
+   * What they do today, leaving tomorrow or not, `absent` when their job
+   * had work; none for a hire who has not started or one who quit.
    */
   readonly tasks: readonly Task[]
   /**
@@ -185,19 +251,22 @@ export interface RoleOffer {
   readonly role: StaffRoleId
   readonly name: string
   readonly hoursPerWeek: number
-  /** The hourly wage a hire starts at. */
-  readonly hourlyWage: Cents
-  readonly weeklyWage: Cents
-  /** What training a hire costs, up front. */
-  readonly training: Cents
 }
 
-/** Someone the player may hire. */
+/** Someone the player may hire, for the role picked. */
 export interface CandidateRow {
   readonly candidate: CandidateId
   readonly name: string
   /** Their portrait's id in staff.json (see portraits.ts). */
   readonly portrait: string
+  /** Their strength, which shows at the interview. */
+  readonly strength: TraitId
+  /** What they ask an hour in the role, which hiring them pays. */
+  readonly askingWage: Cents
+  /** What that comes to a week. */
+  readonly weeklyWage: Cents
+  /** What their training costs, up front. */
+  readonly training: Cents
 }
 
 /** The « Qui fait quoi » panel. */
@@ -206,7 +275,12 @@ export interface StaffBoard {
   /** Today's staff in order, then the hires who start tomorrow. */
   readonly members: readonly MemberRow[]
   readonly roles: readonly RoleOffer[]
-  /** Those neither wanted nor at work today, in the content's order. */
+  /** The role the candidates are for. */
+  readonly role: StaffRoleId
+  /**
+   * Those neither wanted nor at work today, in the content's order, as they
+   * would work in `role`.
+   */
   readonly candidates: readonly CandidateRow[]
   /** Whether the staff wanted is at its most. */
   readonly full: boolean
@@ -216,11 +290,13 @@ export interface StaffBoard {
 /**
  * The « Qui fait quoi » panel for `game` on the morning of `game.day`:
  * today's staff, those leaving or starting tomorrow with the latest
- * decisions, what each does today (see `todayWork`), what firing and
- * hiring cost, and who may be hired.
+ * decisions, or quitting this morning, what each does today (see
+ * `todayWork`), what the player knows of their traits, what firing and
+ * hiring cost, and who may be hired for `role`, at what they ask.
  */
 export function staffBoard(
   game: GameState,
+  role: StaffRoleId = 'camion',
   content: StaffContent = STAFF,
 ): StaffBoard {
   const work = todayWork(game)
@@ -232,25 +308,48 @@ export function staffBoard(
     hire: Hire,
     status: MemberStatus,
     fireCost: Cents | null,
-  ): MemberRow => ({
-    candidate: hire.candidate,
-    name: content.candidates[hire.candidate].name,
-    portrait: content.candidates[hire.candidate].portrait,
-    role: hire.role,
-    roleName: content.roles[hire.role].name,
-    hourlyWage: hire.hourlyWage,
-    weeklyWage: weeklyWage(hire, content),
-    status,
-    tasks: status === 'startsTomorrow' ? [] : employeeTasks(hire.role, work),
-    fireCost,
-    training:
-      status === 'startsTomorrow'
-        ? mulInt(weeklyWage(hire, content), content.trainingWeeks)
-        : null,
-    ...workFacts(game, hire.candidate, ROLE_TASKS[hire.role]),
-  })
+  ): MemberRow => {
+    const employee = work.staff.find(
+      ({ candidate }) => candidate === hire.candidate,
+    )
+    const hiredOnDay: Day | null =
+      status === 'startsTomorrow' ? null : (employee?.hiredOnDay ?? null)
+    const asks = askingWage(hire.candidate, hire.role, content)
+    const known = knownTraits(hire.candidate, hiredOnDay, game.day, content)
+    return {
+      candidate: hire.candidate,
+      name: content.candidates[hire.candidate].name,
+      portrait: content.candidates[hire.candidate].portrait,
+      role: hire.role,
+      roleName: content.roles[hire.role].name,
+      hourlyWage: hire.hourlyWage,
+      weeklyWage: weeklyWage(hire, content),
+      askingWage: asks,
+      status,
+      strength: known.strength,
+      weakness: known.weakness,
+      leaving:
+        status === 'atWork' &&
+        employee !== undefined &&
+        hasWarned(employee, game.day, content) &&
+        hire.hourlyWage < asks,
+      tasks:
+        status === 'startsTomorrow' || status === 'quitsToday'
+          ? []
+          : employeeTasks(hire, work),
+      fireCost,
+      training:
+        status === 'startsTomorrow'
+          ? mulInt(weeklyWage(hire, content), content.trainingWeeks)
+          : null,
+      ...workFacts(game, hire.candidate, ROLE_TASKS[hire.role]),
+    }
+  }
   const members = [
     ...today.map((hire) => {
+      if (work.quits.includes(hire.candidate)) {
+        return row(hire, 'quitsToday', null)
+      }
       const kept = wanted(hire.candidate)
       return kept === undefined
         ? row(hire, 'leavesTomorrow', null)
@@ -276,40 +375,44 @@ export function staffBoard(
     },
     members,
     roles: (Object.keys(content.roles) as StaffRoleId[]).map((role) => {
-      const { name, hoursPerWeek, hourlyWageCents } = content.roles[role]
-      const weekly = weeklyWage(
-        { role, hourlyWage: cents(hourlyWageCents.start) },
-        content,
-      )
-      return {
-        role,
-        name,
-        hoursPerWeek,
-        hourlyWage: cents(hourlyWageCents.start),
-        weeklyWage: weekly,
-        training: mulInt(weekly, content.trainingWeeks),
-      }
+      const { name, hoursPerWeek } = content.roles[role]
+      return { role, name, hoursPerWeek }
     }),
+    role,
     candidates: (Object.keys(content.candidates) as CandidateId[])
       .filter((candidate) => !busy.has(candidate))
-      .map((candidate) => ({
-        candidate,
-        name: content.candidates[candidate].name,
-        portrait: content.candidates[candidate].portrait,
-      })),
+      .map((candidate) => {
+        const hourlyWage = askingWage(candidate, role, content)
+        const weekly = weeklyWage({ role, hourlyWage }, content)
+        return {
+          candidate,
+          name: content.candidates[candidate].name,
+          portrait: content.candidates[candidate].portrait,
+          strength: content.candidates[candidate].strength,
+          askingWage: hourlyWage,
+          weeklyWage: weekly,
+          training: mulInt(weekly, content.trainingWeeks),
+        }
+      }),
     full: latest.staff.length >= content.maxEmployees,
     maxEmployees: content.maxEmployees,
   }
 }
 
-/** What an employee in `role` does today. */
-function employeeTasks(role: StaffRoleId, work: TodayWork): Task[] {
-  const task = ROLE_TASKS[role]
-  return doesTask(task, 'employee', work) ? [task] : []
+/**
+ * What the employee `hire` does today: their role's job, or « Absent »
+ * when they are and it had work.
+ */
+function employeeTasks(hire: Hire, work: TodayWork): Task[] {
+  const job = ROLE_TASKS[hire.role]
+  if (work.absent.includes(hire.candidate)) {
+    return work.hadWork[job] ? ['absent'] : []
+  }
+  return doesTask(job, 'employee', work) ? [job] : []
 }
 
 /** What the owner, at work, does today. */
-function ownerTasks(work: TodayWork): Task[] {
+function ownerTasks(work: TodayWork): Job[] {
   return (['truck', 'deliveries', 'bakery'] as const).filter((task) =>
     doesTask(task, 'owner', work),
   )
@@ -319,7 +422,7 @@ function ownerTasks(work: TodayWork): Task[] {
  * Whether `who` does `task` today: the owner always serves at an open
  * truck, beside any employee there.
  */
-function doesTask(task: Task, who: 'employee' | 'owner', work: TodayWork) {
+function doesTask(task: Job, who: 'employee' | 'owner', work: TodayWork) {
   switch (task) {
     case 'truck':
       return work.opens
@@ -328,20 +431,6 @@ function doesTask(task: Task, who: 'employee' | 'owner', work: TodayWork) {
     case 'bakery':
       return work.bakes === who
   }
-}
-
-/**
- * The employees at work on the morning of `started.day`, as the engine's
- * staff morning leaves them: today's plan, each keeping the day they
- * started.
- */
-function todayStaff(started: GameState): Employee[] {
-  return started.decisions.staff.map((hire) => ({
-    ...hire,
-    hiredOnDay:
-      started.staff.find(({ candidate }) => candidate === hire.candidate)
-        ?.hiredOnDay ?? started.day,
-  }))
 }
 
 /** What someone did yesterday and on the last days (#283). */
@@ -356,7 +445,7 @@ interface WorkFacts {
  * for the owner, null, every job they did. Facts only: what they served,
  * delivered or baked, never what it is worth to the player.
  */
-function workFacts(game: GameState, who: Worker, task: Task | null): WorkFacts {
+function workFacts(game: GameState, who: Worker, task: Job | null): WorkFacts {
   const history = game.workDays ?? []
   const last = history.at(-1)
   const yesterday =
@@ -391,7 +480,7 @@ function workFacts(game: GameState, who: Worker, task: Task | null): WorkFacts {
 function dayText(
   day: WorkDay,
   who: Worker,
-  task: Task | null,
+  task: Job | null,
   form: 'line' | 'row',
 ): string | null {
   if (who === 'owner' && day.ownerAway)
@@ -401,12 +490,12 @@ function dayText(
   }
   const person = day.people.find((one) => one.who === who)
   if (person === undefined) return null
-  const tasks: readonly Task[] = task !== null ? [task] : ownerDid(person)
+  const tasks: readonly Job[] = task !== null ? [task] : ownerDid(person)
   return tasks.map((each) => taskText(person, each, form)).join(' · ')
 }
 
 /** The jobs the owner did: those with anything done, the truck by default. */
-function ownerDid(person: PersonDay): Task[] {
+function ownerDid(person: PersonDay): Job[] {
   const did = (['truck', 'deliveries', 'bakery'] as const).filter((task) =>
     task === 'truck'
       ? person.customers > 0
@@ -418,7 +507,7 @@ function ownerDid(person: PersonDay): Task[] {
 }
 
 /** What `person` did at `task`, as a line says it or a row, shorter. */
-function taskText(person: PersonDay, task: Task, form: 'line' | 'row'): string {
+function taskText(person: PersonDay, task: Job, form: 'line' | 'row'): string {
   const line = form === 'line'
   switch (task) {
     case 'truck':
@@ -454,7 +543,9 @@ export function ownerTip(owner: OwnerRow): TipContent {
 }
 
 /**
- * What an employee's tooltip says: their role, hours and pay, the training
+ * What an employee's tooltip says: their role, hours and pay, what they
+ * ask, in amber while their wage is below it, what their strength does in
+ * their role, and their weakness's, or when it shows; then the training
  * of a hire who has not started and the notice firing one at work costs.
  */
 export function memberTip(member: MemberRow, hours: number): TipContent {
@@ -463,6 +554,12 @@ export function memberTip(member: MemberRow, hours: number): TipContent {
     { label: 'Rôle', value: roleName },
     { label: 'Heures par semaine', value: `${hours}${NBSP}h` },
     { label: 'Salaire par semaine', value: formatMoney(weeklyWage) },
+    {
+      label: 'Demande',
+      value: `${formatMoney(member.askingWage)} de l'heure`,
+      ...(member.hourlyWage < member.askingWage ? { warn: true } : {}),
+    },
+    ...traitRows(member.strength, member.weakness, member.role),
   ]
   if (status === 'startsTomorrow' && training !== null) {
     rows.push({ label: 'Formation', value: formatMoney(training) })
@@ -474,27 +571,97 @@ export function memberTip(member: MemberRow, hours: number): TipContent {
   return { title: name, rows }
 }
 
-/** An employee's one status line: starting or leaving tomorrow, if so. */
-export function memberLine({ status }: MemberRow): StatusLine {
+/**
+ * The tooltip rows of someone's traits in `role`: « Force · Rapidité »
+ * and what it does, then « Faiblesse · Minutie » and what it does, or, not
+ * known yet, « Faiblesse » and when it shows. Words only, never a number.
+ */
+function traitRows(
+  strength: TraitId,
+  weakness: TraitId | null,
+  role: StaffRoleId,
+  content: StaffContent = STAFF,
+): TipRow[] {
+  return [
+    {
+      label: `Force · ${content.traits[strength].name}`,
+      value: traitTip(strength, 'strong', role, content),
+    },
+    weakness === null
+      ? { label: 'Faiblesse', value: discoveryText(content) }
+      : {
+          label: `Faiblesse · ${content.traits[weakness].name}`,
+          value: traitTip(weakness, 'weak', role, content),
+        },
+  ]
+}
+
+/**
+ * An employee's one status line: starting or leaving tomorrow, gone this
+ * morning, or thinking of leaving once they warned, underpaid.
+ */
+export function memberLine({ status, leaving }: MemberRow): StatusLine {
   switch (status) {
     case 'startsTomorrow':
       return { fact: { tone: 'warn', text: 'Commence demain' }, tomorrow: null }
     case 'leavesTomorrow':
       return { fact: { tone: 'off', text: 'Part demain' }, tomorrow: null }
+    case 'quitsToday':
+      return { fact: { tone: 'bad', text: 'Parti ce matin' }, tomorrow: null }
     case 'atWork':
-      return { fact: null, tomorrow: null }
+      return leaving
+        ? { fact: { tone: 'warn', text: 'Pense à partir' }, tomorrow: null }
+        : { fact: null, tomorrow: null }
   }
 }
 
-/** What a role's tooltip says: its hours, its wage and the training. */
+/**
+ * How many weeks of paid training a hire costs, as a candidate's card
+ * says it: « 1 semaine payée », or « aucune » with none.
+ */
+export function trainingText(content: StaffContent = STAFF): string {
+  const weeks = content.trainingWeeks
+  if (weeks === 0) return 'aucune'
+  const plural = weeks > 1 ? 's' : ''
+  return `${weeks}${NBSP}semaine${plural} payée${plural}`
+}
+
+/**
+ * What a candidate's tooltip says, for `role`: its hours, what they ask an
+ * hour and a week, what their training costs, what their strength does
+ * there, and when their weakness shows.
+ */
+export function candidateTip(
+  row: CandidateRow,
+  role: StaffRoleId,
+  content: StaffContent = STAFF,
+): TipContent {
+  return {
+    title: row.name,
+    rows: [
+      { label: 'Rôle', value: content.roles[role].name },
+      {
+        label: 'Heures par semaine',
+        value: `${content.roles[role].hoursPerWeek}${NBSP}h`,
+      },
+      { label: 'Demande', value: `${formatMoney(row.askingWage)} de l'heure` },
+      { label: 'Salaire par semaine', value: formatMoney(row.weeklyWage) },
+      { label: 'Formation', value: formatMoney(row.training) },
+      ...traitRows(row.strength, null, role, content),
+    ],
+  }
+}
+
+/**
+ * What a role's tooltip says: its hours. Each candidate asks their own
+ * wage, so the pay and the training are on the candidates' cards.
+ */
 export function roleTip(offer: RoleOffer): TipContent {
   return {
     title: offer.name,
     rows: [
       { label: 'Heures par semaine', value: `${offer.hoursPerWeek}${NBSP}h` },
-      { label: 'Salaire horaire', value: formatMoney(offer.hourlyWage) },
-      { label: 'Salaire par semaine', value: formatMoney(offer.weeklyWage) },
-      { label: 'Formation', value: formatMoney(offer.training) },
+      { label: 'Salaire et formation', value: 'Selon la candidature' },
     ],
   }
 }

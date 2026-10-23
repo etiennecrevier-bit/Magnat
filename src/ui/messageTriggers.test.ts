@@ -5,6 +5,7 @@ import { GROCERS, startContract } from '../engine/contracts.ts'
 import { ENERGY, EVENTS } from '../engine/day.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import { STAFF } from '../engine/staff.ts'
+import { applyDecision } from '../engine/decisions.ts'
 import { cents } from '../engine/money.ts'
 import type { Day, GameState } from '../engine/types.ts'
 import { entriesOf } from '../finance/journal.ts'
@@ -13,6 +14,8 @@ import {
   MESSAGES,
   NO_MEMORY,
   contractTriggers,
+  discoveryTriggers,
+  ownWordsTriggers,
   pickLine,
   portraitOfEmployee,
   received,
@@ -451,13 +454,22 @@ describe("the employees' own words (#255)", () => {
     text: MESSAGES.quit.kevin,
     day: 64,
   }
+  // Two weeks on the job, the owner finds out his weakness (#256).
+  const DISCOVERY = {
+    kind: 'discovered',
+    from: 'Vous',
+    portrait: 'kevinBouchard',
+    text: MESSAGES.discovered.kevin,
+    day: 15,
+  }
 
   it('sends his warning a week before he quits, then his goodbye, once each, day by day', () => {
     const { store, sent, stop } = underpaid()
     for (let day = 0; day < 70; day += 1) store.getState().advance(1)
     expect(sent.filter(({ kind }) => kind !== 'hired')).toEqual([
-      { id: 1, ...WARNING },
-      { id: 2, ...GOODBYE },
+      { id: 1, ...DISCOVERY },
+      { id: 2, ...WARNING },
+      { id: 3, ...GOODBYE },
     ])
     expect(store.getState().game.staff).toEqual([])
     stop()
@@ -469,6 +481,7 @@ describe("the employees' own words (#255)", () => {
     store.getState().advance(20)
     expect(sent.map(({ kind, day }) => [kind, day])).toEqual([
       ['hired', 1],
+      ['discovered', 15],
       ['underpaid', 57],
       ['quit', 64],
     ])
@@ -483,8 +496,9 @@ describe("the employees' own words (#255)", () => {
     expect(store.getState().game.day).toBe(70)
     expect(store.getState().game.staff).toEqual([])
     expect(sent.filter(({ kind }) => kind !== 'hired')).toEqual([
-      { id: 1, ...WARNING },
-      { id: 2, ...GOODBYE },
+      { id: 1, ...DISCOVERY },
+      { id: 2, ...WARNING },
+      { id: 3, ...GOODBYE },
     ])
     stop()
   })
@@ -500,6 +514,7 @@ describe("the employees' own words (#255)", () => {
     const dayByDay = heard(Array.from({ length: 70 }, () => 1))
     expect(dayByDay.map(([kind]) => kind)).toEqual([
       'hired',
+      'discovered',
       'underpaid',
       'quit',
     ])
@@ -529,9 +544,61 @@ describe("the employees' own words (#255)", () => {
       .getState()
       .decide({ kind: 'setWage', candidate: 'kevin', hourlyWage: cents(1650) })
     store.getState().advance(12)
-    expect(sent.map(({ kind }) => kind)).toEqual(['hired', 'underpaid'])
+    expect(sent.map(({ kind }) => kind)).toEqual([
+      'hired',
+      'discovered',
+      'underpaid',
+    ])
     expect(store.getState().game.staff).toHaveLength(1)
     stop()
+  })
+})
+
+describe('discoveryTriggers (#256)', () => {
+  /** Amélie at the truck from day 1, played to the morning of `day`. */
+  function amelieTo(day: number): GameState {
+    const hired = applyDecision(START, {
+      kind: 'hire',
+      role: 'camion',
+      candidate: 'amelie',
+    })
+    return playedTo(hired, day)
+  }
+
+  const DISCOVERED = {
+    kind: 'discovered',
+    day: 15,
+    from: 'Vous',
+    portrait: 'amelieGagnon',
+    text: MESSAGES.discovered.amelie,
+  }
+
+  it("calls for the owner's line on the morning her weakness shows, once", () => {
+    expect(STAFF.discoveryDays).toBe(14)
+    expect(discoveryTriggers(amelieTo(14), amelieTo(15))).toEqual([DISCOVERED])
+    expect(discoveryTriggers(amelieTo(10), amelieTo(20))).toEqual([DISCOVERED])
+    expect(discoveryTriggers(amelieTo(13), amelieTo(14))).toEqual([])
+    expect(discoveryTriggers(amelieTo(15), amelieTo(16))).toEqual([])
+  })
+
+  it('calls for nothing when no day was played', () => {
+    const day15 = amelieTo(15)
+    expect(discoveryTriggers(day15, day15)).toEqual([])
+    expect(discoveryTriggers(day15, amelieTo(14))).toEqual([])
+  })
+
+  it('calls for nothing for someone let go that very morning', () => {
+    const fired = applyDecision(amelieTo(14), {
+      kind: 'fire',
+      candidate: 'amelie',
+    })
+    const day15 = tick(fired)
+    expect(day15.decisions.staff).toEqual([])
+    expect(discoveryTriggers(amelieTo(14), day15)).toEqual([])
+  })
+
+  it('is one of the own words the messages hear', () => {
+    expect(ownWordsTriggers(amelieTo(14), amelieTo(15))).toEqual([DISCOVERED])
   })
 })
 

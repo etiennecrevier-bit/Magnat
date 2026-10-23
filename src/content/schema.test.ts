@@ -884,6 +884,8 @@ describe('loadStaffContent', () => {
     ['discoveryDays', 0],
     ['underpaidWeeks', 1.5],
     ['warningWeeks', 0],
+    ['wageStepCents', 0],
+    ['wageStepCents', 12.5],
     ['traits.rapidite.name', ''],
     ['traits.rapidite.roles', []],
     ['traits.rapidite.strong', -1],
@@ -942,6 +944,19 @@ describe('loadStaffContent', () => {
     const raw = withStaffValue('traits.fiabilite.weak', 1.5)
     reject(raw, 'traits.fiabilite.weak')
     expect(() => loadStaff(raw)).toThrow('a chance of absence is at most 1')
+  })
+
+  it('puts every wage a role starts at, allows and a candidate asks on the step of « − » and « + » (#256)', () => {
+    const staff = loadStaffContent()
+    expect(staff.wageStepCents).toBe(50)
+    const onStep = (wage: number) => wage % staff.wageStepCents === 0
+    for (const { hourlyWageCents } of Object.values(staff.roles)) {
+      expect(Object.values(hourlyWageCents).every(onStep)).toBe(true)
+    }
+    for (const trait of Object.values(staff.traits)) {
+      expect(onStep(trait.askingPremiumCents)).toBe(true)
+      expect(onStep(trait.askingDiscountCents)).toBe(true)
+    }
   })
 
   it('rejects a starting wage outside its range', () => {

@@ -29,10 +29,11 @@ export const messageKindSchema = z.enum([
 export type MessageKind = z.infer<typeof messageKindSchema>
 
 /**
- * The messages an employee writes in their own words, one line per
- * candidate: `underpaid`, the warning, and `quit` (#255).
+ * The messages written for one employee, one line per candidate: their
+ * own words, `underpaid`, the warning, and `quit` (#255), and the owner's
+ * `discovered`, the morning their weakness shows (#256).
  */
-export const OWN_WORDS = ['underpaid', 'quit'] as const
+export const OWN_WORDS = ['underpaid', 'quit', 'discovered'] as const
 
 export type OwnWordsKind = (typeof OWN_WORDS)[number]
 
@@ -79,6 +80,11 @@ export const messagesSchema = z
     underpaid: ownWordsSchema,
     /** An employee who quits, underpaid, the morning they leave (#255). */
     quit: ownWordsSchema,
+    /**
+     * What the owner finds out the morning an employee's weakness shows
+     * (#256), in the owner's voice.
+     */
+    discovered: ownWordsSchema,
   })
   .superRefine((messages, ctx) => {
     const seen = new Set<string>()
