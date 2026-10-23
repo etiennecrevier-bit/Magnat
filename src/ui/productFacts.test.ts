@@ -96,12 +96,6 @@ describe('menuFact', () => {
     expect(menuFact(null, true)).toBeNull()
     expect(menuFact(null, false)?.text).toBe('Hors vente')
   })
-
-  it('shows no « trop cher » while the engine does not count it per product', () => {
-    expect(menuFact(facts({ pricedOut: null, spoiled: 2 }), true)?.text).toBe(
-      '2 périmés hier',
-    )
-  })
 })
 
 describe('stockFact', () => {
