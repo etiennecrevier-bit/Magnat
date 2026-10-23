@@ -109,4 +109,13 @@ describe('CoachBubbleView on a screen that cannot hover', () => {
     expect(render(view)).toContain('souris')
     expect(buttons(render({ ...first }))).toContain('Allons-y')
   })
+
+  it('has touch words saying « Touche » for every step that asks for the mouse', () => {
+    const hovers = TUTORIAL.steps.filter(({ text }) => text.includes('souris'))
+    expect(hovers.map(({ id }) => id)).toContain('tropCher')
+    for (const step of hovers) {
+      expect(step.touchText).toMatch(/Touche/)
+      expect(step.touchText).not.toContain('souris')
+    }
+  })
 })

@@ -6,7 +6,10 @@
 export const TIP = {
   /** A mouse or pen resting on the anchor this long opens it. */
   hoverMs: 300,
-  /** A finger held on the anchor this long opens it. */
+  /**
+   * A finger held on the anchor this long opens it. A shorter tap toggles it
+   * where the anchor has no action of its own (`tapToggles`).
+   */
   longPressMs: 500,
   /** Time the pointer has to cross from the anchor onto the tooltip. */
   leaveGraceMs: 100,
@@ -237,6 +240,25 @@ export function editsText(target: KeyTarget): boolean {
   )
 }
 
+// What a tap does something of its own on: a button, a link, a field.
+const ACTIONS =
+  'button, a[href], input, select, textarea, label, summary, [role="button"], [contenteditable="true"]'
+
+/**
+ * Whether a finger lifting from `target`, inside `anchor`, taps something
+ * with no action of its own, such as a product card's name or its status
+ * line, so the tap toggles the tooltip: true unless `target` is in a button,
+ * link or field inside the anchor, or the anchor is one. Those keep their
+ * action and open the tooltip only on a long press.
+ */
+export function tapToggles<T>(
+  anchor: { contains(other: T): boolean },
+  target: { closest(selectors: string): T | null },
+): boolean {
+  const action = target.closest(ACTIONS)
+  return action === null || !anchor.contains(action)
+}
+
 /**
  * Whether the focus leaving the anchor for `next`, null when it leaves the
  * page or goes nowhere, takes it out of the anchor, which closes the
@@ -270,8 +292,13 @@ export interface TipControl {
   blur(): void
   /** A press on the anchor starts; a finger starts the long press. */
   pressStart(pointerType: string): void
-  /** The press ends or is cancelled before the long press opens it. */
-  pressEnd(): void
+  /**
+   * The press ends or is cancelled before the long press opens it. With
+   * `tap`, a finger lifted before the long press opened it, on a part of
+   * the anchor with no action of its own (`tapToggles`): that toggles it,
+   * opened until Escape, blur, a press outside or the next tap.
+   */
+  pressEnd(tap?: boolean): void
   /** Whether a finger is held on the anchor, as a long press would be. */
   holding(): boolean
   /**
@@ -373,8 +400,15 @@ export function createTipControl(
         openedByPress = true
       })
     },
-    pressEnd() {
+    pressEnd(tap = false) {
+      const short = held && !openedByPress
       held = false
+      if (tap && short) {
+        const next = !open
+        set(next)
+        pinned = next
+        return
+      }
       if (!open) stopOpening()
     },
     holding() {

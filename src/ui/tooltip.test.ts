@@ -4,6 +4,7 @@ import {
   createTipControl,
   editsText,
   placeTip,
+  tapToggles,
   TIP,
   tipBounds,
   tipScrollTop,
@@ -219,6 +220,30 @@ describe('editsText', () => {
   })
 })
 
+describe('tapToggles', () => {
+  // A product card holding a price stepper, its name and its status line.
+  const inside = new Set(['card', 'name', 'stepper'])
+  const card = { contains: (other: string) => inside.has(other) }
+  /** A tap on an element whose nearest button, link or field is `action`. */
+  const tapIn = (action: string | null) => ({
+    closest: (selectors: string) => {
+      expect(selectors).toContain('button')
+      return action
+    },
+  })
+
+  it('toggles the tooltip on a part of the anchor with no action of its own', () => {
+    expect(tapToggles(card, tapIn(null))).toBe(true)
+    // In a list that is itself a button, outside the anchor.
+    expect(tapToggles(card, tapIn('list'))).toBe(true)
+  })
+
+  it('leaves a tap on a button inside the anchor, or on an anchor that is one, to its action', () => {
+    expect(tapToggles(card, tapIn('stepper'))).toBe(false)
+    expect(tapToggles(card, tapIn('card'))).toBe(false)
+  })
+})
+
 describe('blurLeaves', () => {
   // A card holding a field and a stepper.
   const inside = new Set(['card', 'field', 'stepper'])
@@ -418,6 +443,51 @@ describe('createTipControl', () => {
     control.pressStart('touch')
     control.pressEnd()
     expect(control.clickAfterPress()).toBe(false)
+  })
+
+  it('toggles on a short tap where the anchor has no action of its own', () => {
+    control.pressStart('touch')
+    vi.advanceTimersByTime(100)
+    control.pressEnd(true)
+    expect(changes).toEqual([true])
+    // The click that follows goes through, and the finger leaving keeps it
+    // open.
+    expect(control.clickAfterPress()).toBe(false)
+    control.pointerLeave('touch')
+    vi.advanceTimersByTime(1000)
+    expect(changes).toEqual([true])
+    control.pressStart('touch')
+    control.pressEnd(true)
+    expect(changes).toEqual([true, false])
+    // A tap elsewhere closes it too.
+    control.pressStart('touch')
+    control.pressEnd(true)
+    control.pressOutside()
+    expect(changes).toEqual([true, false, true, false])
+  })
+
+  it('does not close what a long press opened when the finger lifts', () => {
+    control.pressStart('touch')
+    vi.advanceTimersByTime(500)
+    control.pressEnd(true)
+    expect(changes).toEqual([true])
+    expect(control.clickAfterPress()).toBe(true)
+  })
+
+  it('opens on a button only by the long press, not by a tap', () => {
+    control.pressStart('touch')
+    control.pressEnd(false)
+    vi.advanceTimersByTime(1000)
+    expect(changes).toEqual([])
+    control.pressStart('touch')
+    vi.advanceTimersByTime(500)
+    expect(changes).toEqual([true])
+  })
+
+  it('does not toggle on a click of a mouse', () => {
+    control.pressStart('mouse')
+    control.pressEnd(true)
+    expect(changes).toEqual([])
   })
 
   it('closes on Escape and says whether it was open', () => {

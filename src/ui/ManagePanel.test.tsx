@@ -316,7 +316,10 @@ describe('ManagePanelView', () => {
     expect(html).toContain(
       '<p id="manage-price-croissant-status" class="status-line"><span class="status-line__dot status-line__dot--bad" aria-hidden="true"></span>',
     )
-    expect(statusLine(html, 'manage-price-cafe-status')).toBe('Bien vendu hier')
+    // The café's starting price is above what some find fair (#268).
+    expect(statusLine(html, 'manage-price-cafe-status')).toBe(
+      `${game.lastDay?.pricedOut.cafe} clients trouvaient ça cher`,
+    )
   })
 
   it('lays out each restock rule by its kind, with steppers of one unit and its status line', () => {

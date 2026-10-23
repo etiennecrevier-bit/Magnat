@@ -39,22 +39,22 @@ export interface StatusLine {
   readonly tomorrow: string | null
 }
 
-/** What one segment did with the product yesterday. */
+/**
+ * What one segment did with the product yesterday. No « trop cher » here:
+ * a visit records what it bought, not which products its prices turned
+ * away (`Visit.outcome` is `tooExpensive` only when it bought nothing), so
+ * a segment's count for one product is not known.
+ */
 export interface SegmentProductFacts {
   readonly segment: SegmentId
   readonly sold: number
-  /** Null when the engine does not count it per product. */
-  readonly pricedOut: number | null
 }
 
 /** Yesterday at the truck, for one product. */
 export interface YesterdayFacts {
   readonly sold: number
-  /**
-   * Customers a price above their reference turned away from the product;
-   * null when the engine does not count it per product.
-   */
-  readonly pricedOut: number | null
+  /** Customers a price above their reference turned away from the product. */
+  readonly pricedOut: number
   /** Units asked for after the product had sold out. */
   readonly lostSales: number
   readonly spoiled: number
@@ -65,11 +65,6 @@ export interface YesterdayFacts {
   readonly soldOutMinute: number | null
   readonly segments: readonly SegmentProductFacts[]
 }
-
-// The engine counts the visits a price turned away only for every product
-// together (`SegmentSummary.tooExpensive`), which cannot say which one, so
-// a product's « trop cher » is not known.
-const PRICED_OUT_UNKNOWN = null
 
 /** Yesterday's facts for `product`, from `day`, the last day played. */
 export function yesterdayFacts(
@@ -85,7 +80,7 @@ export function yesterdayFacts(
   }
   return {
     sold: day.sold[product],
-    pricedOut: PRICED_OUT_UNKNOWN,
+    pricedOut: day.pricedOut[product],
     lostSales,
     spoiled: day.spoiled[product],
     soldOutMinute: lostSales > 0 ? lastSale : null,
@@ -96,7 +91,6 @@ export function yesterdayFacts(
           visit.segment === segment ? units + visit.bought[product] : units,
         0,
       ),
-      pricedOut: PRICED_OUT_UNKNOWN,
     })),
   }
 }
@@ -174,7 +168,7 @@ export function menuFact(
   if (facts === null) return null
   if (facts.lostSales > 0) return stockout(facts)
   const { pricedOut } = facts
-  if (pricedOut !== null && pricedOut > 0) {
+  if (pricedOut > 0) {
     return {
       tone: 'warn',
       text:
@@ -264,23 +258,16 @@ export function productTip(
       rows: money,
     }
   }
-  const segments = facts.segments.map(
-    ({ segment, sold, pricedOut }, index): TipRow => ({
-      label: CUSTOMERS.segments[segment].name,
-      value:
-        pricedOut === null
-          ? `${formatCount(sold)} vendus`
-          : `${formatCount(sold)} vendus · ${formatCount(pricedOut)} trop cher`,
-      divider: index === 0,
-    }),
-  )
+  const segments = facts.segments.map(({ segment, sold }, index): TipRow => ({
+    label: CUSTOMERS.segments[segment].name,
+    value: `${formatCount(sold)} vendus`,
+    divider: index === 0,
+  }))
   return {
     title: `${name} · hier`,
     rows: [
       { label: 'Vendus', value: formatCount(facts.sold) },
-      ...(facts.pricedOut === null
-        ? []
-        : [warnCount('Trop cher', facts.pricedOut)]),
+      warnCount('Trop cher', facts.pricedOut),
       warnCount('Rupture', facts.lostSales),
       { label: 'Périmés', value: formatCount(facts.spoiled) },
       ...money,

@@ -19,6 +19,7 @@ import {
   tipBounds,
   editsText,
   tipScrollTop,
+  tapToggles,
   type TipContent,
   type TipPrefer,
 } from './tooltip.ts'
@@ -71,7 +72,8 @@ export interface TooltipProps {
  * The game's one tooltip, on its anchor: dark, with a title, an optional
  * text, rows of figures and a hint of what clicking does, and an arrow
  * toward the anchor. It opens on hover after a moment, at once on keyboard
- * focus on the anchor or inside it and on a long press, and closes on
+ * focus on the anchor or inside it and on a long press, toggles on a tap
+ * where the anchor has no action of its own (`tapToggles`), and closes on
  * leave, blur out of the anchor, Escape or a press elsewhere. It never
  * takes the focus: text taller than the window scrolls by the wheel, or by
  * the arrows, Page Up, Page Down, Home and End on the focused anchor, except
@@ -97,7 +99,7 @@ export default function Tooltip({
   useEffect(() => () => control.dispose(), [control])
 
   // An anchor Réal's bubble may point at (#238) tells the tutorial when its
-  // tooltip opens, and lets the bubble open it, as a tap on a phone does
+  // tooltip opens, and lets the bubble open it, as a tap on a button does
   // not.
   const tuto = anchorElement?.dataset.tuto
   useEffect(() => {
@@ -202,7 +204,14 @@ export default function Tooltip({
     onPointerEnter: (event) => control.pointerEnter(event.pointerType),
     onPointerLeave: (event) => control.pointerLeave(event.pointerType),
     onPointerDown: (event) => control.pressStart(event.pointerType),
-    onPointerUp: () => control.pressEnd(),
+    onPointerUp: (event) => {
+      const { currentTarget, pointerType, target } = event
+      control.pressEnd(
+        pointerType === 'touch' &&
+          target instanceof Element &&
+          tapToggles(currentTarget, target),
+      )
+    },
     onPointerCancel: () => control.pressEnd(),
     // The focus may land on the anchor or on a control inside it, such as a
     // card's field and steppers; moving between those keeps it open.
