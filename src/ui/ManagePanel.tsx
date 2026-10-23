@@ -192,7 +192,7 @@ function MenuTab({
       <LockNote kind="price" locked={locked} />
       <div className="manage__cards">
         {PRODUCTS.map((product) => {
-          const { facts, onSale, cost } = products[product]
+          const { facts, inSeason, onSale, cost } = products[product]
           const price = prices[product]
           return (
             <ProductCard
@@ -200,7 +200,7 @@ function MenuTab({
               product={product}
               price={price}
               line={{
-                fact: menuFact(facts, onSale),
+                fact: menuFact(facts, onSale, inSeason),
                 tomorrow: tomorrowPrice(today[product], price),
               }}
               tip={productTip(product, facts, price, cost)}
@@ -237,10 +237,10 @@ function StocksTab({
         {PRODUCTS.map((product) => {
           const { name } = FOOD_TRUCK.products[product]
           const rule = restock[product]
-          const { facts, left } = products[product]
+          const { facts, inSeason, left } = products[product]
           const statusId = `manage-restock-${product}-status`
           const line = {
-            fact: stockFact(facts, left),
+            fact: stockFact(facts, left, inSeason),
             tomorrow: tomorrowRule(today[product], rule),
           }
           const hasLine = line.fact !== null || line.tomorrow !== null

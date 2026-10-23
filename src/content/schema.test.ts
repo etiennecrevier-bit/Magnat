@@ -219,6 +219,40 @@ describe('loadFoodTruckContent', () => {
     )
   })
 
+  it('sells lemonade from June 1st to September 15th, the others all year (#261)', () => {
+    const { products } = loadFoodTruckContent()
+    expect(products.limonade.season).toEqual({
+      from: { month: 6, day: 1 },
+      to: { month: 9, day: 15 },
+    })
+    expect(products.limonade.shelfLifeDays).toBe(1)
+    for (const product of ['cafe', 'chocolat', 'croissant'] as const) {
+      expect(products[product].season).toBeUndefined()
+    }
+  })
+
+  it("takes a season over the year's end", () => {
+    const winter = { from: { month: 12, day: 1 }, to: { month: 2, day: 28 } }
+    expect(
+      loadFoodTruckContent(withValue('products.chocolat.season', winter))
+        .products.chocolat.season,
+    ).toEqual(winter)
+  })
+
+  it.each([
+    ['products.limonade.season.to.day', 31],
+    ['products.limonade.season.from.month', 13],
+  ])('rejects a season date that is no date: %s = %d', (path, value) => {
+    expectRejected(withValue(path, value), path)
+  })
+
+  it('rejects a season with no end', () => {
+    expectRejected(
+      without('products.limonade.season.to'),
+      'products.limonade.season.to',
+    )
+  })
+
   it('rejects a shelf life of 0 days', () => {
     expectRejected(
       withValue('products.croissant.shelfLifeDays', 0),

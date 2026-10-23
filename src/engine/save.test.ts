@@ -5300,6 +5300,7 @@ describe('a tutorial (#236)', () => {
       cafe: 0,
       chocolat: 0,
       croissant: 0,
+      limonade: 0,
     })
   })
 

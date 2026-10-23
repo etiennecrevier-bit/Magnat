@@ -517,9 +517,11 @@ describe('the six Défis, scripted', () => {
         lastDay: 76,
       },
     ])
+    // Played as it starts, it orders no lemonade, which customers ask for in
+    // July and wait in line for (#261): « Bronze » until #266 retunes it.
     expect(outcome(played('festivalDuPasPire', 42))).toMatchObject({
       status: 'reussi',
-      medal: 'argent',
+      medal: 'bronze',
     })
     expect(
       outcome(played('festivalDuPasPire', 42, { start: [croissants(70)] })),

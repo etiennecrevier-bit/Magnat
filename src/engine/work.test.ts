@@ -208,7 +208,7 @@ describe('workOf', () => {
     const visit = (servedBy: 'owner' | 'amelie' | undefined, cafe: number) => ({
       arrivalMinute: 480,
       segment: 'habitue' as const,
-      bought: { cafe, chocolat: 0, croissant: 0 },
+      bought: { cafe, chocolat: 0, croissant: 0, limonade: 0 },
       outcome: cafe > 0 ? ('bought' as const) : ('browsed' as const),
       servedMinute: servedBy === undefined ? null : 481,
       leftMinute: null,

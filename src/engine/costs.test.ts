@@ -174,9 +174,9 @@ const QUIET: Setup = {
  * of sales are paid by card, at 2,5 %.
  */
 function selling(customers: number): Setup {
-  const prices = { cafe: 325, chocolat: 350, croissant: 375 }
-  const wants = { cafe: 1, chocolat: 1, croissant: 0 }
-  const packaging = { cafe: 20, chocolat: 15, croissant: 5 }
+  const prices = { cafe: 325, chocolat: 350, croissant: 375, limonade: 400 }
+  const wants = { cafe: 1, chocolat: 1, croissant: 0, limonade: 0 }
+  const packaging = { cafe: 20, chocolat: 15, croissant: 5, limonade: 20 }
   const truck = loadFoodTruckContent({
     ...FOOD_TRUCK,
     products: byProduct((product) => ({

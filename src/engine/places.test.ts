@@ -611,7 +611,12 @@ describe("the mill's discount", () => {
   }
 
   it('takes 5 % off each unit of the next restock that buys anything, then is used up', () => {
-    expect(discounted).toEqual({ cafe: 43, chocolat: 52, croissant: 104 })
+    expect(discounted).toEqual({
+      cafe: 43,
+      chocolat: 52,
+      croissant: 104,
+      limonade: 43,
+    })
     // The mill comes after the morning's restock.
     const tuesdayMorning = goTo(TUESDAY, 'meunerie')
     const tuesday = playDay(tuesdayMorning)
@@ -650,7 +655,7 @@ describe("the mill's discount", () => {
         kind: 'restock',
         product,
         rule:
-          product === 'croissant'
+          FOOD_TRUCK.startingDecisions.restock[product].kind === 'buyDaily'
             ? { kind: 'buyDaily', quantity: 0 }
             : { kind: 'topUp', whenBelow: 0, upTo: 0 },
       })),

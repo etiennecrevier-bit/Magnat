@@ -6,13 +6,12 @@ import {
   type DistrictContent,
   type DistrictId,
   type FoodTruckContent,
-  type MonthDay,
   type DistrictWalkIns,
   type WinterStorage,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import type { JournalEntry } from '../finance/journal.ts'
-import { toCalendar } from './calendar.ts'
+import { onDates, toCalendar } from './calendar.ts'
 import type { CrowdChanges } from './customers.ts'
 import { add, cents, type Cents } from './money.ts'
 import { credit, debit } from './posting.ts'
@@ -195,17 +194,5 @@ export function isStored(
   storage: WinterStorage | undefined,
   day: Day,
 ): boolean {
-  if (storage === undefined) return false
-  const { month, dayOfMonth } = toCalendar(day)
-  const today: MonthDay = { month, day: dayOfMonth }
-  const { from, to } = storage
-  if (compare(from, to) <= 0) {
-    return compare(from, today) <= 0 && compare(today, to) <= 0
-  }
-  return compare(from, today) <= 0 || compare(today, to) <= 0
-}
-
-/** Below 0 when `a` comes before `b` in a year, 0 on the same date. */
-function compare(a: MonthDay, b: MonthDay): number {
-  return a.month - b.month || a.day - b.day
+  return storage !== undefined && onDates(day, storage)
 }

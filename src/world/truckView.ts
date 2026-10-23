@@ -7,7 +7,8 @@ import type {
   StreetModifierKind,
 } from '../content/schema.ts'
 import { toCalendar } from '../engine/clock.ts'
-import { onHand } from '../engine/inventory.ts'
+import { FOOD_TRUCK } from '../engine/day.ts'
+import { PRODUCTS, inSeason, onHand } from '../engine/inventory.ts'
 import { MODIFIER_KINDS, inEffect, streetOn } from '../engine/street.ts'
 import type { EventRecord, GameState, StreetModifier } from '../engine/types.ts'
 
@@ -17,6 +18,11 @@ export interface TruckView {
   readonly open: boolean
   /** The croissants on the rack: what the truck opens with that morning. */
   readonly croissants: number
+  /**
+   * Whether each product sells that day: in its season (#261), with some
+   * to open with (see `openingStock`).
+   */
+  readonly selling: Readonly<Record<ProductId, boolean>>
   /** The name written on the sign: the business's, from the profile. */
   readonly businessName: string
   /** The changes to the street in effect on day `game.day`. */
@@ -34,9 +40,24 @@ export function truckView(game: GameState): TruckView {
   return {
     open: opensToday(game),
     croissants: openingStock(game, 'croissant'),
+    selling: sellingOf(game),
     businessName: game.profile.businessName,
     modifiers: chosenModifiers(game),
   }
+}
+
+/**
+ * Whether each product sells on day `game.day`: in its season, as the
+ * engine's `inSeason` decides it, with some to open with.
+ */
+function sellingOf(game: GameState): Record<ProductId, boolean> {
+  return Object.fromEntries(
+    PRODUCTS.map((product) => [
+      product,
+      inSeason(product, game.day, FOOD_TRUCK.products) &&
+        openingStock(game, product) > 0,
+    ]),
+  ) as Record<ProductId, boolean>
 }
 
 /**
@@ -114,11 +135,12 @@ function changesStreet(effect: EventEffect): effect is StreetEffect {
  * Whether a piece that `shows` so shows in `view`: on open or closed days,
  * while any change to the street from the event card it names is in
  * effect, but for those its `except` choices made, while the product it
- * names cannot be sold, or on open days while that product can be sold.
+ * names cannot be sold, or on open days while that product sells (see
+ * `TruckView.selling`) and the street leaves it on sale.
  */
 export function showsOn(
   shows: Shows,
-  view: Pick<TruckView, 'open' | 'modifiers'>,
+  view: Pick<TruckView, 'open' | 'modifiers' | 'selling'>,
 ): boolean {
   if (shows === 'open') return view.open
   if (shows === 'closed') return !view.open
@@ -130,7 +152,11 @@ export function showsOn(
     )
   }
   if ('sells' in shows) {
-    return view.open && !unsold(view.modifiers, shows.sells)
+    return (
+      view.open &&
+      view.selling[shows.sells] &&
+      !unsold(view.modifiers, shows.sells)
+    )
   }
   return unsold(view.modifiers, shows.unavailable)
 }
@@ -148,14 +174,21 @@ function unsold(
 /**
  * The units of `product` the truck holds when it opens on day `game.day`:
  * those on hand plus the morning restock its rule calls for. On a closed
- * day, or while the street leaves the product unsold, only those on hand.
+ * day, while the street leaves the product unsold or out of its season
+ * (#261), only those on hand.
  * Croissants keep for one day, so between two days none are on hand; this
  * is what the rack shows.
  */
 export function openingStock(game: GameState, product: ProductId): number {
   const units = onHand(game.inventory, product)
   const street = streetOn(modifiersToday(game), game.day)
-  if (!opensToday(game) || street.unavailable[product]) return units
+  if (
+    !opensToday(game) ||
+    street.unavailable[product] ||
+    !inSeason(product, game.day, FOOD_TRUCK.products)
+  ) {
+    return units
+  }
   return units + restockUnits(game.decisions.restock[product], units)
 }
 

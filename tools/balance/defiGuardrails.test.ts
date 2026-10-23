@@ -136,15 +136,17 @@ function playedWith(
  * random events of « Payé dans 60 jours » came rarer with #155, the
  * grocers' offers joined them with #156, and P4-14 (#211) retuned the cards
  * of #155: its counts are those of the cards as P4-14 left them, until the
- * Défi is retuned.
+ * Défi is retuned. From June 1st, customers ask for lemonade (#261), which
+ * these owners never order: the summer Défis' counts are those with it,
+ * until #266 retunes them.
  */
 const P3_13_OWNERS: Readonly<Record<string, ReturnType<typeof medalCounts>>> = {
   travauxSaintDenis: {
     games: 200,
-    broken: 63,
-    or: 10,
-    argentOrBetter: 76,
-    bronzeOrBetter: 137,
+    broken: 61,
+    or: 9,
+    argentOrBetter: 74,
+    bronzeOrBetter: 139,
   },
   semaineDesMilleDollars: {
     games: 200,
@@ -164,15 +166,15 @@ const P3_13_OWNERS: Readonly<Record<string, ReturnType<typeof medalCounts>>> = {
     games: 200,
     broken: 124,
     or: 27,
-    argentOrBetter: 61,
+    argentOrBetter: 58,
     bronzeOrBetter: 76,
   },
   payeDans60Jours: {
     games: 200,
-    broken: 40,
-    or: 26,
-    argentOrBetter: 98,
-    bronzeOrBetter: 160,
+    broken: 46,
+    or: 29,
+    argentOrBetter: 94,
+    bronzeOrBetter: 154,
   },
   moisSansConge: {
     games: 200,

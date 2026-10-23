@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import dreamJson from '../content/dream.json'
 import { loadDreamContent, type DreamContent } from '../content/schema.ts'
+import { withoutLemonade } from './fixtures/lemonade.ts'
 import v20Save from './fixtures/v20-two-trucks.json'
 import { BAKERY } from './bakery.ts'
 import { tick } from './clock.ts'
@@ -112,9 +113,17 @@ describe('a version 20 save of two trucks (#260)', () => {
     }
     expect(game.decisions.storage).toBeUndefined()
     expect(game.decisions.trucks?.[SECOND]?.storage).toBeUndefined()
+    // Nor any lemonade (#261): each truck gets a new game's decisions.
+    const { pricesCents, restock } = FOOD_TRUCK.startingDecisions
+    for (const own of [game.decisions, game.decisions.trucks?.[SECOND]]) {
+      expect(own?.prices.limonade).toBe(pricesCents.limonade)
+      expect(own?.restock.limonade).toEqual(restock.limonade)
+    }
+    for (const day of days) expect(day?.sold.limonade).toBe(0)
     // Nothing else moves: saved again, it is the version 20 save with the
-    // tourists counted at zero.
-    const again = JSON.parse(serialize(game)) as typeof saved
+    // tourists counted at zero, and the lemonade (#261) at what a save
+    // from before it gets (see save.lemonade.test.ts).
+    const again = withoutLemonade(JSON.parse(serialize(game)) as typeof saved)
     const tourists = (day: SavedDay) => ({
       ...day,
       segments: { ...day.segments, touriste: NO_VISITS },

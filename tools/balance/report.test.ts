@@ -492,7 +492,7 @@ describe('formatReport', () => {
       'Each game starts at one difficulty on one of seeds 1 to 2 and plays 365 days from May 1st, year 1, with one strategy in effect from day 0. A strategy sets:',
     )
     expect(lines).toContain(
-      '- every price at -20%, base, +20%, +40% from the starting prices (Café $3.25, Chocolat chaud $3.50, Croissant $3.75), rounded half up to the price step;',
+      '- every price at -20%, base, +20%, +40% from the starting prices (Café $3.25, Chocolat chaud $3.50, Croissant $3.75, Limonade $4.00), rounded half up to the price step;',
     )
     expect(lines).toContain(
       '- the days open, a week: 5, 6, 7, where 6 closes on Monday and 5 on Sunday and Monday;',

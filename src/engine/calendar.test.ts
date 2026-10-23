@@ -5,6 +5,7 @@ import {
   gameYearOf,
   mondayOf,
   monthsSinceStart,
+  onDates,
   startOfNextGameYear,
   startOfQuarter,
   sundayOf,
@@ -305,5 +306,46 @@ describe('startOfQuarter', () => {
 
   it('rejects a day outside the game', () => {
     expect(() => startOfQuarter(-1)).toThrow(RangeError)
+  })
+})
+
+describe('onDates', () => {
+  // Day 0 is May 1st of year 1, day 365 May 1st of year 2.
+  const summer = { from: { month: 6, day: 1 }, to: { month: 9, day: 15 } }
+  const winter = { from: { month: 12, day: 1 }, to: { month: 3, day: 31 } }
+
+  it.each([
+    [30, false],
+    [31, true],
+    [137, true],
+    [138, false],
+    [365 + 31, true],
+    [365 + 138, false],
+  ])('holds day %i within June 1st to September 15th: %s', (day, within) => {
+    expect(onDates(day, summer)).toBe(within)
+  })
+
+  it.each([
+    [213, false],
+    [214, true],
+    [244, true],
+    [245, true],
+    [334, true],
+    [335, false],
+  ])('holds day %i within December 1st to March 31st: %s', (day, within) => {
+    expect(onDates(day, winter)).toBe(within)
+  })
+
+  it('holds a single date, and the whole year from a day to the day before', () => {
+    const one = { from: { month: 5, day: 1 }, to: { month: 5, day: 1 } }
+    expect(onDates(0, one)).toBe(true)
+    expect(onDates(1, one)).toBe(false)
+    expect(onDates(365, one)).toBe(true)
+    const all = { from: { month: 5, day: 2 }, to: { month: 5, day: 1 } }
+    for (let day = 0; day < 365; day += 1) expect(onDates(day, all)).toBe(true)
+  })
+
+  it('rejects a day outside the game', () => {
+    expect(() => onDates(-1, summer)).toThrow(RangeError)
   })
 })

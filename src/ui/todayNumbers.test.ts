@@ -5,7 +5,7 @@ import type { DaySummary, Visit } from '../engine/types.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { todayNumbers, totalUnits, truckWithout } from './todayNumbers.ts'
 
-const NONE = { cafe: 0, chocolat: 0, croissant: 0 }
+const NONE = { cafe: 0, chocolat: 0, croissant: 0, limonade: 0 }
 
 function visit(
   outcome: Visit['outcome'],
@@ -25,9 +25,9 @@ function visit(
 
 const DAY: DaySummary = {
   day: 3,
-  sold: { cafe: 2, chocolat: 0, croissant: 0 },
+  sold: { cafe: 2, chocolat: 0, croissant: 0, limonade: 0 },
   revenue: cents(123_456),
-  lostSales: { cafe: 1, chocolat: 3, croissant: 6 },
+  lostSales: { cafe: 1, chocolat: 3, croissant: 6, limonade: 0 },
   pricedOut: NONE,
   spoiled: NONE,
   segments: {
@@ -83,7 +83,9 @@ describe('todayNumbers', () => {
 
 describe('totalUnits', () => {
   it('adds up every product', () => {
-    expect(totalUnits({ cafe: 87, chocolat: 12, croissant: 54 })).toBe(153)
+    expect(
+      totalUnits({ cafe: 87, chocolat: 12, croissant: 54, limonade: 0 }),
+    ).toBe(153)
     expect(totalUnits(NONE)).toBe(0)
   })
 })

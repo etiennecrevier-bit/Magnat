@@ -251,7 +251,24 @@ const generatorState = z
   .int()
   .refine(isRngState, 'expected an integer in [0, 2^32)')
 
-const unitsPerProduct = z.record(productIdSchema, count)
+/**
+ * A record holding a `value` for each product. A save from before the
+ * lemonade (#261) has none, so it gets `lemonade`; every other product
+ * stays required, and a lemonade the save has must be valid.
+ */
+function perProductOf<Value extends z.ZodType>(
+  value: Value,
+  lemonade: () => z.util.NoUndefined<z.output<Value>>,
+) {
+  return z.strictObject({
+    cafe: value,
+    chocolat: value,
+    croissant: value,
+    limonade: value.default(lemonade),
+  })
+}
+
+const unitsPerProduct = perProductOf(count, () => 0)
 
 const accountCode = z.custom<AccountCode>(
   (value) => typeof value === 'string' && isAccountCode(value),
@@ -386,6 +403,7 @@ const stafflessDaySummarySchema = z.strictObject({
     cafe: 0,
     chocolat: 0,
     croissant: 0,
+    limonade: 0,
   })),
   spoiled: unitsPerProduct,
   segments: segmentTallies(touristlessSegmentSchema),
@@ -461,10 +479,16 @@ const restockRuleSchema = z.discriminatedUnion('kind', [
   }),
 ])
 
+/** A new game's lemonade decisions, for a save from before it (#261). */
+const { pricesCents: STARTING_PRICES, restock: STARTING_RESTOCK } =
+  FOOD_TRUCK.startingDecisions
+
 /** The decisions of a version 11 save, before the bakery. */
 const bakerylessDecisionsSchema = z.strictObject({
-  prices: z.record(productIdSchema, money),
-  restock: z.record(productIdSchema, restockRuleSchema),
+  prices: perProductOf(money, () => STARTING_PRICES.limonade),
+  restock: perProductOf(restockRuleSchema, () => ({
+    ...STARTING_RESTOCK.limonade,
+  })),
   daysOpen: z.array(z.int()),
   ownerWeeklyPay: money,
   marketingDaily: money,

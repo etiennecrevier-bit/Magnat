@@ -122,7 +122,12 @@ describe('the days marketing brought (#284)', () => {
   ): Visit => ({
     arrivalMinute: 480,
     segment: 'habitue',
-    bought: { cafe: bought[0], chocolat: bought[1], croissant: bought[2] },
+    bought: {
+      cafe: bought[0],
+      chocolat: bought[1],
+      croissant: bought[2],
+      limonade: 0,
+    },
     outcome,
     servedMinute: outcome === 'bought' ? 481 : null,
     leftMinute: outcome === 'leftLine' ? 482 : null,
@@ -130,7 +135,7 @@ describe('the days marketing brought (#284)', () => {
     ...(fromMarketing ? { fromMarketing: true as const } : {}),
   })
   const price = (product: ProductId) =>
-    cents({ cafe: 300, chocolat: 400, croissant: 350 }[product])
+    cents({ cafe: 300, chocolat: 400, croissant: 350, limonade: 400 }[product])
 
   it('counts every visit marketing brought, whatever it came to, and what they paid', () => {
     expect(

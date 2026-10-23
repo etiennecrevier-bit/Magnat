@@ -21,7 +21,10 @@ export interface Fit {
 }
 
 /** What the street's spots show by: the truck's day and the game around it. */
-export interface SpotsView extends Pick<TruckView, 'open' | 'modifiers'> {
+export interface SpotsView extends Pick<
+  TruckView,
+  'open' | 'modifiers' | 'selling'
+> {
   /** Whether the game is a Défi. */
   readonly inChallenge: boolean
   /** The employees serving at the truck (see `staffAtTruck`). */
