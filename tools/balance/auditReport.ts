@@ -179,7 +179,7 @@ function formatLevers(verdicts: readonly LeverVerdict[]): string[] {
     lines.push(
       `### ${difficultyName(difficulty)}`,
       '',
-      '| Lever | Baseline | Effect | Best setting by situation (gain on the baseline) | Strictly best most often | Matters | Dominates | Pays |',
+      '| Lever | Baseline | Effect | Best setting by situation (gain on the baseline) | Strictly best most often | Matters | No setting dominates | Pays |',
       '| --- | --- | --- | --- | --- | --- | --- | --- |',
       ...here.map((each) =>
         [

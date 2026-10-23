@@ -367,7 +367,8 @@ export interface LeverVerdict {
   readonly matters: boolean
   /**
    * For an action lever, whether some setting beats the baseline by
-   * `MATTERS` in some situation; null for other levers.
+   * `MATTERS` in some situation; null for other levers, and where none
+   * was played.
    */
   readonly pays: boolean | null
   /** The setting strictly best in the largest share of the games. */
@@ -454,14 +455,15 @@ export function leverVerdicts(
           situations,
           effect,
           matters: effect !== null && effect >= MATTERS,
-          pays: action
-            ? situations.some(
-                ({ best }) =>
-                  best !== null &&
-                  best.setting !== lever.baseline &&
-                  best.gain >= MATTERS,
-              )
-            : null,
+          pays:
+            action && effect !== null
+              ? situations.some(
+                  ({ best }) =>
+                    best !== null &&
+                    best.setting !== lever.baseline &&
+                    best.gain >= MATTERS,
+                )
+              : null,
           top,
           decided,
           dominates: top !== null && top.share > DOMINATES,
