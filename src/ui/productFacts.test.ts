@@ -299,3 +299,58 @@ describe("a seeded day's facts", () => {
     })
   })
 })
+
+describe('a seeded day where the croissant is too expensive (#268)', () => {
+  // Croissants at 6 $, with plenty on hand so no stockout hides the line.
+  const game = playedTo(
+    applyDecision(
+      applyDecision(START, {
+        kind: 'price',
+        product: 'croissant',
+        price: cents(600),
+      }),
+      {
+        kind: 'restock',
+        product: 'croissant',
+        rule: { kind: 'buyDaily', quantity: 200 },
+      },
+    ),
+    2,
+  )
+  const day = game.lastDay
+  if (day === null) throw new Error('No day played')
+
+  it("counts the engine's « trop cher » for each product", () => {
+    expect(day.pricedOut.croissant).toBeGreaterThan(0)
+    expect(day.lostSales.croissant).toBe(0)
+    for (const product of PRODUCTS) {
+      expect(yesterdayFacts(day, product).pricedOut).toBe(
+        day.pricedOut[product],
+      )
+    }
+  })
+
+  it("says so on the card's status line", () => {
+    const board = productBoards(game).croissant
+    expect(menuFact(board.facts, board.onSale)).toEqual({
+      tone: 'warn',
+      text: `${day.pricedOut.croissant} clients trouvaient ça cher`,
+    })
+  })
+
+  it('shows a « Trop cher » row in the tooltip, after « Vendus »', () => {
+    const board = productBoards(game).croissant
+    const price = game.decisions.prices.croissant
+    const rows = productTip('croissant', board.facts, price, board.cost).rows
+    expect((rows ?? []).slice(0, 3).map((row) => row.label)).toEqual([
+      'Vendus',
+      'Trop cher',
+      'Rupture',
+    ])
+    expect(rows?.[1]).toEqual({
+      label: 'Trop cher',
+      value: String(day.pricedOut.croissant),
+      warn: true,
+    })
+  })
+})
