@@ -105,6 +105,7 @@ import {
   saleEntries,
 } from './financing.ts'
 import { PRODUCTS, inventoryValue } from './inventory.ts'
+import { MARKETING_DAYS_KEPT } from './marketing.ts'
 import { cents, sub, sum } from './money.ts'
 import { netWorth } from './netWorth.ts'
 import { LABELS, isKept } from './personal.ts'
@@ -132,6 +133,7 @@ import type {
   WeekSoFar,
 } from './types.ts'
 import { WEEKS_KEPT, openingWeek } from './week.ts'
+import { WORK_DAYS_KEPT } from './work.ts'
 
 // A game saved as JSON and loaded back. A save is untrusted text: loading it
 // checks every field against a strict schema, then rebuilds the books by
@@ -286,6 +288,19 @@ const modifierSchema = z.strictObject({
   lastDay: gameDay,
 })
 
+const workerSchema = z.union([z.literal('owner'), candidateIdSchema])
+
+const personDaySchema = z.strictObject({
+  who: workerSchema,
+  customers: count,
+  sales: money,
+  deliveries: count,
+  invoiced: money,
+  baked: count,
+  bakedCost: money,
+  boughtCost: money,
+})
+
 /** The last day of a version 13 save, before the missed deliveries. */
 const stafflessDaySummarySchema = z.strictObject({
   day: gameDay,
@@ -318,6 +333,9 @@ const stafflessDaySummarySchema = z.strictObject({
       servedMinute: count.nullable(),
       leftMinute: minuteOfDay.nullable(),
       botched: count,
+      // A save from before #283 and #284 has neither.
+      servedBy: workerSchema.optional(),
+      fromMarketing: z.literal(true).optional(),
     }),
   ),
   leftLine: count,
@@ -327,6 +345,9 @@ const stafflessDaySummarySchema = z.strictObject({
   botched: count,
   modifiers: z.array(modifierSchema),
   deliveries: z.array(deliverySchema),
+  // A save from before #283 has neither.
+  work: z.array(personDaySchema).optional(),
+  ownerAway: z.literal(true).optional(),
 })
 
 // `checkStaff()` checks the absent and those who quit against the staff.
@@ -335,6 +356,22 @@ const daySummarySchema = stafflessDaySummarySchema.extend({
   // A save from before the employees' traits (#255) has neither.
   absent: z.array(candidateIdSchema).min(1).optional(),
   quits: z.array(candidateIdSchema).min(1).optional(),
+})
+
+// `checkWorkDays()` checks the days and their order.
+const workDaySchema = z.strictObject({
+  day: gameDay,
+  people: z.array(personDaySchema),
+  ownerAway: z.boolean(),
+  absent: z.array(candidateIdSchema),
+})
+
+// `checkMarketingDays()` checks the days, their order and the spend.
+const marketingDaySchema = z.strictObject({
+  day: gameDay,
+  spent: money,
+  customers: count,
+  sales: money,
 })
 
 const restockRuleSchema = z.discriminatedUnion('kind', [
@@ -476,6 +513,10 @@ const weekReportSchema = z.strictObject({
   events: z.array(eventRecordSchema),
   modifiers: z.array(modifierSchema),
   previousBest: signedMoney.nullable(),
+  // A save from before #284 has none.
+  marketing: z
+    .strictObject({ spent: money, customers: count, sales: money })
+    .optional(),
 })
 
 const weekRecordSchema = z.strictObject({
@@ -640,6 +681,12 @@ const saveSchema = z.strictObject({
   inventory: z.array(lotSchema),
   lastDay: daySummarySchema.nullable(),
   marketingHistory: z.array(money),
+  // A save from before #284, and #283, has none.
+  marketingDays: z
+    .array(marketingDaySchema)
+    .max(MARKETING_DAYS_KEPT)
+    .optional(),
+  workDays: z.array(workDaySchema).max(WORK_DAYS_KEPT).optional(),
   decisions: decisionsSchema,
   pendingDecisions: decisionsSchema.nullable(),
   profile: profileSchema,
@@ -788,6 +835,10 @@ export function serialize(state: GameState): string {
     inventory: state.inventory,
     lastDay: state.lastDay,
     marketingHistory: state.marketingHistory,
+    // JSON.stringify leaves these out of a game loaded from an older save,
+    // until its next day.
+    marketingDays: state.marketingDays,
+    workDays: state.workDays,
     decisions: state.decisions,
     pendingDecisions: state.pendingDecisions,
     profile: state.profile,
@@ -872,9 +923,12 @@ export function serialize(state: GameState): string {
  * the game, if it ended, passes `checkEnded()` against `financing`; the
  * trips in town pass `checkTown()` against `places`; and the tutorial, if
  * any, passes `checkTutorial()` against `tutorial`; and Réal's postcards,
- * if any, come once each and not in a Défi. A save without a
+ * if any, come once each and not in a Défi; and the marketing days and
+ * work days kept, if any, pass `checkDayHistory()`. A save without a
  * tutorial loads as a game without one, and a last day without its «
- * trop cher » by product loads with none.
+ * trop cher » by product loads with none, and one without the marketing
+ * days, the work days, who served each visit and which marketing brought
+ * loads with none of them (#283, #284).
  *
  * The products, limits, restock kinds, `awarenessDays` and the truck's
  * price are those of `content` as it is now, the events, choices, outcomes
@@ -923,6 +977,8 @@ export function deserialize(
   checkEvents(save, events)
   checkEnergy(save, defi === null ? FULL_ENERGY : startingEnergy(defi))
   checkMarketingHistory(save, content)
+  checkDayHistory('marketingDays', save.marketingDays, save)
+  checkDayHistory('workDays', save.workDays, save)
   checkDream(save, journal, content, dream, opening)
   checkDecisions(
     'decisions',
@@ -967,6 +1023,10 @@ export function deserialize(
     inventory: save.inventory,
     lastDay: save.lastDay,
     marketingHistory: save.marketingHistory,
+    ...(save.marketingDays === undefined
+      ? {}
+      : { marketingDays: save.marketingDays }),
+    ...(save.workDays === undefined ? {} : { workDays: save.workDays }),
     decisions: save.decisions,
     pendingDecisions: save.pendingDecisions,
     profile: save.profile,
@@ -1618,6 +1678,37 @@ function checkMarketingHistory(
       )
     }
   })
+}
+
+/**
+ * The days `field` keeps, when the save has them (#283, #284): in
+ * ascending order, the last one `lastDay`'s, none before the game's first
+ * day; none at all before the first day is played.
+ */
+function checkDayHistory(
+  field: string,
+  history: readonly { readonly day: Day }[] | undefined,
+  save: Save,
+): void {
+  if (history === undefined) return
+  const { lastDay } = save
+  if (lastDay === null) {
+    if (history.length > 0) invalid(`${field} holds days before any is played`)
+    return
+  }
+  history.forEach(({ day }, index) => {
+    const before = history[index - 1]
+    if (before !== undefined && day <= before.day) {
+      invalid(`${field} day ${day} comes after day ${before.day}`)
+    }
+    if (day < firstDay(save)) {
+      invalid(`${field} day ${day} is before the game's first day`)
+    }
+  })
+  const last = history.at(-1)
+  if (last !== undefined && last.day !== lastDay.day) {
+    invalid(`${field} ends on day ${last.day}, not on the last day played`)
+  }
 }
 
 /**

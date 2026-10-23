@@ -160,3 +160,14 @@
 .staff__row .status-line {
   flex-wrap: nowrap;
 }
+
+/* What they did yesterday (#283): one fact line, under the wage, across
+   the row. #52606d keeps 4.5:1 on white. */
+.staff__yesterday {
+  flex-basis: 100%;
+  order: 10;
+  margin: 0;
+  color: #52606d;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}

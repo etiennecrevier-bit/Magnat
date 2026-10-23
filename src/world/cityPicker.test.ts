@@ -1,11 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createCityPicker, worldPicks } from './cityPicker.ts'
+import {
+  createCityPicker,
+  worldPickChanges,
+  worldPicks,
+  type CityTarget,
+} from './cityPicker.ts'
 import { createPicker } from './picker.ts'
 
 const POINT = { x: 10, y: 20 }
 
 function target(over = true) {
-  return { openAt: vi.fn(), isOver: vi.fn(() => over), hoverAt: vi.fn() }
+  return {
+    openAt: vi.fn(),
+    isOver: vi.fn(() => over),
+    hoverAt: vi.fn<CityTarget['hoverAt']>(() => false),
+  }
 }
 
 describe('createCityPicker', () => {
@@ -61,6 +70,58 @@ describe('createCityPicker', () => {
     letFirstGo()
     expect(third.hoverAt).not.toHaveBeenCalled()
     expect(() => picker.hover(null)).not.toThrow()
+  })
+
+  it('tells its listeners each time the pointer changes what the city draws, and only then', () => {
+    const picker = createCityPicker()
+    const heard = vi.fn()
+    const stop = picker.subscribe(heard)
+    picker.hover(POINT)
+    expect(heard).not.toHaveBeenCalled()
+    const city = target()
+    // The city names a building, then the same one again, then takes it down.
+    city.hoverAt
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true)
+    const letGo = picker.connect(city)
+    picker.hover(POINT)
+    expect(heard).toHaveBeenCalledTimes(1)
+    picker.hover(POINT)
+    expect(heard).toHaveBeenCalledTimes(1)
+    picker.hover(null)
+    expect(heard).toHaveBeenCalledTimes(2)
+    // A city that lets go with a name up takes it down: that is heard too.
+    city.hoverAt.mockReturnValueOnce(true)
+    letGo()
+    expect(heard).toHaveBeenCalledTimes(3)
+    const other = target()
+    other.hoverAt.mockReturnValue(true)
+    picker.connect(other)
+    stop()
+    picker.hover(POINT)
+    expect(heard).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('worldPickChanges', () => {
+  it('hears the street’s picker and the city’s, until it stops', () => {
+    const street = createPicker()
+    const city = createCityPicker()
+    const buildings = target()
+    buildings.hoverAt.mockReturnValue(true)
+    city.connect(buildings)
+    const heard = vi.fn()
+    const stop = worldPickChanges(street, city)(heard)
+    city.hover(POINT)
+    expect(heard).toHaveBeenCalledTimes(1)
+    // On an empty street, asking for a card says nobody is there.
+    street.next()
+    expect(heard).toHaveBeenCalledTimes(2)
+    stop()
+    city.hover(POINT)
+    street.close()
+    expect(heard).toHaveBeenCalledTimes(2)
   })
 })
 

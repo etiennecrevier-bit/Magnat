@@ -4,6 +4,7 @@ import {
   SKY_COLOR,
   mountWorld,
   worldOptions,
+  worldResolution,
   type WorldApp,
 } from './mountWorld.ts'
 
@@ -207,4 +208,20 @@ describe('worldOptions', () => {
     expect(options.antialias).toBe(true)
     expect(options.useBackBuffer).toBe(false)
   })
+
+  it.each([
+    [1, 'full', 1],
+    [2, 'full', 2],
+    [3, 'full', 2],
+    [1, 'simple', 1],
+    [2, 'simple', 1.5],
+    [3, 'simple', 1.5],
+  ] as const)(
+    'draws a screen of %d pixels a point at %s effects at %d (#281)',
+    (density, effects, resolution) => {
+      const view = { devicePixelRatio: density } as Window
+      expect(worldOptions(view, effects).resolution).toBe(resolution)
+      expect(worldResolution(density, effects)).toBe(resolution)
+    },
+  )
 })

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { EventContent } from '../content/schema.ts'
 import { EVENTS } from '../engine/day.ts'
 import type { EventRecord } from '../engine/types.ts'
-import { recentEvents } from './eventLog.ts'
+import { cents } from '../engine/money.ts'
+import { recentEvents, withPurchases } from './eventLog.ts'
 
 // Every space in an amount is a no-break space (U+00A0).
 const S = '\u00a0'
@@ -101,5 +102,55 @@ describe('recentEvents', () => {
     expect(recentEvents(history, 10, 'difficile', {})[1]?.choice).toBe(
       `Payer 400${S}$`,
     )
+  })
+})
+
+describe('withPurchases', () => {
+  const event = (day: number) => ({
+    key: `${day}-essai`,
+    day,
+    title: 'E',
+    choice: 'C',
+    result: 'R',
+  })
+
+  it('lists each rung bought as an event of its day, after that day’s events, newest first', () => {
+    const merged = withPurchases(
+      [event(40), event(20), event(10)],
+      [
+        { rung: 'velo', day: 10, cost: cents(150_000) },
+        { rung: 'espresso', day: 30, cost: cents(600_000) },
+      ],
+      45,
+    )
+    expect(merged.map(({ key }) => key)).toEqual([
+      '40-essai',
+      'achat-30-espresso',
+      '20-essai',
+      '10-essai',
+      'achat-10-velo',
+    ])
+    expect(merged[1]).toEqual({
+      key: 'achat-30-espresso',
+      day: 30,
+      title: 'Achat · Machine à espresso pro',
+      choice: `6${S}000${S}$`,
+      result: `Payé par l'entreprise · Équipement au bilan${S}: +6${S}000${S}$`,
+    })
+    expect(merged[4]?.result).toBe("Payé par vous · ne touche pas l'entreprise")
+  })
+
+  it('keeps the same months as the events, and lists purchases with no event', () => {
+    // Day 400 is June 5 of year 2: the window opens on July 1 of year 1.
+    expect(
+      withPurchases(
+        [],
+        [
+          { rung: 'velo', day: 31, cost: cents(150_000) },
+          { rung: 'voitureOccasion', day: 61, cost: cents(800_000) },
+        ],
+        400,
+      ).map(({ key }) => key),
+    ).toEqual(['achat-61-voitureOccasion'])
   })
 })

@@ -225,7 +225,9 @@ const NOTHING: Carried = { behind: [], over: [], held: {} }
  * Draws a customer as `look` describes, with their accessory, office cue,
  * fan and child labelled by name. A child stands to the left of the adult.
  * With `cup`, once served a drink, they hold its cup in the hand on the
- * left; a fan is held in the hand on the right.
+ * left; a fan is held in the hand on the right. With `flyer`, one whom
+ * marketing brought (#284) holds its flyer in that hand, in the fan's
+ * place; it draws nothing at random, so the look stays the same.
  * The drawing is for a customer turned to `facing` by mirroring it (its
  * container's `scale.x`): either way, it is lit on the side that shows on
  * the screen's left, while what they carry keeps its side.
@@ -236,6 +238,7 @@ export function drawCustomer(
   looks: CrowdSettings['looks'],
   facing: Facing = 1,
   cup = false,
+  flyer = false,
 ): Container {
   const h = look.height
   const u = h / REFERENCE
@@ -361,7 +364,9 @@ export function drawCustomer(
         .fill(band)
     }
   }
-  if (look.fan !== null) {
+  if (flyer) {
+    held.right = () => drawFlyer(h, style)
+  } else if (look.fan !== null) {
     const fan = look.fan
     held.right = () => drawFan(h, fan, light)
   }
@@ -601,6 +606,44 @@ function drawFan(h: number, color: string, light: Light): Graphics {
     .lineTo(...along(inner, -Math.PI / 2))
     .stroke({ width: h * FAN.handle, color: shade, cap: 'round' })
 }
+
+/**
+ * The flyer marketing handed out (#284), held up in the hand, its bottom
+ * edge at 0, 0: a cream sheet with a red band across its top and lines of
+ * print under it.
+ */
+function drawFlyer(h: number, style: DrawStyle): Graphics {
+  const { palette } = style
+  const width = h * FLYER.width
+  const height = h * FLYER.height
+  const left = -width / 2
+  const top = -height
+  const sheet = new Graphics({ label: 'flyer' })
+    .rect(left, top, width, height)
+    .fill(palette.cream)
+    .rect(left, top, width, height * FLYER.band)
+    .fill(palette.dangerRed)
+  for (let line = 0; line < FLYER.lines; line += 1) {
+    const y =
+      top +
+      height *
+        (FLYER.band + ((line + 1) * (1 - FLYER.band)) / (FLYER.lines + 1))
+    sheet.moveTo(left + width * 0.2, y).lineTo(left + width * 0.8, y)
+  }
+  return sheet.stroke({ width: h * FLYER.print, color: palette.ink })
+}
+
+/**
+ * A flyer's size, as shares of the height of who holds it: its sheet, the
+ * share of it its band takes, its lines of print and their width.
+ */
+const FLYER = {
+  width: 0.1,
+  height: 0.13,
+  band: 0.3,
+  lines: 3,
+  print: 0.006,
+} as const
 
 /**
  * A fan's size, as shares of the height of who holds it, and how wide its

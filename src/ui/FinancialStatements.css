@@ -33,3 +33,10 @@
 .statement__grandTotal td {
   border-bottom: 4px double #1f2933;
 }
+
+/* A line that tells what it holds: its label is the tooltip's anchor. */
+.statement__tip {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}

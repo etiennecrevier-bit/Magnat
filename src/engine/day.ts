@@ -79,7 +79,12 @@ import {
   removeExpired,
   takeFifo,
 } from './inventory.ts'
-import { marketingCrowd, rememberSpend } from './marketing.ts'
+import {
+  marketingCrowd,
+  marketingDayOf,
+  rememberMarketingDay,
+  rememberSpend,
+} from './marketing.ts'
 import { add, cents, mulInt, mulRatio, sub, type Cents } from './money.ts'
 import { netWorth } from './netWorth.ts'
 import { inDebt, livePersonalDay } from './personal.ts'
@@ -90,6 +95,7 @@ import {
   STAFF,
   crewOf,
   isAbsent,
+  type Doer,
   payWages,
   quitting,
   staffMorning,
@@ -97,8 +103,17 @@ import {
 } from './staff.ts'
 import { inEffect, streetOn, type Street } from './street.ts'
 import { isProtected } from './tutorial.ts'
-import type { Day, Decisions, Employee, GameState, Hire, Lot } from './types.ts'
+import type {
+  Day,
+  Decisions,
+  Employee,
+  GameState,
+  Hire,
+  Lot,
+  Worker,
+} from './types.ts'
 import { recordDay } from './week.ts'
+import { rememberWork, workOf } from './work.ts'
 
 /** The shipped food truck content, validated once when the engine loads. */
 export const FOOD_TRUCK: FoodTruckContent = loadFoodTruckContent()
@@ -172,6 +187,9 @@ const MEMO = {
   ownerPay: 'Paie du propriétaire',
   spoilage: 'Marchandises périmées',
 } as const
+
+/** The memo of the owner's weekly pay, as the player reads it. */
+export const OWNER_PAY_MEMO = MEMO.ownerPay
 
 /**
  * The memos of the truck's own monthly charges, which end once a rung of «
@@ -444,6 +462,7 @@ export function playDay(
   )
   const state = delivered.state
   journal = state.journal
+  const price = (product: ProductId) => currentPrice(state, product)
   let lots = state.inventory
   let served = closed(state.rngState)
   let revenue = ZERO
@@ -487,7 +506,6 @@ export function playDay(
     journal = made.journal
     baked += made.quantity
 
-    const price = (product: ProductId) => currentPrice(state, product)
     served = serveWalkIns(
       state.rngState,
       content.walkIns,
@@ -545,11 +563,14 @@ export function playDay(
     journal = pay(journal, day, MEMO.marketing, MARKETING, marketingSpent)
   }
 
+  let wasted = 0
   if (baked > 0 && crew.baker !== null) {
     const share =
       staff.bakeryWasteShare *
       traitValue(crew.baker.candidate, 'minutie', BAKER, staff)
-    journal = bakeryWaste(journal, day, baked, share, prices).journal
+    const waste = bakeryWaste(journal, day, baked, share, prices)
+    journal = waste.journal
+    wasted = waste.wasted
   }
 
   if (weekday === content.ownerPayWeekday) {
@@ -608,6 +629,21 @@ export function playDay(
     ),
   )
 
+  const listed = content.products[BAKED].unitCostCents
+  const work = workOf({
+    ownerAway: started.ownerAway,
+    came: left.staff.filter(({ candidate }) => !absent.includes(candidate)),
+    visits: served.visits,
+    price,
+    deliveries: delivered.deliveries,
+    delivers: doerOf(crew.delivers, crew.deliverer),
+    baked,
+    wasted,
+    bakes: doerOf(crew.bakes, crew.baker),
+    ingredientCost: prices.ingredientCostCents,
+    boughtCost: sub(listed, mulRatio(listed, discount)),
+  })
+
   const closing: GameState = {
     ...state,
     rngState: served.rngState,
@@ -617,6 +653,17 @@ export function playDay(
       state.marketingHistory,
       marketingSpent,
       content.marketing,
+    ),
+    marketingDays: rememberMarketingDay(
+      state.marketingDays,
+      marketingDayOf(day, marketingSpent, served.visits, price),
+    ),
+    workDays: rememberWork(
+      state.workDays,
+      day,
+      work,
+      started.ownerAway,
+      absent,
     ),
     lastDay: {
       day,
@@ -637,6 +684,10 @@ export function playDay(
       ),
       modifiers: inEffect(modifiers, day),
       deliveries: delivered.deliveries,
+      // In the order a save holds them, so a game saved and loaded writes
+      // the same save.
+      work,
+      ...(started.ownerAway ? { ownerAway: true } : {}),
       missed: delivered.missed,
       ...(missedWork.length > 0 ? { absent: missedWork } : {}),
       ...(left.quits.length > 0 ? { quits: left.quits } : {}),
@@ -687,6 +738,12 @@ export function playDay(
 const BAKER = 'boulanger'
 const AT_TRUCK = 'camion'
 const DELIVERER = 'livreur'
+
+/** Who did a job: the owner, the employee who did, or nobody. */
+function doerOf(doer: Doer, employee: Employee | null): Worker | null {
+  if (doer === 'owner') return 'owner'
+  return doer === 'employee' ? (employee?.candidate ?? null) : null
+}
 
 /** `decisions` without the employees of `quits` in the staff they want. */
 function without(

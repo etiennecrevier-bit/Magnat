@@ -8,7 +8,7 @@ import type {
 } from '../content/schema.ts'
 import { effectsOf } from './energy.ts'
 import { STAFF, crewOf, traitValue } from './staff.ts'
-import type { GameState } from './types.ts'
+import type { GameState, Worker } from './types.ts'
 
 // The line at the counter: who serves, how long serving takes, and how long
 // customers wait for it.
@@ -44,11 +44,16 @@ export interface Server {
   readonly botchedShare: number
   /** When they leave the counter for a while (#164); never when absent. */
   readonly away?: Away
+  /**
+   * Who they are (#283), whom the visits they serve name (see
+   * `Visit.servedBy`); `servers()` always says.
+   */
+  readonly who?: Worker
 }
 
 // Speed 1 is the unit the content's service times are written in, not a
 // tunable.
-const AVATAR: Server = { speed: 1, owner: true, botchedShare: 0 }
+const AVATAR: Server = { speed: 1, owner: true, botchedShare: 0, who: 'owner' }
 
 const AT_TRUCK = 'camion'
 
@@ -79,11 +84,12 @@ export function servers(
     botchedShare:
       staff.employeeBotchedShare *
       traitValue(candidate, 'minutie', AT_TRUCK, staff),
+    who: candidate,
   }))
   if (!crew.ownerServes) return employees
   const { serviceTimeIncrease, botchedShare } = effectsOf(state.energy, energy)
   const speed = AVATAR.speed / (1 + serviceTimeIncrease)
-  const owner: Server = { speed, owner: true, botchedShare }
+  const owner: Server = { speed, owner: true, botchedShare, who: 'owner' }
   return [away === null ? owner : { ...owner, away }, ...employees]
 }
 

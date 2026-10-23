@@ -56,8 +56,10 @@ export const browserHost: LoopHost = {
 /**
  * Advances `store` in real time at its current speed. The loop stops while
  * the page is hidden and starts fresh when it is shown again, so time spent
- * away never counts; `speed` is left alone. Returns a function that stops
- * the loop for good.
+ * away never counts; `speed` is left alone. It stops too while the game is
+ * paused, so a paused game asks the browser for no frame (#281), and starts
+ * fresh when it goes on, keeping the partial day. Returns a function that
+ * stops the loop for good.
  */
 export function startGameLoop(
   store: GameStore,
@@ -92,14 +94,19 @@ export function startGameLoop(
     frame = null
   }
 
-  const unsubscribe = host.onVisibilityChange(() => {
-    if (host.isHidden()) halt()
+  const follow = () => {
+    if (host.isHidden() || store.getState().speed <= 0) halt()
     else run()
+  }
+  const unsubscribe = host.onVisibilityChange(follow)
+  const unfollow = store.subscribe((state, previous) => {
+    if (state.speed !== previous.speed) follow()
   })
-  if (!host.isHidden()) run()
+  follow()
 
   return () => {
     unsubscribe()
+    unfollow()
     halt()
   }
 }

@@ -38,8 +38,11 @@ export interface CityPeople {
   show: (view: CityView, avatar: Avatar) => void
   /** Puts everyone where they are, with `inLine` customers in line. */
   frame: (actors: CityActors, inLine: number) => void
-  /** Shows `name` over `at`, or no name with null. */
-  name: (name: string | null, at: Vec | null) => void
+  /**
+   * Shows `name` over `at`, or no name with null. Returns whether that
+   * changed what is drawn: a name shown, moved or taken down.
+   */
+  name: (name: string | null, at: Vec | null) => boolean
   /** Takes them down. */
   destroy: () => void
 }
@@ -358,10 +361,12 @@ export function createCityPeople(
     },
     name: (name, at) => {
       if (name === null || at === null) {
-        named?.label.destroy({ children: true })
+        if (named === null) return false
+        named.label.destroy({ children: true })
         named = null
-        return
+        return true
       }
+      let changed = false
       if (named?.name !== name) {
         named?.label.destroy({ children: true })
         named = {
@@ -369,8 +374,15 @@ export function createCityPeople(
           label: labels.addChild(drawLabel(name, city.label, style)),
         }
         named.label.label = 'name'
+        changed = true
       }
-      named.label.position.set(at[0], at[1] - city.label.above)
+      const { position } = named.label
+      const y = at[1] - city.label.above
+      if (position.x !== at[0] || position.y !== y) {
+        position.set(at[0], y)
+        changed = true
+      }
+      return changed
     },
     destroy: () => {
       labels.destroy({ children: true })

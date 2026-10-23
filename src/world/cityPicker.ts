@@ -24,8 +24,9 @@ export interface CityTarget {
   /**
    * The pointer is at `point` on the page over the world, or, with null,
    * elsewhere: the city names the building there that opens something.
+   * Returns whether that changed what the city draws.
    */
-  hoverAt: (point: Point | null) => void
+  hoverAt: (point: Point | null) => boolean
 }
 
 export interface CityPicker {
@@ -43,24 +44,41 @@ export interface CityPicker {
    * the second time.
    */
   connect: (city: CityTarget) => () => void
+  /**
+   * Calls `listener` each time the pointer changes what the city draws, as
+   * a name shown or taken down, which the world draws even while paused.
+   * Returns the unsubscriber.
+   */
+  subscribe: (listener: () => void) => () => void
 }
 
 export function createCityPicker(): CityPicker {
   const cities: { readonly target: CityTarget }[] = []
+  const listeners = new Set<() => void>()
   const holder = () => cities.at(-1)?.target
+  const hover = (target: CityTarget | undefined, point: Point | null) => {
+    if (target?.hoverAt(point) !== true) return
+    for (const listener of [...listeners]) listener()
+  }
   return {
     at: (point) => holder()?.openAt(point),
     over: (point) => holder()?.isOver(point) ?? false,
-    hover: (point) => holder()?.hoverAt(point),
+    hover: (point) => hover(holder(), point),
     connect: (target) => {
       const link = { target }
-      holder()?.hoverAt(null)
+      hover(holder(), null)
       cities.push(link)
       return () => {
         const at = cities.indexOf(link)
         if (at < 0) return
-        if (at === cities.length - 1) target.hoverAt(null)
+        if (at === cities.length - 1) hover(target, null)
         cities.splice(at, 1)
+      }
+    },
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
       }
     },
   }
@@ -68,6 +86,23 @@ export function createCityPicker(): CityPicker {
 
 /** The picker the page and the city share, as `PICKER` is the street's. */
 export const CITY: CityPicker = createCityPicker()
+
+/**
+ * Calls `listener` each time the street's picker or the city's changes
+ * what the world draws (see `Picker.subscribe`, `CityPicker.subscribe`).
+ * Returns the unsubscriber.
+ */
+export function worldPickChanges(
+  street: Pick<Picker, 'subscribe'>,
+  city: Pick<CityPicker, 'subscribe'>,
+): (listener: () => void) => () => void {
+  return (listener) => {
+    const stops = [street.subscribe(listener), city.subscribe(listener)]
+    return () => {
+      for (const stop of stops) stop()
+    }
+  }
+}
 
 /**
  * What a press on the world goes to: the street's customers and spots and

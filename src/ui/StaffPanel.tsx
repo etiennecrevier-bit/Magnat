@@ -189,6 +189,9 @@ function OwnerRowView({ owner }: { owner: OwnerRow }) {
             <p className="staff__pay">
               {formatMoney(owner.weeklyPay)} par semaine
             </p>
+            {owner.yesterday !== null && (
+              <p className="staff__yesterday">{owner.yesterday}</p>
+            )}
           </div>
         )}
       </Tooltip>
@@ -257,6 +260,9 @@ function MemberRowView({
                   onChange={onChange}
                   describedBy={described}
                 />
+              )}
+              {member.yesterday !== null && (
+                <p className="staff__yesterday">{member.yesterday}</p>
               )}
               <div className="staff__actions">
                 {status === 'startsTomorrow' && (

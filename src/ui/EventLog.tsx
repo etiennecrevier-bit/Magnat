@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { scalingOf } from '../engine/events.ts'
-import { recentEvents, type EventLogEntry } from './eventLog.ts'
+import { recentEvents, withPurchases, type EventLogEntry } from './eventLog.ts'
 import { formatShortGameDate } from './formatGameDate.ts'
 import JournalRow from './JournalRow.tsx'
 import { useOpenRows } from './journalRows.ts'
@@ -10,7 +10,8 @@ import './EventLog.css'
 /**
  * « Événements »: the events of the last 12 months, newest first, each a
  * line with its date, its title and the choice made, which opens to what
- * came of it.
+ * came of it. The rungs of « Améliorations » bought list among them, each
+ * a line with its date, « Achat · {name} » and its price.
  */
 export function EventLogView({
   entries,
@@ -59,9 +60,15 @@ export default function EventLog() {
   const day = useGame((state) => state.game.day)
   const difficulty = useGame((state) => state.game.profile.difficulty)
   const challenge = useGame((state) => state.game.challenge)
+  const bought = useGame((state) => state.game.dream.bought)
   const entries = useMemo(
-    () => recentEvents(history, day, difficulty, scalingOf({ challenge })),
-    [history, day, difficulty, challenge],
+    () =>
+      withPurchases(
+        recentEvents(history, day, difficulty, scalingOf({ challenge })),
+        bought,
+        day,
+      ),
+    [history, day, difficulty, challenge, bought],
   )
   const [openKeys, toggle] = useOpenRows()
   return (

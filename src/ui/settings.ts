@@ -1,4 +1,5 @@
 import { createStore, type StoreApi } from 'zustand'
+import { DISPLAY } from '../content/display.ts'
 import { medalSchema, type Medal } from '../content/schema.ts'
 
 // The player's settings, kept in this browser between games. Storage can
@@ -41,6 +42,11 @@ export type StreetLegend = 'unseen' | 'done' | { readonly seed: number }
 export interface Settings {
   readonly visualEffects: VisualEffects
   /**
+   * « Fluidité »: the most frames a second the world draws, one of the
+   * content's `frameRates` (#281).
+   */
+  readonly frameRate: number
+  /**
    * Whether the « Bilan » opens in full each time it comes, every week or
    * every month, not only for the first weeks of a game.
    */
@@ -65,6 +71,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   visualEffects: 'full',
+  frameRate: DISPLAY.defaultFrameRate,
   openReportEveryWeek: false,
   reportCadence: 'week',
   bestMedals: {},
@@ -87,6 +94,7 @@ export interface SettingsState extends Settings {
    */
   readonly worldView: WorldView
   setVisualEffects: (visualEffects: VisualEffects) => void
+  setFrameRate: (frameRate: number) => void
   setOpenReportEveryWeek: (openReportEveryWeek: boolean) => void
   setReportCadence: (reportCadence: ReportCadence) => void
   setScreensFolded: (screensFolded: boolean) => void
@@ -126,6 +134,7 @@ export function readSettings(storage: SettingsStorage | null): Settings {
   if (typeof stored !== 'object' || stored === null) return DEFAULT_SETTINGS
   const {
     visualEffects,
+    frameRate,
     openReportEveryWeek,
     reportCadence,
     bestMedals,
@@ -138,6 +147,9 @@ export function readSettings(storage: SettingsStorage | null): Settings {
     visualEffects: VISUAL_EFFECTS.includes(visualEffects as VisualEffects)
       ? (visualEffects as VisualEffects)
       : DEFAULT_SETTINGS.visualEffects,
+    frameRate: DISPLAY.frameRates.includes(frameRate as number)
+      ? (frameRate as number)
+      : DEFAULT_SETTINGS.frameRate,
     openReportEveryWeek:
       typeof openReportEveryWeek === 'boolean'
         ? openReportEveryWeek
@@ -236,6 +248,7 @@ export function createSettingsStore(
       set({ ...settings, bestMedals })
       const {
         visualEffects,
+        frameRate,
         openReportEveryWeek,
         reportCadence,
         screensFolded,
@@ -244,6 +257,7 @@ export function createSettingsStore(
       } = get()
       writeSettings(storage, {
         visualEffects,
+        frameRate,
         openReportEveryWeek,
         reportCadence,
         bestMedals,
@@ -256,6 +270,9 @@ export function createSettingsStore(
       ...readSettings(storage),
       worldView: 'street',
       setVisualEffects: (visualEffects) => change({ visualEffects }),
+      setFrameRate: (frameRate) => {
+        if (DISPLAY.frameRates.includes(frameRate)) change({ frameRate })
+      },
       setOpenReportEveryWeek: (openReportEveryWeek) =>
         change({ openReportEveryWeek }),
       setReportCadence: (reportCadence) => change({ reportCadence }),

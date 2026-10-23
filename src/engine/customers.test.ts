@@ -1517,6 +1517,135 @@ describe('the line, with the shipped content', () => {
   })
 })
 
+describe('the visits marketing brought (#284)', () => {
+  const AUBAINE = { aubaine: 1, habitue: 0, chic: 0 }
+  const CHIC = { aubaine: 0, habitue: 0, chic: 1 }
+  const base = (customers: number) =>
+    weekday(customers, {
+      segmentShares: AUBAINE,
+      productAppeal: { cafe: 1, chocolat: 1, croissant: 1 },
+    })
+  const marketing = (customers: number): ExtraCrowd => ({
+    customers,
+    segmentShares: CHIC,
+    fromMarketing: true,
+  })
+  const tagged = (served: Served) =>
+    served.visits.filter(({ fromMarketing }) => fromMarketing === true)
+  /** `served`'s visits without the tag; `toEqual` skips an undefined key. */
+  const untagged = (served: Served) =>
+    served.visits.map((visit) => ({ ...visit, fromMarketing: undefined }))
+
+  it('tags every visit of marketing’s crowd and only those, drawing nothing more', () => {
+    const plain = serve(base(120), {
+      extra: { customers: 30, segmentShares: CHIC },
+    })
+    const marketed = serve(base(120), { extra: marketing(30) })
+    expect(marketed.rngState).toBe(plain.rngState)
+    expect(untagged(marketed)).toEqual(plain.visits)
+    expect(tagged(marketed)).toHaveLength(30)
+    expect(tagged(marketed).every(({ segment }) => segment === 'chic')).toBe(
+      true,
+    )
+    expect(tagged(plain)).toEqual([])
+  })
+
+  it('counts those who found the prices too high, browsed or left the line', () => {
+    // Dear prices and a slow counter: many leave, many buy nothing.
+    const served = serve(base(120), {
+      customers: keen(2),
+      price: prices({ cafe: 900, chocolat: 300, croissant: 300 }),
+      counter: counter({ baseSeconds: 200 }),
+      extra: marketing(120),
+    })
+    const outcomes = new Set(tagged(served).map(({ outcome }) => outcome))
+    expect(outcomes.has('leftLine')).toBe(true)
+    expect(outcomes.has('bought')).toBe(true)
+    expect(tagged(served)).toHaveLength(
+      served.visits.filter(({ segment }) => segment === 'chic').length,
+    )
+    expect(tagged(served).length).toBeGreaterThan(
+      tagged(served).filter(({ servedMinute }) => servedMinute !== null).length,
+    )
+  })
+
+  it('leaves the street’s own surge untagged, and those the street keeps away uncounted', () => {
+    const surge = serve(base(120), {
+      extra: marketing(30),
+      changes: { walkIns: { aubaine: 1, habitue: 1, chic: 2 } },
+    })
+    // The street doubles the chic: 30 more, drawn after marketing's.
+    expect(
+      surge.visits.filter(({ segment }) => segment === 'chic'),
+    ).toHaveLength(60)
+    expect(tagged(surge)).toHaveLength(30)
+    const thinned = serve(base(120), {
+      extra: marketing(30),
+      changes: { walkIns: { aubaine: 1, habitue: 1, chic: 0.5 } },
+    })
+    expect(tagged(thinned)).toHaveLength(15)
+  })
+
+  it('counts no one who found the counter closed', () => {
+    const away: Server = {
+      speed: 1,
+      owner: true,
+      botchedShare: 0,
+      who: 'owner',
+      away: { from: 0, to: 24 * 3600 },
+    }
+    const served = serve(base(120), {
+      extra: marketing(30),
+      counter: { service: TIMES, servers: [away] },
+    })
+    expect(served.visits).toEqual([])
+  })
+})
+
+describe('who served each visit (#283)', () => {
+  function busy(servers: readonly Server[]) {
+    return serve(weekday(400, { productAppeal: perProduct(() => 1) }), {
+      customers: everyone({ base: 1, reference: 300, sensitivity: 4 }),
+      price: () => cents(300),
+      available: stock({ cafe: 10_000 }),
+      counter: { service: TIMES, servers },
+    })
+  }
+
+  it('names the server each visit reached, and no one for the others', () => {
+    const owner: Server = {
+      speed: 1,
+      owner: true,
+      botchedShare: 0,
+      who: 'owner',
+    }
+    const amelie: Server = {
+      speed: 0.85,
+      owner: false,
+      botchedShare: 0,
+      who: 'amelie',
+    }
+    const served = busy([owner, amelie])
+    const by = (who: string) =>
+      served.visits.filter(({ servedBy }) => servedBy === who).length
+    expect(by('owner')).toBe(served.servedByOwner)
+    expect(by('amelie')).toBeGreaterThan(0)
+    for (const visit of served.visits) {
+      expect(visit.servedBy !== undefined).toBe(visit.servedMinute !== null)
+    }
+    // The same day, with nobody named, draws and serves the same.
+    const anonymous = busy([
+      { ...owner, who: undefined },
+      { ...amelie, who: undefined },
+    ])
+    expect(anonymous.rngState).toBe(served.rngState)
+    // `toEqual` skips an undefined key.
+    expect(
+      served.visits.map((visit) => ({ ...visit, servedBy: undefined })),
+    ).toEqual(anonymous.visits)
+  })
+})
+
 describe('the owner and the employees at the counter', () => {
   /** Everyone wants one of each product at 3 $; only café is on hand. */
   function busy(servers: readonly Server[]) {

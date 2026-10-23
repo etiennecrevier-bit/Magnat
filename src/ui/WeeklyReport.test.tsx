@@ -351,3 +351,17 @@ describe('LastWeekReport', () => {
     )
   })
 })
+
+describe('the marketing of the week (#284)', () => {
+  it('tells what the budget spent and brought, only in a week it spent', () => {
+    expect(WEEK.marketing).toBeUndefined()
+    expect(render()).not.toContain('weekly-report__marketing')
+    const html = render({
+      ...WEEK,
+      marketing: { spent: cents(21_000), customers: 41, sales: cents(31_840) },
+    })
+    expect(html).toContain(
+      `<p class="weekly-report__marketing">Marketing${S}: 210${S}$ dépensés · 41 clients venus par la pub · 318${S}$ de ventes</p>`,
+    )
+  })
+})

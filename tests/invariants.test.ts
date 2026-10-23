@@ -184,6 +184,7 @@ interface Checked {
     financing: string[]
     ended: string[]
     tutorial: string[]
+    work: string[]
   }
   /** Events that came up, follow-ups included, and those drawn. */
   events: number
@@ -298,6 +299,7 @@ function check(
       financing: [],
       ended: [],
       tutorial: [],
+      work: [],
     },
     events: 0,
     drawn: 0,
@@ -457,6 +459,30 @@ function check(
 
     const played = state.lastDay
     checked.deliveries += played?.deliveries.length ?? 0
+
+    // What each person did (#283) adds up to the day's sales and
+    // deliveries.
+    if (played !== null) {
+      const people = played.work ?? []
+      const sales = people.reduce(
+        (total, person) => add(total, person.sales),
+        ZERO,
+      )
+      const invoiced = people.reduce(
+        (total, person) => add(total, person.invoiced),
+        ZERO,
+      )
+      const owed = played.deliveries.reduce(
+        (total, { amount }) => add(total, amount),
+        ZERO,
+      )
+      if (sales !== played.revenue || invoiced !== owed) {
+        fail(
+          'work',
+          `day ${day}: people sold ${sales} of ${played.revenue}, invoiced ${invoiced} of ${owed}`,
+        )
+      }
+    }
     const today = entriesSince(journal, day).filter(
       (entry) => entry.day === day,
     )
@@ -640,6 +666,10 @@ describe.each(GAMES)(
     it('protects the tutorial’s seven days, brings its card on its day only, and ends it', () => {
       expect(checked.failures.tutorial).toEqual([])
       expect(checked.scripted).toBe(tutorial ? 1 : 0)
+    })
+
+    it('splits each day’s sales and deliveries among the people who made them', () => {
+      expect(checked.failures.work).toEqual([])
     })
 
     it('plays the ten years without going bankrupt', () => {

@@ -158,7 +158,7 @@ describe('DreamPanelView', () => {
 
   it('offers « Acheter » on the next rung, described by the card’s tooltip', () => {
     expect(bare(card(render(START), 'Vélo électrique'))).toBe(
-      ` dream__card--next"><div class="dream__anchor" aria-describedby="tip"><div class="dream__art"><img alt="" width="300" height="150"/></div><div class="dream__text"><div class="dream__head"><h3>Vélo électrique</h3><p class="dream__price">1${S}500${S}$</p></div><p class="dream__chip">−30${S}% de trajet</p><div class="dream__foot"><button type="button" class="button dream__buy" aria-label="Acheter Vélo électrique" aria-describedby="tip">Acheter</button></div></div></div><div id="tip" role="tooltip" popover="manual" class="tip"><div class="tip__body" tabindex="-1"><p class="tip__title">Vélo électrique</p><p class="tip__text">1${S}500,00${S}$, payé par vous</p><dl class="tip__rows"><div class="tip__row"><dt>Déplacements en ville</dt><dd>−30${S}% de temps</dd></div></dl></div><span class="tip__arrow" aria-hidden="true"></span></div></li>`,
+      ` dream__card--next"><div class="dream__anchor" aria-describedby="tip"><div class="dream__art"><img alt="" width="300" height="150"/></div><div class="dream__text"><div class="dream__head"><h3>Vélo électrique</h3><p class="dream__price">1${S}500${S}$</p></div><p class="dream__chip">−30${S}% de trajet</p><div class="dream__foot"><button type="button" class="button dream__buy" aria-label="Acheter Vélo électrique" aria-describedby="tip">Acheter</button></div></div></div><div id="tip" role="tooltip" popover="manual" class="tip"><div class="tip__body" tabindex="-1"><p class="tip__title">Vélo électrique</p><p class="tip__text">1${S}500,00${S}$, payé par vous · ne touche pas l&#x27;entreprise</p><dl class="tip__rows"><div class="tip__row"><dt>Déplacements en ville</dt><dd>−30${S}% de temps</dd></div></dl></div><span class="tip__arrow" aria-hidden="true"></span></div></li>`,
     )
     const html = card(render(START), 'Vélo électrique')
     const tip = html.match(/<div id="([^"]+)" role="tooltip"/)?.[1]
@@ -233,7 +233,16 @@ describe('DreamPanelView', () => {
     expect(
       bare(card(render(START, 'personal', 'velo'), 'Vélo électrique')),
     ).toContain(
-      `<div class="dream__foot"><div class="dream__confirm"><p role="alert">Acheter Vélo électrique? 1${S}500,00${S}$, payé par vous</p><ul class="dream__facts"><li>Déplacements en ville${S}: −30${S}% de temps</li></ul><button type="button" class="button dream__buy" aria-describedby="tip">Confirmer</button> <button type="button" class="button" aria-describedby="tip">Annuler</button></div></div>`,
+      `<div class="dream__foot"><div class="dream__confirm"><p role="alert">Acheter Vélo électrique? 1${S}500,00${S}$, payé par vous · ne touche pas l&#x27;entreprise</p><ul class="dream__facts"><li>Déplacements en ville${S}: −30${S}% de temps</li></ul><button type="button" class="button dream__buy" aria-describedby="tip">Confirmer</button> <button type="button" class="button" aria-describedby="tip">Annuler</button></div></div>`,
+    )
+  })
+  it('adds what the purchase does to the books in the confirmation of a company rung', () => {
+    expect(
+      bare(
+        card(render(START, 'company', 'espresso'), 'Machine à espresso pro'),
+      ),
+    ).toContain(
+      `<ul class="dream__facts"><li>Service au comptoir${S}: −20${S}% de temps</li><li>Équipement au bilan${S}: +6${S}000${S}$</li><li>Amortissement${S}: 100${S}$ par mois pendant 60 mois</li></ul>`,
     )
   })
 })

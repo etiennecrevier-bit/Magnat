@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from 'zustand'
+import { DISPLAY } from '../content/display.ts'
 import pacing from '../content/pacing.json'
 import { TUTORIAL } from '../engine/tutorial.ts'
 import { DockPanel } from './DockFrame.tsx'
@@ -75,6 +76,39 @@ export function VisualEffectsField({
       <p className="settings-panel__hint">
         Les effets simples ménagent les ordinateurs lents.
       </p>
+    </fieldset>
+  )
+}
+
+/**
+ * The « Fluidité » setting (#281): the most frames a second the world
+ * draws, of the content's rates. The street behind the panel follows it at
+ * once.
+ */
+export function FrameRateField({
+  frameRate,
+  onChange,
+}: {
+  frameRate: number
+  onChange: (frameRate: number) => void
+}) {
+  return (
+    <fieldset className="settings-panel__setting">
+      <legend>Fluidité</legend>
+      <div className="settings-panel__options">
+        {DISPLAY.frameRates.map((option) => (
+          <label key={option} className="settings-panel__option">
+            <input
+              type="radio"
+              name="frameRate"
+              value={option}
+              checked={option === frameRate}
+              onChange={() => onChange(option)}
+            />
+            {option} images par seconde
+          </label>
+        ))}
+      </div>
     </fieldset>
   )
 }
@@ -177,6 +211,9 @@ interface SettingsPanelViewProps {
   /** The visual effects the player picked, kept in this browser. */
   visualEffects: VisualEffects
   onVisualEffectsChange: (visualEffects: VisualEffects) => void
+  /** « Fluidité »: the most frames a second the world draws. */
+  frameRate?: number
+  onFrameRateChange?: (frameRate: number) => void
   /** How often the « Bilan » comes after the first weeks of a game. */
   cadence: ReportCadence
   onCadenceChange: (cadence: ReportCadence) => void
@@ -194,13 +231,15 @@ interface SettingsPanelViewProps {
 }
 
 /**
- * « Réglages »: the visual effects, the « Bilan » every week or every
+ * « Réglages »: the visual effects, the frame rate, the « Bilan » every week or every
  * month, with the switch that opens it in full each time, the game's
  * export and import, and « Refaire la visite » outside a Défi.
  */
 export function SettingsPanelView({
   visualEffects,
   onVisualEffectsChange,
+  frameRate = DISPLAY.defaultFrameRate,
+  onFrameRateChange = () => {},
   cadence,
   onCadenceChange,
   everyWeek,
@@ -224,6 +263,7 @@ export function SettingsPanelView({
         visualEffects={visualEffects}
         onChange={onVisualEffectsChange}
       />
+      <FrameRateField frameRate={frameRate} onChange={onFrameRateChange} />
       <fieldset className="settings-panel__setting">
         <legend>Bilan</legend>
         <div className="settings-panel__options">
@@ -296,6 +336,8 @@ export default function SettingsPanel({
   const startGame = useGame((state) => state.startGame)
   const visualEffects = useStore(settings, (state) => state.visualEffects)
   const setVisualEffects = useStore(settings, (state) => state.setVisualEffects)
+  const frameRate = useStore(settings, (state) => state.frameRate)
+  const setFrameRate = useStore(settings, (state) => state.setFrameRate)
   const cadence = useStore(settings, (state) => state.reportCadence)
   const setCadence = useStore(settings, (state) => state.setReportCadence)
   const everyWeek = useStore(settings, (state) => state.openReportEveryWeek)
@@ -330,6 +372,8 @@ export default function SettingsPanel({
       <SettingsPanelView
         visualEffects={visualEffects}
         onVisualEffectsChange={setVisualEffects}
+        frameRate={frameRate}
+        onFrameRateChange={setFrameRate}
         cadence={cadence}
         onCadenceChange={setCadence}
         everyWeek={everyWeek}

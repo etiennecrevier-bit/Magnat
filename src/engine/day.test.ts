@@ -69,6 +69,7 @@ import type {
   Day,
   DaySummary,
   GameState,
+  PersonDay,
   PerProduct,
   StreetModifier,
 } from './types.ts'
@@ -453,6 +454,21 @@ function summary(state: GameState): DaySummary {
   return state.lastDay
 }
 
+/** What the owner did on a day: zeros but for `done`. */
+function owner(done: Partial<PersonDay> = {}): PersonDay {
+  return {
+    who: 'owner',
+    customers: 0,
+    sales: cents(0),
+    deliveries: 0,
+    invoiced: cents(0),
+    baked: 0,
+    bakedCost: cents(0),
+    boughtCost: cents(0),
+    ...done,
+  }
+}
+
 function entriesOn(state: GameState, day: Day): JournalEntry[] {
   return state.journal.entries.filter((entry) => entry.day === day)
 }
@@ -673,6 +689,7 @@ describe('tick', () => {
       botched: 0,
       modifiers: [],
       deliveries: [],
+      work: [owner({ customers: 10, sales: cents(revenue) })],
       missed: [],
     })
     expect(visits).toHaveLength(10)
@@ -1351,7 +1368,7 @@ describe("the owner's energy", () => {
         fatigue === 'rested' ? 1 : 1 / (1 + ENERGY[fatigue].serviceTimeIncrease)
       const { botchedShare } = effectsOf(morning.energy, ENERGY)
       expect(servers(morning, ENERGY)).toEqual([
-        { speed, owner: true, botchedShare },
+        { speed, owner: true, botchedShare, who: 'owner' },
       ])
       // The same day played by a rested owner: the same customers.
       const rested = summary(
@@ -1397,7 +1414,7 @@ describe("the owner's energy", () => {
     expect(toCalendar(sunday.day).weekday).toBe(7)
     expect(sunday.energy).toBe(FULL_ENERGY)
     expect(servers(sunday, ENERGY)).toEqual([
-      { speed: 1, owner: true, botchedShare: 0 },
+      { speed: 1, owner: true, botchedShare: 0, who: 'owner' },
     ])
     const played = summary(week[6] as GameState)
     expect(played.visits.length).toBeGreaterThan(0)
@@ -1807,6 +1824,8 @@ describe('cash', () => {
       botched: 0,
       modifiers: [],
       deliveries: [],
+      // They reached the counter, so the owner served them, but sold none.
+      work: [owner({ customers: 10 })],
       missed: [],
     })
     expect(visits.map(({ outcome }) => outcome)).toEqual(

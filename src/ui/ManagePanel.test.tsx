@@ -11,6 +11,7 @@ import { cents } from '../engine/money.ts'
 import type { Decisions, GameState } from '../engine/types.ts'
 import { bakeryBoard, type BakeryBoard } from './bakeryBoard.ts'
 import ManagePanel, { ManagePanelView } from './ManagePanel.tsx'
+import { marketingFacts, type MarketingFacts } from './marketingFacts.ts'
 import { NumberFieldView } from './NumberField.tsx'
 import { productBoards } from './productFacts.ts'
 import { StepButton } from './ProductCard.tsx'
@@ -44,6 +45,7 @@ interface RenderOptions {
   readonly game?: GameState
   readonly locked?: readonly DecisionKind[]
   readonly bakery?: BakeryBoard
+  readonly marketing?: MarketingFacts | null
 }
 
 /**
@@ -60,6 +62,7 @@ function render(tab: TruckTab, options: RenderOptions = {}) {
       products={productBoards(game)}
       locked={options.locked ?? []}
       bakery={options.bakery ?? bakeryBoard(game)}
+      marketing={options.marketing ?? null}
       onChange={() => {}}
     />,
   )
@@ -407,6 +410,21 @@ describe('ManagePanelView', () => {
       'true',
       'true',
     ])
+  })
+
+  it('shows what the marketing spent and brought under its budget, the four weeks in its tooltip (#284)', () => {
+    const marketing = marketingFacts([
+      { day: 3, spent: cents(3_000), customers: 4, sales: cents(1_250) },
+      { day: 4, spent: cents(3_000), customers: 2, sales: cents(600) },
+    ])
+    const html = render('payMarketing', { marketing })
+    expect(html).toMatch(
+      new RegExp(
+        `<p class="manage__marketing-facts" tabindex="0" aria-describedby="[^"]+">7 derniers jours${S}: 60${S}\\$ dépensés · 6 clients venus par la pub · 19${S}\\$ de ventes</p><div [^>]*role="tooltip"`,
+      ),
+    )
+    expect(html).toContain('<p class="tip__title">Marketing</p>')
+    expect(render('payMarketing')).not.toContain('manage__marketing-facts')
   })
 
   it('shows the pay and the marketing budget in fr-CA amounts', () => {

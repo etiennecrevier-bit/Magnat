@@ -6,6 +6,8 @@ import {
   type RendererDestroyOptions,
   type Ticker,
 } from 'pixi.js'
+import { DISPLAY } from '../content/display.ts'
+import type { VisualEffects } from '../ui/settings.ts'
 import { ASSETS } from './manifest.ts'
 
 /** The sky behind the street, from the manifest's palette. */
@@ -48,17 +50,35 @@ export interface WorldApp {
 export type StartWorld = (app: WorldApp) => Promise<() => void | Promise<void>>
 
 /**
+ * The pixels per logical pixel the world draws at on a screen of
+ * `devicePixelRatio` (#281): the screen's, but at most the content's
+ * `maxResolution`, and its `simpleResolution` with the simple effects.
+ */
+export function worldResolution(
+  devicePixelRatio: number,
+  effects: VisualEffects,
+): number {
+  const most =
+    effects === 'simple' ? DISPLAY.simpleResolution : DISPLAY.maxResolution
+  return Math.min(devicePixelRatio, most)
+}
+
+/**
  * The options the world starts Pixi with: the sky, on an antialiased canvas
- * that fills `view` and follows its resizes at the screen's pixel density.
+ * that fills `view` and follows its resizes at the screen's pixel density,
+ * capped for `effects` (see `worldResolution`).
  * WebGL starts without its back buffer, since Pixi antialiases the canvas
  * only then; the street turns it on for the overlay and soft light of the
  * full visual effects (see atmosphere.ts), and it antialiases as well.
  */
-export function worldOptions(view: Window): Partial<ApplicationOptions> {
+export function worldOptions(
+  view: Window,
+  effects: VisualEffects = 'full',
+): Partial<ApplicationOptions> {
   return {
     background: SKY_COLOR,
     resizeTo: view,
-    resolution: view.devicePixelRatio,
+    resolution: worldResolution(view.devicePixelRatio, effects),
     autoDensity: true,
     antialias: true,
     useBackBuffer: false,

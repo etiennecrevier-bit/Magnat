@@ -57,7 +57,7 @@ export default function App() {
 
   return (
     <>
-      <WorldCanvas onOpen={playing ? openCityLink : null} />
+      <WorldCanvas onOpen={playing ? openCityLink : null} playing={playing} />
       {playing ? (
         <>
           <TopBar />

@@ -1,0 +1,7 @@
+{
+  "_note": "How often and how finely the world draws (#281): the frame rates « Réglages › Fluidité » offers and the one a player starts with, and the most pixels per logical pixel the canvas takes, with the full visual effects and with the simple ones.",
+  "frameRates": [30, 60],
+  "defaultFrameRate": 30,
+  "maxResolution": 2,
+  "simpleResolution": 1.5
+}

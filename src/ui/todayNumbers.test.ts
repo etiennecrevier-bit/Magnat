@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { cents } from '../engine/money.ts'
 import type { DaySummary, Visit } from '../engine/types.ts'
-import { todayNumbers, totalUnits } from './todayNumbers.ts'
+import { applyDecision } from '../engine/decisions.ts'
+import { todayNumbers, totalUnits, truckWithout } from './todayNumbers.ts'
 
 const NONE = { cafe: 0, chocolat: 0, croissant: 0 }
 
@@ -83,5 +84,58 @@ describe('totalUnits', () => {
   it('adds up every product', () => {
     expect(totalUnits({ cafe: 87, chocolat: 12, croissant: 54 })).toBe(153)
     expect(totalUnits(NONE)).toBe(0)
+  })
+})
+
+describe('truckWithout (#283)', () => {
+  /** A game with `candidates` at the truck from day 1, the owner away on day 2. */
+  function awayWith(...candidates: ('amelie' | 'kevin')[]) {
+    let game = candidates.reduce(
+      (state, candidate) =>
+        applyDecision(state, {
+          kind: 'hire',
+          role: 'camion',
+          candidate,
+          hourlyWage: cents(2500),
+        }),
+      createInitialState(42),
+    )
+    game = tick(tick(game))
+    return tick({ ...game, ownerAway: true })
+  }
+
+  it('names who kept the truck open while the owner was away', () => {
+    const one = awayWith('kevin')
+    expect(one.lastDay?.visits.length).toBeGreaterThan(0)
+    expect(truckWithout(one.lastDay!, one.staff)).toBe(
+      'Sans Kevin, le camion aurait été fermé',
+    )
+    const two = awayWith('amelie', 'kevin')
+    expect(truckWithout(two.lastDay!, two.staff)).toBe(
+      'Sans Amélie et Kevin, le camion aurait été fermé',
+    )
+    // A third at the truck, as the staff would have them.
+    const day = two.lastDay!
+    const nadia = { ...two.staff[0]!, candidate: 'nadia' as const }
+    expect(
+      truckWithout(
+        {
+          ...day,
+          work: [...(day.work ?? []), { ...day.work![0]!, who: 'nadia' }],
+        },
+        [...two.staff, nadia],
+      ),
+    ).toBe('Sans Amélie, Kevin et Nadia, le camion aurait été fermé')
+  })
+
+  it('says nothing on a day the owner was at work, or the truck closed', () => {
+    const game = tick(tick(awayWith('kevin')))
+    expect(truckWithout(game.lastDay!, game.staff)).toBeNull()
+    const nobody = tick({
+      ...tick(tick(createInitialState(42))),
+      ownerAway: true,
+    })
+    expect(nobody.lastDay?.visits).toEqual([])
+    expect(truckWithout(nobody.lastDay!, nobody.staff)).toBeNull()
   })
 })

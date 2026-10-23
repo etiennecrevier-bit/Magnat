@@ -98,6 +98,9 @@ describe('staffBoard', () => {
       away: false,
       // Day 0, a Monday: the truck is closed and nothing is due.
       tasks: [],
+      // Nothing played yet.
+      yesterday: null,
+      days: [],
     })
     expect(board.members).toEqual([])
     expect(board.roles).toEqual([
@@ -155,6 +158,8 @@ describe('staffBoard', () => {
         tasks: [],
         fireCost: 0,
         training: AT_TRUCK_WEEK,
+        yesterday: null,
+        days: [],
       },
     ])
     expect(board.candidates.map(({ candidate }) => candidate)).not.toContain(
@@ -530,5 +535,115 @@ describe('the staff through the store', () => {
     expect(
       entriesOf(game.journal).filter(({ memo }) => memo.includes('Amélie')),
     ).toEqual([])
+  })
+})
+
+describe('what each person did (#283)', () => {
+  // Amélie at the truck, Kevin delivering and Sophie baking for Chez
+  // Normand, from day 1, each paid what they ask.
+  const STAFFED = decided(
+    signed(START, 'chezNormand'),
+    { kind: 'openBakery', oven: 'louer' },
+    { kind: 'croissantSource', source: 'fabriquer' },
+    {
+      kind: 'hire',
+      role: 'camion',
+      candidate: 'amelie',
+      hourlyWage: cents(2500),
+    },
+    {
+      kind: 'hire',
+      role: 'livreur',
+      candidate: 'kevin',
+      hourlyWage: cents(2200),
+    },
+    {
+      kind: 'hire',
+      role: 'boulanger',
+      candidate: 'sophie',
+      hourlyWage: cents(3000),
+    },
+  )
+  const S = '\u00a0'
+  const money = (amount: number) =>
+    `${Math.round(amount / 100)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, S)}${S}$`
+
+  it('tells what each one did yesterday, from the day the engine played', () => {
+    // Day 8 is a Tuesday after Monday's deliveries.
+    for (const day of [2, 3, 8, 9]) {
+      const game = playedTo(STAFFED, day)
+      const work = game.lastDay?.work ?? []
+      const board = staffBoard(game)
+      const of = (who: string) => work.find((person) => person.who === who)
+      const amelie = of('amelie')
+      const member = (candidate: string) =>
+        board.members.find((row) => row.candidate === candidate)
+      if (amelie !== undefined) {
+        expect(member('amelie')?.yesterday).toBe(
+          `Hier${S}: ${amelie.customers} client${amelie.customers < 2 ? ' servi' : 's servis'} · ${money(amelie.sales)} de ventes`,
+        )
+      }
+      const kevin = of('kevin')
+      if (kevin !== undefined) {
+        expect(member('kevin')?.yesterday).toBe(
+          `Hier${S}: ${kevin.deliveries} livraison${kevin.deliveries < 2 ? '' : 's'} · ${money(kevin.invoiced)} facturés`,
+        )
+      }
+      const sophie = of('sophie')
+      if (sophie !== undefined) {
+        const saved = sophie.boughtCost - sophie.bakedCost
+        expect(member('sophie')?.yesterday).toBe(
+          `Hier${S}: ${sophie.baked.toString().replace(/\B(?=(\d{3})+(?!\d))/g, S)} croissant${sophie.baked < 2 ? '' : 's'} · ${money(Math.abs(saved))} ${saved >= 0 ? 'de moins' : 'de plus'} qu'achetés`,
+        )
+      }
+    }
+    // Over those days each did their job at least once.
+    const monday = playedTo(STAFFED, 8).lastDay?.work ?? []
+    expect(
+      monday.find(({ who }) => who === 'kevin')?.deliveries,
+    ).toBeGreaterThan(0)
+  })
+
+  it('lists the last seven days in the tooltip, after the wage', () => {
+    const game = playedTo(STAFFED, 12)
+    const amelie = staffBoard(game).members.find(
+      ({ candidate }) => candidate === 'amelie',
+    )
+    if (amelie === undefined) throw new Error('no Amélie')
+    expect(amelie.days.length).toBeGreaterThan(0)
+    expect(amelie.days.length).toBeLessThanOrEqual(7)
+    expect(amelie.days[0]?.divider).toBe(true)
+    expect(amelie.days.every(({ label }) => /^[a-z]{3}\. \d/.test(label))).toBe(
+      true,
+    )
+    const owner = staffBoard(game).owner
+    expect(owner.days).toHaveLength(7)
+    expect(owner.yesterday).toMatch(/^Hier\u00a0: \d+ clients? servis? · /)
+  })
+
+  it('says the owner was in town, and an employee absent', () => {
+    let game = tick(tick(STAFFED))
+    game = tick({ ...game, ownerAway: true })
+    const board = staffBoard(game)
+    expect(board.owner.yesterday).toBe(`Hier${S}: en ville`)
+    expect(board.owner.days.at(-1)?.value).toBe('En ville')
+    const absent = {
+      ...game,
+      workDays: game.workDays?.map((day, index, all) =>
+        index === all.length - 1 ? { ...day, absent: ['kevin' as const] } : day,
+      ),
+    }
+    const kevin = staffBoard(absent).members.find(
+      ({ candidate }) => candidate === 'kevin',
+    )
+    expect(kevin?.yesterday).toBe(`Hier${S}: absence`)
+  })
+
+  it('says nothing for a save from before the days were kept', () => {
+    const game = playedTo(STAFFED, 5)
+    const board = staffBoard({ ...game, workDays: undefined })
+    expect(board.owner).toMatchObject({ yesterday: null, days: [] })
   })
 })

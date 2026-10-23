@@ -98,18 +98,22 @@ describe('StaffPanelView', () => {
       '<svg class="staff__portrait staff__silhouette" viewBox="0 0 96 96" width="48" height="48" aria-hidden="true" focusable="false">',
     )
     expect(html).toContain('<li class="chip chip--off">Congé</li>')
+    // Day 0, a Monday, was closed.
     expect(rows(render(tick(START)))[0]).toBe(
-      `Vous|Propriétaire|Au camion|700,00${S}$ par semaine`,
+      `Vous|Propriétaire|Au camion|700,00${S}$ par semaine|Hier${S}: 0 client servi · 0${S}$ de ventes`,
     )
     expect(rows(render({ ...tick(START), ownerAway: true }))[0]).toBe(
-      `Vous|Propriétaire|Ailleurs|700,00${S}$ par semaine`,
+      `Vous|Propriétaire|Ailleurs|700,00${S}$ par semaine|Hier${S}: 0 client servi · 0${S}$ de ventes`,
     )
   })
 
   it('shows each employee with their role, work today as chips, wage and « Congédier »', () => {
     const html = render(amelieAtWork())
     expect(rows(html)[1]).toBe(
-      `Amélie Gagnon|Au camion|Au camion|Salaire horaire|$ de l&#x27;heure|Congédier`,
+      `Amélie Gagnon|Au camion|Au camion|Salaire horaire|$ de l&#x27;heure|Hier${S}: 30 clients servis · 178${S}$ de ventes|Congédier`,
+    )
+    expect(html).toContain(
+      `<p class="staff__yesterday">Hier${S}: 30 clients servis · 178${S}$ de ventes</p>`,
     )
     expect(html).toContain('<li class="chip">Au camion</li>')
     expect(html.match(/<div class="staff__row" tabindex="0"/g)).toHaveLength(1)
@@ -130,18 +134,19 @@ describe('StaffPanelView', () => {
         { label: 'Heures par semaine', value: `35${S}h` },
         { label: 'Salaire par semaine', value: `612,50${S}$` },
         { label: 'Préavis si congédié', value: `1${S}225,00${S}$` },
+        // Hired on day 1, a Tuesday: the days she worked.
+        { label: 'mar. 2', value: `30 clients · 178${S}$`, divider: true },
       ],
     })
     expect(render(amelieAtWork())).toContain(
       `<dt>Préavis si congédié</dt><dd>1${S}225,00${S}$</dd>`,
     )
-    expect(ownerTip(board.owner)).toEqual({
-      title: 'Vous',
-      rows: [
-        { label: 'Rôle', value: 'Propriétaire' },
-        { label: 'Salaire par semaine', value: `700,00${S}$` },
-      ],
-    })
+    expect(ownerTip(board.owner).rows?.slice(0, 3)).toEqual([
+      { label: 'Rôle', value: 'Propriétaire' },
+      { label: 'Salaire par semaine', value: `700,00${S}$` },
+      { label: 'lun. 1er', value: `0 client · 0${S}$`, divider: true },
+    ])
+    expect(ownerTip(board.owner).rows?.[3]?.label).toBe('mar. 2')
   })
 
   it('asks to confirm « Congédier », the notice in the tooltip', () => {
@@ -181,7 +186,7 @@ describe('StaffPanelView', () => {
     const game = decided(amelieAtWork(), { kind: 'fire', candidate: 'amelie' })
     const html = render(game)
     expect(rows(html)[1]).toBe(
-      `Amélie Gagnon|Au camion|Part demain|Au camion|17,50${S}$ de l&#x27;heure`,
+      `Amélie Gagnon|Au camion|Part demain|Au camion|17,50${S}$ de l&#x27;heure|Hier${S}: 30 clients servis · 178${S}$ de ventes`,
     )
     expect(html).toContain(
       '<div class="staff__row" tabindex="0" aria-describedby=',

@@ -1,9 +1,24 @@
-import type { DifficultyId, EventContent } from '../content/schema.ts'
+import type {
+  DifficultyId,
+  DreamContent,
+  EventContent,
+} from '../content/schema.ts'
 import { EVENTS } from '../engine/day.ts'
+import {
+  DREAM,
+  DREAM_MEMO,
+  dreamLabel,
+  isCompany,
+  rungOf,
+} from '../engine/dream.ts'
 import { isKept } from '../engine/personal.ts'
 import { cardText } from '../engine/scaling.ts'
-import type { Day, EventRecord } from '../engine/types.ts'
+import type { BoughtRung, Day, EventRecord } from '../engine/types.ts'
 import { formatCardText } from './eventTags.ts'
+import { formatBriefMoney } from './formatMoney.ts'
+
+// French puts a no-break space (U+00A0) before a colon.
+const COLON = '\u00a0:'
 
 /** An event that came up, as « Événements » lists it. */
 export interface EventLogEntry {
@@ -55,4 +70,51 @@ export function recentEvents(
     })
   }
   return entries.reverse()
+}
+
+/**
+ * `events` with the rungs of « Améliorations » in `bought` from the same
+ * months mixed in, each as an event of its day, « Achat · {name} » at what it
+ * cost, opening to who paid and, for a company rung, the equipment it put
+ * on the bilan. Newest first; on a day with both, the purchase comes after
+ * the day's events. A rung `content` no longer holds is left out.
+ */
+export function withPurchases(
+  events: readonly EventLogEntry[],
+  bought: readonly BoughtRung[],
+  today: Day,
+  content: DreamContent = DREAM,
+): EventLogEntry[] {
+  const purchases: EventLogEntry[] = []
+  for (const { rung: id, day, cost } of bought) {
+    if (!isKept(day, today)) continue
+    let rung
+    try {
+      rung = rungOf(id, content).rung
+    } catch (error) {
+      if (error instanceof RangeError) continue
+      throw error
+    }
+    purchases.push({
+      key: `achat-${day}-${id}`,
+      day,
+      title: dreamLabel(DREAM_MEMO.bought, rung.name),
+      choice: formatBriefMoney(cost),
+      result: isCompany(rung)
+        ? `Payé par l'entreprise · Équipement au bilan${COLON} +${formatBriefMoney(cost)}`
+        : "Payé par vous · ne touche pas l'entreprise",
+    })
+  }
+  // Both lists are newest first; a purchase goes after its day's events.
+  const merged: EventLogEntry[] = []
+  const newest = purchases.reverse()
+  let next = 0
+  for (const event of events) {
+    while (next < newest.length && newest[next]!.day > event.day) {
+      merged.push(newest[next]!)
+      next += 1
+    }
+    merged.push(event)
+  }
+  return [...merged, ...newest.slice(next)]
 }
