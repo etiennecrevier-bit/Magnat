@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   loadCustomerContent,
   loadDifficultyContent,
+  loadDistrictContent,
   loadEnergyContent,
   loadFoodTruckContent,
   loadPersonalContent,
@@ -10,6 +11,7 @@ import {
   type Difficulty,
   type DifficultyContent,
   type DifficultyId,
+  type DistrictContent,
   type DayType,
   type DayTypeId,
   type EnergyContent,
@@ -53,6 +55,8 @@ import {
   latestDecisions,
   type DecisionChange,
 } from './decisions.ts'
+import { DISTRICTS, districtWalkIns } from './districts.ts'
+import { DREAM } from './dream.ts'
 import { applyEffect } from './effects.ts'
 import { FULL_ENERGY, effectsOf, fatigueOf } from './energy.ts'
 import { NO_EVENTS } from './events.ts'
@@ -61,9 +65,11 @@ import { PRODUCTS, inventoryValue, onHand, perProduct } from './inventory.ts'
 import { cents, mulRatio, type Cents } from './money.ts'
 import { PERCENTILES } from './percentiles.ts'
 import { LABELS } from './personal.ts'
+import { PLACES } from './places.ts'
 import { defaultProfile } from './profile.ts'
 import { servers } from './service.ts'
 import { STAFF } from './staff.ts'
+import { TUTORIAL } from './tutorial.ts'
 import type { EventEffect } from '../content/schema.ts'
 import type {
   Day,
@@ -101,6 +107,8 @@ interface Content {
   customers: CustomerContent
   difficulties: DifficultyContent
   energy: EnergyContent
+  /** The trucks' districts (#260): the Plateau's crowd and its permit. */
+  districts: DistrictContent
   /** The financing's rules, the shipped ones when not given. */
   financing?: FinancingContent
 }
@@ -110,6 +118,24 @@ const SHIPPED: Content = {
   customers: CUSTOMERS,
   difficulties: DIFFICULTIES,
   energy: ENERGY,
+  districts: DISTRICTS,
+}
+
+/** The Plateau's crowd and permit, as `districts` has them. */
+type Plateau = DistrictContent['districts']['plateau']
+
+/** `districts` with the Plateau changed by `change`. */
+function withPlateau(
+  districts: DistrictContent,
+  change: (plateau: Plateau) => Plateau,
+): DistrictContent {
+  return {
+    ...districts,
+    districts: {
+      ...districts.districts,
+      plateau: change(districts.districts.plateau),
+    },
+  }
 }
 
 /** An owner nothing tires, so every day plays as rested. */
@@ -128,11 +154,11 @@ function byProduct<T>(value: (product: ProductId) => T): Record<ProductId, T> {
 
 /** A crowd spread evenly over the opening hours, with every product liked. */
 function evenCrowd(customers: number): DayType {
-  const { semaine } = FOOD_TRUCK.walkIns.dayTypes
+  const { semaine } = DISTRICTS.districts.plateau.dayTypes
   return {
     name: 'Test',
     customers,
-    segmentShares: { aubaine: 0.2, habitue: 0.5, chic: 0.3 },
+    segmentShares: { aubaine: 0.2, habitue: 0.5, chic: 0.3, touriste: 0 },
     productAppeal: byProduct(() => 1),
     patienceMultiplier: 1,
     arrivalWeights: semaine.arrivalWeights.map(() => 1),
@@ -164,10 +190,6 @@ const INSTANT_SERVICE: FoodTruckContent['service'] = {
 const FLAT: Content = {
   truck: loadFoodTruckContent({
     ...FOOD_TRUCK,
-    walkIns: {
-      ...FOOD_TRUCK.walkIns,
-      dayTypes: { semaine: evenCrowd(120), finDeSemaine: evenCrowd(80) },
-    },
     service: INSTANT_SERVICE,
     startingDecisions: { ...FOOD_TRUCK.startingDecisions, daysOpen: EVERY_DAY },
   }),
@@ -186,6 +208,10 @@ const FLAT: Content = {
   }),
   difficulties: DIFFICULTIES,
   energy: TIRELESS,
+  districts: withPlateau(DISTRICTS, (plateau) => ({
+    ...plateau,
+    dayTypes: { semaine: evenCrowd(120), finDeSemaine: evenCrowd(80) },
+  })),
 }
 
 // Content variants: each change returns new content, and `variant` validates
@@ -209,12 +235,18 @@ function validated({
   customers,
   difficulties,
   energy,
+  districts,
+  financing,
 }: Content): Content {
+  const checked = loadFoodTruckContent(truck)
+  const levels = loadDifficultyContent(difficulties)
   return {
-    truck: loadFoodTruckContent(truck),
-    customers: loadCustomerContent(customers),
-    difficulties: loadDifficultyContent(difficulties),
+    truck: checked,
+    customers: loadCustomerContent(customers, checked),
+    difficulties: levels,
     energy: loadEnergyContent(energy),
+    districts: loadDistrictContent(districts, checked, levels),
+    ...(financing === undefined ? {} : { financing }),
   }
 }
 
@@ -224,20 +256,20 @@ function truck(change: (truck: FoodTruckContent) => FoodTruckContent): Change {
 
 /** Exactly this many customers each weekday and each weekend day. */
 function crowd(weekday: number, weekend = weekday): Change {
-  return truck((t) => ({
-    ...t,
-    walkIns: {
-      ...t.walkIns,
-      noiseStdDevRatio: 0,
-      dayTypes: {
-        semaine: { ...t.walkIns.dayTypes.semaine, customers: weekday },
-        finDeSemaine: {
-          ...t.walkIns.dayTypes.finDeSemaine,
-          customers: weekend,
-        },
-      },
+  return (content) => ({
+    ...content,
+    truck: {
+      ...content.truck,
+      walkIns: { ...content.truck.walkIns, noiseStdDevRatio: 0 },
     },
-  }))
+    districts: withPlateau(content.districts, (plateau) => ({
+      ...plateau,
+      dayTypes: {
+        semaine: { ...plateau.dayTypes.semaine, customers: weekday },
+        finDeSemaine: { ...plateau.dayTypes.finDeSemaine, customers: weekend },
+      },
+    })),
+  })
 }
 
 type Odds = Segment['products'][ProductId]
@@ -320,13 +352,17 @@ function packaging(id: ProductId, packagingCents: number): Change {
 }
 
 function monthlyCosts(permit: number, insurance: number): Change {
-  return truck((t) => ({
-    ...t,
-    monthlyCostsCents: {
-      permitParkingAndCommissary: cents(permit),
-      insurance: cents(insurance),
+  return (content) => ({
+    ...content,
+    truck: {
+      ...content.truck,
+      monthlyCostsCents: { insurance: cents(insurance) },
     },
-  }))
+    districts: withPlateau(content.districts, (plateau) => ({
+      ...plateau,
+      permit: { kind: 'monthly', monthlyCents: cents(permit) },
+    })),
+  })
 }
 
 function fuel(perOpenDay: number): Change {
@@ -420,6 +456,30 @@ function step(state: GameState, content: Content): GameState {
     GROCERS,
     STAFF,
     content.financing ?? FINANCING,
+    DREAM,
+    PLACES,
+    TUTORIAL,
+    content.districts,
+  )
+}
+
+/** Plays the day of `state` with `content`, to its close. */
+function playedWith(state: GameState, content: Content = SHIPPED): GameState {
+  return playDay(
+    state,
+    content.truck,
+    content.customers,
+    content.difficulties,
+    PERSONAL,
+    content.energy,
+    DEFIS,
+    BAKERY,
+    GROCERS,
+    STAFF,
+    content.financing ?? FINANCING,
+    DREAM,
+    PLACES,
+    content.districts,
   )
 }
 
@@ -911,7 +971,11 @@ describe('the line', () => {
     const lastDay = summary(step(from, content))
     const expected = serveWalkIns(
       from.rngState,
-      FOOD_TRUCK.walkIns,
+      districtWalkIns(
+        'plateau',
+        toCalendar(from.day).month,
+        FOOD_TRUCK.walkIns,
+      ),
       'semaine',
       CUSTOMERS,
       (id) => currentPrice(from, id),
@@ -975,15 +1039,8 @@ describe('marketing', () => {
     history: readonly Cents[],
     content: Content = SHIPPED,
   ): number {
-    const played = playDay(
-      { ...state, marketingHistory: history },
-      content.truck,
-      content.customers,
-      content.difficulties,
-      PERSONAL,
-      content.energy,
-    )
-    return summary(played).visits.length
+    return summary(playedWith({ ...state, marketingHistory: history }, content))
+      .visits.length
   }
 
   function row(lines: readonly StatementLine[], label: string): number {
@@ -1390,14 +1447,7 @@ describe("the owner's energy", () => {
       ])
       // The same day played by a rested owner: the same customers.
       const rested = summary(
-        playDay(
-          { ...morning, energy: FULL_ENERGY },
-          everyDay.truck,
-          everyDay.customers,
-          everyDay.difficulties,
-          PERSONAL,
-          everyDay.energy,
-        ),
+        playedWith({ ...morning, energy: FULL_ENERGY }, everyDay),
       )
       const lastDay = summary(state)
       expect(arrivals(state)).toEqual(
@@ -1610,7 +1660,8 @@ describe('prices and crowds over a year', () => {
       expect(played.map(({ lostSales }) => lostSales)).toEqual(
         played.map(() => 0),
       )
-      for (const segment of SEGMENTS) {
+      // The Plateau brings no tourists (#260).
+      for (const segment of SEGMENTS.filter((id) => id !== 'touriste')) {
         const sold = played.map(({ bought }) => bought[segment][id])
         expect(sold[PRICES - 1]).toBeGreaterThan(0)
         for (let n = 1; n < PRICES; n += 1) {
@@ -1856,14 +1907,7 @@ describe('cash', () => {
 describe('changes to the street', () => {
   /** Plays the day of `state` with `content`, to its close. */
   function close(state: GameState, content: Content): GameState {
-    return playDay(
-      state,
-      content.truck,
-      content.customers,
-      content.difficulties,
-      PERSONAL,
-      content.energy,
-    )
+    return playedWith(state, content)
   }
 
   /** `state` with `effect` of `event` applied on its morning. */

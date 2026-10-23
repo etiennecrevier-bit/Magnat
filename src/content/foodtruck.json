@@ -1,5 +1,5 @@
 {
-  "_note": "Tuned in P2-19 (#58) with the balance bot: see docs/balance/phase-2.md. Costs, card fees, the truck and the starting decisions are #44's.",
+  "_note": "Tuned in P2-19 (#58) with the balance bot: see docs/balance/phase-2.md. Costs, card fees, the truck and the starting decisions are #44's. The crowd of each district and its permit are in districts.json (#260); `walkIns` is the noise and the opening hours every truck shares, and `monthlyCostsCents` what every truck pays on each 1st, stored or not.",
   "products": {
     "cafe": {
       "name": "Café",
@@ -21,10 +21,7 @@
     }
   },
   "truck": { "priceCents": 8500000, "usefulLifeMonths": 120 },
-  "monthlyCostsCents": {
-    "permitParkingAndCommissary": 150000,
-    "insurance": 25000
-  },
+  "monthlyCostsCents": { "insurance": 25000 },
   "fuelAndMaintenancePerOpenDayCents": 2000,
   "cardPayments": { "share": 0.85, "feeRate": 0.025 },
   "ownerPayWeekday": 5,
@@ -32,31 +29,18 @@
     "noiseStdDevRatio": 0.15,
     "opensAtMinute": 420,
     "closesAtMinute": 900,
-    "arrivalSlotMinutes": 30,
-    "dayTypes": {
-      "semaine": {
-        "name": "Semaine",
-        "customers": 102,
-        "segmentShares": { "aubaine": 0.3, "habitue": 0.5, "chic": 0.2 },
-        "productAppeal": { "cafe": 1, "chocolat": 0.3, "croissant": 1.1 },
-        "patienceMultiplier": 0.7,
-        "arrivalWeights": [10, 20, 20, 12, 4, 2, 2, 2, 3, 6, 9, 5, 2, 1, 1, 1]
-      },
-      "finDeSemaine": {
-        "name": "Fin de semaine",
-        "customers": 84,
-        "segmentShares": { "aubaine": 0.35, "habitue": 0.4, "chic": 0.25 },
-        "productAppeal": { "cafe": 0.5, "chocolat": 1, "croissant": 1.2 },
-        "patienceMultiplier": 1.3,
-        "arrivalWeights": [1, 2, 3, 5, 8, 11, 13, 13, 11, 9, 7, 6, 4, 3, 2, 2]
-      }
-    }
+    "arrivalSlotMinutes": 30
   },
   "service": { "baseSeconds": 50, "perItemSeconds": 20, "maxAheadInLine": 8 },
   "marketing": {
     "awarenessDays": 7,
     "extraCustomersPerSqrtCent": 0.3,
-    "segmentShares": { "aubaine": 0.1, "habitue": 0.3, "chic": 0.6 }
+    "segmentShares": {
+      "aubaine": 0.1,
+      "habitue": 0.3,
+      "chic": 0.6,
+      "touriste": 0
+    }
   },
   "startingDecisions": {
     "pricesCents": { "cafe": 325, "chocolat": 350, "croissant": 375 },

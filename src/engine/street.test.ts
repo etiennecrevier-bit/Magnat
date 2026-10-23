@@ -63,12 +63,18 @@ describe('streetOn', () => {
       aubaine: 0.65,
       habitue: 0.65,
       chic: 0.65,
+      touriste: 0.65,
     })
     const chic = streetOn(
       [modifier({ kind: 'walkIns', factor: 1.8, segment: 'chic' })],
       10,
     )
-    expect(chic.walkIns).toEqual({ aubaine: 1, habitue: 1, chic: 1.8 })
+    expect(chic.walkIns).toEqual({
+      aubaine: 1,
+      habitue: 1,
+      chic: 1.8,
+      touriste: 1,
+    })
     expect(chic.willingness).toEqual(NO_CHANGES.willingness)
   })
 
@@ -85,7 +91,12 @@ describe('streetOn', () => {
       ],
       10,
     )
-    expect(street.walkIns).toEqual({ aubaine: 0.5, habitue: 0.8, chic: 0.5 })
+    expect(street.walkIns).toEqual({
+      aubaine: 0.5,
+      habitue: 0.8,
+      chic: 0.5,
+      touriste: 0.5,
+    })
     expect(street.appeal).toEqual({ cafe: 1, chocolat: 0.15, croissant: 1 })
     expect(street.willingness.aubaine).toBeCloseTo(1.65, 12)
     expect(street.willingness.habitue).toBe(1.1)

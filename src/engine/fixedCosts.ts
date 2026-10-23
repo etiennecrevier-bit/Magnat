@@ -2,14 +2,17 @@ import type {
   BakeryContent,
   DifficultyContent,
   DifficultyId,
+  DistrictContent,
   FoodTruckContent,
 } from '../content/schema.ts'
 import { loanSchedule } from '../finance/loan.ts'
 import { BAKERY, bakeryMonthlyCosts, closedBakery } from './bakery.ts'
 import { endOfMonth, monthsSinceStart, toCalendar } from './calendar.ts'
 import { DIFFICULTIES, FOOD_TRUCK } from './day.ts'
-import { add, type Cents } from './money.ts'
-import type { BakeryState, Day } from './types.ts'
+import { DISTRICTS, cashOut, permitOn, truckChargesOn } from './districts.ts'
+import { add, sum, type Cents } from './money.ts'
+import { FIRST_DISTRICT } from './trucks.ts'
+import type { BakeryState, Day, Truck } from './types.ts'
 
 // What the 1st of each month takes whatever the truck sells: the cash gauge
 // reads the encaisse against it, and so does the event cards' draw.
@@ -17,15 +20,17 @@ import type { BakeryState, Day } from './types.ts'
 /**
  * The cash the next 1st of the month takes, seen on the morning of `day`
  * (that very day, if it is a 1st), in a game of `difficulty` whose truck
- * came on `firstDay`, day 0 but in a Défi: the permit, parking and
- * commissary and the insurance, which every truck pays, then the truck's
- * own charge, the lease or that month's loan payment. A loan has no payment
- * the month it is taken, nor after the last one, and a truck replaced on
- * `truckReplacedOn`, a rung of « Le rêve », no lease from then on. Then
- * what `bakery`, the
- * bakery as of the last close, takes that 1st at the difficulty's prices,
- * when it still holds its premises then (see `bakeryMonthlyCosts`). The
- * truck's depreciation, and the oven's, take no cash.
+ * came on `firstDay`, day 0 but in a Défi: the first truck's permit, its
+ * district's that 1st in `districts` (see `permitOn`), and its insurance,
+ * then its own charge, the lease or that month's loan payment. A loan has
+ * no payment the month it is taken, nor after the last one, and a truck
+ * replaced on `truckReplacedOn`, a rung of « Le rêve », no lease from then
+ * on. Then what `bakery`, the bakery as of the last close, takes that 1st at the difficulty's prices,
+ * when it still holds its premises then (see `bakeryMonthlyCosts`). Then
+ * what each of `trucks`, those after the first, owes that 1st (#260): its
+ * district's permit due then, a yearly one on the 1st of its month, and its
+ * insurance (see `truckChargesOn`). The trucks' depreciation, and the
+ * oven's, take no cash.
  */
 export function monthlyFixedCosts(
   day: Day,
@@ -36,10 +41,13 @@ export function monthlyFixedCosts(
   bakery: BakeryState = closedBakery(),
   bakeryContent: BakeryContent = BAKERY,
   truckReplacedOn: Day | null = null,
+  districts: DistrictContent = DISTRICTS,
+  trucks: readonly Pick<Truck, 'id' | 'district' | 'boughtOnDay'>[] = [],
 ): Cents {
   const first = toCalendar(day).dayOfMonth === 1 ? day : endOfMonth(day) + 1
   const leased = truckReplacedOn === null || truckReplacedOn > first
-  return add(
+  return sum([
+    permitOn(FIRST_DISTRICT, first, difficulty, difficulties, districts),
     truckCosts(day, difficulty, firstDay, content, difficulties, leased),
     bakeryMonthlyCosts(
       bakery,
@@ -47,7 +55,17 @@ export function monthlyFixedCosts(
       difficulties.bakery[difficulty],
       bakeryContent,
     ),
-  )
+    cashOut(
+      truckChargesOn(
+        trucks,
+        first,
+        difficulty,
+        content,
+        difficulties,
+        districts,
+      ),
+    ),
+  ])
 }
 
 function truckCosts(
@@ -58,8 +76,7 @@ function truckCosts(
   difficulties: DifficultyContent,
   leased: boolean,
 ): Cents {
-  const { permitParkingAndCommissary, insurance } = content.monthlyCostsCents
-  const everyTruck = add(permitParkingAndCommissary, insurance)
+  const everyTruck = content.monthlyCostsCents.insurance
   const { truck } = difficulties.difficulties[difficulty]
   switch (truck.kind) {
     case 'owned':

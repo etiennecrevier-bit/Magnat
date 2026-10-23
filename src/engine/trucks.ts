@@ -98,16 +98,22 @@ export function hasTruck(
 
 /**
  * How the truck `id` runs under `decisions`: the first truck's prices,
- * restock rules and days open, or another's from `decisions.trucks`.
- * Throws a RangeError for a truck the decisions do not run.
+ * restock rules, days open and storage, or another's from
+ * `decisions.trucks`. Throws a RangeError for a truck the decisions do not
+ * run.
  */
 export function truckDecisionsOf(
   decisions: Decisions,
   id: TruckId,
 ): TruckDecisions {
   if (id === FIRST_TRUCK) {
-    const { prices, restock, daysOpen } = decisions
-    return { prices, restock, daysOpen }
+    const { prices, restock, daysOpen, storage } = decisions
+    return {
+      prices,
+      restock,
+      daysOpen,
+      ...(storage === undefined ? {} : { storage }),
+    }
   }
   const own = decisions.trucks?.[id]
   if (own === undefined) throw new RangeError(`Unknown truck: ${id}`)
@@ -115,15 +121,20 @@ export function truckDecisionsOf(
 }
 
 /**
- * `decisions` with the truck `id` running as `truck`. Throws a RangeError
- * for a truck the decisions do not run. Never mutates `decisions`.
+ * `decisions` with the truck `id` running as `truck`, stored only if
+ * `truck` is. Throws a RangeError for a truck the decisions do not run.
+ * Never mutates `decisions`.
  */
 export function withTruckDecisions(
   decisions: Decisions,
   id: TruckId,
   truck: TruckDecisions,
 ): Decisions {
-  if (id === FIRST_TRUCK) return { ...decisions, ...truck }
+  if (id === FIRST_TRUCK) {
+    const rest = { ...decisions }
+    delete rest.storage
+    return { ...rest, ...truck }
+  }
   if (decisions.trucks?.[id] === undefined) {
     throw new RangeError(`Unknown truck: ${id}`)
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import bakeryJson from './bakery.json'
 import difficultyJson from './difficulty.json'
+import districtsJson from './districts.json'
 import energyJson from './energy.json'
 import foodTruckJson from './foodtruck.json'
 import grocersJson from './grocers.json'
@@ -15,6 +16,7 @@ import {
   loadBakeryContent,
   loadCustomerContent,
   loadDifficultyContent,
+  loadDistrictContent,
   loadEnergyContent,
   loadEventContent,
   loadFoodTruckContent,
@@ -75,7 +77,7 @@ function expectRejected(
   expect(() => load(raw)).toThrow(at)
 }
 
-const WEEKDAY = 'walkIns.dayTypes.semaine'
+const WEEKDAY = 'districts.plateau.dayTypes.semaine'
 const START = 'startingDecisions'
 const LIMITS = 'decisionLimits'
 
@@ -89,15 +91,6 @@ describe('loadFoodTruckContent', () => {
       ids,
     )
     expect(Object.keys(content.startingDecisions.restock).sort()).toEqual(ids)
-    expect(Object.keys(content.walkIns.dayTypes).sort()).toEqual(
-      [...dayTypeIdSchema.options].sort(),
-    )
-    for (const dayType of Object.values(content.walkIns.dayTypes)) {
-      expect(Object.keys(dayType.productAppeal).sort()).toEqual(ids)
-      expect(Object.keys(dayType.segmentShares).sort()).toEqual(
-        [...segmentIdSchema.options].sort(),
-      )
-    }
   })
 
   it('rejects a float price', () => {
@@ -118,7 +111,6 @@ describe('loadFoodTruckContent', () => {
     'products.croissant.unitCostCents',
     'products.chocolat.packagingCents',
     'truck.priceCents',
-    'monthlyCostsCents.permitParkingAndCommissary',
     'monthlyCostsCents.insurance',
     'fuelAndMaintenancePerOpenDayCents',
   ])('rejects a float in %s', (path) => {
@@ -139,15 +131,12 @@ describe('loadFoodTruckContent', () => {
     },
   )
 
-  it.each([
-    `${START}.pricesCents.chocolat`,
-    `${START}.restock.chocolat`,
-    `${WEEKDAY}.productAppeal.chocolat`,
-    `${WEEKDAY}.segmentShares.chic`,
-    'walkIns.dayTypes.finDeSemaine',
-  ])('rejects a key missing from its record: %s', (path) => {
-    expectRejected(without(path), path)
-  })
+  it.each([`${START}.pricesCents.chocolat`, `${START}.restock.chocolat`])(
+    'rejects a key missing from its record: %s',
+    (path) => {
+      expectRejected(without(path), path)
+    },
+  )
 
   it('rejects an unknown product id', () => {
     const muffin = { ...foodTruckJson.products.cafe, name: 'Muffin' }
@@ -158,14 +147,11 @@ describe('loadFoodTruckContent', () => {
     )
   })
 
-  it.each([
-    ['walkIns', 'customer'],
-    [WEEKDAY, 'patience'],
-  ])('rejects a mistyped key in %s', (parent, key) => {
-    const raw = withValue(`${parent}.${key}`, 1)
-    expectRejected(raw, parent)
+  it('rejects a mistyped key in walkIns', () => {
+    const raw = withValue('walkIns.customer', 1)
+    expectRejected(raw, 'walkIns')
     expect(() => loadFoodTruckContent(raw)).toThrow(
-      `Unrecognized key: "${key}"`,
+      'Unrecognized key: "customer"',
     )
   })
 
@@ -241,8 +227,6 @@ describe('loadFoodTruckContent', () => {
   })
 
   it.each([
-    [`${WEEKDAY}.customers`, -1],
-    ['walkIns.dayTypes.finDeSemaine.customers', 90.5],
     [`${START}.restock.croissant.quantity`, -70],
     [`${START}.restock.cafe.upTo`, 300.5],
     [`${LIMITS}.units.max`, -1],
@@ -299,12 +283,6 @@ describe('loadFoodTruckContent', () => {
 
   it.each([
     ['walkIns.noiseStdDevRatio', -0.1],
-    [`${WEEKDAY}.segmentShares.chic`, 1.2],
-    [`${WEEKDAY}.segmentShares.chic`, -0.2],
-    [`${WEEKDAY}.productAppeal.cafe`, -1],
-    [`${WEEKDAY}.patienceMultiplier`, 0],
-    [`${WEEKDAY}.patienceMultiplier`, -0.5],
-    [`${WEEKDAY}.arrivalWeights.3`, -2],
     ['walkIns.opensAtMinute', -30],
     ['walkIns.opensAtMinute', 420.5],
     ['walkIns.closesAtMinute', 1470],
@@ -364,6 +342,7 @@ describe('loadFoodTruckContent', () => {
         aubaine: 0.1,
         habitue: 0.3,
         chic: 0.5,
+        touriste: 0,
       }),
       'marketing.segmentShares',
     )
@@ -384,45 +363,6 @@ describe('loadFoodTruckContent', () => {
     )
   })
 
-  it('rejects segment shares that do not sum to 1', () => {
-    expectRejected(
-      withValue(`${WEEKDAY}.segmentShares`, {
-        aubaine: 0.3,
-        habitue: 0.5,
-        chic: 0.3,
-      }),
-      `${WEEKDAY}.segmentShares`,
-    )
-  })
-
-  it('accepts segment shares off 1 by rounding only', () => {
-    const shares = { aubaine: 0.7, habitue: 0.2, chic: 0.1 }
-    expect(shares.aubaine + shares.habitue + shares.chic).not.toBe(1)
-    expect(() =>
-      loadFoodTruckContent(withValue(`${WEEKDAY}.segmentShares`, shares)),
-    ).not.toThrow()
-  })
-
-  it('rejects arrival weights that are all 0', () => {
-    expectRejected(
-      withValue(
-        `${WEEKDAY}.arrivalWeights`,
-        foodTruckJson.walkIns.dayTypes.semaine.arrivalWeights.map(() => 0),
-      ),
-      `${WEEKDAY}.arrivalWeights`,
-    )
-  })
-
-  it('rejects arrival weights that do not fill the opening hours', () => {
-    const weights = foodTruckJson.walkIns.dayTypes.semaine.arrivalWeights
-    for (const wrong of [weights.slice(1), [...weights, 1]]) {
-      expectRejected(
-        withValue(`${WEEKDAY}.arrivalWeights`, wrong),
-        `${WEEKDAY}.arrivalWeights`,
-      )
-    }
-  })
-
   it.each([900, 960])(
     'rejects a closing time of %d, not after opening',
     (opensAtMinute) => {
@@ -439,18 +379,178 @@ describe('loadFoodTruckContent', () => {
       'walkIns.arrivalSlotMinutes',
     )
   })
+})
 
-  it('accepts other slots that fill the opening hours', () => {
-    const raw = dayTypeIdSchema.options.reduce(
-      (source, dayType) =>
-        withValue(
-          `walkIns.dayTypes.${dayType}.arrivalWeights`,
-          [1, 2, 3, 4, 5, 6, 7, 8],
-          source,
+describe('loadDistrictContent', () => {
+  const loadDistricts: Load = (raw) => loadDistrictContent(raw)
+  const reject = (raw: unknown, path: string) =>
+    expectRejected(raw, path, loadDistricts)
+  const withDistrictValue = (path: string, value: unknown) =>
+    withValue(path, value, districtsJson)
+  const VIEUX = 'districts.vieuxMontreal'
+
+  it('loads the shipped districts.json with every day type, product and segment', () => {
+    const { districts } = loadDistrictContent()
+    expect(Object.keys(districts).sort()).toEqual(['plateau', 'vieuxMontreal'])
+    for (const district of Object.values(districts)) {
+      expect(Object.keys(district.dayTypes).sort()).toEqual(
+        [...dayTypeIdSchema.options].sort(),
+      )
+      for (const dayType of Object.values(district.dayTypes)) {
+        expect(Object.keys(dayType.productAppeal).sort()).toEqual(
+          [...productIdSchema.options].sort(),
+        )
+        expect(Object.keys(dayType.segmentShares).sort()).toEqual(
+          [...segmentIdSchema.options].sort(),
+        )
+      }
+      expect(district.monthlyWalkIns).toHaveLength(12)
+    }
+  })
+
+  it('names districts.json in its error', () => {
+    expect(() => loadDistrictContent({})).toThrow(/^districts\.json is invalid/)
+  })
+
+  it.each([
+    `${WEEKDAY}.productAppeal.chocolat`,
+    `${WEEKDAY}.segmentShares.touriste`,
+    'districts.plateau.dayTypes.finDeSemaine',
+    VIEUX,
+  ])('rejects a key missing from its record: %s', (path) => {
+    reject(without(path, districtsJson), path)
+  })
+
+  it.each([
+    [`${WEEKDAY}.customers`, -1],
+    ['districts.plateau.dayTypes.finDeSemaine.customers', 90.5],
+  ])('rejects %s = %d, which is not a count', (path, value) => {
+    reject(withDistrictValue(path, value), path)
+  })
+
+  it('rejects a mistyped key in a day type', () => {
+    const raw = withDistrictValue(`${WEEKDAY}.patience`, 1)
+    reject(raw, WEEKDAY)
+    expect(() => loadDistrictContent(raw)).toThrow(
+      'Unrecognized key: "patience"',
+    )
+  })
+
+  it.each([
+    [`${WEEKDAY}.segmentShares.chic`, 1.2],
+    [`${WEEKDAY}.segmentShares.chic`, -0.2],
+    [`${WEEKDAY}.productAppeal.cafe`, -1],
+    [`${WEEKDAY}.patienceMultiplier`, 0],
+    [`${WEEKDAY}.patienceMultiplier`, -0.5],
+  ])('rejects %s = %d', (path, value) => {
+    reject(withDistrictValue(path, value), path)
+  })
+
+  it('rejects a negative arrival weight', () => {
+    reject(
+      withDistrictValue(`${WEEKDAY}.arrivalWeights.3`, -2),
+      `${WEEKDAY}.arrivalWeights[3]`,
+    )
+  })
+
+  it('rejects segment shares that do not sum to 1', () => {
+    reject(
+      withDistrictValue(`${WEEKDAY}.segmentShares`, {
+        aubaine: 0.3,
+        habitue: 0.5,
+        chic: 0.3,
+        touriste: 0,
+      }),
+      `${WEEKDAY}.segmentShares`,
+    )
+  })
+
+  it('accepts segment shares off 1 by rounding only', () => {
+    const shares = { aubaine: 0.7, habitue: 0.2, chic: 0.1, touriste: 0 }
+    expect(shares.aubaine + shares.habitue + shares.chic).not.toBe(1)
+    expect(() =>
+      loadDistrictContent(
+        withDistrictValue(`${WEEKDAY}.segmentShares`, shares),
+      ),
+    ).not.toThrow()
+  })
+
+  it('rejects arrival weights that are all 0', () => {
+    reject(
+      withDistrictValue(
+        `${WEEKDAY}.arrivalWeights`,
+        districtsJson.districts.plateau.dayTypes.semaine.arrivalWeights.map(
+          () => 0,
         ),
+      ),
+      `${WEEKDAY}.arrivalWeights`,
+    )
+  })
+
+  it('rejects arrival weights that do not fill the opening hours', () => {
+    const weights =
+      districtsJson.districts.plateau.dayTypes.semaine.arrivalWeights
+    for (const wrong of [weights.slice(1), [...weights, 1]]) {
+      reject(
+        withDistrictValue(`${WEEKDAY}.arrivalWeights`, wrong),
+        `${WEEKDAY}.arrivalWeights`,
+      )
+    }
+  })
+
+  it('accepts other slots that fill the opening hours of foodtruck.json', () => {
+    const truck = loadFoodTruckContent(
       withValue('walkIns.arrivalSlotMinutes', 60),
     )
-    expect(loadFoodTruckContent(raw).walkIns.arrivalSlotMinutes).toBe(60)
+    const eight = [1, 2, 3, 4, 5, 6, 7, 8]
+    const raw = ['plateau', 'vieuxMontreal'].reduce(
+      (source, district) =>
+        dayTypeIdSchema.options.reduce(
+          (inner, dayType) =>
+            withValue(
+              `districts.${district}.dayTypes.${dayType}.arrivalWeights`,
+              eight,
+              inner,
+            ),
+          source,
+        ),
+      districtsJson as unknown,
+    )
+    expect(() => loadDistrictContent(raw, truck)).not.toThrow()
+    expect(() => loadDistrictContent(districtsJson, truck)).toThrow(
+      'expected one arrival weight per slot: 8',
+    )
+  })
+
+  it.each([
+    [`${VIEUX}.monthlyWalkIns`, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]],
+    ['districts.plateau.permit.monthlyCents', 12.5],
+    [`${VIEUX}.permit.month`, 13],
+    [`${VIEUX}.rival.months`, [6, 6]],
+    [`${VIEUX}.rival.walkInsFactor`, 1.5],
+    [`${VIEUX}.rival.segment`, 'enfant'],
+    ['winterStorage.to.day', 31],
+    ['winterStorage.from.month', 0],
+  ])('rejects %s = %j', (path, value) => {
+    reject(withDistrictValue(path, value), path)
+  })
+
+  it('rejects a negative monthly factor', () => {
+    reject(
+      withDistrictValue(`${VIEUX}.monthlyWalkIns.0`, -0.5),
+      `${VIEUX}.monthlyWalkIns[0]`,
+    )
+  })
+
+  it('rejects a yearly permit with no amount at a difficulty', () => {
+    const difficulties = loadDifficultyContent(
+      without('districtPermits.difficile.vieuxMontreal', difficultyJson),
+    )
+    expect(() =>
+      loadDistrictContent(districtsJson, undefined, difficulties),
+    ).toThrow(
+      /difficulty\.json has no districtPermits\.difficile\.vieuxMontreal\n {2}→ at districts\.vieuxMontreal\.permit/,
+    )
   })
 })
 
@@ -484,12 +584,17 @@ describe('loadCustomerContent', () => {
 
   it('rejects an unknown segment', () => {
     const raw = withCustomerValue(
-      'segments.touriste',
+      'segments.enfant',
       segmentsJson.segments.habitue,
     )
     reject(raw, 'segments')
-    expect(() => loadCustomerContent(raw)).toThrow(
-      'Unrecognized key: "touriste"',
+    expect(() => loadCustomerContent(raw)).toThrow('Unrecognized key: "enfant"')
+  })
+
+  it("rejects a segment's own arrival weights that do not fill the opening hours", () => {
+    reject(
+      withCustomerValue('segments.touriste.arrivalWeights', [1, 2, 3]),
+      'segments.touriste.arrivalWeights',
     )
   })
 
@@ -880,7 +985,7 @@ describe('loadStaffContent', () => {
     ['employeeBotchedShare', -0.01],
     ['employeeBotchedShare', 1.5],
     ['bakeryWasteShare', 2],
-    ['welcomedSegment', 'touriste'],
+    ['welcomedSegment', 'enfant'],
     ['discoveryDays', 0],
     ['underpaidWeeks', 1.5],
     ['warningWeeks', 0],

@@ -3,6 +3,7 @@ import type {
   CustomerContent,
   DefiContent,
   DifficultyContent,
+  DistrictContent,
   DreamContent,
   EnergyContent,
   EventContent,
@@ -44,6 +45,7 @@ import {
   startingDecisions,
   validateDecisions,
 } from './decisions.ts'
+import { DISTRICTS } from './districts.ts'
 import { DREAM, noDream } from './dream.ts'
 import { applyEffect, insertByDay } from './effects.ts'
 import { FULL_ENERGY, nightRest } from './energy.ts'
@@ -244,7 +246,8 @@ export function startTutorial(
  * Plays business day `state.day` with `state.decisions` (see `playDay`, with
  * `bakery` as the bakery's content, `grocers` as the contracts', `staff` as
  * the employees', `financing`'s rules, which may end the game at the
- * close, `dream` as « Le rêve » and `places` as the town's), then moves on
+ * close, `dream` as « Le rêve », `places` as the town's and `districts`
+ * as the trucks' districts), then moves on
  * to the next morning, where the pending decisions, if any, take effect,
  * after a night that gives the owner some energy back (see `nightRest`),
  * with the owner at work and no trip unless something sends them away
@@ -291,6 +294,7 @@ export function tick(
   dream: DreamContent = DREAM,
   places: PlacesContent = PLACES,
   tutorial: TutorialContent = TUTORIAL,
+  districts: DistrictContent = DISTRICTS,
 ): GameState {
   checkTutorialDay(state, tutorial)
   const played = playDay(
@@ -307,6 +311,7 @@ export function tick(
     financing,
     dream,
     places,
+    districts,
   )
   const morning: GameState = endOfProtection({
     ...played,

@@ -497,6 +497,7 @@ describe('the kinds of change', () => {
       | 'tutorialStep'
       | 'ownerAt'
       | 'assign'
+      | 'storage'
     >()
     expect(decisionKindSchema.options).toEqual([
       'price',

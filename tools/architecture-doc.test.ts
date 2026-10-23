@@ -3,9 +3,11 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
+import districtsJson from '../src/content/districts.json'
 import {
   difficultyIdSchema,
   loadCustomerContent,
+  loadDistrictContent,
   loadFoodTruckContent,
 } from '../src/content/schema.ts'
 import { BAKERY, bakeryMorning, closedBakery } from '../src/engine/bakery.ts'
@@ -14,14 +16,23 @@ import { createInitialState, tick } from '../src/engine/clock.ts'
 import { deliverContracts, GROCERS } from '../src/engine/contracts.ts'
 import { SEGMENTS } from '../src/engine/customers.ts'
 import {
+  DEFIS,
   DIFFICULTIES as DIFFICULTY_CONTENT,
+  ENERGY,
   EVENTS,
   FOOD_TRUCK,
+  PERSONAL,
   openingJournal,
 } from '../src/engine/day.ts'
-import { resolveEvent } from '../src/engine/events.ts'
+import { DREAM } from '../src/engine/dream.ts'
+import { NO_EVENTS, resolveEvent } from '../src/engine/events.ts'
+import { FINANCING as FINANCING_CONTENT } from '../src/engine/financing.ts'
 import { PRODUCTS } from '../src/engine/inventory.ts'
+import { PERCENTILES } from '../src/engine/percentiles.ts'
+import { PLACES } from '../src/engine/places.ts'
 import { defaultProfile } from '../src/engine/profile.ts'
+import { STAFF } from '../src/engine/staff.ts'
+import { TUTORIAL } from '../src/engine/tutorial.ts'
 import type { GameState } from '../src/engine/types.ts'
 import type { AccountCode } from '../src/finance/accounts.ts'
 import { emptyJournal, type JournalEntry } from '../src/finance/journal.ts'
@@ -84,7 +95,7 @@ const EVERY_ENTRY = loadFoodTruckContent({
   ),
   // The shipped truck, so Moyen's loan pays for part of it.
   truck: FOOD_TRUCK.truck,
-  monthlyCostsCents: { permitParkingAndCommissary: 150_000, insurance: 25_000 },
+  monthlyCostsCents: { insurance: 25_000 },
   fuelAndMaintenancePerOpenDayCents: 2_000,
   cardPayments: { share: 0.85, feeRate: 0.025 },
   ownerPayWeekday: 5,
@@ -93,10 +104,6 @@ const EVERY_ENTRY = loadFoodTruckContent({
     opensAtMinute: 420,
     closesAtMinute: 900,
     arrivalSlotMinutes: 120,
-    dayTypes: {
-      semaine: { ...CROWD, customers: 50 },
-      finDeSemaine: { ...CROWD, customers: 40 },
-    },
   },
   service: FOOD_TRUCK.service,
   marketing: FOOD_TRUCK.marketing,
@@ -111,6 +118,25 @@ const EVERY_ENTRY = loadFoodTruckContent({
   },
   decisionLimits: FOOD_TRUCK.decisionLimits,
 })
+// Each district's crowd on those hours, the Plateau's permit monthly.
+const EVERY_DISTRICT = loadDistrictContent(
+  {
+    ...districtsJson,
+    districts: Object.fromEntries(
+      Object.entries(districtsJson.districts).map(([id, district]) => [
+        id,
+        {
+          ...district,
+          dayTypes: {
+            semaine: { ...CROWD, customers: 50 },
+            finDeSemaine: { ...CROWD, customers: 40 },
+          },
+        },
+      ]),
+    ),
+  },
+  EVERY_ENTRY,
+)
 // Every segment pays 300 ¢ as its reference, so each wants each product with
 // a chance of one half.
 const EVERY_CUSTOMER = loadCustomerContent({
@@ -294,7 +320,25 @@ describe(DOC, () => {
       })
       for (let day = 0; day < DAYS; day += 1) {
         const before = state.journal.entries.length
-        state = tick(state, EVERY_ENTRY, EVERY_CUSTOMER)
+        state = tick(
+          state,
+          EVERY_ENTRY,
+          EVERY_CUSTOMER,
+          DIFFICULTY_CONTENT,
+          PERSONAL,
+          ENERGY,
+          NO_EVENTS,
+          DEFIS,
+          PERCENTILES,
+          BAKERY,
+          GROCERS,
+          STAFF,
+          FINANCING_CONTENT,
+          DREAM,
+          PLACES,
+          TUTORIAL,
+          EVERY_DISTRICT,
+        )
         const memos = state.journal.entries
           .slice(before)
           .map(({ memo }) => memo)

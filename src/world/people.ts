@@ -64,6 +64,8 @@ export const SEGMENT_ACCESSORY: Readonly<Record<SegmentId, string>> = {
   aubaine: 'bag',
   habitue: 'newspaper',
   chic: 'coat',
+  // A placeholder until the street draws the tourists (#264).
+  touriste: 'touristBag',
 }
 
 /** A side of a drawing, before it is turned. */
@@ -274,11 +276,12 @@ export function drawCustomer(
     )
   }
   // A bargain hunter's tote hangs from their shoulder behind the arm, so
-  // the hand on its side shows. Its straps are in its shade.
-  if (look.segment === 'aubaine') {
+  // the hand on its side shows. Its straps are in its shade. A tourist
+  // carries one too, until the street draws them (#264).
+  if (look.segment === 'aubaine' || look.segment === 'touriste') {
     const tote = tonesOf(looks.tote, light)
     behind.push(
-      new Graphics({ label: 'bag' })
+      new Graphics({ label: SEGMENT_ACCESSORY[look.segment] })
         .moveTo(21 * u, -58 * u)
         .lineTo(14 * u, -79 * u)
         .moveTo(36 * u, -58 * u)

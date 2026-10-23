@@ -2,6 +2,7 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import {
   loadCustomerContent,
+  loadDistrictContent,
   loadFoodTruckContent,
   type CustomerContent,
   type DayType,
@@ -9,7 +10,7 @@ import {
   type Segment,
   type SegmentId,
   type Service,
-  type WalkIns,
+  type DistrictWalkIns,
 } from '../content/schema.ts'
 import {
   NO_CHANGES,
@@ -24,6 +25,7 @@ import {
   type Served,
 } from './customers.ts'
 import { CUSTOMERS, FOOD_TRUCK } from './day.ts'
+import { DISTRICTS, districtWalkIns } from './districts.ts'
 import { PRODUCTS, perProduct } from './inventory.ts'
 import { cents, type Cents } from './money.ts'
 import { next, seedRng } from './rng.ts'
@@ -84,23 +86,50 @@ function keen(patienceMinutes: number): CustomerContent {
   return loadCustomerContent({ segments: perSegment(() => raw) })
 }
 
+/** The Plateau's walk-ins, as the shipped game plays them every month. */
+const PLATEAU: DistrictWalkIns = districtWalkIns(
+  'plateau',
+  1,
+  FOOD_TRUCK.walkIns,
+)
+
+/**
+ * `walkIns` validated as the content is: its hours as foodtruck.json's, its
+ * crowd as a district's on them.
+ */
+function validWalkIns({
+  dayTypes,
+  ...hours
+}: DistrictWalkIns): DistrictWalkIns {
+  const truck = loadFoodTruckContent({ ...FOOD_TRUCK, walkIns: hours })
+  const district = { ...DISTRICTS.districts.plateau, dayTypes }
+  const districts = loadDistrictContent(
+    {
+      ...DISTRICTS,
+      districts: { plateau: district, vieuxMontreal: district },
+    },
+    truck,
+  )
+  return districtWalkIns('plateau', 1, truck.walkIns, districts)
+}
+
 /**
  * The shipped walk-ins with this weekday crowd, no noise and `customers`
  * walk-ins, validated.
  */
-function weekday(customers: number, change: Partial<DayType> = {}): WalkIns {
-  const { walkIns } = FOOD_TRUCK
-  return loadFoodTruckContent({
-    ...FOOD_TRUCK,
-    walkIns: {
-      ...walkIns,
-      noiseStdDevRatio: 0,
-      dayTypes: {
-        ...walkIns.dayTypes,
-        semaine: { ...walkIns.dayTypes.semaine, customers, ...change },
-      },
+function weekday(
+  customers: number,
+  change: Partial<DayType> = {},
+): DistrictWalkIns {
+  const walkIns = PLATEAU
+  return validWalkIns({
+    ...walkIns,
+    noiseStdDevRatio: 0,
+    dayTypes: {
+      ...walkIns.dayTypes,
+      semaine: { ...walkIns.dayTypes.semaine, customers, ...change },
     },
-  }).walkIns
+  })
 }
 
 /** Prices from `set`, and for other products what habitués find fair. */
@@ -189,7 +218,7 @@ function counter(
 }
 
 function serve(
-  walkIns: WalkIns,
+  walkIns: DistrictWalkIns,
   options: {
     seed?: number
     customers?: CustomerContent
@@ -391,19 +420,16 @@ describe('serveWalkIns', () => {
     fc.assert(
       fc.property(scenario, (s) => {
         const crowd = {
-          ...FOOD_TRUCK.walkIns.dayTypes.semaine,
+          ...PLATEAU.dayTypes.semaine,
           customers: 200,
           arrivalWeights: s.weights,
         }
-        const { walkIns } = loadFoodTruckContent({
-          ...FOOD_TRUCK,
-          walkIns: {
-            noiseStdDevRatio: 0,
-            opensAtMinute: s.opens,
-            closesAtMinute: s.closes,
-            arrivalSlotMinutes: s.slotMinutes,
-            dayTypes: { semaine: crowd, finDeSemaine: crowd },
-          },
+        const walkIns = validWalkIns({
+          noiseStdDevRatio: 0,
+          opensAtMinute: s.opens,
+          closesAtMinute: s.closes,
+          arrivalSlotMinutes: s.slotMinutes,
+          dayTypes: { semaine: crowd, finDeSemaine: crowd },
         })
         const served = serve(walkIns, { seed: s.seed })
         expect(served.visits).toHaveLength(200)
@@ -435,6 +461,7 @@ describe('serveWalkIns', () => {
       aubaine: 0.6,
       habitue: 0,
       chic: 0.4,
+      touriste: 0,
     }
     const served = serve(weekday(5000, { segmentShares: shares }))
     const drawn = perSegment(
@@ -779,24 +806,21 @@ describe('the line', () => {
    * 7 h 00, liking every product, with no noise and a patience multiplier
    * of 1, validated.
    */
-  function oneMinute(customers: number): WalkIns {
+  function oneMinute(customers: number): DistrictWalkIns {
     const crowd = {
-      ...FOOD_TRUCK.walkIns.dayTypes.semaine,
+      ...PLATEAU.dayTypes.semaine,
       customers,
       productAppeal: perProduct(() => 1),
       patienceMultiplier: 1,
       arrivalWeights: [1],
     }
-    return loadFoodTruckContent({
-      ...FOOD_TRUCK,
-      walkIns: {
-        noiseStdDevRatio: 0,
-        opensAtMinute: 420,
-        closesAtMinute: 421,
-        arrivalSlotMinutes: 1,
-        dayTypes: { semaine: crowd, finDeSemaine: crowd },
-      },
-    }).walkIns
+    return validWalkIns({
+      noiseStdDevRatio: 0,
+      opensAtMinute: 420,
+      closesAtMinute: 421,
+      arrivalSlotMinutes: 1,
+      dayTypes: { semaine: crowd, finDeSemaine: crowd },
+    })
   }
 
   /** 7 h 00, in seconds from midnight. */
@@ -973,8 +997,8 @@ describe('the line', () => {
 describe('an extra crowd', () => {
   // The base crowd is all aubaine and the extra crowd all chic, so each
   // visit tells which crowd it came from. Every product appeals fully.
-  const AUBAINE = { aubaine: 1, habitue: 0, chic: 0 }
-  const CHIC = { aubaine: 0, habitue: 0, chic: 1 }
+  const AUBAINE = { aubaine: 1, habitue: 0, chic: 0, touriste: 0 }
+  const CHIC = { aubaine: 0, habitue: 0, chic: 1, touriste: 0 }
   const base = (customers: number) =>
     weekday(customers, {
       segmentShares: AUBAINE,
@@ -1013,7 +1037,7 @@ describe('an extra crowd', () => {
   })
 
   it('draws its segments by its own shares', () => {
-    const shares = { aubaine: 0.1, habitue: 0.3, chic: 0.6 }
+    const shares = { aubaine: 0.1, habitue: 0.3, chic: 0.6, touriste: 0 }
     const served = serve(weekday(0), {
       extra: { customers: 5000, segmentShares: shares },
     })
@@ -1026,21 +1050,18 @@ describe('an extra crowd', () => {
   it('rounds its walk-ins after the same noise as the base crowd', () => {
     expect(serve(weekday(0), { extra: chic(12.4) }).visits).toHaveLength(12)
     expect(serve(weekday(0), { extra: chic(12.6) }).visits).toHaveLength(13)
-    const noisy = loadFoodTruckContent({
-      ...FOOD_TRUCK,
-      walkIns: {
-        ...weekday(100),
-        noiseStdDevRatio: 0.3,
-        dayTypes: {
-          ...FOOD_TRUCK.walkIns.dayTypes,
-          semaine: {
-            ...FOOD_TRUCK.walkIns.dayTypes.semaine,
-            customers: 100,
-            segmentShares: AUBAINE,
-          },
+    const noisy = validWalkIns({
+      ...weekday(100),
+      noiseStdDevRatio: 0.3,
+      dayTypes: {
+        ...PLATEAU.dayTypes,
+        semaine: {
+          ...PLATEAU.dayTypes.semaine,
+          customers: 100,
+          segmentShares: AUBAINE,
         },
       },
-    }).walkIns
+    })
     for (const seed of [1, 2, 3, 4, 5]) {
       const served = serve(noisy, { seed, extra: chic(100) })
       expect(from(served, 'chic')).toHaveLength(from(served, 'aubaine').length)
@@ -1111,8 +1132,8 @@ describe('an extra crowd', () => {
 describe('the street', () => {
   // As for an extra crowd: the base crowd is all aubaine, marketing's all
   // chic, and every product appeals fully.
-  const AUBAINE = { aubaine: 1, habitue: 0, chic: 0 }
-  const CHIC = { aubaine: 0, habitue: 0, chic: 1 }
+  const AUBAINE = { aubaine: 1, habitue: 0, chic: 0, touriste: 0 }
+  const CHIC = { aubaine: 0, habitue: 0, chic: 1, touriste: 0 }
   const base = (customers: number) =>
     weekday(customers, {
       segmentShares: AUBAINE,
@@ -1232,21 +1253,18 @@ describe('the street', () => {
   it('adds walk-ins after the same noise as the base crowd', () => {
     const noisy = (seed: number, factor: number) =>
       serve(
-        loadFoodTruckContent({
-          ...FOOD_TRUCK,
-          walkIns: {
-            ...FOOD_TRUCK.walkIns,
-            noiseStdDevRatio: 0.3,
-            dayTypes: {
-              ...FOOD_TRUCK.walkIns.dayTypes,
-              semaine: {
-                ...FOOD_TRUCK.walkIns.dayTypes.semaine,
-                customers: 100,
-                segmentShares: AUBAINE,
-              },
+        validWalkIns({
+          ...PLATEAU,
+          noiseStdDevRatio: 0.3,
+          dayTypes: {
+            ...PLATEAU.dayTypes,
+            semaine: {
+              ...PLATEAU.dayTypes.semaine,
+              customers: 100,
+              segmentShares: AUBAINE,
             },
           },
-        }).walkIns,
+        }),
         { seed, changes: walkIns({ aubaine: factor }) },
       )
     for (const seed of [1, 2, 3, 4, 5]) {
@@ -1388,46 +1406,40 @@ describe('the line, with the shipped content', () => {
   const DAY_TYPES = ['semaine', 'finDeSemaine'] as const
 
   /** The shipped walk-ins, with each day type's customers × `factor`. */
-  function crowds(factor: number, walkIns = FOOD_TRUCK.walkIns): WalkIns {
+  function crowds(factor: number, walkIns = PLATEAU): DistrictWalkIns {
     const { semaine, finDeSemaine } = walkIns.dayTypes
-    return loadFoodTruckContent({
-      ...FOOD_TRUCK,
-      walkIns: {
-        ...walkIns,
-        dayTypes: {
-          semaine: { ...semaine, customers: semaine.customers * factor },
-          finDeSemaine: {
-            ...finDeSemaine,
-            customers: finDeSemaine.customers * factor,
-          },
+    return validWalkIns({
+      ...walkIns,
+      dayTypes: {
+        semaine: { ...semaine, customers: semaine.customers * factor },
+        finDeSemaine: {
+          ...finDeSemaine,
+          customers: finDeSemaine.customers * factor,
         },
       },
-    }).walkIns
+    })
   }
 
   /** Walk-ins where both day types bring `crowd`, with their own patience. */
-  function sameCrowd(crowd: DayType): WalkIns {
-    const { walkIns } = FOOD_TRUCK
+  function sameCrowd(crowd: DayType): DistrictWalkIns {
+    const walkIns = PLATEAU
     const { semaine, finDeSemaine } = walkIns.dayTypes
-    return loadFoodTruckContent({
-      ...FOOD_TRUCK,
-      walkIns: {
-        ...walkIns,
-        dayTypes: {
-          semaine: { ...crowd, patienceMultiplier: semaine.patienceMultiplier },
-          finDeSemaine: {
-            ...crowd,
-            patienceMultiplier: finDeSemaine.patienceMultiplier,
-          },
+    return validWalkIns({
+      ...walkIns,
+      dayTypes: {
+        semaine: { ...crowd, patienceMultiplier: semaine.patienceMultiplier },
+        finDeSemaine: {
+          ...crowd,
+          patienceMultiplier: finDeSemaine.patienceMultiplier,
         },
       },
-    }).walkIns
+    })
   }
 
   /** How many left the line on `seed`. */
   function leftLineOn(
     seed: number,
-    walkIns: WalkIns,
+    walkIns: DistrictWalkIns,
     dayType: (typeof DAY_TYPES)[number],
     price: (product: ProductId) => Cents,
     by: Counter = SHIPPED_COUNTER,
@@ -1445,7 +1457,7 @@ describe('the line, with the shipped content', () => {
 
   /** How many left the line on each of SEEDS. */
   function leftLine(
-    walkIns: WalkIns,
+    walkIns: DistrictWalkIns,
     dayType: (typeof DAY_TYPES)[number],
     price: (product: ProductId) => Cents,
     by: Counter = SHIPPED_COUNTER,
@@ -1504,7 +1516,7 @@ describe('the line, with the shipped content', () => {
 
   it('sends weekday customers away from a given line more often than weekend ones', () => {
     for (const crowd of DAY_TYPES) {
-      const walkIns = sameCrowd(FOOD_TRUCK.walkIns.dayTypes[crowd])
+      const walkIns = sameCrowd(PLATEAU.dayTypes[crowd])
       for (const level of BUSY_LEVELS) {
         const price = PRICE_LEVELS[level]
         const weekday = leftLine(walkIns, 'semaine', price)
@@ -1518,8 +1530,8 @@ describe('the line, with the shipped content', () => {
 })
 
 describe('the visits marketing brought (#284)', () => {
-  const AUBAINE = { aubaine: 1, habitue: 0, chic: 0 }
-  const CHIC = { aubaine: 0, habitue: 0, chic: 1 }
+  const AUBAINE = { aubaine: 1, habitue: 0, chic: 0, touriste: 0 }
+  const CHIC = { aubaine: 0, habitue: 0, chic: 1, touriste: 0 }
   const base = (customers: number) =>
     weekday(customers, {
       segmentShares: AUBAINE,
@@ -1572,7 +1584,7 @@ describe('the visits marketing brought (#284)', () => {
   it('leaves the street’s own surge untagged, and those the street keeps away uncounted', () => {
     const surge = serve(base(120), {
       extra: marketing(30),
-      changes: { walkIns: { aubaine: 1, habitue: 1, chic: 2 } },
+      changes: { walkIns: { aubaine: 1, habitue: 1, chic: 2, touriste: 1 } },
     })
     // The street doubles the chic: 30 more, drawn after marketing's.
     expect(
@@ -1581,7 +1593,7 @@ describe('the visits marketing brought (#284)', () => {
     expect(tagged(surge)).toHaveLength(30)
     const thinned = serve(base(120), {
       extra: marketing(30),
-      changes: { walkIns: { aubaine: 1, habitue: 1, chic: 0.5 } },
+      changes: { walkIns: { aubaine: 1, habitue: 1, chic: 0.5, touriste: 1 } },
     })
     expect(tagged(thinned)).toHaveLength(15)
   })

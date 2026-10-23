@@ -1,0 +1,81 @@
+{
+  "_note": "The districts a truck works in (#260). Each has the crowd of its two types of day (the Plateau's moved here unchanged from foodtruck.json, tuned in P2-19, #58), a factor on its walk-ins for each month, January first, and its permit: `monthly`, paid on each 1st, or `yearly`, paid at once on the 1st of its `month`, its amount by difficulty in difficulty.json. A `rival` takes a share of one segment's walk-ins in its `months`: what is left of them is `walkInsFactor`. `winterStorage` is the dates « Remiser pour l'hiver » starts from, both days included. Vieux-Montréal's numbers are starting values, tuned in #266: the office workers are the `chic` segment, its summer about three times the Plateau's customers once the rival takes its share, December to March about 0.15.",
+  "winterStorage": {
+    "from": { "month": 12, "day": 1 },
+    "to": { "month": 4, "day": 30 }
+  },
+  "districts": {
+    "plateau": {
+      "name": "Plateau",
+      "dayTypes": {
+        "semaine": {
+          "name": "Semaine",
+          "customers": 102,
+          "segmentShares": {
+            "aubaine": 0.3,
+            "habitue": 0.5,
+            "chic": 0.2,
+            "touriste": 0
+          },
+          "productAppeal": { "cafe": 1, "chocolat": 0.3, "croissant": 1.1 },
+          "patienceMultiplier": 0.7,
+          "arrivalWeights": [10, 20, 20, 12, 4, 2, 2, 2, 3, 6, 9, 5, 2, 1, 1, 1]
+        },
+        "finDeSemaine": {
+          "name": "Fin de semaine",
+          "customers": 84,
+          "segmentShares": {
+            "aubaine": 0.35,
+            "habitue": 0.4,
+            "chic": 0.25,
+            "touriste": 0
+          },
+          "productAppeal": { "cafe": 0.5, "chocolat": 1, "croissant": 1.2 },
+          "patienceMultiplier": 1.3,
+          "arrivalWeights": [1, 2, 3, 5, 8, 11, 13, 13, 11, 9, 7, 6, 4, 3, 2, 2]
+        }
+      },
+      "monthlyWalkIns": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      "permit": { "kind": "monthly", "monthlyCents": 150000 }
+    },
+    "vieuxMontreal": {
+      "name": "Vieux-Montréal",
+      "dayTypes": {
+        "semaine": {
+          "name": "Semaine",
+          "customers": 102,
+          "segmentShares": {
+            "aubaine": 0.05,
+            "habitue": 0.15,
+            "chic": 0.1,
+            "touriste": 0.7
+          },
+          "productAppeal": { "cafe": 1, "chocolat": 0.5, "croissant": 1.2 },
+          "patienceMultiplier": 0.9,
+          "arrivalWeights": [3, 6, 6, 5, 4, 4, 5, 6, 7, 7, 7, 7, 6, 5, 4, 3]
+        },
+        "finDeSemaine": {
+          "name": "Fin de semaine",
+          "customers": 84,
+          "segmentShares": {
+            "aubaine": 0.05,
+            "habitue": 0.05,
+            "chic": 0.05,
+            "touriste": 0.85
+          },
+          "productAppeal": { "cafe": 0.6, "chocolat": 1, "croissant": 1.3 },
+          "patienceMultiplier": 1.3,
+          "arrivalWeights": [1, 2, 3, 4, 6, 8, 10, 11, 11, 10, 9, 8, 6, 5, 4, 3]
+        }
+      },
+      "monthlyWalkIns": [0.15, 0.15, 0.15, 1, 1, 3.5, 3.5, 3.5, 1, 1, 1, 0.15],
+      "permit": { "kind": "yearly", "month": 4 },
+      "rival": {
+        "name": "Glaces Bonsecours",
+        "segment": "touriste",
+        "months": [6, 7, 8],
+        "walkInsFactor": 0.8
+      }
+    }
+  }
+}

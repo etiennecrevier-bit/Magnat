@@ -1,5 +1,5 @@
 {
-  "_note": "What a customer says when the player clicks them, by segment and by how their visit ended. Standard French, no prices: a line never knows the real one.",
+  "_note": "What a customer says when the player clicks them, by segment and by how their visit ended. Standard French, no prices: a line never knows the real one. The tourists (#260) are Vieux-Montréal's.",
   "segments": {
     "aubaine": {
       "name": "Chasseur d'aubaines",
@@ -106,7 +106,7 @@
           "Je fais ma ronde. Le camion, le parc, la boîte aux lettres.",
           "Vous avez changé quelque chose. Je ne sais pas quoi, mais je l'ai senti.",
           "Je lis le menu par principe. Je sais déjà ce qu'il dit.",
-          "Juste une question\u00a0: vous ouvrez toujours à la même heure demain?",
+          "Juste une question : vous ouvrez toujours à la même heure demain?",
           "Je reviens tantôt. Tantôt, c'est quand je veux."
         ]
       }
@@ -163,6 +163,61 @@
           "Je passe juste sentir l'ambiance. Elle est correcte, sans plus.",
           "Je reviendrai avec des amis qui ont des opinions sur le café.",
           "Le menu est court. C'est voulu ou c'est un manque de vision?"
+        ]
+      }
+    },
+    "touriste": {
+      "name": "Touriste",
+      "lines": {
+        "bought": [
+          "Un vrai croissant québécois! Je vais le prendre en photo devant la basilique.",
+          "Le café le plus européen d'Amérique, m'a dit mon guide. Il avait raison.",
+          "Je le mange sur les pavés, comme dans le dépliant de l'office du tourisme.",
+          "Un chocolat chaud en plein juillet. On est en vacances, tout est permis.",
+          "Mon bateau de croisière repart à 17 h. J'ai juste le temps de savourer.",
+          "Délicieux! Je vais le décrire en cinq paragraphes sur mon blogue de voyage.",
+          "C'est mon troisième croissant aujourd'hui. Je marche beaucoup, ça compense.",
+          "Je rapporte le gobelet en souvenir. Ma collection en compte quarante-deux."
+        ],
+        "tooExpensive": [
+          "J'ai changé mes dollars à l'aéroport. Je crois qu'on m'a mal conseillé.",
+          "C'est le prix d'une calèche, ça. Au moins, la calèche avance.",
+          "Je suis en vacances, pas en faillite. Pas encore.",
+          "Mon guide disait que la ville était abordable. Mon guide date de 1998.",
+          "Je voulais un souvenir. Je ne pensais pas que ce serait la facture.",
+          "Ma conjointe tient le budget du voyage. Elle vient de me faire non de la tête.",
+          "À ce prix-là, je m'attends à ce que le croissant me fasse visiter le quartier.",
+          "Je vais plutôt manger la barre tendre de l'avion. Il m'en reste trois."
+        ],
+        "soldOut": [
+          "Plus rien? Tout l'autobus de touristes est passé avant moi, j'imagine.",
+          "Il n'en reste plus? Je reviendrai l'an prochain, si mon vol le permet.",
+          "Vide? Le dernier croissant est parti avec la croisière de neuf heures.",
+          "Plus de café? Je vais visiter la basilique sans caféine. Courage.",
+          "Rupture de stock! Ça veut dire que c'est bon. Je le note dans mon carnet.",
+          "Plus de chocolat chaud? J'avais déjà mis mes mitaines souvenirs.",
+          "Tout est vendu? Je prends une photo du camion, c'est mieux que rien.",
+          "Il n'y en a plus? Mon guide m'avait dit d'arriver tôt. Je ne l'écoute jamais."
+        ],
+        "leftLine": [
+          "Notre calèche part dans cinq minutes. Le cheval, lui, n'attend personne.",
+          "Je fais déjà la file pour la basilique, le traversier et la grande roue.",
+          "Le groupe repart sans moi si je reste. Le guide a un drapeau, pas de patience.",
+          "Trop long. Je vais manger une queue de castor, il paraît que c'est local.",
+          "Mon parcomètre expire. Je ne comprends même pas les panneaux de stationnement.",
+          "J'ai fait la file six heures à l'aéroport. Mon quota d'attente est atteint.",
+          "Je reviens après le musée. Ou après le prochain voyage. On verra.",
+          "La file est plus longue que celle du traversier. Et le traversier, lui, avance."
+        ],
+        "browsed": [
+          "Je regarde, c'est tout. J'ai mangé une poutine il y a dix minutes.",
+          "Croissant, ça se dit comment en anglais? Ah, pareil. Pratique.",
+          "Je cherche juste le chemin du Vieux-Port. C'est par là, les pavés?",
+          "Je prends une photo du menu. Pour l'album, pas pour commander.",
+          "Vous vendez des aimants de frigo? Non? Dommage, le camion est joli.",
+          "Je fais seulement le tour. Mon estomac est encore à l'heure de Paris.",
+          "Tout a l'air bon. Je reviendrai quand j'aurai digéré mon sirop d'érable.",
+          "On m'a dit de tout goûter à Montréal. J'en suis à la cinquième chose. Je passe."
         ]
       }
     }

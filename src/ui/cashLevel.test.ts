@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import cashGauge from '../content/cashGauge.json'
 import difficulty from '../content/difficulty.json'
+import districts from '../content/districts.json'
 import foodTruck from '../content/foodtruck.json'
 import { monthsSinceStart, toCalendar } from '../engine/calendar.ts'
 import { cents } from '../engine/money.ts'
@@ -31,8 +32,10 @@ describe('cashLevel', () => {
 })
 
 describe('monthlyFixedCosts', () => {
-  const { permitParkingAndCommissary, insurance } = foodTruck.monthlyCostsCents
-  const everyTruck = permitParkingAndCommissary + insurance
+  // The Plateau's permit (#260), then the insurance.
+  const everyTruck =
+    districts.districts.plateau.permit.monthlyCents +
+    foodTruck.monthlyCostsCents.insurance
 
   it.each([0, 1, 30, 31, 400, 3649])(
     'charges an owned truck the permit and the insurance on day %i',

@@ -1062,7 +1062,7 @@ describe('loadEventContent rejects', () => {
     [{ kind: 'walkIns', factor: 0.65, days: 0 }, 'days'],
     [{ kind: 'walkIns', factor: 0.65, days: 1.5 }, 'days'],
     [{ kind: 'walkIns', factor: 0.65 }, 'days'],
-    [{ kind: 'walkIns', factor: 1.8, segment: 'touriste', days: 2 }, 'segment'],
+    [{ kind: 'walkIns', factor: 1.8, segment: 'enfant', days: 2 }, 'segment'],
     [{ kind: 'appeal', product: 'poutine', factor: 0.3, days: 5 }, 'product'],
     [{ kind: 'appeal', product: 'chocolat', factor: 0, days: 5 }, 'factor'],
     [{ kind: 'appeal', factor: 0.3, days: 5 }, 'product'],

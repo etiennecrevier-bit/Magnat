@@ -23,7 +23,7 @@ const SHIPPED = FOOD_TRUCK.marketing
 const WEEK: Marketing = {
   awarenessDays: 7,
   extraCustomersPerSqrtCent: 0.5,
-  segmentShares: { aubaine: 0.1, habitue: 0.3, chic: 0.6 },
+  segmentShares: { aubaine: 0.1, habitue: 0.3, chic: 0.6, touriste: 0 },
 }
 
 function spend(...amounts: number[]): Cents[] {
