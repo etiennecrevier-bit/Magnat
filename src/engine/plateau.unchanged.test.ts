@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DifficultyId } from '../content/schema.ts'
+import type { DifficultyId, FoodTruckContent } from '../content/schema.ts'
 import { entriesOf } from '../finance/journal.ts'
 import { BAKERY } from './bakery.ts'
 import { createInitialState, tick } from './clock.ts'
@@ -15,6 +15,7 @@ import {
 } from './day.ts'
 import { applyDecision } from './decisions.ts'
 import { NO_EVENTS, resolveEvent } from './events.ts'
+import { withoutLemonade } from './fixtures/lemonade.ts'
 import { PERCENTILES } from './percentiles.ts'
 import { defaultProfile } from './profile.ts'
 import type { GameState } from './types.ts'
@@ -26,9 +27,27 @@ import type { GameState } from './types.ts'
 // so moving the Plateau's crowd to districts.json and adding the tourists
 // must leave every draw and every entry as it was. The segments are read
 // for those the game had then.
+//
+// Lemonade (#261) sells from June 1st, so those 100 days are played with
+// its season in December, out of them, and the days read without it: out
+// of season, it changes nothing. Through May, the shipped game plays as
+// that one does.
 
 const DAYS = 100
+const MAY = 31
 const OLD_SEGMENTS = ['aubaine', 'habitue', 'chic'] as const
+
+/** The shipped content, with lemonade on sale only in December. */
+const DECEMBER_LEMONADE: FoodTruckContent = {
+  ...FOOD_TRUCK,
+  products: {
+    ...FOOD_TRUCK.products,
+    limonade: {
+      ...FOOD_TRUCK.products.limonade,
+      season: { from: { month: 12, day: 1 }, to: { month: 12, day: 31 } },
+    },
+  },
+}
 
 /** A 32-bit FNV-1a hash of `text`, as 8 hex digits. */
 function fnv1a(text: string): string {
@@ -40,14 +59,22 @@ function fnv1a(text: string): string {
   return hash.toString(16).padStart(8, '0')
 }
 
-/** What each close of `days` games leaves, as text. */
-function fingerprint(game: GameState, withEvents: boolean): string {
-  const days: string[] = []
+/**
+ * What each close of `days` days of `game` leaves, as text, played with
+ * `content`, its days read without lemonade.
+ */
+function fingerprint(
+  game: GameState,
+  withEvents: boolean,
+  content: FoodTruckContent = DECEMBER_LEMONADE,
+  days: number = DAYS,
+): string {
+  const closes: string[] = []
   let state = game
-  for (let day = 0; day < DAYS; day += 1) {
+  for (let day = 0; day < days; day += 1) {
     state = tick(
       state,
-      FOOD_TRUCK,
+      content,
       CUSTOMERS,
       DIFFICULTIES,
       PERSONAL,
@@ -66,17 +93,19 @@ function fingerprint(game: GameState, withEvents: boolean): string {
       state = resolveEvent(state, choice)
     }
     const last = state.lastDay
-    days.push(
-      JSON.stringify({
-        rng: state.rngState,
-        visits: last?.visits,
-        segments: OLD_SEGMENTS.map((id) => last?.segments[id]),
-        sold: last?.sold,
-      }),
+    closes.push(
+      JSON.stringify(
+        withoutLemonade({
+          rng: state.rngState,
+          visits: last?.visits,
+          segments: OLD_SEGMENTS.map((id) => last?.segments[id]),
+          sold: last?.sold,
+        }),
+      ),
     )
   }
   return fnv1a(
-    JSON.stringify([days, entriesOf(state.journal), state.inventory]),
+    JSON.stringify([closes, entriesOf(state.journal), state.inventory]),
   )
 }
 
@@ -109,5 +138,21 @@ describe('the Plateau after the districts (#260)', () => {
       events: fingerprint(game('moyen'), true),
       marketing: fingerprint(marketing, false),
     }).toEqual({ events: 'a00c58b6', marketing: 'e62fba6f' })
+  })
+})
+
+describe('the Plateau after the lemonade (#261)', () => {
+  it('plays May exactly as with no lemonade before winter', () => {
+    for (const difficulty of ['facile', 'moyen', 'difficile'] as const) {
+      expect(fingerprint(game(difficulty), true, FOOD_TRUCK, MAY)).toBe(
+        fingerprint(game(difficulty), true, DECEMBER_LEMONADE, MAY),
+      )
+    }
+  })
+
+  it('plays June otherwise: customers ask for lemonade', () => {
+    expect(fingerprint(game('moyen'), false, FOOD_TRUCK, MAY + 1)).not.toBe(
+      fingerprint(game('moyen'), false, DECEMBER_LEMONADE, MAY + 1),
+    )
   })
 })

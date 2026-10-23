@@ -27,7 +27,12 @@ function visit(
     arrivalMinute: minute,
     segment: 'habitue',
     outcome,
-    bought: { cafe: outcome === 'bought' ? 1 : 0, chocolat: 0, croissant: 0 },
+    bought: {
+      cafe: outcome === 'bought' ? 1 : 0,
+      chocolat: 0,
+      croissant: 0,
+      limonade: 0,
+    },
     servedMinute: outcome === 'bought' || outcome === 'soldOut' ? minute : null,
     leftMinute: outcome === 'leftLine' ? minute : null,
     botched,

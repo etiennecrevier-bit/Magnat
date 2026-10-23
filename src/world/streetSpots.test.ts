@@ -16,6 +16,7 @@ import {
 const OPEN: SpotsView = {
   open: true,
   modifiers: [],
+  selling: { cafe: true, chocolat: true, croissant: true, limonade: false },
   inChallenge: false,
   staffAtTruck: 0,
 }

@@ -1,5 +1,5 @@
 {
-  "_note": "Tuned in P2-19 (#58) with the balance bot: see docs/balance/phase-2.md. The tourists (#260) never come back as regulars, care less about the price and come mostly from 11 h, by their own `arrivalWeights` over the slots of the opening hours; the others come when their day type brings its crowd. Starting values, tuned in #266.",
+  "_note": "Tuned in P2-19 (#58) with the balance bot: see docs/balance/phase-2.md. The tourists (#260) never come back as regulars, care less about the price and come mostly from 11 h, by their own `arrivalWeights` over the slots of the opening hours; the others come when their day type brings its crowd. Lemonade (#261) is the tourists' summer drink. Starting values, tuned in #266.",
   "segments": {
     "aubaine": {
       "name": "Chasseurs d'aubaines",
@@ -18,6 +18,11 @@
         "croissant": {
           "referencePriceCents": 270,
           "purchaseProbability": 0.6,
+          "sensitivity": 8
+        },
+        "limonade": {
+          "referencePriceCents": 300,
+          "purchaseProbability": 0.25,
           "sensitivity": 8
         }
       }
@@ -40,6 +45,11 @@
           "referencePriceCents": 360,
           "purchaseProbability": 0.75,
           "sensitivity": 4
+        },
+        "limonade": {
+          "referencePriceCents": 350,
+          "purchaseProbability": 0.15,
+          "sensitivity": 4
         }
       }
     },
@@ -60,6 +70,11 @@
         "croissant": {
           "referencePriceCents": 450,
           "purchaseProbability": 0.6,
+          "sensitivity": 3
+        },
+        "limonade": {
+          "referencePriceCents": 450,
+          "purchaseProbability": 0.2,
           "sensitivity": 3
         }
       },
@@ -82,6 +97,11 @@
         "croissant": {
           "referencePriceCents": 475,
           "purchaseProbability": 0.6,
+          "sensitivity": 2
+        },
+        "limonade": {
+          "referencePriceCents": 450,
+          "purchaseProbability": 0.5,
           "sensitivity": 2
         }
       },

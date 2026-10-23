@@ -768,6 +768,7 @@ function ended(
     cafe: outcome === 'bought' ? 1 : 0,
     chocolat: 0,
     croissant: 0,
+    limonade: 0,
   }
   return { ...visit, outcome, bought, botched }
 }
@@ -1090,7 +1091,7 @@ function drinksAtCounter(
 const SEGMENTS = Object.keys(SEGMENT_ACCESSORY) as SegmentId[]
 
 describe('startStreet: what customers carry', () => {
-  it.each(['cafe', 'chocolat'] as const)(
+  it.each(['cafe', 'chocolat', 'limonade'] as const)(
     'hands one who bought a %s a cup at the counter, never before',
     async (drink) => {
       const app = createFakeApp()
@@ -1101,6 +1102,7 @@ describe('startStreet: what customers carry', () => {
           cafe: drink === 'cafe' ? 1 : 0,
           chocolat: drink === 'chocolat' ? 1 : 0,
           croissant: 0,
+          limonade: drink === 'limonade' ? 1 : 0,
         },
       }))
       await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
@@ -1117,7 +1119,12 @@ describe('startStreet: what customers carry', () => {
     const store = visitsStore((visit, i) => ({
       ...ended(visit, i % 2 === 0 ? 'bought' : 'tooExpensive', 0),
       segment: SEGMENTS[i % SEGMENTS.length]!,
-      bought: { cafe: 0, chocolat: 0, croissant: i % 2 === 0 ? 1 : 0 },
+      bought: {
+        cafe: 0,
+        chocolat: 0,
+        croissant: i % 2 === 0 ? 1 : 0,
+        limonade: 0,
+      },
     }))
     await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())
 
@@ -1170,7 +1177,7 @@ describe('startStreet: marketing’s flyer (#284)', () => {
     const store = visitsStore((visit, i) => ({
       ...ended(visit, 'bought', 0),
       segment: SEGMENTS[i % SEGMENTS.length]!,
-      bought: { cafe: i % 2, chocolat: 0, croissant: 1 - (i % 2) },
+      bought: { cafe: i % 2, chocolat: 0, croissant: 1 - (i % 2), limonade: 0 },
       fromMarketing: true,
     }))
     await startStreet(app, store, createLoaders(), ASSETS, busyCrowd())

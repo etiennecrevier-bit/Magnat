@@ -206,7 +206,8 @@ export const NO_CHANGES: CrowdChanges = {
 /**
  * Serves one day's walk-ins, with the `dayType`'s crowd and the `extra`
  * crowd on top, if any, as the street's `changes` leave them, `available`
- * units of each product on hand and `counter` serving them. The draws
+ * units of each product on hand, `counter` serving them and `onSale` the
+ * products in season (#261), in `PRODUCTS` order. The draws
  * always come in this order and number, whatever the prices, the stock, the
  * counter and the street's appeal and willingness, so the same generator
  * state brings the same customers at every price, and a bigger crowd, base,
@@ -219,9 +220,11 @@ export const NO_CHANGES: CrowdChanges = {
  *    crowd's × the same noise, each rounded and never below zero.
  * 2. Each base customer, one after the other, draws once for their arrival
  *    minute, once for their segment (by the day type's share), then once
- *    per product, in `PRODUCTS` order. Their arrival draw picks a slot by
- *    their segment's own `arrivalWeights`, or the day type's when it has
- *    none, then the minute within it from where the draw fell. They want one unit
+ *    per product of `onSale`, in its order: a product out of it draws
+ *    nothing, so nobody wants it, finds it too expensive or loses it.
+ *    Their arrival draw picks a slot by their segment's own
+ *    `arrivalWeights`, or the day type's when it has none, then the minute
+ *    within it from where the draw fell. They want one unit
  *    when the draw is below `purchaseProbability()`, with the day type's
  *    appeal for the product × the street's, and their segment's reference
  *    price × the street's willingness for it, rounded to the cent. One who
@@ -282,6 +285,7 @@ export function serveWalkIns(
   counter: Counter,
   extra: ExtraCrowd | null = null,
   changes: CrowdChanges = NO_CHANGES,
+  onSale: readonly ProductId[] = PRODUCTS,
 ): Served {
   const crowd = walkIns.dayTypes[dayType]
   const dayPicker = picker(crowd.arrivalWeights)
@@ -291,7 +295,7 @@ export function serveWalkIns(
       const own = customers.segments[id].arrivalWeights
       return own === undefined ? dayPicker : picker(own)
     }),
-    odds: dayOdds(customers, crowd.productAppeal, price, changes),
+    odds: dayOdds(customers, crowd.productAppeal, price, changes, onSale),
   }
 
   const [noise, afterNoise] = normal(rngState, 1, walkIns.noiseStdDevRatio)
@@ -586,7 +590,7 @@ interface Odds {
 }
 
 /**
- * Each segment's odds for every product, in `PRODUCTS` order, with the
+ * Each segment's odds for every product `onSale`, in its order, with the
  * street's `changes` to the appeal and to what each segment will pay.
  */
 function dayOdds(
@@ -594,10 +598,11 @@ function dayOdds(
   appeal: Readonly<Record<ProductId, number>>,
   price: (product: ProductId) => Cents,
   changes: CrowdChanges,
+  onSale: readonly ProductId[],
 ): Record<SegmentId, readonly Odds[]> {
   return perSegment((id) => {
     const segment = willing(customers.segments[id], changes.willingness[id])
-    return PRODUCTS.map((product) => {
+    return onSale.map((product) => {
       const today = price(product)
       const reference = segment.products[product].referencePriceCents
       const wanted = appeal[product] * changes.appeal[product]

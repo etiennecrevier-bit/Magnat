@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { ProductId } from '../content/schema.ts'
+import { FOOD_TRUCK } from './day.ts'
 import {
   PRODUCTS,
+  inSeason,
   inventoryValue,
   onHand,
   perProduct,
@@ -25,7 +27,33 @@ function frozen(lots: Lot[]): readonly Lot[] {
   return Object.freeze(lots.map((l) => Object.freeze(l)))
 }
 
-const SHELF_LIFE = { cafe: 90, chocolat: 90, croissant: 1 }
+const SHELF_LIFE = { cafe: 90, chocolat: 90, croissant: 1, limonade: 1 }
+
+describe('inSeason', () => {
+  const { products } = FOOD_TRUCK
+
+  it('sells lemonade from June 1st to September 15th, every year (#261)', () => {
+    // Day 0 is May 1st of year 1.
+    for (const [day, within] of [
+      [30, false],
+      [31, true],
+      [137, true],
+      [138, false],
+      [365 + 30, false],
+      [365 + 31, true],
+    ] as const) {
+      expect(inSeason('limonade', day, products), `day ${day}`).toBe(within)
+    }
+  })
+
+  it('sells a product with no season every day', () => {
+    for (const day of [0, 30, 31, 138, 250, 364]) {
+      for (const product of ['cafe', 'chocolat', 'croissant'] as const) {
+        expect(inSeason(product, day, products)).toBe(true)
+      }
+    }
+  })
+})
 
 describe('perProduct', () => {
   it('has every product and nothing else', () => {
@@ -33,8 +61,9 @@ describe('perProduct', () => {
       cafe: 4,
       chocolat: 8,
       croissant: 9,
+      limonade: 8,
     })
-    expect(PRODUCTS).toEqual(['cafe', 'chocolat', 'croissant'])
+    expect(PRODUCTS).toEqual(['cafe', 'chocolat', 'croissant', 'limonade'])
   })
 })
 
@@ -128,7 +157,7 @@ describe('removeExpired', () => {
     const lots = frozen([lot('croissant', 7, 90, 4), lot('cafe', 2, 40, 4)])
     expect(removeExpired(lots, 4, SHELF_LIFE)).toEqual({
       lots: [lots[1]],
-      spoiled: { cafe: 0, chocolat: 0, croissant: 7 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 7, limonade: 0 },
       cost: 7 * 90,
     })
   })
@@ -137,12 +166,12 @@ describe('removeExpired', () => {
     const lots = frozen([lot('cafe', 6, 40, 10)])
     expect(removeExpired(lots, 10 + 88, SHELF_LIFE)).toEqual({
       lots,
-      spoiled: { cafe: 0, chocolat: 0, croissant: 0 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 0, limonade: 0 },
       cost: 0,
     })
     expect(removeExpired(lots, 10 + 89, SHELF_LIFE)).toEqual({
       lots: [],
-      spoiled: { cafe: 6, chocolat: 0, croissant: 0 },
+      spoiled: { cafe: 6, chocolat: 0, croissant: 0, limonade: 0 },
       cost: 6 * 40,
     })
   })
@@ -155,7 +184,7 @@ describe('removeExpired', () => {
     expect(removeExpired(lots, 10 + 88, SHELF_LIFE).lots).toEqual(lots)
     expect(removeExpired(lots, 10 + 89, SHELF_LIFE)).toEqual({
       lots: [],
-      spoiled: { cafe: 0, chocolat: 5, croissant: 3 },
+      spoiled: { cafe: 0, chocolat: 5, croissant: 3, limonade: 0 },
       cost: 5 * 55 + 3 * 90,
     })
   })
@@ -164,7 +193,7 @@ describe('removeExpired', () => {
     const lots = frozen([lot('cafe', 1, 40, 0), lot('cafe', 2, 50, 20)])
     expect(removeExpired(lots, 100, SHELF_LIFE)).toEqual({
       lots: [lots[1]],
-      spoiled: { cafe: 1, chocolat: 0, croissant: 0 },
+      spoiled: { cafe: 1, chocolat: 0, croissant: 0, limonade: 0 },
       cost: 40,
     })
   })
@@ -173,7 +202,7 @@ describe('removeExpired', () => {
     const lots = frozen([lot('croissant', 2, 90, 3), lot('croissant', 5, 80)])
     expect(removeExpired(lots, 3, SHELF_LIFE)).toEqual({
       lots: [],
-      spoiled: { cafe: 0, chocolat: 0, croissant: 7 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 7, limonade: 0 },
       cost: 2 * 90 + 5 * 80,
     })
   })

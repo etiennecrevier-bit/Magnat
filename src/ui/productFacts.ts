@@ -3,7 +3,7 @@ import { BAKED, morningBakery, runsOn, supplyRule } from '../engine/bakery.ts'
 import { SEGMENTS } from '../engine/customers.ts'
 import { CUSTOMERS, DIFFICULTIES, FOOD_TRUCK } from '../engine/day.ts'
 import { latestDecisions } from '../engine/decisions.ts'
-import { onHand, orderSize, PRODUCTS } from '../engine/inventory.ts'
+import { inSeason, onHand, orderSize, PRODUCTS } from '../engine/inventory.ts'
 import { add, cents, sub, type Cents } from '../engine/money.ts'
 import type { DaySummary, GameState } from '../engine/types.ts'
 import { formatCount, formatMoney } from './formatMoney.ts'
@@ -96,13 +96,22 @@ export function yesterdayFacts(
 }
 
 /**
- * Whether `product` is on sale today: the truck has some on hand this
- * morning, or the rule that supplies it today brings some (see
- * `supplyRule`: the bake rule for croissants the running bakery makes, the
- * restock rule otherwise, croissants the player wants made included while
- * no bakery runs).
+ * Whether day `game.day` is in `product`'s season (#261); a product with
+ * none sells all year.
+ */
+export function seasonal(game: GameState, product: ProductId): boolean {
+  return inSeason(product, game.day, FOOD_TRUCK.products)
+}
+
+/**
+ * Whether `product` is on sale today: in season (see `seasonal`), with
+ * some on hand this morning, or the rule that supplies it today bringing
+ * some (see `supplyRule`: the bake rule for croissants the running bakery
+ * makes, the restock rule otherwise, croissants the player wants made
+ * included while no bakery runs).
  */
 export function onSale(game: GameState, product: ProductId): boolean {
+  if (!seasonal(game, product)) return false
   const units = onHand(game.inventory, product)
   if (units > 0) return true
   const bakery = morningBakery(game.bakery, game.decisions.bakery, game.day)
@@ -154,16 +163,20 @@ function spoiledFact(spoiled: number): StatusFact {
 
 const OFF_SALE: StatusFact = { tone: 'off', text: 'Hors vente' }
 
+const OFF_SEASON: StatusFact = { tone: 'off', text: 'Hors saison' }
+
 /**
  * Yesterday's most important fact for a product's price, `null` before the
- * first day is over: « Hors vente » first, whatever the day, then a
- * stockout, customers who found it too expensive, units spoiled, and
- * whether it sold at all.
+ * first day is over: « Hors saison » first, out of its `season`, then
+ * « Hors vente », whatever the day, then a stockout, customers who found
+ * it too expensive, units spoiled, and whether it sold at all.
  */
 export function menuFact(
   facts: YesterdayFacts | null,
   sale: boolean,
+  season = true,
 ): StatusFact | null {
+  if (!season) return OFF_SEASON
   if (!sale) return OFF_SALE
   if (facts === null) return null
   if (facts.lostSales > 0) return stockout(facts)
@@ -185,13 +198,16 @@ export function menuFact(
 
 /**
  * Yesterday's most important fact for a product's restock rule, `null`
- * before the first day is over: a stockout, then units spoiled, then what
- * was left this morning, `left`.
+ * before the first day is over: « Hors saison » first, out of its
+ * `season`, since the rule buys nothing then, then a stockout, then units
+ * spoiled, then what was left this morning, `left`.
  */
 export function stockFact(
   facts: YesterdayFacts | null,
   left: number,
+  season = true,
 ): StatusFact | null {
+  if (!season) return OFF_SEASON
   if (facts === null) return null
   if (facts.lostSales > 0) return stockout(facts)
   if (facts.spoiled > 0) return spoiledFact(facts.spoiled)
@@ -280,6 +296,8 @@ export function productTip(
 export interface ProductBoard {
   /** Yesterday's facts; null before the first day is over. */
   readonly facts: YesterdayFacts | null
+  /** Whether it sells today, in its season (see `seasonal`). */
+  readonly inSeason: boolean
   /** Whether it is on sale today (see `onSale`). */
   readonly onSale: boolean
   /** Units on hand this morning, what was left of yesterday. */
@@ -295,6 +313,7 @@ export function productBoards(
   const { lastDay } = game
   const board = (product: ProductId): ProductBoard => ({
     facts: lastDay === null ? null : yesterdayFacts(lastDay, product),
+    inSeason: seasonal(game, product),
     onSale: onSale(game, product),
     left: onHand(game.inventory, product),
     cost: unitCost(game, product),

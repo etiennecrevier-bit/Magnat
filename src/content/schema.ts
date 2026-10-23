@@ -67,7 +67,43 @@ const SHARE_SUM_TOLERANCE = 1e-9
 // have no leap day, as in src/engine/calendar.ts.
 const MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const
 
-export const productIdSchema = z.enum(['cafe', 'chocolat', 'croissant'])
+// A calendar fact, not a tunable: the months of the game's years.
+const MONTHS_PER_YEAR = MONTH_LENGTHS.length
+
+/** A month of the year: 1 = January to 12 = December. */
+const monthOfYear = z.int().min(1).max(MONTHS_PER_YEAR)
+
+/** A date every year of the game has, by its month and its day in it. */
+export const monthDaySchema = z
+  .strictObject({ month: monthOfYear, day: z.int().min(1) })
+  .refine(({ month, day }) => day <= (MONTH_LENGTHS[month - 1] ?? 0), {
+    message: 'expected a day of that month',
+    path: ['day'],
+  })
+
+export type MonthDay = z.output<typeof monthDaySchema>
+
+/**
+ * The same dates each year, from `from` to `to`, both days included, over
+ * the year's end when `to` comes before `from`.
+ */
+export const dateRangeSchema = z.strictObject({
+  from: monthDaySchema,
+  to: monthDaySchema,
+})
+
+export type DateRange = z.output<typeof dateRangeSchema>
+
+/**
+ * The products the truck sells. Lemonade (#261) comes last, so a day
+ * without it walks the others in the order it always has.
+ */
+export const productIdSchema = z.enum([
+  'cafe',
+  'chocolat',
+  'croissant',
+  'limonade',
+])
 
 export type ProductId = z.infer<typeof productIdSchema>
 
@@ -129,6 +165,11 @@ const productSchema = z.strictObject({
   /** The cup, lid or bag that goes with each unit sold. */
   packagingCents: money,
   shelfLifeDays: z.int().positive(),
+  /**
+   * The dates it sells each year (#261); all year when absent. Out of
+   * them, nobody buys it, wants it or restocks it.
+   */
+  season: dateRangeSchema.optional(),
 })
 
 /** The truck the business runs, whoever paid for it. */
@@ -2642,31 +2683,12 @@ function financingContentFor(events: EventContent) {
   })
 }
 
-// A calendar fact, not a tunable: the months of the game's years.
-const MONTHS_PER_YEAR = MONTH_LENGTHS.length
-
-/** A month of the year: 1 = January to 12 = December. */
-const monthOfYear = z.int().min(1).max(MONTHS_PER_YEAR)
-
-/** A date every year of the game has, by its month and its day in it. */
-export const monthDaySchema = z
-  .strictObject({ month: monthOfYear, day: z.int().min(1) })
-  .refine(({ month, day }) => day <= (MONTH_LENGTHS[month - 1] ?? 0), {
-    message: 'expected a day of that month',
-    path: ['day'],
-  })
-
-export type MonthDay = z.output<typeof monthDaySchema>
-
 /**
  * « Remiser pour l'hiver » (#260): a truck stored each year from `from` to
  * `to`, both days included, over the year's end when `to` comes before
  * `from`.
  */
-export const winterStorageSchema = z.strictObject({
-  from: monthDaySchema,
-  to: monthDaySchema,
-})
+export const winterStorageSchema = dateRangeSchema
 
 export type WinterStorage = z.output<typeof winterStorageSchema>
 

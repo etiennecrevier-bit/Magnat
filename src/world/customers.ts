@@ -47,12 +47,7 @@ import {
   type Replay,
 } from './replay.ts'
 import type { Shadows } from './shadows.ts'
-import {
-  chosenModifiers,
-  opensToday,
-  showsOn,
-  staffAtTruck,
-} from './truckView.ts'
+import { showsOn, staffAtTruck, truckView } from './truckView.ts'
 
 /** The customers on the street, the avatar who serves them and the tally. */
 export interface Customers {
@@ -288,8 +283,9 @@ export function startCustomers(setup: CustomersSetup): Customers {
     labels,
     onGame: (game) => {
       const wasOpen = open
-      open = opensToday(game)
-      hot = showsOn(fans.shows, { open, modifiers: chosenModifiers(game) })
+      const view = truckView(game)
+      open = view.open
+      hot = showsOn(fans.shows, view)
       // Now rather than at the next frame, which a paused street doesn't
       // draw: a heat wave that ended would keep its fans.
       swingFans()
@@ -454,7 +450,7 @@ interface CustomerView {
 }
 
 /** What a customer carries off in a cup. */
-const DRINKS: readonly ProductId[] = ['cafe', 'chocolat']
+const DRINKS: readonly ProductId[] = ['cafe', 'chocolat', 'limonade']
 
 /** Whether `visit` bought something to drink. */
 function drinks(visit: Visit): boolean {

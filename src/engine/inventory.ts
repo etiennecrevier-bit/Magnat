@@ -1,8 +1,10 @@
 import {
   productIdSchema,
+  type FoodTruckContent,
   type ProductId,
   type RestockRule,
 } from '../content/schema.ts'
+import { onDates } from './calendar.ts'
 import { add, cents, mulInt, type Cents } from './money.ts'
 import type { Day, Lot, PerProduct } from './types.ts'
 
@@ -17,6 +19,19 @@ export function perProduct(count: (product: ProductId) => number): PerProduct {
   return Object.fromEntries(
     PRODUCTS.map((product) => [product, count(product)]),
   ) as Record<ProductId, number>
+}
+
+/**
+ * Whether `product` sells on `day` (#261): all year without a `season`,
+ * else only within its dates.
+ */
+export function inSeason(
+  product: ProductId,
+  day: Day,
+  products: FoodTruckContent['products'],
+): boolean {
+  const { season } = products[product]
+  return season === undefined || onDates(day, season)
 }
 
 /** Units of `product` on hand, across every lot. */

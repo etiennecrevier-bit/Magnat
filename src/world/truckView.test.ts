@@ -118,6 +118,12 @@ describe('truckView', () => {
     expect(truckView(monday)).toEqual({
       open: false,
       croissants: 0,
+      selling: {
+        cafe: false,
+        chocolat: false,
+        croissant: false,
+        limonade: false,
+      },
       businessName: "Le P'tit Camion",
       modifiers: [],
     })
@@ -137,10 +143,43 @@ describe('truckView', () => {
     expect(truckView(tuesday)).toEqual({
       open: true,
       croissants: 70,
+      selling: { cafe: true, chocolat: true, croissant: true, limonade: false },
       businessName: "Le P'tit Camion",
       modifiers: [],
     })
     expect(rackFill(truckView(tuesday).croissants, 100, 4)).toBe(0.75)
+  })
+
+  it('sells lemonade from June 1st to September 15th, once some is ordered (#261)', () => {
+    const order = (state: GameState, quantity: number) =>
+      decide(state, {
+        kind: 'restock',
+        product: 'limonade',
+        rule: { kind: 'buyDaily', quantity },
+      })
+    const playedTo = (state: GameState, day: number) => {
+      let next = state
+      while (next.day < day) next = tick(next)
+      return next
+    }
+    // Ordered from the start: May 31st, a Wednesday, has none to sell.
+    const may31 = playedTo(order(monday, 25), 30)
+    expect(truckView(may31)).toMatchObject({ open: true })
+    expect(openingStock(may31, 'limonade')).toBe(0)
+    expect(truckView(may31).selling.limonade).toBe(false)
+    const june1 = tick(may31)
+    expect(openingStock(june1, 'limonade')).toBe(25)
+    expect(truckView(june1).selling.limonade).toBe(true)
+    expect(showsOn({ sells: 'limonade' }, truckView(june1))).toBe(true)
+    // With none ordered, the jar stays in the truck.
+    const none = order(june1, 0)
+    expect(truckView(tick(none)).selling.limonade).toBe(false)
+    // September 15th, a Friday, is its last day; the 16th has none.
+    const september15 = playedTo(june1, 137)
+    expect(truckView(september15).selling.limonade).toBe(true)
+    const september16 = tick(september15)
+    expect(truckView(september16)).toMatchObject({ open: true })
+    expect(truckView(september16).selling.limonade).toBe(false)
   })
 })
 
@@ -216,6 +255,14 @@ describe('openingStock', () => {
           kind: 'restock',
           product: 'chocolat',
           rule: { kind: 'topUp', whenBelow: 0, upTo: 0 },
+        },
+      ],
+      // Ordered in May, lemonade is bought only from June 1st (#261).
+      20: [
+        {
+          kind: 'restock',
+          product: 'limonade',
+          rule: { kind: 'buyDaily', quantity: 25 },
         },
       ],
       50: [{ kind: 'daysOpen', weekdays: [1, 2, 3, 4, 5, 6, 7] }],
@@ -485,6 +532,7 @@ describe('showsOn', () => {
   const view = (open: boolean, ...modifiers: ChosenModifier[]) => ({
     open,
     modifiers,
+    selling: { cafe: true, chocolat: true, croissant: true, limonade: false },
   })
   const cones = modifier('conesOrange', FEWER, 1, 3)
   const broken = modifier('machineTousse', NO_CAFE, 1, 3)

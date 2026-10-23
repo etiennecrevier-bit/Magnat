@@ -1,5 +1,5 @@
 {
-  "_note": "Tuned in P2-19 (#58) with the balance bot: see docs/balance/phase-2.md. Costs, card fees, the truck and the starting decisions are #44's. The crowd of each district and its permit are in districts.json (#260); `walkIns` is the noise and the opening hours every truck shares, and `monthlyCostsCents` what every truck pays on each 1st, stored or not.",
+  "_note": "Tuned in P2-19 (#58) with the balance bot: see docs/balance/phase-2.md. Costs, card fees, the truck and the starting decisions are #44's. The crowd of each district and its permit are in districts.json (#260); `walkIns` is the noise and the opening hours every truck shares, and `monthlyCostsCents` what every truck pays on each 1st, stored or not. Lemonade (#261) sells only in its `season` and starts with an order of 0, so the player chooses to stock it; #266 tunes it.",
   "products": {
     "cafe": {
       "name": "Café",
@@ -18,6 +18,16 @@
       "unitCostCents": 110,
       "packagingCents": 5,
       "shelfLifeDays": 1
+    },
+    "limonade": {
+      "name": "Limonade",
+      "unitCostCents": 45,
+      "packagingCents": 20,
+      "shelfLifeDays": 1,
+      "season": {
+        "from": { "month": 6, "day": 1 },
+        "to": { "month": 9, "day": 15 }
+      }
     }
   },
   "truck": { "priceCents": 8500000, "usefulLifeMonths": 120 },
@@ -43,11 +53,17 @@
     }
   },
   "startingDecisions": {
-    "pricesCents": { "cafe": 325, "chocolat": 350, "croissant": 375 },
+    "pricesCents": {
+      "cafe": 325,
+      "chocolat": 350,
+      "croissant": 375,
+      "limonade": 400
+    },
     "restock": {
       "cafe": { "kind": "topUp", "whenBelow": 100, "upTo": 300 },
       "chocolat": { "kind": "topUp", "whenBelow": 50, "upTo": 150 },
-      "croissant": { "kind": "buyDaily", "quantity": 70 }
+      "croissant": { "kind": "buyDaily", "quantity": 70 },
+      "limonade": { "kind": "buyDaily", "quantity": 0 }
     },
     "daysOpen": [2, 3, 4, 5, 6, 7],
     "ownerWeeklyPayCents": 70000,

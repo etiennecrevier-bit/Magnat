@@ -96,6 +96,14 @@ describe('menuFact', () => {
     expect(menuFact(null, true)).toBeNull()
     expect(menuFact(null, false)?.text).toBe('Hors vente')
   })
+
+  it('says « Hors saison » first, out of its season (#261)', () => {
+    const all = facts({ lostSales: 4, pricedOut: 12, spoiled: 8 })
+    const offSeason = { tone: 'off', text: 'Hors saison' }
+    expect(menuFact(all, false, false)).toEqual(offSeason)
+    expect(menuFact(null, false, false)).toEqual(offSeason)
+    expect(menuFact(all, true, true)?.text).toBe('Rupture hier')
+  })
 })
 
 describe('stockFact', () => {
@@ -113,6 +121,15 @@ describe('stockFact', () => {
     })
     expect(stockFact(facts(), 0)?.text).toBe("Il n'en restait plus hier")
     expect(stockFact(null, 0)).toBeNull()
+  })
+
+  it('says « Hors saison » first, out of its season, when its rule buys nothing (#261)', () => {
+    const offSeason = { tone: 'off', text: 'Hors saison' }
+    expect(stockFact(facts({ spoiled: 3 }), 0, false)).toEqual(offSeason)
+    expect(stockFact(null, 0, false)).toEqual(offSeason)
+    expect(stockFact(facts({ spoiled: 3 }), 0, true)?.text).toBe(
+      '3 périmés hier',
+    )
   })
 })
 
@@ -138,7 +155,32 @@ describe('tomorrow', () => {
 
 describe('onSale', () => {
   it('is on sale while the rule of the day brings some', () => {
-    for (const product of PRODUCTS) expect(onSale(START, product)).toBe(true)
+    for (const product of PRODUCTS) {
+      if (product !== 'limonade') expect(onSale(START, product)).toBe(true)
+    }
+  })
+
+  it('is off sale out of its season, whatever its rule (#261)', () => {
+    const ordered = applyDecision(START, {
+      kind: 'restock',
+      product: 'limonade',
+      rule: { kind: 'buyDaily', quantity: 30 },
+    })
+    // May 31st, then June 1st, both ends of the season, then September 16th.
+    const may31 = playedTo(ordered, 30)
+    expect(onSale(may31, 'limonade')).toBe(false)
+    expect(productBoards(may31).limonade).toMatchObject({
+      inSeason: false,
+      onSale: false,
+    })
+    const june1 = playedTo(may31, 31)
+    expect(productBoards(june1).limonade).toMatchObject({
+      inSeason: true,
+      onSale: true,
+    })
+    const september15 = playedTo(june1, 137)
+    expect(onSale(september15, 'limonade')).toBe(true)
+    expect(onSale(playedTo(september15, 138), 'limonade')).toBe(false)
   })
 
   it('is off sale with none on hand and a rule that brings none', () => {

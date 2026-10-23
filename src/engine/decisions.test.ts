@@ -415,6 +415,7 @@ describe('applyDecision', () => {
           cafe: { kind: 'topUp', whenBelow: 2, upTo: 5 },
           chocolat: { kind: 'topUp', whenBelow: 2, upTo: 5 },
           croissant: { kind: 'buyDaily', quantity: 5 },
+          limonade: { kind: 'buyDaily', quantity: 0 },
         },
         daysOpen: [1, 2, 3],
         ownerWeeklyPayCents: 1_000,
@@ -1092,6 +1093,7 @@ describe('determinism with decisions', () => {
       cafe: 300,
       chocolat: 395,
       croissant: 400,
+      limonade: 400,
     })
   })
 
@@ -1103,11 +1105,12 @@ describe('determinism with decisions', () => {
       unscripted.journal.entries,
     )
     expect(states.at(-1)?.decisions).toEqual({
-      prices: { cafe: 300, chocolat: 395, croissant: 400 },
+      prices: { cafe: 300, chocolat: 395, croissant: 400, limonade: 400 },
       restock: {
         cafe: { kind: 'topUp', whenBelow: 50, upTo: 200 },
         chocolat: { kind: 'topUp', whenBelow: 20, upTo: 60 },
         croissant: { kind: 'buyDaily', quantity: 40 },
+        limonade: { kind: 'buyDaily', quantity: 0 },
       },
       daysOpen: [2, 4, 6],
       ownerWeeklyPay: 50_000,

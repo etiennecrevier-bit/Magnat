@@ -51,7 +51,12 @@ describe('streetOn', () => {
   it('changes nothing with no modifier', () => {
     expect(streetOn([], 10)).toEqual({
       ...NO_CHANGES,
-      unavailable: { cafe: false, chocolat: false, croissant: false },
+      unavailable: {
+        cafe: false,
+        chocolat: false,
+        croissant: false,
+        limonade: false,
+      },
       closed: false,
       working: false,
     })
@@ -97,7 +102,12 @@ describe('streetOn', () => {
       chic: 0.5,
       touriste: 0.5,
     })
-    expect(street.appeal).toEqual({ cafe: 1, chocolat: 0.15, croissant: 1 })
+    expect(street.appeal).toEqual({
+      cafe: 1,
+      chocolat: 0.15,
+      croissant: 1,
+      limonade: 1,
+    })
     expect(street.willingness.aubaine).toBeCloseTo(1.65, 12)
     expect(street.willingness.habitue).toBe(1.1)
     expect(street.willingness.chic).toBe(1.1)
@@ -123,6 +133,7 @@ describe('streetOn', () => {
       cafe: true,
       chocolat: false,
       croissant: false,
+      limonade: false,
     })
     expect(street.closed).toBe(false)
   })

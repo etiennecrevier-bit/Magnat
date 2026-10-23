@@ -217,6 +217,19 @@ function counter(
   }
 }
 
+/**
+ * The products sold all year, those the tests below serve unless they say
+ * otherwise: lemonade (#261) has its own.
+ */
+const YEAR_ROUND: readonly ProductId[] = PRODUCTS.filter(
+  (product) => FOOD_TRUCK.products[product].season === undefined,
+)
+
+/** `units` of each product sold all year, and none of the others. */
+function yearRound(units: number): PerProduct {
+  return perProduct((product) => (YEAR_ROUND.includes(product) ? units : 0))
+}
+
 function serve(
   walkIns: DistrictWalkIns,
   options: {
@@ -227,6 +240,7 @@ function serve(
     counter?: Counter
     extra?: ExtraCrowd | null
     changes?: Partial<CrowdChanges>
+    onSale?: readonly ProductId[]
   } = {},
 ): Served {
   return serveWalkIns(
@@ -239,6 +253,7 @@ function serve(
     options.counter ?? INSTANT,
     options.extra ?? null,
     { ...NO_CHANGES, ...options.changes },
+    options.onSale ?? YEAR_ROUND,
   )
 }
 
@@ -474,7 +489,7 @@ describe('serveWalkIns', () => {
 
   it('accounts for every visit, unit and lost sale', () => {
     const served = serve(weekday(300), {
-      available: stock({ cafe: 120, chocolat: 5, croissant: 60 }),
+      available: stock({ cafe: 120, chocolat: 5, croissant: 60, limonade: 0 }),
     })
     const { visits, segments, sold, lost } = served
     expect(visits).toHaveLength(300)
@@ -486,7 +501,7 @@ describe('serveWalkIns', () => {
       ).toBe(true)
       expect(bought).toHaveLength(sold[product])
     }
-    expect(sold).toEqual({ cafe: 120, chocolat: 5, croissant: 60 })
+    expect(sold).toEqual({ cafe: 120, chocolat: 5, croissant: 60, limonade: 0 })
     expect(lost.cafe).toBeGreaterThan(0)
 
     for (const visit of visits) {
@@ -525,7 +540,12 @@ describe('serveWalkIns', () => {
       ...Array.from({ length: 10 }, () => 'bought'),
       ...Array.from({ length: 20 }, () => 'soldOut'),
     ])
-    expect(served.lost).toEqual({ cafe: 30, chocolat: 30, croissant: 20 })
+    expect(served.lost).toEqual({
+      cafe: 30,
+      chocolat: 30,
+      croissant: 20,
+      limonade: 0,
+    })
   })
 
   it('counts a customer the price kept away as tooExpensive', () => {
@@ -534,7 +554,12 @@ describe('serveWalkIns', () => {
       customers: everyone({ base: 1, reference: 200, sensitivity: 50 }),
       price: () => cents(400),
     })
-    expect(served.sold).toEqual({ cafe: 0, chocolat: 0, croissant: 0 })
+    expect(served.sold).toEqual({
+      cafe: 0,
+      chocolat: 0,
+      croissant: 0,
+      limonade: 0,
+    })
     expect(new Set(served.visits.map(({ outcome }) => outcome))).toEqual(
       new Set(['tooExpensive']),
     )
@@ -548,7 +573,12 @@ describe('serveWalkIns', () => {
       customers: everyone({ base: 1, reference: 200, sensitivity: 50 }),
       price: () => cents(400),
     })
-    expect(served.pricedOut).toEqual({ cafe: 40, chocolat: 40, croissant: 40 })
+    expect(served.pricedOut).toEqual({
+      cafe: 40,
+      chocolat: 40,
+      croissant: 40,
+      limonade: 0,
+    })
   })
 
   it('counts in pricedOut only the products above the reference, a customer who bought another included', () => {
@@ -556,8 +586,18 @@ describe('serveWalkIns', () => {
       customers: everyone({ base: 1, reference: 200, sensitivity: 50 }),
       price: (product) => cents(product === 'cafe' ? 400 : 200),
     })
-    expect(served.pricedOut).toEqual({ cafe: 40, chocolat: 0, croissant: 0 })
-    expect(served.sold).toEqual({ cafe: 0, chocolat: 40, croissant: 40 })
+    expect(served.pricedOut).toEqual({
+      cafe: 40,
+      chocolat: 0,
+      croissant: 0,
+      limonade: 0,
+    })
+    expect(served.sold).toEqual({
+      cafe: 0,
+      chocolat: 40,
+      croissant: 40,
+      limonade: 0,
+    })
     expect(
       SEGMENTS.reduce((n, id) => n + served.segments[id].tooExpensive, 0),
     ).toBe(0)
@@ -602,8 +642,38 @@ describe('serveWalkIns', () => {
       const outcomes = new Set(served.visits.map(({ outcome }) => outcome))
       expect(outcomes.has('tooExpensive')).toBe(false)
       expect(outcomes.has('browsed')).toBe(true)
-      expect(served.pricedOut).toEqual({ cafe: 0, chocolat: 0, croissant: 0 })
+      expect(served.pricedOut).toEqual({
+        cafe: 0,
+        chocolat: 0,
+        croissant: 0,
+        limonade: 0,
+      })
     }
+  })
+
+  it('draws only for the products on sale, in their order (#261)', () => {
+    const walkIns = weekday(120)
+    const keenAll = keen(5)
+    const without = serve(walkIns, { customers: keenAll, available: stock(0) })
+    expect(without.rngState).toBe(
+      advance(seedRng(42), 2 + 120 * (2 + YEAR_ROUND.length)),
+    )
+    // Nobody wants a product left out, so none is lost or priced out.
+    for (const count of ['sold', 'lost', 'pricedOut', 'botched'] as const) {
+      expect(without[count].limonade, count).toBe(0)
+    }
+    expect(without.lost.cafe).toBeGreaterThan(0)
+    expect(without.withdrawals.limonade).toEqual([])
+    // On sale, each customer draws once more, for it, after the others.
+    const all = serve(walkIns, {
+      customers: keenAll,
+      available: stock(0),
+      onSale: PRODUCTS,
+    })
+    expect(all.rngState).toBe(
+      advance(seedRng(42), 2 + 120 * (2 + PRODUCTS.length)),
+    )
+    expect(all.lost.limonade).toBeGreaterThan(0)
   })
 
   it('makes the same draws whatever the prices, the stock and the counter', () => {
@@ -624,7 +694,7 @@ describe('serveWalkIns', () => {
       }),
       serve(walkIns, { counter: counter({}, [1], 0.5) }),
     ]
-    const draws = 2 + 120 * (2 + PRODUCTS.length)
+    const draws = 2 + 120 * (2 + YEAR_ROUND.length)
     expect(base.rngState).toBe(advance(seedRng(42), draws))
     for (const other of variants) {
       expect(arrivals(other)).toEqual(arrivals(base))
@@ -671,7 +741,7 @@ describe('botched units', () => {
 
   it('botches nothing at a share of 0, taking each product in one run', () => {
     const served = serve(weekday(300), {
-      available: stock({ cafe: 120, chocolat: 5, croissant: 60 }),
+      available: stock({ cafe: 120, chocolat: 5, croissant: 60, limonade: 0 }),
     })
     expect(served.botched).toEqual(stock(0))
     expect(served.visits.every(({ botched }) => botched === 0)).toBe(true)
@@ -679,6 +749,7 @@ describe('botched units', () => {
       cafe: [{ units: 120, botched: false }],
       chocolat: [{ units: 5, botched: false }],
       croissant: [{ units: 60, botched: false }],
+      limonade: [],
     })
   })
 
@@ -688,6 +759,7 @@ describe('botched units', () => {
       cafe: [],
       chocolat: [],
       croissant: [],
+      limonade: [],
     })
     expect(served.botched).toEqual(stock(0))
   })
@@ -702,9 +774,24 @@ describe('botched units', () => {
     expect(served.visits.every(({ outcome }) => outcome === 'bought')).toBe(
       true,
     )
-    expect(served.sold).toEqual({ cafe: 6, chocolat: 0, croissant: 0 })
-    expect(served.botched).toEqual({ cafe: 3, chocolat: 0, croissant: 0 })
-    expect(served.lost).toEqual({ cafe: 0, chocolat: 6, croissant: 6 })
+    expect(served.sold).toEqual({
+      cafe: 6,
+      chocolat: 0,
+      croissant: 0,
+      limonade: 0,
+    })
+    expect(served.botched).toEqual({
+      cafe: 3,
+      chocolat: 0,
+      croissant: 0,
+      limonade: 0,
+    })
+    expect(served.lost).toEqual({
+      cafe: 0,
+      chocolat: 6,
+      croissant: 6,
+      limonade: 0,
+    })
     expect(served.withdrawals.cafe).toEqual([
       { units: 1, botched: false },
       { units: 1, botched: true },
@@ -785,7 +872,12 @@ describe('botched units', () => {
 
   it('takes a unit for each botched one, never more than are on hand', () => {
     // Everyone wants one of each, far more than is on hand.
-    const available = stock({ cafe: 40, chocolat: 30, croissant: 20 })
+    const available = stock({
+      cafe: 40,
+      chocolat: 30,
+      croissant: 20,
+      limonade: 0,
+    })
     const served = serve(weekday(200, { productAppeal: perProduct(() => 1) }), {
       customers: everyone({ base: 1, reference: 300, sensitivity: 4 }),
       price: () => cents(300),
@@ -840,7 +932,7 @@ describe('the line', () => {
     const served = serve(oneMinute(12), {
       customers: keen(20),
       price: () => cents(300),
-      available: stock({ cafe: 50, chocolat: 50, croissant: 10 }),
+      available: stock({ cafe: 50, chocolat: 50, croissant: 10, limonade: 0 }),
       counter: timed(),
     })
     expect(outcomes(served)).toEqual([
@@ -862,8 +954,18 @@ describe('the line', () => {
     expect(served.averageWaitSeconds).toBe(383)
     expect(served.longestWaitSeconds).toBe(765)
     // Those who left took no croissant and lost no sale.
-    expect(served.sold).toEqual({ cafe: 10, chocolat: 10, croissant: 10 })
-    expect(served.lost).toEqual({ cafe: 0, chocolat: 0, croissant: 0 })
+    expect(served.sold).toEqual({
+      cafe: 10,
+      chocolat: 10,
+      croissant: 10,
+      limonade: 0,
+    })
+    expect(served.lost).toEqual({
+      cafe: 0,
+      chocolat: 0,
+      croissant: 0,
+      limonade: 0,
+    })
   })
 
   it('sends away those whose wait is longer than their patience', () => {
@@ -916,7 +1018,12 @@ describe('the line', () => {
       servedAt(170),
     ])
     expect(served.longestWaitSeconds).toBe(170)
-    expect(served.lost).toEqual({ cafe: 3, chocolat: 3, croissant: 2 })
+    expect(served.lost).toEqual({
+      cafe: 3,
+      chocolat: 3,
+      croissant: 2,
+      limonade: 0,
+    })
   })
 
   it('serves more at once with more servers, and sooner with faster ones', () => {
@@ -952,7 +1059,12 @@ describe('the line', () => {
 
   it('accounts for every visit with the shipped line', () => {
     const served = serve(weekday(240), {
-      price: prices({ cafe: 200, chocolat: 250, croissant: 250 }),
+      price: prices({
+        cafe: 200,
+        chocolat: 250,
+        croissant: 250,
+        limonade: 400,
+      }),
       counter: SHIPPED_COUNTER,
     })
     const { visits } = served
@@ -1002,7 +1114,7 @@ describe('an extra crowd', () => {
   const base = (customers: number) =>
     weekday(customers, {
       segmentShares: AUBAINE,
-      productAppeal: { cafe: 1, chocolat: 1, croissant: 1 },
+      productAppeal: { cafe: 1, chocolat: 1, croissant: 1, limonade: 1 },
     })
   const chic = (customers: number): ExtraCrowd => ({
     customers,
@@ -1029,7 +1141,7 @@ describe('an extra crowd', () => {
     expect(from(marketed, 'chic')).toHaveLength(30)
     expect(from(marketed, 'habitue')).toEqual([])
     expect(marketed.rngState).toBe(
-      advance(alone.rngState, 30 * (2 + PRODUCTS.length)),
+      advance(alone.rngState, 30 * (2 + YEAR_ROUND.length)),
     )
     // One line, in arrival order.
     const minutes = marketed.visits.map(({ arrivalMinute }) => arrivalMinute)
@@ -1082,8 +1194,13 @@ describe('an extra crowd', () => {
 
   it('shares the stock with the base customers', () => {
     const customers = keen(5)
-    const price = prices({ cafe: 300, chocolat: 300, croissant: 300 })
-    const available = stock(60)
+    const price = prices({
+      cafe: 300,
+      chocolat: 300,
+      croissant: 300,
+      limonade: 400,
+    })
+    const available = yearRound(60)
     const alone = serve(base(50), { customers, price, available })
     const marketed = serve(base(50), {
       customers,
@@ -1091,11 +1208,11 @@ describe('an extra crowd', () => {
       available,
       extra: chic(50),
     })
-    expect(alone.sold).toEqual(stock(50))
+    expect(alone.sold).toEqual(yearRound(50))
     expect(alone.segments.aubaine.soldOut).toBe(0)
     // 100 customers each want one of each product, and there are 60.
     expect(marketed.sold).toEqual(available)
-    expect(marketed.lost).toEqual(stock(40))
+    expect(marketed.lost).toEqual(yearRound(40))
     // The base customers who came after the stock ran out found none.
     expect(marketed.segments.aubaine.soldOut).toBeGreaterThan(0)
     expect(marketed.segments.chic.soldOut).toBeGreaterThan(0)
@@ -1106,7 +1223,12 @@ describe('an extra crowd', () => {
 
   it('shares the line with the base customers', () => {
     const customers = keen(5)
-    const price = prices({ cafe: 300, chocolat: 300, croissant: 300 })
+    const price = prices({
+      cafe: 300,
+      chocolat: 300,
+      croissant: 300,
+      limonade: 400,
+    })
     const slow = counter({ baseSeconds: 120 })
     const alone = serve(base(120), { customers, price, counter: slow })
     const marketed = serve(base(120), {
@@ -1137,7 +1259,7 @@ describe('the street', () => {
   const base = (customers: number) =>
     weekday(customers, {
       segmentShares: AUBAINE,
-      productAppeal: { cafe: 1, chocolat: 1, croissant: 1 },
+      productAppeal: { cafe: 1, chocolat: 1, croissant: 1, limonade: 1 },
     })
   const marketing = (customers: number): ExtraCrowd => ({
     customers,
@@ -1212,7 +1334,7 @@ describe('the street', () => {
     expect(surged.visits).toHaveLength(180)
     expect(holds(surged.visits, alone.visits)).toBe(true)
     expect(surged.rngState).toBe(
-      advance(alone.rngState, 60 * (2 + PRODUCTS.length)),
+      advance(alone.rngState, 60 * (2 + YEAR_ROUND.length)),
     )
     const more = serve(base(120), { changes: walkIns({ aubaine: 1.8 }) })
     expect(more.visits).toHaveLength(216)
@@ -1229,7 +1351,7 @@ describe('the street', () => {
     expect(from(surged, 'chic')).toHaveLength(60)
     expect(holds(surged.visits, marketed.visits)).toBe(true)
     expect(surged.rngState).toBe(
-      advance(marketed.rngState, 20 * (2 + PRODUCTS.length)),
+      advance(marketed.rngState, 20 * (2 + YEAR_ROUND.length)),
     )
   })
 
@@ -1244,7 +1366,7 @@ describe('the street', () => {
     expect(from(changed, 'chic')).toHaveLength(60)
     expect(from(changed, 'habitue')).toEqual([])
     expect(changed.rngState).toBe(
-      advance(marketed.rngState, 30 * (2 + PRODUCTS.length)),
+      advance(marketed.rngState, 30 * (2 + YEAR_ROUND.length)),
     )
     // Marketing's own customers come as they would.
     expect(holds(from(changed, 'chic'), from(marketed, 'chic'))).toBe(true)
@@ -1317,7 +1439,12 @@ describe('the street', () => {
     // Every segment's reference is 3 $, and the price 3,20 $; ×1.1 makes it
     // 3,30 $.
     const customers = everyone({ base: 0.5, reference: 300, sensitivity: 4 })
-    const price = prices({ cafe: 320, chocolat: 320, croissant: 320 })
+    const price = prices({
+      cafe: 320,
+      chocolat: 320,
+      croissant: 320,
+      limonade: 400,
+    })
     const shipped = weekday(300)
     const alone = serve(shipped, { customers, price })
     const willing = serve(shipped, {
@@ -1332,7 +1459,7 @@ describe('the street', () => {
       )
     expect(tooExpensive(alone)).toBeGreaterThan(0)
     expect(tooExpensive(willing)).toBe(0)
-    for (const product of PRODUCTS) {
+    for (const product of YEAR_ROUND) {
       expect(willing.sold[product]).toBeGreaterThan(alone.sold[product])
     }
     expect(arrivals(willing)).toEqual(arrivals(alone))
@@ -1343,7 +1470,12 @@ describe('the street', () => {
     const customers = everyone({ base: 0.5, reference: 300, sensitivity: 4 })
     // 3,30 $ is the chic customers' new reference: they want each product
     // with a chance of one half, and none finds it too expensive.
-    const price = prices({ cafe: 330, chocolat: 330, croissant: 330 })
+    const price = prices({
+      cafe: 330,
+      chocolat: 330,
+      croissant: 330,
+      limonade: 400,
+    })
     const shipped = weekday(600, { segmentShares: CHIC })
     const willing = serve(shipped, {
       customers,
@@ -1352,7 +1484,12 @@ describe('the street', () => {
     })
     const fair = serve(shipped, {
       customers,
-      price: prices({ cafe: 300, chocolat: 300, croissant: 300 }),
+      price: prices({
+        cafe: 300,
+        chocolat: 300,
+        croissant: 300,
+        limonade: 400,
+      }),
     })
     expect(willing.segments.chic.tooExpensive).toBe(0)
     expect(willing.sold).toEqual(fair.sold)
@@ -1392,12 +1529,17 @@ describe('the line, with the shipped content', () => {
   const SEEDS = Array.from({ length: 1000 }, (_, seed) => seed)
 
   /** The stock a game opens its first day with. */
-  const OPENING_STOCK = stock({ cafe: 300, chocolat: 150, croissant: 70 })
+  const OPENING_STOCK = stock({
+    cafe: 300,
+    chocolat: 150,
+    croissant: 70,
+    limonade: 0,
+  })
 
   const PRICE_LEVELS = {
     starting: prices(FOOD_TRUCK.startingDecisions.pricesCents),
-    low: prices({ cafe: 200, chocolat: 250, croissant: 250 }),
-    lowest: prices({ cafe: 100, chocolat: 150, croissant: 150 }),
+    low: prices({ cafe: 200, chocolat: 250, croissant: 250, limonade: 400 }),
+    lowest: prices({ cafe: 100, chocolat: 150, croissant: 150, limonade: 400 }),
   }
 
   /** The price levels where the shipped crowds already form a line. */
@@ -1535,7 +1677,7 @@ describe('the visits marketing brought (#284)', () => {
   const base = (customers: number) =>
     weekday(customers, {
       segmentShares: AUBAINE,
-      productAppeal: { cafe: 1, chocolat: 1, croissant: 1 },
+      productAppeal: { cafe: 1, chocolat: 1, croissant: 1, limonade: 1 },
     })
   const marketing = (customers: number): ExtraCrowd => ({
     customers,
@@ -1566,7 +1708,12 @@ describe('the visits marketing brought (#284)', () => {
     // Dear prices and a slow counter: many leave, many buy nothing.
     const served = serve(base(120), {
       customers: keen(2),
-      price: prices({ cafe: 900, chocolat: 300, croissant: 300 }),
+      price: prices({
+        cafe: 900,
+        chocolat: 300,
+        croissant: 300,
+        limonade: 400,
+      }),
       counter: counter({ baseSeconds: 200 }),
       extra: marketing(120),
     })

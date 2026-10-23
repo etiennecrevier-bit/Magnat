@@ -820,7 +820,7 @@ describe('weekFacts', () => {
     ...QUIET,
     sales: cents(500_000),
     cashAtEnd: cents(990_000),
-    spoiled: { cafe: 2, chocolat: 3, croissant: 50 },
+    spoiled: { cafe: 2, chocolat: 3, croissant: 50, limonade: 0 },
     spoiledCost: cents(6_000),
     lostToLine: 25,
     daysOpenInARow: 12,
@@ -982,7 +982,7 @@ describe('weekFacts', () => {
       'spoilage of exactly 50 $',
       {
         spoiledCost: cents(5_000),
-        spoiled: { cafe: 0, chocolat: 0, croissant: 40 },
+        spoiled: { cafe: 0, chocolat: 0, croissant: 40, limonade: 0 },
       },
       null,
     ],
@@ -990,7 +990,7 @@ describe('weekFacts', () => {
       'spoilage of 50,01 $',
       {
         spoiledCost: cents(5_001),
-        spoiled: { cafe: 1, chocolat: 0, croissant: 40 },
+        spoiled: { cafe: 1, chocolat: 0, croissant: 40, limonade: 0 },
       },
       {
         id: 'spoilage',

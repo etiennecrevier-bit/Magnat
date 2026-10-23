@@ -79,10 +79,10 @@ describe('WEEKDAYS', () => {
 
 describe('changedPrice', () => {
   it.each([
-    [-20, [260, 280, 300]],
-    [0, [325, 350, 375]],
-    [20, [390, 420, 450]],
-    [40, [455, 490, 525]],
+    [-20, [260, 280, 300, 320]],
+    [0, [325, 350, 375, 400]],
+    [20, [390, 420, 450, 480]],
+    [40, [455, 490, 525, 560]],
   ])('moves the starting prices by %i%', (priceChange, prices) => {
     expect(
       PRODUCTS.map((product) => changedPrice(priceChange, product)),
@@ -126,6 +126,7 @@ describe('strategyChanges', () => {
       { kind: 'price', product: 'cafe', price: 455 },
       { kind: 'price', product: 'chocolat', price: 490 },
       { kind: 'price', product: 'croissant', price: 525 },
+      { kind: 'price', product: 'limonade', price: 560 },
       {
         kind: 'restock',
         product: 'croissant',

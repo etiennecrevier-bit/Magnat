@@ -56,6 +56,7 @@ export const pieceKindSchema = z.enum([
   'espressoMachine',
   'steam',
   'pot',
+  'jar',
   'counter',
   'awning',
   'rolledAwning',

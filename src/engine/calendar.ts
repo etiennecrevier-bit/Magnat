@@ -1,3 +1,4 @@
+import type { DateRange, MonthDay } from '../content/schema.ts'
 import type { Day } from './types.ts'
 
 // The game calendar: 365-day years with real month lengths and no leap years.
@@ -86,6 +87,26 @@ export function dayOfDate({
     dayOfMonth - 1,
   )
   return dayOfYear - START_DAY_OF_YEAR
+}
+
+/**
+ * Whether `day` falls within `range`, the same dates each year: from its
+ * `from` to its `to`, both days included, over the year's end when `to`
+ * comes before `from`. Throws a RangeError unless `day` is a non-negative
+ * safe integer.
+ */
+export function onDates(day: Day, { from, to }: DateRange): boolean {
+  const { month, dayOfMonth } = toCalendar(day)
+  const today: MonthDay = { month, day: dayOfMonth }
+  if (compareDates(from, to) <= 0) {
+    return compareDates(from, today) <= 0 && compareDates(today, to) <= 0
+  }
+  return compareDates(from, today) <= 0 || compareDates(today, to) <= 0
+}
+
+/** Below 0 when `a` comes before `b` in a year, 0 on the same date. */
+function compareDates(a: MonthDay, b: MonthDay): number {
+  return a.month - b.month || a.day - b.day
 }
 
 /**

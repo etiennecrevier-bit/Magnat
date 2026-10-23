@@ -167,6 +167,7 @@ describe('ManagePanelView', () => {
       'manage-price-cafe',
       'manage-price-chocolat',
       'manage-price-croissant',
+      'manage-price-limonade',
     ])
     expect(inputs('stocks')).toEqual([
       'manage-restock-cafe-whenBelow',
@@ -174,6 +175,7 @@ describe('ManagePanelView', () => {
       'manage-restock-chocolat-whenBelow',
       'manage-restock-chocolat-upTo',
       'manage-restock-croissant-quantity',
+      'manage-restock-limonade-quantity',
     ])
     expect(inputs('schedule')).toEqual([])
     expect(
@@ -197,8 +199,17 @@ describe('ManagePanelView', () => {
 
   it('shows a card per product: its glyph, its name, its price between its steppers', () => {
     const html = render('menu')
-    expect(texts(html, 'h3')).toEqual(['Café', 'Chocolat chaud', 'Croissant'])
-    expect(html.match(/class="product-glyph"/g)).toHaveLength(3)
+    expect(texts(html, 'h3')).toEqual([
+      'Café',
+      'Chocolat chaud',
+      'Croissant',
+      'Limonade',
+    ])
+    expect(html.match(/class="product-glyph"/g)).toHaveLength(4)
+    // Out of season, lemonade's card says so (see « Limonade » below).
+    expect(attribute(input(html, 'manage-price-limonade'), 'value')).toBe(
+      '4,00',
+    )
     for (const [product, name, value] of [
       ['cafe', 'Café', '3,25'],
       ['chocolat', 'Chocolat chaud', '3,50'],
@@ -238,7 +249,7 @@ describe('ManagePanelView', () => {
     const cards = tags(html, 'div').filter((tag) =>
       tag.includes('class="product-card"'),
     )
-    expect(cards).toHaveLength(3)
+    expect(cards).toHaveLength(4)
     for (const card of cards) {
       const tip = attribute(card, 'aria-describedby') ?? ''
       expect(html).toContain(`id="${tip}" role="tooltip"`)
@@ -256,6 +267,7 @@ describe('ManagePanelView', () => {
           cafe: cents(50),
           chocolat: cents(2000),
           croissant: cents(55),
+          limonade: cents(400),
         },
       },
     })
@@ -283,7 +295,9 @@ describe('ManagePanelView', () => {
     expect(statusLine(html, 'manage-price-cafe-status')).toBe(
       `Demain${S}: 3,00${S}$`,
     )
-    expect(html).not.toContain('status-line__dot')
+    // Only lemonade, out of season in May, has a fact before the first day.
+    expect(html.match(/class="status-line__dot /g)).toHaveLength(1)
+    expect(statusLine(html, 'manage-price-limonade-status')).toBe('Hors saison')
     expect(describers(input(html, 'manage-price-cafe'))[1]).toBe(
       'manage-price-cafe-status',
     )
@@ -332,7 +346,7 @@ describe('ManagePanelView', () => {
         /<div class="product-card product-card--stock" data-tuto="stocks\.\w+" role="group"/,
       )
       .slice(1)
-    expect(rules).toHaveLength(3)
+    expect(rules).toHaveLength(4)
     const [cafe = '', , croissant = ''] = rules
     expect(cafe).toMatch(
       /^ aria-labelledby="manage-restock-cafe-name">.*<h3 id="manage-restock-cafe-name" class="product-card__name">Café<\/h3>/,
@@ -516,6 +530,84 @@ describe('ManagePanelView', () => {
       expect(html).not.toMatch(/tabindex="[1-9]/)
       expect(html).not.toContain('title=')
     }
+  })
+})
+
+describe('« Limonade » (#261)', () => {
+  /** A game that orders `glasses` a day, played to the morning of June 2nd. */
+  function summer(glasses: number): GameState {
+    let game = applyDecision(createInitialState(42), {
+      kind: 'restock',
+      product: 'limonade',
+      rule: { kind: 'buyDaily', quantity: glasses },
+    })
+    // Day 31 is June 1st, lemonade's first day.
+    for (let day = 0; day <= 31; day += 1) game = tick(game)
+    return game
+  }
+
+  /** The lines of the tooltip of `product`'s card on the menu tab. */
+  function cardTip(html: string, product: string): string[] {
+    const card = tags(html, 'div').find((tag) =>
+      tag.includes(`data-tuto="menu.${product}"`),
+    )
+    const id = attribute(card ?? '', 'aria-describedby') ?? ''
+    const tip = html
+      .split(`<div id="${id}" role="tooltip"`)[1]
+      ?.split('<span class="tip__arrow"')[0]
+    if (tip === undefined) throw new Error(`No tooltip for ${product}`)
+    return [
+      ...tip.matchAll(
+        /<p class="tip__(?:title|text)">(.*?)<\/p>|<dt>(.*?)<\/dt><dd[^>]*>(.*?)<\/dd>/g,
+      ),
+    ].map(([, line, label, value]) => line ?? `${label}${S}: ${value}`)
+  }
+
+  it('is « Hors saison » out of its season, on the menu and in the orders', () => {
+    const game = playedGame()
+    expect(
+      statusLine(render('menu', { game }), 'manage-price-limonade-status'),
+    ).toBe('Hors saison')
+    expect(
+      statusLine(render('stocks', { game }), 'manage-restock-limonade-status'),
+    ).toBe('Hors saison')
+  })
+
+  it('tells what was left in the orders with none ordered, and was asked for', () => {
+    const game = summer(0)
+    expect(game.lastDay?.lostSales.limonade).toBeGreaterThan(0)
+    expect(
+      statusLine(render('menu', { game }), 'manage-price-limonade-status'),
+    ).toBe('Hors vente')
+    expect(
+      statusLine(render('stocks', { game }), 'manage-restock-limonade-status'),
+    ).toMatch(/^Rupture /)
+  })
+
+  it('shows its facts and its tooltip like the others once it sells', () => {
+    // June 1st on the Plateau, a Thursday: 20 glasses, 6 sold.
+    const game = summer(20)
+    const html = render('menu', { game })
+    expect(statusLine(html, 'manage-price-limonade-status')).toBe(
+      '4 clients trouvaient ça cher',
+    )
+    expect(cardTip(html, 'limonade')).toEqual([
+      'Limonade · hier',
+      `Vendus${S}: 6`,
+      `Trop cher${S}: 4`,
+      `Rupture${S}: 0`,
+      `Périmés${S}: 14`,
+      `Coût unitaire${S}: 0,65${S}$`,
+      `Marge unitaire${S}: 3,35${S}$`,
+      `Chasseurs d&#x27;aubaines${S}: 1 vendus`,
+      `Habitués${S}: 3 vendus`,
+      `Clientèle chic${S}: 2 vendus`,
+      `Touristes${S}: 0 vendus`,
+    ])
+    // It keeps one day, so what was left spoiled that night.
+    expect(
+      statusLine(render('stocks', { game }), 'manage-restock-limonade-status'),
+    ).toBe('14 périmés hier')
   })
 })
 

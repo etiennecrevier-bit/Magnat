@@ -694,6 +694,19 @@
       "image": "truck/counter.svg"
     },
     {
+      "id": "lemonade-jar",
+      "kind": "jar",
+      "layer": "truck",
+      "x": 724,
+      "y": 548,
+      "width": 36,
+      "height": 46,
+      "color": "lamplight",
+      "shows": {
+        "sells": "limonade"
+      }
+    },
+    {
       "id": "awning",
       "kind": "awning",
       "layer": "truck",

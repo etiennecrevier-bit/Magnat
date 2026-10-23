@@ -199,9 +199,12 @@ const FLAT: Content = {
       patienceMinutes: CUSTOMERS.segments[id].patienceMinutes,
       products: byProduct((product) => ({
         referencePriceCents: STARTING_PRICES[product],
-        purchaseProbability: { cafe: 0.8, chocolat: 0.3, croissant: 0.5 }[
-          product
-        ],
+        purchaseProbability: {
+          cafe: 0.8,
+          chocolat: 0.3,
+          croissant: 0.5,
+          limonade: 0,
+        }[product],
         sensitivity: 4,
       })),
     })),
@@ -335,6 +338,11 @@ function product(
 
 function unitCost(id: ProductId, unitCostCents: number): Change {
   return product(id, { unitCostCents: cents(unitCostCents) })
+}
+
+/** `id` on sale every day of the year, whatever its season. */
+function allYear(id: ProductId): Change {
+  return product(id, { season: undefined })
 }
 
 function pricing(id: ProductId, price: number): Change {
@@ -708,11 +716,12 @@ describe('tick', () => {
   it('plays day 0 first, posting the day in order', () => {
     const content = variant(
       crowd(10),
-      buying({ cafe: 1, chocolat: 1, croissant: 0 }),
+      buying({ cafe: 1, chocolat: 1, croissant: 0, limonade: 0 }),
       restocking({
         cafe: buyDaily(30),
         chocolat: buyDaily(12),
         croissant: buyDaily(7),
+        limonade: buyDaily(0),
       }),
       unitCost('cafe', 40),
       unitCost('chocolat', 55),
@@ -755,11 +764,11 @@ describe('tick', () => {
     const { segments, visits, ...rest } = summary(state)
     expect(rest).toEqual({
       day: 0,
-      sold: { cafe: 10, chocolat: 10, croissant: 0 },
+      sold: { cafe: 10, chocolat: 10, croissant: 0, limonade: 0 },
       revenue,
-      lostSales: { cafe: 0, chocolat: 0, croissant: 0 },
-      pricedOut: { cafe: 0, chocolat: 0, croissant: 0 },
-      spoiled: { cafe: 0, chocolat: 0, croissant: 7 },
+      lostSales: { cafe: 0, chocolat: 0, croissant: 0, limonade: 0 },
+      pricedOut: { cafe: 0, chocolat: 0, croissant: 0, limonade: 0 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 7, limonade: 0 },
       leftLine: 0,
       averageWaitSeconds: 0,
       longestWaitSeconds: 0,
@@ -773,7 +782,7 @@ describe('tick', () => {
     expect(visits).toHaveLength(10)
     for (const visit of visits) {
       expect(visit).toMatchObject({
-        bought: { cafe: 1, chocolat: 1, croissant: 0 },
+        bought: { cafe: 1, chocolat: 1, croissant: 0, limonade: 0 },
         outcome: 'bought',
       })
     }
@@ -841,7 +850,7 @@ describe('walk-in demand', () => {
   it('brings weekday traffic Monday to Friday and weekend traffic after', () => {
     const content = variant(
       crowd(120, 80),
-      buying({ cafe: 1, chocolat: 0, croissant: 0 }),
+      buying({ cafe: 1, chocolat: 0, croissant: 0, limonade: 0 }),
       restocking({ cafe: buyDaily(200) }),
     )
     // Day 0 is a Monday.
@@ -871,11 +880,12 @@ describe('walk-in demand', () => {
   it('sells what is in stock and counts the rest as lost sales', () => {
     const content = variant(
       crowd(50),
-      buying({ cafe: 1, chocolat: 1, croissant: 1 }),
+      buying({ cafe: 1, chocolat: 1, croissant: 1, limonade: 0 }),
       restocking({
         cafe: buyDaily(30),
         chocolat: buyDaily(20),
         croissant: buyDaily(10),
+        limonade: buyDaily(0),
       }),
       unitCost('cafe', 40),
       unitCost('chocolat', 55),
@@ -888,10 +898,10 @@ describe('walk-in demand', () => {
 
     expect(summary(state)).toMatchObject({
       day: 0,
-      sold: { cafe: 30, chocolat: 20, croissant: 10 },
+      sold: { cafe: 30, chocolat: 20, croissant: 10, limonade: 0 },
       revenue,
-      lostSales: { cafe: 20, chocolat: 30, croissant: 40 },
-      spoiled: { cafe: 0, chocolat: 0, croissant: 0 },
+      lostSales: { cafe: 20, chocolat: 30, croissant: 40, limonade: 0 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 0, limonade: 0 },
     })
     expect(state.inventory).toEqual([])
     expect(entry(state, 0, MEMO.sales)).toEqual(
@@ -911,7 +921,7 @@ describe('walk-in demand', () => {
   it('serves customers as they arrive, so a stockout hits the later ones', () => {
     const content = variant(
       crowd(30),
-      buying({ cafe: 0, chocolat: 0, croissant: 1 }),
+      buying({ cafe: 0, chocolat: 0, croissant: 1, limonade: 0 }),
       restocking({ croissant: buyDaily(10) }),
     )
     const { visits, lostSales, segments } = summary(after(1, content))
@@ -927,7 +937,7 @@ describe('walk-in demand', () => {
     // They would buy everything at their reference: a fifth of today's price.
     const content = variant(
       crowd(25),
-      buying({ cafe: 1, chocolat: 1, croissant: 1 }),
+      buying({ cafe: 1, chocolat: 1, croissant: 1, limonade: 0 }),
       everySegment((odds, id) => ({
         ...odds,
         referencePriceCents: cents(Math.round(STARTING_PRICES[id] / 5)),
@@ -945,7 +955,7 @@ describe('walk-in demand', () => {
   it('counts customers who want nothing at their reference as browsing', () => {
     const content = variant(
       crowd(25),
-      buying({ cafe: 0, chocolat: 0, croissant: 0 }),
+      buying({ cafe: 0, chocolat: 0, croissant: 0, limonade: 0 }),
     )
     const { visits, segments } = summary(after(1, content))
     expect(visits.every(({ outcome }) => outcome === 'browsed')).toBe(true)
@@ -960,7 +970,7 @@ describe('walk-in demand', () => {
 })
 
 describe('the line', () => {
-  const LOW_PRICES = { cafe: 200, chocolat: 250, croissant: 250 }
+  const LOW_PRICES = { cafe: 200, chocolat: 250, croissant: 250, limonade: 400 }
 
   it('serves the day with servers(state) at the shipped service times', () => {
     // Day 1 is a Tuesday: the truck opens with nothing on hand and buys its
@@ -979,11 +989,15 @@ describe('the line', () => {
       'semaine',
       CUSTOMERS,
       (id) => currentPrice(from, id),
-      { cafe: 300, chocolat: 150, croissant: 70 },
+      { cafe: 300, chocolat: 150, croissant: 70, limonade: 0 },
       {
         service: FOOD_TRUCK.service,
         servers: servers(from, ENERGY),
       },
+      undefined,
+      undefined,
+      // May 2nd: no lemonade yet (#261).
+      ['cafe', 'chocolat', 'croissant'],
     )
     expect(lastDay.visits).toEqual(expected.visits)
     expect(lastDay).toMatchObject({
@@ -1497,7 +1511,7 @@ describe("the owner's energy", () => {
     const quiet = [
       NO_RESTOCK,
       restocking({ cafe: buyDaily(2) }),
-      buying({ cafe: 1, chocolat: 0, croissant: 0 }),
+      buying({ cafe: 1, chocolat: 0, croissant: 0, limonade: 0 }),
       tiring({ tired: { ...ENERGY.tired, botchedShare: 0.5 } }),
     ]
     // Each order is decided the day before it is placed.
@@ -1512,8 +1526,8 @@ describe("the owner's energy", () => {
     state = step(tired, content)
 
     expect(summary(state)).toMatchObject({
-      sold: { cafe: 3, chocolat: 0, croissant: 0 },
-      lostSales: { cafe: 0, chocolat: 0, croissant: 0 },
+      sold: { cafe: 3, chocolat: 0, croissant: 0, limonade: 0 },
+      lostSales: { cafe: 0, chocolat: 0, croissant: 0, limonade: 0 },
       botched: 1,
     })
     expect(summary(state).visits.map(({ botched }) => botched)).toEqual([
@@ -1616,7 +1630,10 @@ describe('prices and crowds over a year', () => {
     const known = years.get(key)
     if (known !== undefined) return known
 
-    const changes = id === undefined ? [] : [pricing(id, price ?? 0)]
+    // A product with a season (#261) sells all year here, so each price
+    // has a year of customers to tell it by.
+    const changes =
+      id === undefined ? [] : [pricing(id, price ?? 0), allYear(id)]
     const content = {
       ...shipped(AMPLE, ...changes),
       financing: NO_BANKRUPTCY,
@@ -1798,6 +1815,7 @@ describe('spoilage', () => {
       cafe: 0,
       chocolat: 0,
       croissant: 70,
+      limonade: 0,
     })
     expect(entry(state, 0, MEMO.spoilage)).toEqual(
       transfer(0, MEMO.spoilage, '5100', INVENTORY, 70 * 90),
@@ -1874,18 +1892,18 @@ describe('cash', () => {
       fuel(0),
       NO_RESTOCK,
       crowd(10),
-      buying({ cafe: 1, chocolat: 1, croissant: 1 }),
+      buying({ cafe: 1, chocolat: 1, croissant: 1, limonade: 0 }),
     )
     const state = after(1, content, start(content, 42, 'difficile'))
     expect(state.journal.entries).toEqual([])
     const { visits, segments, ...rest } = summary(state)
     expect(rest).toEqual({
       day: 0,
-      sold: { cafe: 0, chocolat: 0, croissant: 0 },
+      sold: { cafe: 0, chocolat: 0, croissant: 0, limonade: 0 },
       revenue: 0,
-      lostSales: { cafe: 10, chocolat: 10, croissant: 10 },
-      pricedOut: { cafe: 0, chocolat: 0, croissant: 0 },
-      spoiled: { cafe: 0, chocolat: 0, croissant: 0 },
+      lostSales: { cafe: 10, chocolat: 10, croissant: 10, limonade: 0 },
+      pricedOut: { cafe: 0, chocolat: 0, croissant: 0, limonade: 0 },
+      spoiled: { cafe: 0, chocolat: 0, croissant: 0, limonade: 0 },
       leftLine: 0,
       averageWaitSeconds: 0,
       longestWaitSeconds: 0,

@@ -23,6 +23,7 @@ import { truckView, type TruckView } from './truckView.ts'
 const OPEN: TruckView = {
   open: true,
   croissants: 70,
+  selling: { cafe: true, chocolat: true, croissant: true, limonade: false },
   businessName: "Le P'tit Camion",
   modifiers: [],
 }
@@ -596,6 +597,32 @@ describe('Scene.update: the events on the street', () => {
     expect(node(scene, 'out-of-order').visible).toBe(false)
   })
 
+  it('sets the lemonade jar on the counter only while lemonade sells (#261)', () => {
+    const scene = build(ASSETS)
+    const jar = node(scene, 'lemonade-jar')
+    const selling = { ...OPEN.selling, limonade: true }
+    scene.update(OPEN)
+    expect(jar.visible).toBe(false)
+    scene.update({ ...OPEN, selling })
+    expect(jar.visible).toBe(true)
+    // Drawn in code, over the counter it stands on.
+    expect(art(scene, 'lemonade-jar').label).toBe('placeholder')
+    const truck = jar.parent!
+    expect(truck.getChildIndex(jar)).toBeGreaterThan(
+      truck.getChildIndex(node(scene, 'counter')),
+    )
+    scene.update({ ...CLOSED, selling })
+    expect(jar.visible).toBe(false)
+    scene.update({
+      ...OPEN,
+      selling,
+      modifiers: [
+        change('essai', { kind: 'unavailable', product: 'limonade' }),
+      ],
+    })
+    expect(jar.visible).toBe(false)
+  })
+
   it('stops the steam while the café cannot be sold, then steams again', () => {
     const scene = build(ASSETS)
     const [, , , , broken] = CASES
@@ -839,7 +866,8 @@ describe("the street's art", () => {
     }
     // The truck's art and its pieces in code, in the reference's paint
     // order: what is on the counter, the avatar (put in before the counter),
-    // the counter in front of them, the awning and the sign over it all.
+    // the counter in front of them, the lemonade jar standing on it (#261),
+    // the awning and the sign over it all.
     expect(
       ASSETS.pieces.filter((p) => p.layer === 'truck').map((p) => p.id),
     ).toEqual([
@@ -851,6 +879,7 @@ describe("the street's art", () => {
       'croissant-rack',
       'croissants',
       'counter',
+      'lemonade-jar',
       'awning',
       'awning-rolled',
       'closed-sign',

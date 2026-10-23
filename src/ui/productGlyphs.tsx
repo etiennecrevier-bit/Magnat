@@ -3,7 +3,8 @@ import type { ProductId } from '../content/schema.ts'
 
 // The products' glyphs on their cards in « Le camion », from
 // docs/design/reference/glyph-cup.svg, glyph-mug.svg and
-// glyph-croissant.svg: 40 x 40, in their own colours.
+// glyph-croissant.svg, and src/ui/art/glyph-lemonade.svg (#261): 40 x 40,
+// in their own colours.
 const GLYPHS: Readonly<Record<ProductId, ReactNode>> = {
   cafe: (
     <>
@@ -67,6 +68,38 @@ const GLYPHS: Readonly<Record<ProductId, ReactNode>> = {
         strokeWidth="1.8"
         fill="none"
         strokeLinecap="round"
+      />
+    </>
+  ),
+  limonade: (
+    <>
+      <path
+        d="M10 10h20l-2.4 24.4a2.6 2.6 0 0 1-2.6 2.4H15a2.6 2.6 0 0 1-2.6-2.4z"
+        fill="#d8e9ef"
+      />
+      <path
+        d="M11.2 17h17.6l-1.7 17.2a1.6 1.6 0 0 1-1.6 1.4H15.5a1.6 1.6 0 0 1-1.6-1.4z"
+        fill="#f4d35e"
+      />
+      <path
+        d="M14 19.5l1 12.5"
+        stroke="#fff8e0"
+        strokeWidth="1.6"
+        fill="none"
+        strokeLinecap="round"
+      />
+      <path
+        d="M20 10h10l-2.4 24.4a2.6 2.6 0 0 1-2.6 2.4H20z"
+        fill="#34404f"
+        opacity="0.15"
+      />
+      <circle cx="28" cy="11" r="6" fill="#e8b923" />
+      <circle cx="28" cy="11" r="4.6" fill="#f7e08a" />
+      <path
+        d="M28 6.4v9.2M23.4 11h9.2M24.8 7.8l6.4 6.4M31.2 7.8l-6.4 6.4"
+        stroke="#e8b923"
+        strokeWidth="0.9"
+        fill="none"
       />
     </>
   ),

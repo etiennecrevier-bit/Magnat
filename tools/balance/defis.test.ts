@@ -104,12 +104,14 @@ describe('defiOwnerChanges', () => {
       { kind: 'price', product: 'cafe', price: 390 },
       { kind: 'price', product: 'chocolat', price: 420 },
       { kind: 'price', product: 'croissant', price: 480 },
+      { kind: 'price', product: 'limonade', price: 480 },
     ])
   })
 
   it('leaves out the kinds the Défi locks', () => {
     const changes = defiOwnerChanges(BASE, defiById(DEFIS, 'moisSansConge'))
     expect(changes.map(({ kind }) => kind)).toEqual([
+      'price',
       'price',
       'price',
       'price',

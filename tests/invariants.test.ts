@@ -102,7 +102,9 @@ const GAMES: readonly {
 }[] = [
   { seed: 1, difficulty: 'facile', changes: STAFFED, tutorial: false },
   { seed: 42, difficulty: 'moyen', changes: AT_TRUCK, tutorial: false },
-  { seed: 2026, difficulty: 'difficile', changes: [], tutorial: false },
+  // A run of months below zero, which brings Mme Prudhomme's letters: since
+  // customers ask for lemonade in summer (#261), seed 2026 no longer has one.
+  { seed: 2028, difficulty: 'difficile', changes: [], tutorial: false },
   { seed: TUTORIAL.seed, difficulty: 'moyen', changes: [], tutorial: true },
 ]
 const DAYS = 3650

@@ -84,6 +84,7 @@ import { energyAtClose } from './energy.ts'
 import { FINANCING, closingFinancing, financingCharges } from './financing.ts'
 import {
   PRODUCTS,
+  inSeason,
   onHand,
   orderSize,
   perProduct,
@@ -576,6 +577,11 @@ export function playDay(
   // own crew, the street with no change and no marketing, its croissants
   // bought.
   const away = awayFromCounter(state, places, dream)
+  // The products in season (#261): those out of it are never bought, and
+  // nobody wants them.
+  const onSale = PRODUCTS.filter((product) =>
+    inSeason(product, day, content.products),
+  )
   const plays = trucksOf(state).map((truck): TruckPlay => {
     const first = truck.id === FIRST_TRUCK
     const own = truckDecisionsOf(decisions, truck.id)
@@ -595,6 +601,14 @@ export function playDay(
       }
     }
     const truckStreet = streetOf(truck.id)
+    // Neither what the street leaves unsold nor what is out of season is
+    // bought.
+    const unavailable = Object.fromEntries(
+      PRODUCTS.map((product) => [
+        product,
+        truckStreet.unavailable[product] || !onSale.includes(product),
+      ]),
+    ) as Record<ProductId, boolean>
     // With the baker absent, the croissants they would have made are bought.
     const makes = first && making
     const buyInstead = makes && bakerAbsent
@@ -603,9 +617,7 @@ export function playDay(
       day,
       buyInstead ? { ...own.restock, [BAKED]: decisions.bake } : own.restock,
       content,
-      makes && !buyInstead
-        ? { ...truckStreet.unavailable, [BAKED]: true }
-        : truckStreet.unavailable,
+      makes && !buyInstead ? { ...unavailable, [BAKED]: true } : unavailable,
       first ? discount : 0,
     )
     if (first) discounted = restocked.units > 0
@@ -645,6 +657,7 @@ export function playDay(
       },
       first ? marketingCrowd(state.marketingHistory, content.marketing) : null,
       welcomed(truckStreet, truckers, staff),
+      onSale,
     )
 
     // The sale, its cost and what it costs to make are separate entries, so

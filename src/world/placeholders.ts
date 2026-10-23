@@ -222,6 +222,29 @@ export const PLACEHOLDERS: Record<PieceKind, DrawPlaceholder> = {
         .circle(w * 0.58 + dx, h * 0.24 + dy, w * 0.22)
     }),
 
+  jar: (piece, style) => {
+    const { width: w, height: h } = piece
+    const { palette } = style
+    const drink = tones(color(piece, style), style)
+    const glass = tones(palette.glass, style)
+    const lid = tones(palette.steel, style)
+    const g = new Graphics()
+    // The glass, its shaded right side, then the lemonade up to its
+    // shoulder, darker on the right too.
+    g.roundRect(0, h * 0.14, w, h * 0.86, 6).fill(glass.lit)
+    g.roundRect(w * 0.72, h * 0.14, w * 0.28, h * 0.86, 6).fill(glass.shade)
+    g.roundRect(w * 0.08, h * 0.32, w * 0.84, h * 0.62, 4).fill(drink.lit)
+    g.rect(w * 0.66, h * 0.32, w * 0.26, h * 0.62).fill(drink.shade)
+    // A slice of lemon floating at the top, and the sun on the glass.
+    g.circle(w * 0.36, h * 0.42, w * 0.14).fill(drink.top)
+    g.rect(w * 0.12, h * 0.2, w * 0.08, h * 0.66).fill(glass.top)
+    // The lid, lit on top.
+    g.rect(w * 0.06, 0, w * 0.88, h * 0.14).fill(lid.lit)
+    g.rect(w * 0.06, 0, w * 0.88, h * 0.04).fill(lid.top)
+    g.rect(w * 0.76, 0, w * 0.18, h * 0.14).fill(lid.shade)
+    return g
+  },
+
   pot: (piece, style) => {
     const { width: w, height: h } = piece
     const { palette } = style
