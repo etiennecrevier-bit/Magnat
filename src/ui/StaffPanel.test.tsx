@@ -437,7 +437,7 @@ describe("StaffPanelView: « L'équipe »", () => {
 })
 
 describe('StaffPanelView: « Embaucher »', () => {
-  it('lists the roles by name, their hours, wage and training in each one’s tooltip', () => {
+  it('lists the roles by name, with their hours in each one’s tooltip', () => {
     const html = render(START, 'livreur', null, 'hire')
     expect(html).not.toContain('staff__team')
     expect(html).toMatch(
@@ -450,9 +450,7 @@ describe('StaffPanelView: « Embaucher »', () => {
       title: 'Au camion',
       rows: [
         { label: 'Heures par semaine', value: `35${S}h` },
-        { label: 'Salaire horaire', value: `17,50${S}$` },
-        { label: 'Salaire par semaine', value: `612,50${S}$` },
-        { label: 'Formation', value: `612,50${S}$` },
+        { label: 'Salaire et formation', value: 'Selon la candidature' },
       ],
     })
   })

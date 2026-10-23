@@ -251,11 +251,6 @@ export interface RoleOffer {
   readonly role: StaffRoleId
   readonly name: string
   readonly hoursPerWeek: number
-  /** The hourly wage a hire starts at. */
-  readonly hourlyWage: Cents
-  readonly weeklyWage: Cents
-  /** What training a hire costs, up front. */
-  readonly training: Cents
 }
 
 /** Someone the player may hire, for the role picked. */
@@ -380,19 +375,8 @@ export function staffBoard(
     },
     members,
     roles: (Object.keys(content.roles) as StaffRoleId[]).map((role) => {
-      const { name, hoursPerWeek, hourlyWageCents } = content.roles[role]
-      const weekly = weeklyWage(
-        { role, hourlyWage: cents(hourlyWageCents.start) },
-        content,
-      )
-      return {
-        role,
-        name,
-        hoursPerWeek,
-        hourlyWage: cents(hourlyWageCents.start),
-        weeklyWage: weekly,
-        training: mulInt(weekly, content.trainingWeeks),
-      }
+      const { name, hoursPerWeek } = content.roles[role]
+      return { role, name, hoursPerWeek }
     }),
     role,
     candidates: (Object.keys(content.candidates) as CandidateId[])
@@ -668,15 +652,16 @@ export function candidateTip(
   }
 }
 
-/** What a role's tooltip says: its hours, its wage and the training. */
+/**
+ * What a role's tooltip says: its hours. Each candidate asks their own
+ * wage, so the pay and the training are on the candidates' cards.
+ */
 export function roleTip(offer: RoleOffer): TipContent {
   return {
     title: offer.name,
     rows: [
       { label: 'Heures par semaine', value: `${offer.hoursPerWeek}${NBSP}h` },
-      { label: 'Salaire horaire', value: formatMoney(offer.hourlyWage) },
-      { label: 'Salaire par semaine', value: formatMoney(offer.weeklyWage) },
-      { label: 'Formation', value: formatMoney(offer.training) },
+      { label: 'Salaire et formation', value: 'Selon la candidature' },
     ],
   }
 }

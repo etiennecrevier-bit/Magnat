@@ -113,25 +113,16 @@ describe('staffBoard', () => {
         role: 'camion',
         name: 'Au camion',
         hoursPerWeek: 35,
-        hourlyWage: 1750,
-        weeklyWage: AT_TRUCK_WEEK,
-        training: AT_TRUCK_WEEK,
       },
       {
         role: 'livreur',
         name: 'Livreur',
         hoursPerWeek: 10,
-        hourlyWage: 1600,
-        weeklyWage: 16_000,
-        training: 16_000,
       },
       {
         role: 'boulanger',
         name: 'Boulanger',
         hoursPerWeek: 16,
-        hourlyWage: 2200,
-        weeklyWage: 35_200,
-        training: 35_200,
       },
     ])
     expect(board.candidates.map(({ candidate }) => candidate)).toEqual(
