@@ -1002,3 +1002,152 @@ describe('drawSpill', () => {
     expect(maxY).toBeGreaterThan(-minY * 2)
   })
 })
+
+describe('tourists and the winter (#264)', () => {
+  /** `random` that counts its draws. */
+  const counting = (seed: number) => {
+    const random = seeded(seed)
+    const counted = Object.assign(
+      () => {
+        counted.draws += 1
+        return random()
+      },
+      { draws: 0 },
+    )
+    return counted
+  }
+
+  it('gives every tourist a hat, a camera or a map, from the settings', () => {
+    const random = seeded(21)
+    const kit = LOOKS.tourist
+    let hats = 0
+    for (let i = 0; i < 200; i += 1) {
+      const { tourist } = pickLook('touriste', 'finDeSemaine', LOOKS, random)
+      expect(tourist).not.toBeNull()
+      const { hat, carries } = tourist!
+      if (hat !== null) {
+        hats += 1
+        expect(kit.hats).toContain(hat)
+      }
+      expect(hat !== null || carries !== null).toBe(true)
+    }
+    expect(hats).toBeGreaterThan(80)
+    expect(hats).toBeLessThan(160)
+  })
+
+  it('gives the other segments no tourist look, and bundles no one in summer', () => {
+    const random = seeded(3)
+    for (const segment of SEGMENTS) {
+      const look = pickLook(segment, 'semaine', LOOKS, random)
+      expect(look.tourist).toBeNull()
+      expect(look.bundled).toBeNull()
+    }
+  })
+
+  it('draws the others as before in summer: a tourist takes two or three draws more, the winter one', () => {
+    const draws = (segment: SegmentId, winter = false) => {
+      const random = counting(4)
+      pickLook(segment, 'finDeSemaine', LOOKS, random, null, winter)
+      return random.draws
+    }
+    // The same seed draws the same look up to the new draws, which come last.
+    const before = pickLook('habitue', 'finDeSemaine', LOOKS, seeded(4))
+    const touring = pickLook('touriste', 'finDeSemaine', LOOKS, seeded(4))
+    const shared = (look: Look) => ({
+      skin: look.skin,
+      clothes: look.clothes,
+      height: look.height,
+      hair: look.hair,
+      headwear: look.headwear,
+      office: look.office,
+      child: look.child,
+      fan: look.fan,
+    })
+    expect(shared(touring)).toEqual(shared(before))
+    // Whether they wear a hat, which one, and what they carry.
+    expect(draws('touriste') - draws('habitue')).toBeGreaterThanOrEqual(2)
+    expect(draws('touriste') - draws('habitue')).toBeLessThanOrEqual(3)
+    expect(draws('habitue', true)).toBe(draws('habitue') + 1)
+  })
+
+  it('bundles everyone up in winter in a tuque of the settings', () => {
+    const random = seeded(8)
+    for (const segment of [...SEGMENTS, 'touriste'] as const) {
+      const { bundled } = pickLook(
+        segment,
+        'semaine',
+        LOOKS,
+        random,
+        null,
+        true,
+      )
+      expect(LOOKS.winter.tuques).toContain(bundled?.tuque)
+    }
+  })
+
+  it("draws a tourist's sun hat over their head, and their camera or map over all", () => {
+    const tourist = (carries: 'camera' | 'map' | null, hat: string | null) =>
+      drawCustomer(
+        { ...LOOK, segment: 'touriste', tourist: { hat, carries } },
+        STYLE,
+        LOOKS,
+      )
+    const kit = LOOKS.tourist
+    const hatted = tourist('camera', kit.hats[0]!)
+    const drawn = find(hatted, 'tourist')
+    // Over everything, the head too.
+    expect(hatted.children.at(-1)).toBe(drawn)
+    expect(colours(drawn, 'fill')).toEqual([
+      hex(kit.hats[0]!),
+      hex(kit.hats[0]!),
+      hex(kit.band),
+      hex(kit.camera),
+      hex(kit.lens),
+    ])
+    expect(colours(drawn, 'stroke')).toEqual([hex(kit.camera)])
+    const mapped = find(tourist('map', null), 'tourist')
+    expect(colours(mapped, 'fill')).toEqual([hex(kit.map)])
+    expect(colours(mapped, 'stroke')).toEqual([hex(kit.mapFold)])
+    // A tourist drawn without a look still shows as one.
+    expect(
+      labels(drawCustomer({ ...LOOK, segment: 'touriste' }, STYLE, LOOKS)),
+    ).toContain('tourist')
+  })
+
+  it('bundles someone up in a tuque with its pompom, a scarf and their coat’s hem', () => {
+    const tuque = LOOKS.winter.tuques[0]!
+    const drawn = drawCustomer(
+      { ...LOOK, headwear: 'hair', bundled: { tuque } },
+      STYLE,
+      LOOKS,
+    )
+    const bundled = find(drawn, 'bundled')
+    expect(colours(bundled, 'fill')).toEqual([
+      hex(tuque),
+      hex(LOOKS.winter.pompom),
+      hex(LOOKS.winter.scarf),
+      hex(LOOK.clothes),
+    ])
+    // A cap of the tuque's colour covers the head, whatever their hair.
+    expect(labels(drawn)).toContain('cap')
+    expect(labels(drawn)).not.toContain('hair')
+    expect(paints(find(drawn, 'cap'))[0]).toBe(hex(tuque))
+  })
+
+  it('serves an employee behind the counter in the staff’s shirt', () => {
+    const server = drawAvatar(
+      'homme',
+      STYLE,
+      CROWD.avatar,
+      LOOKS.trousers,
+      CIRCLES,
+      STYLE.palette.mustard,
+    )
+    expect(colours(find(server.root, 'shirt'), 'fill')).toEqual([
+      hex(STYLE.palette.mustard),
+    ])
+    expect(colours(find(avatar().root, 'shirt'), 'fill')).toEqual([
+      hex(STYLE.palette.playerBlue),
+    ])
+  })
+})

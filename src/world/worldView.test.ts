@@ -1,7 +1,9 @@
 import { Container, Texture, type Filter, type Ticker } from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState } from '../engine/clock.ts'
+import { applyDecision } from '../engine/decisions.ts'
 import { NO_EVENTS } from '../engine/events.ts'
+import { FIRST_TRUCK, newTruck, truckDecisionsOf } from '../engine/trucks.ts'
 import { createSettingsStore, type WorldView } from '../ui/settings.ts'
 import { createGameStore } from '../ui/store.ts'
 import { startCity } from './city.ts'
@@ -10,6 +12,7 @@ import { CROWD } from './crowdSettings.ts'
 import { ASSETS } from './manifest.ts'
 import { mountWorld, type WorldApp } from './mountWorld.ts'
 import { createPicker } from './picker.ts'
+import { createShownTruck } from './shownTruck.ts'
 import { startStreet, type StreetLoaders } from './street.ts'
 import { startWorld } from './worldView.ts'
 
@@ -377,5 +380,100 @@ describe('startWorld, its real scenes under mountWorld', () => {
     expect(world.app.leftOnStage).toEqual([])
     expect(world.app.frames.size).toBe(0)
     expect(world.street.view().live).toBe(false)
+  })
+})
+
+describe('startWorld: the street of the truck shown (#264)', () => {
+  const SECOND = 'vieuxMontreal'
+
+  /** A new game with Vieux-Montréal's truck, the owner at the first. */
+  function twoTrucks() {
+    const state = createInitialState(42)
+    return {
+      ...state,
+      trucks: [newTruck(42, { id: SECOND, district: SECOND }, 0)],
+      decisions: {
+        ...state.decisions,
+        trucks: { [SECOND]: truckDecisionsOf(state.decisions, FIRST_TRUCK) },
+      },
+    }
+  }
+
+  async function started(view: WorldView = 'street') {
+    const { scenes, starts } = fakeScenes()
+    const game = createGameStore(twoTrucks(), NO_EVENTS)
+    const shown = createShownTruck()
+    const settings = settingsOn(view)
+    const world = startWorld(APP, scenes, settings, game, shown)
+    await flush()
+    await starts[0]!.finish()
+    const stop = await world
+    return { scenes, starts, game, shown, settings, stop }
+  }
+
+  it("starts the street of the owner's truck, with none picked", async () => {
+    const { scenes, starts } = await started()
+    expect(starts.map((s) => s.view)).toEqual(['street'])
+    expect(scenes.street).toHaveBeenCalledExactlyOnceWith(APP, FIRST_TRUCK)
+  })
+
+  it('swaps the street for the truck picked, and back', async () => {
+    const { scenes, starts, shown } = await started()
+    shown.pick(SECOND)
+    await flush()
+    expect(starts[0]!.stop).toHaveBeenCalledOnce()
+    expect(scenes.street).toHaveBeenLastCalledWith(APP, SECOND)
+    await starts[1]!.finish()
+    // A truck the game lacks shows the owner's again.
+    shown.pick('nowhere')
+    await flush()
+    expect(starts[1]!.stop).toHaveBeenCalledOnce()
+    expect(scenes.street).toHaveBeenLastCalledWith(APP, FIRST_TRUCK)
+    expect(starts).toHaveLength(3)
+  })
+
+  it('keeps its street through the game’s other changes', async () => {
+    const { scenes, starts, game } = await started()
+    game.getState().advance(3)
+    game.getState().setSpeed(3)
+    await flush()
+    expect(starts).toHaveLength(1)
+    expect(scenes.street).toHaveBeenCalledOnce()
+    expect(starts[0]!.stop).not.toHaveBeenCalled()
+  })
+
+  it('follows the owner to the other truck the morning they move there', async () => {
+    const { scenes, starts, game } = await started()
+    game.setState({
+      game: applyDecision(game.getState().game, {
+        kind: 'ownerAt',
+        truck: SECOND,
+      }),
+    })
+    await flush()
+    expect(starts).toHaveLength(1)
+    game.getState().advance(1)
+    await flush()
+    expect(scenes.street).toHaveBeenLastCalledWith(APP, SECOND)
+  })
+
+  it('keeps the city while a truck is picked, then opens that truck’s street', async () => {
+    const { scenes, starts, shown, settings } = await started('city')
+    shown.pick(SECOND)
+    await flush()
+    expect(starts.map((s) => s.view)).toEqual(['city'])
+    settings.getState().setWorldView('street')
+    await flush()
+    expect(starts[0]!.stop).toHaveBeenCalledOnce()
+    expect(scenes.street).toHaveBeenCalledExactlyOnceWith(APP, SECOND)
+  })
+
+  it('lets go of the game and the truck picked once down', async () => {
+    const { starts, shown, game, stop } = await started()
+    await stop()
+    shown.pick(SECOND)
+    game.getState().advance(1)
+    await flush()
+    expect(starts).toHaveLength(1)
   })
 })

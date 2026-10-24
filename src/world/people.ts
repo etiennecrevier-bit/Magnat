@@ -322,9 +322,8 @@ export function drawCustomer(
     )
   }
   // A bargain hunter's tote hangs from their shoulder behind the arm, so
-  // the hand on its side shows. Its straps are in its shade. A tourist
-  // carries one too, until the street draws them (#264).
-  if (look.segment === 'aubaine' || look.segment === 'touriste') {
+  // the hand on its side shows. Its straps are in its shade.
+  if (look.segment === 'aubaine') {
     const tote = tonesOf(looks.tote, light)
     behind.push(
       new Graphics({ label: SEGMENT_ACCESSORY[look.segment] })
