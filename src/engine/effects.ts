@@ -90,6 +90,7 @@ export function untimed(effect: TimedEventEffect): EventEffect {
   const copy = { ...effect }
   delete copy.inDays
   delete copy.onNextWeekday
+  delete copy.afterStorageEnd
   delete copy.difficulties
   delete copy.name
   return copy
@@ -320,8 +321,9 @@ export function applyEffect(
 /**
  * The start of business day `state.day`, before the restock: first the
  * delayed effects due that day, in order (see `applyEffect`, with
- * `grocers`, `places` and the district each was made for), then each receivable due, collected in full in its own
- * « Encaissement » entry, Dr 1000 Encaisse / Cr 1100 Comptes clients.
+ * `grocers`, `places` and the district each was made for), then each
+ * receivable due, collected in full in its own « Encaissement » entry, Dr
+ * 1000 Encaisse / Cr 1100 Comptes clients.
  * Returns a new state; never mutates `state`.
  */
 export function startOfDay(

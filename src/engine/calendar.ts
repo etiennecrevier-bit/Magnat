@@ -6,7 +6,11 @@ import type { Day } from './types.ts'
 // calendar facts, not tunables, so they stay here rather than in src/content/.
 const MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const
 const MONTHS_PER_YEAR = MONTH_LENGTHS.length
-const DAYS_PER_YEAR = MONTH_LENGTHS.reduce((total, length) => total + length, 0)
+/** The days of a game year. */
+export const DAYS_PER_YEAR = MONTH_LENGTHS.reduce(
+  (total, length) => total + length,
+  0,
+)
 const DAYS_PER_WEEK = 7
 const MONTHS_PER_QUARTER = 3
 const START_YEAR = 1

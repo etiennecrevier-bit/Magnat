@@ -892,10 +892,12 @@ export const eventEffectSchema = z.discriminatedUnion('kind', effectSchemas({}))
 export type EventEffect = z.output<typeof eventEffectSchema>
 
 /**
- * An effect as the content writes it: now, or later, after `inDays` days or
+ * An effect as the content writes it: now, or later, after `inDays` days,
  * on the next `onNextWeekday` (4 is next Thursday, a week away on a
- * Thursday), never both; at every difficulty, or only at the `difficulties`
- * listed; and with the `name` its choice's tags know it by, if any.
+ * Thursday), or, `afterStorageEnd`, the first day the truck of the card is
+ * no longer stored for the winter (#262), one of them at most; at every
+ * difficulty, or only at the `difficulties` listed; and with the `name` its
+ * choice's tags know it by, if any.
  */
 const timedEffectSchema = z
   .discriminatedUnion(
@@ -903,21 +905,27 @@ const timedEffectSchema = z
     effectSchemas({
       inDays: z.int().positive().optional(),
       onNextWeekday: weekday.optional(),
+      afterStorageEnd: z.literal(true).optional(),
       difficulties: z.array(difficultyIdSchema).min(1).optional(),
       name: idSchema.optional(),
     }),
   )
   .refine(
     (effect) =>
-      effect.inDays === undefined || effect.onNextWeekday === undefined,
-    { message: 'an effect starts after inDays or onNextWeekday, not both' },
+      [effect.inDays, effect.onNextWeekday, effect.afterStorageEnd].filter(
+        (timing) => timing !== undefined,
+      ).length <= 1,
+    {
+      message:
+        'an effect starts after inDays, onNextWeekday or afterStorageEnd, one of them',
+    },
   )
   // What a card shows of a later purchase reads the product's own cost.
   .refine(
     (effect) =>
       effect.kind !== 'buyStock' ||
       effect.unitCostCents === undefined ||
-      (effect.inDays === undefined && effect.onNextWeekday === undefined),
+      startsNow(effect),
     { message: 'a purchase at its own unit cost happens now' },
   )
   // A contract starts the morning it is signed, so its deliveries count
@@ -925,7 +933,7 @@ const timedEffectSchema = z
   .refine(
     (effect) =>
       (effect.kind !== 'contract' && effect.kind !== 'grocerAway') ||
-      (effect.inDays === undefined && effect.onNextWeekday === undefined),
+      startsNow(effect),
     { message: 'a contract, or a grocer walking away, happens now' },
   )
   // The loan's amount reads the encaisse of the morning it is taken, and
@@ -933,11 +941,12 @@ const timedEffectSchema = z
   .refine(
     (effect) =>
       (effect.kind !== 'emergencyLoan' && effect.kind !== 'shareSale') ||
-      (effect.inDays === undefined && effect.onNextWeekday === undefined),
+      startsNow(effect),
     { message: 'an emergency loan, or a share sale, happens now' },
   )
   // The morning a card is chosen, the player may already have sent the
-  // owner elsewhere: a card's trip is for a later day.
+  // owner elsewhere: a card's trip is for a later day, which the end of a
+  // storage over that morning would not be.
   .refine(
     (effect) =>
       effect.kind !== 'trip' ||
@@ -947,6 +956,19 @@ const timedEffectSchema = z
   )
 
 export type TimedEventEffect = z.output<typeof timedEffectSchema>
+
+/** Whether `effect` starts the morning its choice is made: it has no timing. */
+function startsNow(effect: {
+  readonly inDays?: number | undefined
+  readonly onNextWeekday?: number | undefined
+  readonly afterStorageEnd?: true | undefined
+}): boolean {
+  return (
+    effect.inDays === undefined &&
+    effect.onNextWeekday === undefined &&
+    effect.afterStorageEnd === undefined
+  )
+}
 
 /** What a tag shows of an effect: money, energy or a percentage. */
 export type TagUnit = 'money' | 'energy' | 'percent'
@@ -1214,9 +1236,12 @@ const eventConditionsSchema = z.strictObject({
   openTomorrow: z.boolean().optional(),
   /**
    * A truck works in this district (#262), stored or not. The card's changes
-   * to the street, and `openTomorrow`, are then that district's truck's.
+   * to the street, `openTomorrow` and `stored` are then that district's
+   * truck's.
    */
   district: districtIdSchema.optional(),
+  /** Whether the truck is stored for the winter that morning (#262). */
+  stored: z.boolean().optional(),
   /** Only ever comes as another event's follow-up. */
   followUpOnly: z.boolean().optional(),
   /**

@@ -11,7 +11,7 @@ import {
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import type { JournalEntry } from '../finance/journal.ts'
-import { onDates, toCalendar } from './calendar.ts'
+import { DAYS_PER_YEAR, onDates, toCalendar } from './calendar.ts'
 import type { CrowdChanges } from './customers.ts'
 import { add, cents, type Cents } from './money.ts'
 import { credit, debit } from './posting.ts'
@@ -195,4 +195,15 @@ export function isStored(
   day: Day,
 ): boolean {
   return storage !== undefined && onDates(day, storage)
+}
+
+/**
+ * The first day from `day` on that a truck stored by `storage` is not
+ * stored (see `isStored`): `day` itself when it is not stored then, and a
+ * year later at the most, for a truck stored every day of the year.
+ */
+export function reopensOn(storage: WinterStorage | undefined, day: Day): Day {
+  let open = day
+  while (isStored(storage, open) && open < day + DAYS_PER_YEAR) open += 1
+  return open
 }

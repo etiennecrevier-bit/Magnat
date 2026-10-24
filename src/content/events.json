@@ -1,5 +1,5 @@
 {
-  "_note": "Pacing from issue #155 (R-06): from day 10, 14 days apart, 8 % a morning, about one event every 3 to 4 weeks; an event dated that day comes whatever the gap and the chance. The twelve cards of issue #93 keep a weight of 1; P3-13 (#101) tuned their amounts, chances and effects at Moyen with `npm run balance -- --percentiles`, until no choice wins too often or too seldom: see docs/balance/phase-3.md. P3-13b (#137) scales what a choice gives and takes by difficulty, gives every Difficile choice a cost, adds four cards that Facile draws by the player's standing, and tuned the cards at each difficulty with the same report. R-06 (#155) caps the cards that came too often with maxPerGame, lets the chalet come on any tired summer morning, and adds thirteen cards whose amounts were starting values. P4-14 (#211) tuned them, and the R-06 cards P4-11's run flagged, at each difficulty with the same report, by giving each a risk or a fixed amount against a gain the truck's size decides, and two Difficile-only costs (refusing « La grosse commande », not buying Sylvain's machine): see docs/balance/phase-3.md. A card's text writes its amounts as {montant:name}, so they follow the scaling too. P4-01 (#156) adds the three grocers' offers, at a weight of 0.5 each, and their renewals, which come as follow-ups the morning after a contract's last delivery; their prices are grocers.json's, which no difficulty scales, so their text writes them out. With them in the draw, the chalet's weight goes from 4 to 5 to keep it in 80 % of the games, and the median gap between two events stays at 20 days. P4-04 (#159) adds Mme Prudhomme's emergency loan and Max Duvent's offer, at a weight of 0: no draw brings them, the engine does when the encaisse closes below zero (financing.json). Their tags write the loan's rate, term and fee and the share sold, which a test holds to their effects. P4-05 (#160) adds Mme Prudhomme's three letters before a bankruptcy, « Premier avis », « Deuxième avis » and « Dernier avis »: notices, with a single choice that changes nothing and a weight of 0, which the engine brings after one, three and five whole months below zero (financing.json). P4C-01 (#236) adds « Une story gratis », Coralie Lumière on the tutorial's day 4: tutorialOnly, at a weight of 0, so only the tutorial brings it. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
+  "_note": "Pacing from issue #155 (R-06): from day 10, 14 days apart, 8 % a morning, about one event every 3 to 4 weeks; an event dated that day comes whatever the gap and the chance. The twelve cards of issue #93 keep a weight of 1; P3-13 (#101) tuned their amounts, chances and effects at Moyen with `npm run balance -- --percentiles`, until no choice wins too often or too seldom: see docs/balance/phase-3.md. P3-13b (#137) scales what a choice gives and takes by difficulty, gives every Difficile choice a cost, adds four cards that Facile draws by the player's standing, and tuned the cards at each difficulty with the same report. R-06 (#155) caps the cards that came too often with maxPerGame, lets the chalet come on any tired summer morning, and adds thirteen cards whose amounts were starting values. P4-14 (#211) tuned them, and the R-06 cards P4-11's run flagged, at each difficulty with the same report, by giving each a risk or a fixed amount against a gain the truck's size decides, and two Difficile-only costs (refusing « La grosse commande », not buying Sylvain's machine): see docs/balance/phase-3.md. A card's text writes its amounts as {montant:name}, so they follow the scaling too. P4-01 (#156) adds the three grocers' offers, at a weight of 0.5 each, and their renewals, which come as follow-ups the morning after a contract's last delivery; their prices are grocers.json's, which no difficulty scales, so their text writes them out. With them in the draw, the chalet's weight goes from 4 to 5 to keep it in 80 % of the games, and the median gap between two events stays at 20 days. P4-04 (#159) adds Mme Prudhomme's emergency loan and Max Duvent's offer, at a weight of 0: no draw brings them, the engine does when the encaisse closes below zero (financing.json). Their tags write the loan's rate, term and fee and the share sold, which a test holds to their effects. P4-05 (#160) adds Mme Prudhomme's three letters before a bankruptcy, « Premier avis », « Deuxième avis » and « Dernier avis »: notices, with a single choice that changes nothing and a weight of 0, which the engine brings after one, three and five whole months below zero (financing.json). P4C-01 (#236) adds « Une story gratis », Coralie Lumière on the tutorial's day 4: tutorialOnly, at a weight of 0, so only the tutorial brings it. 6-04 (#262) adds the Vieux-Montréal's five cards, which come only while a truck works there (`district`), their changes to the street that truck's: the guide's commission each Friday for four weeks, the jazz festival on June 26, the film shoot, Glaces Bonsecours in June or July, and the long winter on March 15 while the truck is stored, whose choices start when its storage ends (`afterStorageEnd`). Their amounts are starting values, tuned in #266. The essai card exercises every effect for the tests; its weight of 0 keeps it out of a real game.",
   "pacing": { "firstDay": 10, "minDaysBetween": 14, "dailyChance": 0.08 },
   "scaling": {
     "_note": "Tuned at each difficulty with the event report of npm run balance -- --percentiles (#137): Facile keeps the gains and softens the losses, Moyen raises both, Difficile gives less and takes more. The issue's starting values (1 and 0.7, 1.3 and 1.3, 0.7 and 1.2) pushed choices off their targets, since a choice's money scales but the days it closes the truck or stops a product do not: see docs/balance/phase-3.md.",
@@ -4051,6 +4051,80 @@
                   "segment": "touriste",
                   "days": 30,
                   "name": "touristes"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hiverLong",
+      "weight": 1,
+      "character": {
+        "id": "meteorologue",
+        "name": "Le météorologue",
+        "role": "Météo de La Presse-Citron"
+      },
+      "title": "L'hiver qui n'en finit plus",
+      "situation": "À la radio, le météorologue de La Presse-Citron annonce la suite de l'hiver. Au Vieux-Montréal, votre camion dort sous sa bâche, à côté d'un banc de neige grisâtre.",
+      "quote": "Avril va ressembler à mars. Gardez vos tuques.",
+      "conditions": {
+        "district": "vieuxMontreal",
+        "stored": true,
+        "date": {
+          "month": 3,
+          "dayOfMonth": 15
+        }
+      },
+      "choices": [
+        {
+          "id": "rouvrir",
+          "label": "Rouvrir comme prévu",
+          "tags": [
+            {
+              "text": "Touristes −{montant} les 3 semaines après le remisage",
+              "effect": "touristes"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Vous rouvrirez à la date prévue. Les touristes, eux, attendront le vrai printemps.",
+              "effects": [
+                {
+                  "kind": "walkIns",
+                  "factor": 0.4,
+                  "segment": "touriste",
+                  "days": 21,
+                  "afterStorageEnd": true,
+                  "name": "touristes"
+                },
+                {
+                  "kind": "headline",
+                  "id": "hiverLong"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "resterRemise",
+          "label": "Rester remisé trois semaines de plus",
+          "tags": ["Fermé 3 semaines de plus"],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Le camion garde sa bâche trois semaines de plus. Les factures, elles, ne dorment pas.",
+              "effects": [
+                {
+                  "kind": "closed",
+                  "days": 21,
+                  "afterStorageEnd": true
+                },
+                {
+                  "kind": "headline",
+                  "id": "hiverLong"
                 }
               ]
             }

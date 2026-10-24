@@ -29,6 +29,7 @@ import {
   districtWalkIns,
   isStored,
   permitOn,
+  reopensOn,
   truckChargesOn,
   withRival,
 } from './districts.ts'
@@ -439,6 +440,25 @@ describe('isStored', () => {
     const storage = defaultWinterStorage()
     expect(storage).not.toBe(DISTRICTS.winterStorage)
     expect(storage.from).not.toBe(DISTRICTS.winterStorage.from)
+  })
+})
+
+describe('reopensOn', () => {
+  it('is the first day after the storage, from a day it holds, and that day when it holds none', () => {
+    expect(reopensOn(WINTER, MARCH_15)).toBe(MAY_1)
+    expect(reopensOn(WINTER, DEC_1)).toBe(MAY_1)
+    expect(reopensOn(WINTER, APRIL_30)).toBe(MAY_1)
+    expect(reopensOn(WINTER, MAY_1)).toBe(MAY_1)
+    expect(reopensOn(WINTER, JULY_1)).toBe(JULY_1)
+    expect(reopensOn(undefined, MARCH_15)).toBe(MARCH_15)
+  })
+
+  it('is a year later at the most, for a truck stored every day', () => {
+    const always: WinterStorage = {
+      from: { month: 1, day: 1 },
+      to: { month: 12, day: 31 },
+    }
+    expect(reopensOn(always, MARCH_15)).toBe(MARCH_15 + 365)
   })
 })
 

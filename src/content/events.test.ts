@@ -97,6 +97,7 @@ const DISTRICT_CARDS = [
   'festivalJazz',
   'tournage',
   'glacesBonsecours',
+  'hiverLong',
 ]
 
 /** The characters of issue #262, whose portraits #263 brings. */
@@ -375,13 +376,14 @@ describe('events.json', () => {
     }
   })
 
-  it('dates only « Le 1er juillet », on June 30, and the Festival de jazz, on June 26', () => {
+  it('dates only « Le 1er juillet », on June 30, the Festival de jazz, on June 26, and the long winter, on March 15', () => {
     const dated = content.events.flatMap(({ id, conditions }) =>
       conditions?.date === undefined ? [] : [[id, conditions.date]],
     )
     expect(dated).toEqual([
       ['premierJuillet', { month: 6, dayOfMonth: 30 }],
       ['festivalJazz', { month: 6, dayOfMonth: 26 }],
+      ['hiverLong', { month: 3, dayOfMonth: 15 }],
     ])
   })
 
@@ -848,7 +850,11 @@ describe('loadEventContent rejects', () => {
   })
 
   it('stock bought later at its own unit cost, which the card could not show', () => {
-    for (const timing of [{ inDays: 1 }, { onNextWeekday: 4 }]) {
+    for (const timing of [
+      { inDays: 1 },
+      { onNextWeekday: 4 },
+      { afterStorageEnd: true },
+    ]) {
       rejects(
         withEffects({
           kind: 'buyStock',
@@ -865,6 +871,14 @@ describe('loadEventContent rejects', () => {
   it('a trip for the morning the card is chosen, or to no place (#164)', () => {
     rejects(
       withEffects({ kind: 'trip', place: 'bureauPermis' }),
+      'a trip happens on a later day',
+    )
+    rejects(
+      withEffects({
+        kind: 'trip',
+        place: 'bureauPermis',
+        afterStorageEnd: true,
+      }),
       'a trip happens on a later day',
     )
     rejects(
@@ -885,7 +899,11 @@ describe('loadEventContent rejects', () => {
       { kind: 'contract', grocer: 'chezNormand' },
       { kind: 'grocerAway', grocer: 'chezNormand', days: 180 },
     ]) {
-      for (const timing of [{ inDays: 1 }, { onNextWeekday: 1 }]) {
+      for (const timing of [
+        { inDays: 1 },
+        { onNextWeekday: 1 },
+        { afterStorageEnd: true },
+      ]) {
         rejects(
           withEffects({ ...effect, ...timing }),
           'a contract, or a grocer walking away, happens now',
@@ -915,7 +933,11 @@ describe('loadEventContent rejects', () => {
 
   it('an emergency loan, or a share sale, on a later day', () => {
     for (const effect of [LOAN, SHARES]) {
-      for (const timing of [{ inDays: 1 }, { onNextWeekday: 1 }]) {
+      for (const timing of [
+        { inDays: 1 },
+        { onNextWeekday: 1 },
+        { afterStorageEnd: true },
+      ]) {
         rejects(
           withEffects({ ...effect, ...timing }),
           'an emergency loan, or a share sale, happens now',
@@ -997,10 +1019,26 @@ describe('loadEventContent rejects', () => {
     expect(loaded.events[0]?.tutorialOnly).toBe(true)
   })
 
-  it('an effect timed both ways', () => {
+  it.each([
+    { inDays: 2, onNextWeekday: 4 },
+    { inDays: 2, afterStorageEnd: true },
+    { onNextWeekday: 4, afterStorageEnd: true },
+  ])('an effect timed two ways, %j', (timing) => {
     rejects(
-      withEffects({ kind: 'energy', amount: -15, inDays: 2, onNextWeekday: 4 }),
-      'an effect starts after inDays or onNextWeekday, not both',
+      withEffects({ kind: 'energy', amount: -15, ...timing }),
+      'an effect starts after inDays, onNextWeekday or afterStorageEnd, one of them',
+    )
+  })
+
+  it('an effect after the storage’s end, written true or not at all (#262)', () => {
+    const effect = { kind: 'closed', days: 21, afterStorageEnd: true }
+    expect(
+      loadEventContent(withEffects(effect)).events[0]?.choices[0]?.outcomes[0]
+        ?.effects,
+    ).toEqual([effect])
+    rejects(
+      withEffects({ ...effect, afterStorageEnd: false }),
+      '→ at events[0].choices[0].outcomes[0].effects[0].afterStorageEnd',
     )
   })
 

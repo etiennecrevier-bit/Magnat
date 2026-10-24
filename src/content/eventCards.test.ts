@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createInitialState, tick, toCalendar } from '../engine/clock.ts'
-import { applyDecision } from '../engine/decisions.ts'
+import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
+import { defaultWinterStorage } from '../engine/districts.ts'
 import {
   CUSTOMERS,
   DIFFICULTIES,
@@ -32,6 +33,7 @@ import type {
   EventChoice,
   EventContent,
   RungId,
+  WinterStorage,
 } from './schema.ts'
 
 // The event cards of issues #93, #137 and #155, each choice played out in a
@@ -39,7 +41,8 @@ import type {
 // card may come up, until nothing it started is left. chequeDansLaMalle,
 // which only comes as a follow-up, plays from the late payment of
 // grosseCommande. The Vieux-Montréal's cards (#262) play in a game whose
-// second truck is bought on day 0, the owner working there. The cards play
+// second truck is bought on day 0, the owner working there, and stored for
+// the winter on the content's default dates. The cards play
 // as written, with no difficulty scaling them: the game is at Moyen, so the
 // effects of Difficile only never apply.
 
@@ -131,19 +134,26 @@ function ownerPuts(state: GameState, amount: number): GameState {
 /**
  * `state` with the Vieux-Montréal's truck bought that morning, with the
  * rungs before it, Encaisse brought back where it was, and the owner
- * working at it from the next morning on (#262).
+ * working at it from the next morning on, stored for the winter by
+ * `storage` (#262).
  */
-function withSecondTruck(state: GameState): GameState {
+function withSecondTruck(
+  state: GameState,
+  storage: WinterStorage | null = defaultWinterStorage(),
+): GameState {
   const cashOf = (game: GameState) =>
     balance(game.journal, CASH, { toDay: game.day })
   const bought = TO_SECOND_TRUCK.reduce(
     (game, rung) => applyDecision(game, { kind: 'buy', rung }),
     ownerPuts(state, ENOUGH_FOR_THE_RUNGS),
   )
-  return applyDecision(ownerPuts(bought, cashOf(state) - cashOf(bought)), {
-    kind: 'ownerAt',
-    truck: SECOND_TRUCK,
-  })
+  return [
+    { kind: 'ownerAt', truck: SECOND_TRUCK },
+    { kind: 'storage', truck: SECOND_TRUCK, storage },
+  ].reduce<GameState>(
+    (game, change) => applyDecision(game, change as DecisionChange),
+    ownerPuts(bought, cashOf(state) - cashOf(bought)),
+  )
 }
 
 /**
@@ -1296,6 +1306,7 @@ describe("the Vieux-Montréal's cards (#262)", () => {
       'festivalJazz',
       'tournage',
       'glacesBonsecours',
+      'hiverLong',
     ])
   })
 
@@ -1534,6 +1545,94 @@ describe("the Vieux-Montréal's cards (#262)", () => {
       expect(entries(hard, memo).map(amountOf)).toEqual([
         tagAmount('glacesBonsecours', 'equipe', 'cornets', 'difficile'),
       ])
+    })
+  })
+
+  describe('hiverLong', () => {
+    const morning = firstMorning('hiverLong')
+    // March 15th of year 1, and May 1st to 22nd of year 2.
+    const APRIL_1: Day = 335
+    const MAY_1: Day = 365
+    const MAY_22: Day = 386
+    /** `morning` with the Vieux-Montréal's truck stored by `storage`. */
+    const storedBy = (storage: WinterStorage | undefined): GameState => {
+      const own = morning.decisions.trucks?.[SECOND_TRUCK]
+      if (own === undefined) throw new Error('No second truck')
+      const { prices, restock, daysOpen } = own
+      return {
+        ...morning,
+        decisions: {
+          ...morning.decisions,
+          trucks: {
+            [SECOND_TRUCK]: {
+              prices,
+              restock,
+              daysOpen,
+              ...(storage === undefined ? {} : { storage }),
+            },
+          },
+        },
+      }
+    }
+
+    it('comes up on March 15 while the Vieux-Montréal truck is stored, on the default dates, and never while it is not', () => {
+      expect(morning.day).toBe(318)
+      expect(toCalendar(morning.day)).toMatchObject({
+        month: 3,
+        dayOfMonth: 15,
+      })
+      expect(
+        conditionsHold(cardOf('hiverLong'), storedBy(undefined), new Map()),
+      ).toBe(false)
+    })
+
+    it('« Rouvrir comme prévu » keeps the tourists away from the Vieux-Montréal truck alone for the 3 weeks after its storage', () => {
+      const mornings = playOut(choose(morning, 'hiverLong', 'rouvrir'), {
+        minDays: MAY_22 - morning.day + 1,
+      })
+      for (let day = APRIL_1; day <= MAY_22; day += 1) {
+        const factor = day >= MAY_1 && day < MAY_22 ? 0.4 : 1
+        expect(
+          streetIn(mornings, day, SECOND_TRUCK).walkIns.touriste,
+          `day ${day}`,
+        ).toBeCloseTo(factor)
+        expect(streetIn(mornings, day, 'plateau').walkIns.touriste).toBe(1)
+      }
+    })
+
+    it('« Rester remisé » keeps the Vieux-Montréal truck closed the 3 weeks after its storage, its insurance still paid', () => {
+      const mornings = playOut(choose(morning, 'hiverLong', 'resterRemise'), {
+        minDays: MAY_22 - morning.day + 1,
+      })
+      for (let day = APRIL_1; day <= MAY_22; day += 1) {
+        expect(streetIn(mornings, day, SECOND_TRUCK).closed, `day ${day}`).toBe(
+          day >= MAY_1 && day < MAY_22,
+        )
+        expect(streetIn(mornings, day, 'plateau').closed).toBe(false)
+      }
+      for (let day = MAY_1; day < MAY_22; day += 1) {
+        expect(secondTruckDay(mornings, day)?.visits, `day ${day}`).toEqual([])
+      }
+      expect(secondTruckDay(mornings, MAY_22)?.open).toBe(true)
+      const insured = entries(last(mornings), 'Assurances').filter(
+        ({ day, lines }) =>
+          day === MAY_1 && lines.some(({ truck }) => truck === SECOND_TRUCK),
+      )
+      expect(insured).toHaveLength(1)
+    })
+
+    it('starts both choices the morning after the storage ends, whatever its date', () => {
+      const early = storedBy({
+        from: { month: 12, day: 1 },
+        to: { month: 3, day: 31 },
+      })
+      for (const choiceId of ['rouvrir', 'resterRemise']) {
+        const chosen = choose(early, 'hiverLong', choiceId)
+        expect(
+          chosen.events.delayed.map(({ day, district }) => [day, district]),
+          choiceId,
+        ).toEqual([[APRIL_1, SECOND_TRUCK]])
+      }
     })
   })
 })

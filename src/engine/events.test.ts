@@ -673,6 +673,36 @@ describe('drawEvent', () => {
       expect(draws(queued(), first)).toBeNull()
     })
 
+    it("stored: the truck stored that morning, the district's or else the first one (#262)", () => {
+      const winter = {
+        from: { month: 5, day: 1 },
+        to: { month: 5, day: 31 },
+      } as const
+      const at = (conditions: Record<string, unknown>) =>
+        content([card('a', { conditions })])
+      const second = { stored: true, district: SECOND }
+      expect(draws(withSecond(MORNING), at(second))).toBeNull()
+      expect(draws(withSecond(MORNING, { storage: winter }), at(second))).toBe(
+        'a',
+      )
+      expect(
+        draws(
+          withSecond(MORNING, { storage: winter }),
+          at({ ...second, stored: false }),
+        ),
+      ).toBeNull()
+      // Without a district, the first truck's storage.
+      expect(
+        draws(withSecond(MORNING, { storage: winter }), at({ stored: true })),
+      ).toBeNull()
+      const firstStored = {
+        ...MORNING,
+        decisions: { ...MORNING.decisions, storage: winter },
+      }
+      expect(draws(firstStored, at({ stored: true }))).toBe('a')
+      expect(draws(MORNING, at({ stored: false }))).toBe('a')
+    })
+
     it('cashAboveCents and cashBelowCents: Encaisse that morning', () => {
       const cash = balance(MORNING.journal, '1000', { toDay: 1 })
       const at = (conditions: Record<string, number>) =>
@@ -959,6 +989,92 @@ describe('resolveEvent', () => {
         NO_EVENTS,
       ).events.modifiers.some((modifier) => 'district' in modifier),
     ).toBe(false)
+  })
+
+  it("queues the effects after the storage's end for the first day its district's truck, or the first one, is not stored, and plays them now when it is not (#262)", () => {
+    const afterStorage = (id: string, conditions: Record<string, unknown>) =>
+      card(id, {
+        conditions,
+        choices: [
+          {
+            id: 'oui',
+            label: 'Oui',
+            tags: ['Fermé'],
+            outcomes: [
+              {
+                chance: 1,
+                result: 'Fait.',
+                effects: [
+                  { kind: 'closed', days: 21, afterStorageEnd: true },
+                  { kind: 'energy', amount: -5, afterStorageEnd: true },
+                ],
+              },
+            ],
+          },
+          {
+            id: 'non',
+            label: 'Non',
+            tags: ['Rien ne change'],
+            outcomes: [{ chance: 1, result: 'Rien.', effects: [] }],
+          },
+        ],
+      })
+    const cards = content([
+      afterStorage('vieux', { district: SECOND }),
+      afterStorage('plateau', { fromDay: 1000 }),
+    ])
+    // Day 1, May 2nd: stored to May 20th, day 19, it opens May 21st.
+    const toMay20 = {
+      from: { month: 12, day: 1 },
+      to: { month: 5, day: 20 },
+    } as const
+    const chosen = (state: GameState, event: string) =>
+      resolveEvent(
+        {
+          ...state,
+          events: { ...state.events, pending: { event, followUp: false } },
+        },
+        'oui',
+        cards,
+      )
+
+    const vieux = chosen(withSecond(MORNING, { storage: toMay20 }), 'vieux')
+    expect(vieux.events.delayed).toEqual([
+      {
+        day: 20,
+        event: 'vieux',
+        effect: { kind: 'closed', days: 21 },
+        district: SECOND,
+      },
+      {
+        day: 20,
+        event: 'vieux',
+        effect: { kind: 'energy', amount: -5 },
+        district: SECOND,
+      },
+    ])
+
+    // The first truck's storage for a card with no district.
+    const firstStored = {
+      ...withSecond(MORNING),
+      decisions: { ...withSecond(MORNING).decisions, storage: toMay20 },
+    }
+    expect(chosen(firstStored, 'plateau').events.delayed[0]?.day).toBe(20)
+    expect(chosen(firstStored, 'vieux').events.delayed).toEqual([])
+
+    // Not stored that morning: now.
+    const now = chosen(withSecond(MORNING), 'vieux')
+    expect(now.events.delayed).toEqual([])
+    expect(now.events.modifiers).toEqual([
+      {
+        event: 'vieux',
+        change: { kind: 'closed' },
+        fromDay: 1,
+        lastDay: 21,
+        district: SECOND,
+      },
+    ])
+    expect(now.energy).toBe(MORNING.energy - 5)
   })
 
   it('draws the outcome by its chance, then applies its effects now or later', () => {
