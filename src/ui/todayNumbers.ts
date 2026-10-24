@@ -20,8 +20,10 @@ export interface TodayNumbers {
   readonly lostSales: number
 }
 
-/** The three numbers of `day`, the last day played. */
-export function todayNumbers(day: DaySummary): TodayNumbers {
+/** The three numbers of `day`, the last day a truck played. */
+export function todayNumbers(
+  day: Pick<DaySummary, 'revenue' | 'visits' | 'lostSales'>,
+): TodayNumbers {
   return {
     revenue: day.revenue,
     customersServed: day.visits.filter(

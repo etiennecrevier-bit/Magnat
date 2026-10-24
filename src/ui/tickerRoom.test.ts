@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  keepRoomAbove,
   keepRoomFor,
   keepRoomOver,
   keepRoomUnder,
@@ -116,5 +117,30 @@ describe('keepRoomOver', () => {
     stop()
     expect(disconnected()).toBe(true)
     expect(style.has('--report-card-height')).toBe(false)
+  })
+})
+
+describe('keepRoomAbove', () => {
+  it('gives the page the height of « Hier » at once', () => {
+    const { bar, style, observed } = setUp(111, keepRoomAbove, 700)
+    expect(style.get('--yesterday-height')).toBe('111px')
+    expect(observed).toEqual([bar])
+  })
+
+  it("follows « Hier » as another truck's line comes and as it folds", () => {
+    const { bar, style, resize } = setUp(111, keepRoomAbove, 700)
+    bar.height = 141.5
+    resize()
+    expect(style.get('--yesterday-height')).toBe('141.5px')
+    bar.height = 44
+    resize()
+    expect(style.get('--yesterday-height')).toBe('44px')
+  })
+
+  it('stops watching and takes the room back when « Hier » goes', () => {
+    const { style, stop, disconnected } = setUp(111, keepRoomAbove, 700)
+    stop()
+    expect(disconnected()).toBe(true)
+    expect(style.has('--yesterday-height')).toBe(false)
   })
 })

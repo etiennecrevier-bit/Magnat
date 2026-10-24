@@ -30,14 +30,24 @@ import {
   weeklyWage,
   type Doer,
 } from '../engine/staff.ts'
+import { isStored } from '../engine/districts.ts'
 import { modifiersAt, streetOn } from '../engine/street.ts'
-import { FIRST_DISTRICT } from '../engine/trucks.ts'
+import {
+  FIRST_TRUCK,
+  ownerAtOf,
+  truckDecisionsOf,
+  truckersAt,
+  truckIds,
+  truckOf,
+  trucksOf,
+} from '../engine/trucks.ts'
 import type {
   Day,
   Employee,
   GameState,
   Hire,
   PersonDay,
+  TruckId,
   WorkDay,
   Worker,
 } from '../engine/types.ts'
@@ -46,6 +56,7 @@ import { formatCount, formatMoney, formatWholeMoney } from './formatMoney.ts'
 import type { StatusLine } from './productFacts.ts'
 import type { TipContent, TipRow } from './tooltip.ts'
 import { discoveryText, traitTip } from './traitText.ts'
+import { hasTrucks, truckName, unstaffedTomorrow } from './trucks.ts'
 
 // What the « Qui fait quoi » panel shows (#163): the owner and the
 // employees, what each does today, and who may be hired. The engine plays
@@ -78,12 +89,32 @@ const ROLE_TASKS: Readonly<Record<StaffRoleId, Job>> = {
   boulanger: 'bakery',
 }
 
+/** What happens at one truck today (#265). */
+export interface TruckToday {
+  readonly id: TruckId
+  /**
+   * Whether it opens today if someone is there: one of its days open,
+   * outside the dates it is stored, its street not closed.
+   */
+  readonly scheduled: boolean
+  /** Whether its winter storage covers today. */
+  readonly stored: boolean
+  /** Whether it opens: scheduled, with the owner or an employee there. */
+  readonly opens: boolean
+  /** Whether the owner works there today. */
+  readonly owner: boolean
+  /** The employees « Au camion » at it who came today, in the staff's order. */
+  readonly truckers: readonly CandidateId[]
+}
+
 /** What happens at the business today. */
 export interface TodayWork {
   /** Whether the owner is away all day. */
   readonly ownerAway: boolean
-  /** Whether the truck opens. */
+  /** Whether the first truck opens. */
   readonly opens: boolean
+  /** Each truck's day, the first one first (#265). */
+  readonly trucks: readonly TruckToday[]
   /** Whether deliveries to the grocers are due. */
   readonly deliveriesDue: boolean
   /** Who makes them, when due; null when nobody does, so they are missed. */
@@ -113,8 +144,10 @@ export interface TodayWork {
  * copy that is never kept, with the effects of earlier choices due today.
  * Who works comes from today's staff, as the engine's staff morning
  * leaves it once the underpaid quit, those absent today and whether the
- * owner is away (see `crewOf`). The truck opens on a day open the street does not close, with
- * someone at it. Deliveries are due on the grocers' delivery weekday, for
+ * owner is away (see `crewOf`). Each truck opens on one of its days open,
+ * outside the dates it is stored, that its district's street does not
+ * close, with the owner there or one of its employees « Au camion » who
+ * came, as `playDay` opens it. Deliveries are due on the grocers' delivery weekday, for
  * each contract signed before today. The bakery makes croissants when they
  * come from it, it runs today and someone bakes: those of the deliveries
  * made, then, the truck open and the croissants on sale, the bake rule's
@@ -127,10 +160,6 @@ export function todayWork(
   const started = startOfDay(game, FOOD_TRUCK, grocers)
   const { day, decisions } = started
   const { weekday } = toCalendar(day)
-  const street = streetOn(
-    modifiersAt(started.events.modifiers, FIRST_DISTRICT),
-    day,
-  )
   // The books the staff morning pays from are thrown away.
   const { staff } = staffMorning(
     started.journal,
@@ -143,8 +172,38 @@ export function todayWork(
     .filter((employee) => isAbsent(started.seed, day, employee))
     .map(({ candidate }) => candidate)
   const crew = crewOf(left.staff, started.ownerAway, absent)
-  const truckDay = decisions.daysOpen.includes(weekday) && !street.closed
-  const opens = truckDay && (crew.ownerServes || crew.atTruck > 0)
+  const ownerAt = ownerAtOf(decisions)
+  const streets = new Map(
+    trucksOf(started).map(({ id, district }) => [
+      id,
+      streetOn(modifiersAt(started.events.modifiers, district), day),
+    ]),
+  )
+  const trucks = trucksOf(started).map(({ id }): TruckToday => {
+    const own = truckDecisionsOf(decisions, id)
+    const stored = isStored(own.storage, day)
+    const scheduled =
+      own.daysOpen.includes(weekday) &&
+      !stored &&
+      streets.get(id)?.closed !== true
+    const owner = crew.ownerServes && ownerAt === id
+    const truckers = truckersAt(crew.truckers, id).map(
+      ({ candidate }) => candidate,
+    )
+    return {
+      id,
+      scheduled,
+      stored,
+      opens: scheduled && (owner || truckers.length > 0),
+      owner,
+      truckers,
+    }
+  })
+  const [first] = trucks
+  if (first === undefined) throw new Error('A game has a first truck')
+  const street = streets.get(FIRST_TRUCK)
+  const truckDay = first.scheduled
+  const opens = first.opens
   const due = started.contracts.running.filter(({ startDay }) => startDay < day)
   const deliveriesDue = weekday === grocers.deliveryWeekday && due.length > 0
   const delivers = deliveriesDue ? crew.delivers : null
@@ -163,7 +222,7 @@ export function todayWork(
         )
       : 0
   const forTruck =
-    baking && opens && !street.unavailable[BAKED]
+    baking && opens && street?.unavailable[BAKED] !== true
       ? Math.min(
           orderSize(decisions.bake, onHand(started.inventory, BAKED)),
           BAKERY.capacityPerDay - forDeliveries,
@@ -172,6 +231,7 @@ export function todayWork(
   return {
     ownerAway: started.ownerAway,
     opens,
+    trucks,
     deliveriesDue,
     delivers,
     bakes: forDeliveries + forTruck > 0 ? crew.bakes : null,
@@ -234,6 +294,11 @@ export interface MemberRow {
   readonly yesterday: string | null
   /** What they did each of the last days, one tooltip row a day. */
   readonly days: readonly TipRow[]
+  /**
+   * The truck an employee « Au camion » works at as the player last left
+   * it (#265); null in another role.
+   */
+  readonly truck: TruckId | null
 }
 
 /** The owner. */
@@ -248,6 +313,15 @@ export interface OwnerRow {
   readonly yesterday: string | null
   /** What they did each of the last days, one tooltip row a day. */
   readonly days: readonly TipRow[]
+  /** The truck they work at as the player last left it (#265). */
+  readonly at: TruckId
+}
+
+/** A truck the owner and the employees « Au camion » may work at (#265). */
+export interface TruckOption {
+  readonly id: TruckId
+  /** Its district's name. */
+  readonly name: string
 }
 
 /** A role the player may hire for. */
@@ -289,6 +363,13 @@ export interface StaffBoard {
   /** Whether the staff wanted is at its most. */
   readonly full: boolean
   readonly maxEmployees: number
+  /**
+   * The trucks to work at, the first one first, once there are two or
+   * more (#265); none with one truck, which everybody works at.
+   */
+  readonly trucks: readonly TruckOption[]
+  /** The trucks that close tomorrow with nobody there (see `unstaffedTomorrow`). */
+  readonly unstaffed: readonly TruckOption[]
 }
 
 /**
@@ -337,16 +418,19 @@ export function staffBoard(
         employee !== undefined &&
         hasWarned(employee, game.day, content) &&
         hire.hourlyWage < asks,
+      // What they do today follows today's staff: an assignment the player
+      // just changed waits for tomorrow.
       tasks:
         status === 'startsTomorrow' || status === 'quitsToday'
           ? []
-          : employeeTasks(hire, work),
+          : employeeTasks(employee ?? hire, work),
       fireCost,
       training:
         status === 'startsTomorrow'
           ? mulInt(weeklyWage(hire, content), content.trainingWeeks)
           : null,
       ...workFacts(game, hire.candidate, ROLE_TASKS[hire.role]),
+      truck: hire.role === 'camion' ? truckOf(hire) : null,
     }
   }
   const members = [
@@ -370,12 +454,17 @@ export function staffBoard(
       .map((hire) => row(hire, 'startsTomorrow', cents(0))),
   ]
   const busy = new Set(members.map(({ candidate }) => candidate))
+  const option = (id: TruckId): TruckOption => ({
+    id,
+    name: truckName(game, id),
+  })
   return {
     owner: {
       weeklyPay: latest.ownerWeeklyPay,
       away: work.ownerAway,
       tasks: work.ownerAway ? [] : ownerTasks(work),
       ...workFacts(game, 'owner', null),
+      at: ownerAtOf(latest),
     },
     members,
     roles: (Object.keys(content.roles) as StaffRoleId[]).map((role) => {
@@ -400,15 +489,30 @@ export function staffBoard(
       }),
     full: latest.staff.length >= content.maxEmployees,
     maxEmployees: content.maxEmployees,
+    trucks: hasTrucks(game) ? truckIds(game).map(option) : [],
+    unstaffed: unstaffedTomorrow(game).map(option),
   }
 }
 
+/** Today's day of the truck `id`, the first one's for a truck unknown. */
+function truckToday(work: TodayWork, id: TruckId): TruckToday | undefined {
+  return work.trucks.find((truck) => truck.id === id) ?? work.trucks[0]
+}
+
 /**
- * What the employee `hire` does today: their role's job, or « Absent »
- * when they are and it had work.
+ * What the employee `hire`, as on today's staff, does today: their role's
+ * job, or « Absent » when they are and it had work. An employee « Au
+ * camion » works at their own truck, which may not open.
  */
 function employeeTasks(hire: Hire, work: TodayWork): Task[] {
   const job = ROLE_TASKS[hire.role]
+  if (job === 'truck') {
+    const truck = truckToday(work, truckOf(hire))
+    if (work.absent.includes(hire.candidate)) {
+      return truck?.scheduled === true ? ['absent'] : []
+    }
+    return truck?.opens === true ? [job] : []
+  }
   if (work.absent.includes(hire.candidate)) {
     return work.hadWork[job] ? ['absent'] : []
   }
@@ -423,13 +527,13 @@ function ownerTasks(work: TodayWork): Job[] {
 }
 
 /**
- * Whether `who` does `task` today: the owner always serves at an open
- * truck, beside any employee there.
+ * Whether `who` does `task` today: the owner serves at the truck they
+ * work at when it opens, beside any employee there.
  */
 function doesTask(task: Job, who: 'employee' | 'owner', work: TodayWork) {
   switch (task) {
     case 'truck':
-      return work.opens
+      return work.trucks.some(({ owner, opens }) => owner && opens)
     case 'deliveries':
       return work.delivers === who
     case 'bakery':

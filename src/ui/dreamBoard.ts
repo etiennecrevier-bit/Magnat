@@ -33,6 +33,7 @@ import {
   soldBy,
   titleOf,
 } from '../engine/dream.ts'
+import { DISTRICTS } from '../engine/districts.ts'
 import { add, cents, sub, type Cents } from '../engine/money.ts'
 import { netWorth } from '../engine/netWorth.ts'
 import { STAFF } from '../engine/staff.ts'
@@ -292,8 +293,16 @@ export function rungFacts(
       value: `${sold.name} (${formatMoney(sold.priceCents)})`,
     })
   }
+  if (isCompany(rung) && rung.addsTruck !== undefined) {
+    facts.push({ label: 'Ouvre', value: districtName(rung.addsTruck.district) })
+  }
   if (isCompany(rung)) facts.push(...truckFacts(game, rung))
   return facts
+}
+
+/** The name of the district `district`: « Vieux-Montréal ». */
+function districtName(district: keyof typeof DISTRICTS.districts): string {
+  return DISTRICTS.districts[district].name
 }
 
 /**
@@ -437,13 +446,17 @@ export function bonusFact(bonus: DreamBonus): RungFact {
 }
 
 /**
- * What `rung` gives, in a few words on its card: its first bonus, or what
- * a home replaces; null when it gives nothing yet.
+ * What `rung` gives, in a few words on its card: the district a truck it
+ * adds opens (#265), its first bonus, or what a home replaces; null when
+ * it gives nothing yet.
  */
 export function bonusChip(
   rung: Rung,
   content: DreamContent = DREAM,
 ): string | null {
+  if (isCompany(rung) && rung.addsTruck !== undefined) {
+    return `Ouvre le ${districtName(rung.addsTruck.district)}`
+  }
   const [bonus] = rung.bonuses
   if (bonus !== undefined) return chipOf(bonus)
   if (isPersonal(rung) && rung.housing !== undefined) {

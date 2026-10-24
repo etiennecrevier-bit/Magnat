@@ -19,6 +19,7 @@ import {
 import StaffPanel, { StaffPanelView } from './StaffPanel.tsx'
 import { portraitUrl } from './portraits.ts'
 import { gameStore, type GameStoreState } from './store.ts'
+import { hiring, SECOND, withSecondTruck } from './fixtures/twoTrucks.ts'
 import Tooltip, { type TipActions, type TipAnchorProps } from './Tooltip.tsx'
 
 // A static render reads a Zustand store's initial state, so the connected
@@ -607,5 +608,110 @@ describe('StaffPanel', () => {
     )
     expect(html).toContain('<ul class="staff__team"')
     expect(html).not.toContain('staff__candidates')
+  })
+})
+
+describe('where each one works, with two trucks (#265)', () => {
+  /** Day 1 with both trucks, Kevin at work, the owner at the Plateau. */
+  function twoTrucks(): GameState {
+    return tick(
+      withSecondTruck(
+        START,
+        { kind: 'daysOpen', weekdays: [1, 2, 3, 4, 5, 6, 7], truck: SECOND },
+        hiring('kevin'),
+      ),
+    )
+  }
+
+  /** The `<div role="group" aria-label="label">` of `html` and its buttons. */
+  function group(html: string, label: string): string[] {
+    const part = html.split(`role="group" aria-label="${label}">`)[1] ?? ''
+    return [
+      ...(part.split('</div>')[0] ?? '').matchAll(
+        /<button\b[^>]*>(.*?)<\/button>/g,
+      ),
+    ].map(
+      ([button, text]) =>
+        `${text}${button.includes('aria-pressed="true"') ? ' ✓' : ''}`,
+    )
+  }
+
+  it('shows nothing of it with one truck', () => {
+    const html = render(tick(decided(START, hiring('kevin'))))
+    expect(html).not.toContain('travaille au')
+  })
+
+  it('gives the owner one truck at a time, and each employee « Au camion » theirs', () => {
+    const html = render(twoTrucks())
+    expect(group(html, 'Je travaille au')).toEqual([
+      'Plateau ✓',
+      'Vieux-Montréal',
+    ])
+    expect(group(html, 'Kevin Bouchard travaille au')).toEqual([
+      'Plateau ✓',
+      'Vieux-Montréal',
+    ])
+    // Moved for tomorrow: one pressed still, so never at both.
+    const moved = decided(twoTrucks(), { kind: 'ownerAt', truck: SECOND })
+    expect(group(render(moved), 'Je travaille au')).toEqual([
+      'Plateau',
+      'Vieux-Montréal ✓',
+    ])
+  })
+
+  it('sends the truck picked, and nothing for the one already picked', () => {
+    const onChange = vi.fn()
+    const board = staffBoard(twoTrucks())
+    const view = StaffPanelView({
+      board,
+      tab: 'team',
+      role: 'camion',
+      onRoleChange: () => {},
+      confirming: null,
+      onConfirmingChange: () => {},
+      onChange,
+    })
+    const cards = elements(view).filter(
+      (element) =>
+        typeof element.type === 'function' &&
+        ['OwnerCard', 'MemberCard'].includes(element.type.name),
+    )
+    for (const card of cards) {
+      const drawn = (card.type as (props: object) => ReactNode)(card.props)
+      const pills = elements(drawn).filter(
+        (element) =>
+          typeof element.type === 'function' &&
+          element.type.name === 'TruckChoice',
+      )
+      for (const pill of pills) {
+        const choice = (pill.type as (props: object) => ReactNode)(pill.props)
+        for (const button of elements(choice).filter(
+          (element) => element.type === 'button',
+        )) {
+          ;(button.props as { onClick: () => void }).onClick()
+        }
+      }
+    }
+    expect(onChange.mock.calls).toEqual([
+      [{ kind: 'ownerAt', truck: SECOND }],
+      [{ kind: 'assign', candidate: 'kevin', truck: SECOND }],
+    ])
+  })
+
+  it('says which truck closes tomorrow with nobody, under the owner’s choice', () => {
+    const moved = decided(
+      twoTrucks(),
+      { kind: 'assign', candidate: 'kevin', truck: SECOND },
+      { kind: 'ownerAt', truck: SECOND },
+    )
+    const html = render(moved)
+    expect(html).toContain(
+      `<p class="staff__unstaffed"><span aria-hidden="true">⚠︎ </span>Plateau fermé demain${S}: personne au camion</p>`,
+    )
+    // Kevin works at the Plateau today: the change waits for tomorrow.
+    expect(staffBoard(moved).members[0]?.tasks).toEqual(['truck'])
+    expect(render(twoTrucks())).toContain(
+      `Vieux-Montréal fermé demain${S}: personne au camion`,
+    )
   })
 })

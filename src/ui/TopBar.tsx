@@ -7,6 +7,7 @@ import { DEFIS } from '../engine/day.ts'
 import { titleOf } from '../engine/dream.ts'
 import type { Cents } from '../engine/money.ts'
 import { netWorth as netWorthOf } from '../engine/netWorth.ts'
+import { toCalendar } from '../engine/calendar.ts'
 import type { Day } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
@@ -31,7 +32,19 @@ import { coachShowing } from './tutorialFlow.ts'
 import { tutorialSignals } from './tutorialSignals.ts'
 import { keepRoomUnder } from './tickerRoom.ts'
 import { todayNumbers, type TodayNumbers } from './todayNumbers.ts'
+import Tooltip from './Tooltip.tsx'
 import { enRouteLine } from './tripBoard.ts'
+import {
+  districtOf,
+  hasTrucks,
+  SEASON_SYMBOLS,
+  seasonChip,
+  truckDayOf,
+  unstaffedTomorrow,
+  useShownTruck,
+  type SeasonChip,
+} from './trucks.ts'
+import TruckSwitcher from './TruckSwitcher.tsx'
 import { useMediaQuery } from './useMediaQuery.ts'
 import './TopBar.css'
 
@@ -89,6 +102,13 @@ interface TopBarViewProps {
   energy: number
   /** The owner's avatar, which the energy's word agrees with. */
   avatar: Avatar
+  /**
+   * The season of the district shown, beside the energy (#265); null shows
+   * none, as with one truck.
+   */
+  season?: SeasonChip | null
+  /** The truck switcher, under the top-left card (#265). */
+  trucks?: ReactNode
   speed: number
   onSpeedChange: (speed: number) => void
   /** « En route vers la Caisse » on a day with a trip; null shows none. */
@@ -128,6 +148,8 @@ export function TopBarView({
   title = null,
   energy,
   avatar,
+  season = null,
+  trucks = null,
   speed,
   onSpeedChange,
   enRoute = null,
@@ -139,47 +161,58 @@ export function TopBarView({
   onSettings,
   barRef,
 }: TopBarViewProps) {
+  const left = (
+    <div className="top-bar__left">
+      <div className="top-bar__title">
+        <p className="top-bar__name">{businessName}</p>
+        <p className="top-bar__date">{formatGameDate(day)}</p>
+        {title !== null && <p className="top-bar__owner">{title}</p>}
+        {enRoute !== null && <p className="top-bar__en-route">{enRoute}</p>}
+        {defiLabel !== null && (
+          <button
+            type="button"
+            className={
+              defiEnergy === null
+                ? 'top-bar__defi'
+                : 'top-bar__defi top-bar__defi--energy'
+            }
+            aria-haspopup="dialog"
+            onClick={onDefi}
+          >
+            {defiLabel}
+            {defiEnergy !== null && (
+              <>
+                {' '}
+                <span className="top-bar__defi-energy">{defiEnergy}</span>
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      <CashChipView
+        cash={cash}
+        fixedCosts={fixedCosts}
+        history={cashHistory}
+        yesterday={yesterday}
+        onOpen={onCash}
+      />
+      <div className="top-bar__energy">
+        <Icon name="energie" size={18} />
+        <EnergyGaugeView energy={energy} avatar={avatar} />
+      </div>
+      {season !== null && <SeasonPill season={season} />}
+    </div>
+  )
   return (
     <header ref={barRef} className="top-bar">
-      <div className="top-bar__left">
-        <div className="top-bar__title">
-          <p className="top-bar__name">{businessName}</p>
-          <p className="top-bar__date">{formatGameDate(day)}</p>
-          {title !== null && <p className="top-bar__owner">{title}</p>}
-          {enRoute !== null && <p className="top-bar__en-route">{enRoute}</p>}
-          {defiLabel !== null && (
-            <button
-              type="button"
-              className={
-                defiEnergy === null
-                  ? 'top-bar__defi'
-                  : 'top-bar__defi top-bar__defi--energy'
-              }
-              aria-haspopup="dialog"
-              onClick={onDefi}
-            >
-              {defiLabel}
-              {defiEnergy !== null && (
-                <>
-                  {' '}
-                  <span className="top-bar__defi-energy">{defiEnergy}</span>
-                </>
-              )}
-            </button>
-          )}
+      {trucks === null ? (
+        left
+      ) : (
+        <div className="top-bar__start">
+          {left}
+          {trucks}
         </div>
-        <CashChipView
-          cash={cash}
-          fixedCosts={fixedCosts}
-          history={cashHistory}
-          yesterday={yesterday}
-          onOpen={onCash}
-        />
-        <div className="top-bar__energy">
-          <Icon name="energie" size={18} />
-          <EnergyGaugeView energy={energy} avatar={avatar} />
-        </div>
-      </div>
+      )}
       <div className="top-bar__right">
         <div
           className="top-bar__speeds"
@@ -236,6 +269,29 @@ export function TopBarView({
 }
 
 /**
+ * The season pill (#265): « ☀ Haute saison », « Saison normale » or
+ * « ❄ Basse saison », the word always there beside the symbol; its
+ * tooltip gives the months.
+ */
+function SeasonPill({ season }: { season: SeasonChip }) {
+  const symbol = SEASON_SYMBOLS[season.season]
+  return (
+    <Tooltip content={season.tip} width={240}>
+      {(anchor) => (
+        <p
+          className={`top-bar__season top-bar__season--${season.season}`}
+          tabIndex={0}
+          {...anchor}
+        >
+          {symbol !== null && <span aria-hidden="true">{symbol} </span>}
+          {season.label}
+        </p>
+      )}
+    </Tooltip>
+  )
+}
+
+/**
  * Keeps room on the page under the bar while it shows, for the messages and
  * the dock's panels (see tickerRoom.ts).
  */
@@ -269,7 +325,8 @@ export default function TopBar({
   const town = useGame((state) => state.game.town)
   const events = useGame((state) => state.game.events)
   const contracts = useGame((state) => state.game.contracts)
-  const lastDay = useGame((state) => state.game.lastDay)
+  const trucks = useGame((state) => state.game.trucks)
+  const game = useGame((state) => state.game)
   const speed = useGame((state) => state.speed)
   const setSpeed = useGame((state) => state.setSpeed)
   const togglePause = useGame((state) => state.togglePause)
@@ -293,7 +350,7 @@ export default function TopBar({
 
   // A Défi's truck came on its first day, from which its loan counts.
   const firstDay = challenge?.startDay ?? 0
-  const lastPlayed = lastDay?.day ?? null
+  const lastPlayed = game.lastDay?.day ?? null
   // The books only change when a day is played, not on every frame.
   const cash = useMemo(
     () => balance(journal, CASH, { toDay: day }),
@@ -309,17 +366,22 @@ export default function TopBar({
     return titleOf(netWorthOf(game))?.name ?? null
   }, [challenge, day, journal, financing, personal, dream, weekHistory])
   const fixedCosts = useMemo(
-    () => nextFixedCosts({ day, difficulty, firstDay, bakery, dream }),
-    [day, difficulty, firstDay, bakery, dream],
+    () => nextFixedCosts({ day, difficulty, firstDay, bakery, dream, trucks }),
+    [day, difficulty, firstDay, bakery, dream, trucks],
   )
   const defi = challenge === null ? null : defiById(DEFIS, challenge.id)
   const defiLabel =
     challenge === null || defi === null ? null : chipLabel(challenge, defi, day)
   const defiEnergy = defi === null ? null : energyFloorLine(energy, defi)
+  const shown = useShownTruck(game)
+  const unstaffed = useMemo(() => unstaffedTomorrow(game).length, [game])
   const alerts = topAlerts({
     missed: missedThisWeek({ day, contracts }),
     messages,
+    unstaffed,
   })
+  // The shown truck's last day, as « Hier » shows it.
+  const shownDay = truckDayOf(game, shown)
 
   return (
     <TopBarView
@@ -329,12 +391,18 @@ export default function TopBar({
       fixedCosts={fixedCosts}
       cashHistory={history}
       yesterday={
-        narrow ? (lastDay === null ? null : todayNumbers(lastDay)) : undefined
+        narrow ? (shownDay === null ? null : todayNumbers(shownDay)) : undefined
       }
       onCash={() => openDrawer('finances', 'company')}
       title={title}
       energy={energy}
       avatar={avatar}
+      season={
+        hasTrucks(game)
+          ? seasonChip(districtOf(game, shown), toCalendar(day).month)
+          : null
+      }
+      trucks={hasTrucks(game) ? <TruckSwitcher /> : null}
       speed={speed}
       onSpeedChange={(next) => {
         tutorialSignals.emit({ kind: 'speed', speed: next })

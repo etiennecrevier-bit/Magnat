@@ -1,12 +1,10 @@
 import { FOLD_KEY } from './foldShortcut.ts'
 import { formatBriefMoney, formatCount } from './formatMoney.ts'
 import { useGame } from './store.ts'
-import {
-  todayNumbers,
-  truckWithout,
-  type TodayNumbers,
-} from './todayNumbers.ts'
+import type { TodayNumbers } from './todayNumbers.ts'
 import Tooltip from './Tooltip.tsx'
+import { useShownTruck } from './trucks.ts'
+import { yesterdayCard, type OtherTruckLine } from './truckViews.ts'
 import './Yesterday.css'
 
 // Each number before the first day is over.
@@ -20,6 +18,15 @@ interface YesterdayViewProps {
    * with the owner away (see `truckWithout`); null on any other day.
    */
   note?: string | null
+  /** Its title: « Hier », or « Hier · Vieux-Montréal » with two trucks. */
+  title?: string
+  /**
+   * Why the truck shown sold nothing, in place of its numbers: « Fermé
+   * pour l'hiver » or « Fermé »; null when it opened (see `closedText`).
+   */
+  closed?: string | null
+  /** One line per other truck, under a thin line: its sales, or « fermé ». */
+  others?: readonly OtherTruckLine[]
   /** Whether the card is hidden, down to its « Hier » pill. */
   folded: boolean
   /** Hides the card (true) or shows it again (false). */
@@ -37,6 +44,9 @@ interface YesterdayViewProps {
 export function YesterdayView({
   numbers,
   note = null,
+  title = 'Hier',
+  closed = null,
+  others = [],
   folded,
   onFoldChange,
   onOpen,
@@ -72,33 +82,56 @@ export function YesterdayView({
         data-tuto="yesterday"
         onClick={onOpen}
       >
-        <span className="yesterday__title">Hier</span>
-        <span className="yesterday__row">
-          <span>Ventes</span>
-          <strong>
-            {numbers === null ? NO_NUMBER : formatBriefMoney(numbers.revenue)}
-          </strong>
-        </span>
-        <span className="yesterday__row">
-          <span>Clients servis</span>
-          <strong>
-            {numbers === null
-              ? NO_NUMBER
-              : formatCount(numbers.customersServed)}
-          </strong>
-        </span>
-        <span
-          className={
-            lost > 0 ? 'yesterday__row yesterday__row--warn' : 'yesterday__row'
-          }
-        >
-          <span>Ventes perdues</span>
-          <strong>
-            {lost > 0 && <span aria-hidden="true">⚠︎ </span>}
-            {numbers === null ? NO_NUMBER : formatCount(numbers.lostSales)}
-          </strong>
-        </span>
+        <span className="yesterday__title">{title}</span>
+        {closed !== null ? (
+          <span className="yesterday__closed">{closed}</span>
+        ) : (
+          <>
+            <span className="yesterday__row">
+              <span>Ventes</span>
+              <strong>
+                {numbers === null
+                  ? NO_NUMBER
+                  : formatBriefMoney(numbers.revenue)}
+              </strong>
+            </span>
+            <span className="yesterday__row">
+              <span>Clients servis</span>
+              <strong>
+                {numbers === null
+                  ? NO_NUMBER
+                  : formatCount(numbers.customersServed)}
+              </strong>
+            </span>
+            <span
+              className={
+                lost > 0
+                  ? 'yesterday__row yesterday__row--warn'
+                  : 'yesterday__row'
+              }
+            >
+              <span>Ventes perdues</span>
+              <strong>
+                {lost > 0 && <span aria-hidden="true">⚠︎ </span>}
+                {numbers === null ? NO_NUMBER : formatCount(numbers.lostSales)}
+              </strong>
+            </span>
+          </>
+        )}
         {note !== null && <span className="yesterday__note">{note}</span>}
+        {others.map(({ id, name, value }, index) => (
+          <span
+            key={id}
+            className={
+              index === 0
+                ? 'yesterday__row yesterday__row--other yesterday__row--divider'
+                : 'yesterday__row yesterday__row--other'
+            }
+          >
+            <span>{name}</span>
+            <strong>{value}</strong>
+          </span>
+        ))}
       </button>
       <Tooltip
         content={{ title: 'Masquer « Hier »', text: `Touche ${FOLD_KEY}` }}
@@ -122,18 +155,24 @@ export function YesterdayView({
   )
 }
 
-/** « Hier » with the app store's last day; a click opens « Camion » on « Menu ». */
+/**
+ * « Hier » with the app store's game and the truck shown; a click opens
+ * « Camion » on « Menu ».
+ */
 export default function Yesterday(
-  props: Omit<YesterdayViewProps, 'numbers' | 'note' | 'onOpen'>,
+  props: Omit<
+    YesterdayViewProps,
+    'numbers' | 'note' | 'title' | 'closed' | 'others' | 'onOpen'
+  >,
 ) {
-  const lastDay = useGame((state) => state.game.lastDay)
-  const staff = useGame((state) => state.game.staff)
+  const game = useGame((state) => state.game)
+  const shown = useShownTruck(game)
   const openPanel = useGame((state) => state.openPanel)
+  const card = yesterdayCard(game, shown)
   return (
     <YesterdayView
       {...props}
-      numbers={lastDay === null ? null : todayNumbers(lastDay)}
-      note={lastDay === null ? null : truckWithout(lastDay, staff)}
+      {...card}
       onOpen={() => openPanel('manage', 'menu')}
     />
   )

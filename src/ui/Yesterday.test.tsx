@@ -2,12 +2,25 @@ import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cents } from '../engine/money.ts'
+import { formatBriefMoney } from './formatMoney.ts'
+import type { GameState } from '../engine/types.ts'
+import { SHOWN_TRUCK } from '../world/shownTruck.ts'
 import { handleFoldKey } from './foldShortcut.ts'
 import type { KeyEventLike } from './pauseShortcut.ts'
 import { createSettingsStore } from './settings.ts'
-import { gameStore, PAUSED, type GameStoreState } from './store.ts'
-import type { TodayNumbers } from './todayNumbers.ts'
+import {
+  createGameStore,
+  gameStore,
+  PAUSED,
+  type GameStoreState,
+} from './store.ts'
 import Yesterday, { YesterdayView } from './Yesterday.tsx'
+import { createInitialState, tick } from '../engine/clock.ts'
+import { FIRST_TRUCK, truckDecisionsOf } from '../engine/trucks.ts'
+import { hiring, SECOND, withSecondTruck } from './fixtures/twoTrucks.ts'
+import { todayNumbers as numbersOf, type TodayNumbers } from './todayNumbers.ts'
+import { storedOn } from './trucks.ts'
+import { watchStoredDays, yesterdayCard } from './truckViews.ts'
 
 // A static render reads a Zustand store's initial state, so « Hier » reads
 // the app store's current state through this stand-in.
@@ -20,8 +33,21 @@ vi.mock('./store.ts', async (importOriginal) => {
   }
 })
 
+// Called as a function, « Hier » runs no hook, so it reads the truck shown
+// through this stand-in, as the hook would on a render.
+vi.mock('./trucks.ts', async (importOriginal) => {
+  const trucks = await importOriginal<typeof import('./trucks.ts')>()
+  const { SHOWN_TRUCK, shownTruckOf } = await import('../world/shownTruck.ts')
+  return {
+    ...trucks,
+    useShownTruck: (game: GameState) =>
+      shownTruckOf(game, SHOWN_TRUCK.getState()),
+  }
+})
+
 afterEach(() => {
   gameStore.setState(gameStore.getInitialState(), true)
+  SHOWN_TRUCK.pick(null)
 })
 
 // Every space in an amount is a no-break space (U+00A0).
@@ -204,5 +230,209 @@ describe('the R key', () => {
     expect(settings.getState().screensFolded).toBe(true)
     handleFoldKey(keyEvent({ key: 'R' }), toggle)
     expect(settings.getState().screensFolded).toBe(false)
+  })
+})
+
+describe('« Hier » with two trucks (#265)', () => {
+  const EVERY_DAY = [1, 2, 3, 4, 5, 6, 7]
+
+  /** Day 2's morning: Kevin at the Plateau, the owner at Vieux-Montréal. */
+  function bothOpen(): GameState {
+    return tick(
+      tick(
+        withSecondTruck(
+          createInitialState(42),
+          { kind: 'daysOpen', weekdays: EVERY_DAY },
+          { kind: 'daysOpen', weekdays: EVERY_DAY, truck: SECOND },
+          hiring('kevin'),
+          { kind: 'ownerAt', truck: SECOND },
+        ),
+      ),
+    )
+  }
+
+  it('shows the truck shown, then each other truck’s sales', () => {
+    const game = bothOpen()
+    const second = game.trucks?.[0]?.lastDay
+    if (second === null || second === undefined) throw new Error('Played')
+    const card = yesterdayCard(game, SECOND)
+    expect(card).toMatchObject({
+      title: 'Hier · Vieux-Montréal',
+      numbers: numbersOf(second),
+      closed: null,
+      note: null,
+    })
+    expect(card.others).toEqual([
+      {
+        id: FIRST_TRUCK,
+        name: 'Plateau',
+        value: formatBriefMoney(game.lastDay?.revenue ?? cents(0)),
+      },
+    ])
+    expect(yesterdayCard(game, FIRST_TRUCK)).toMatchObject({
+      title: 'Hier · Plateau',
+      numbers: numbersOf(game.lastDay!),
+      others: [
+        {
+          id: SECOND,
+          name: 'Vieux-Montréal',
+          value: formatBriefMoney(second.revenue),
+        },
+      ],
+    })
+    const html = renderToStaticMarkup(
+      <YesterdayView
+        {...card}
+        folded={false}
+        onFoldChange={() => {}}
+        onOpen={() => {}}
+      />,
+    )
+    expect(html).toContain(
+      '<span class="yesterday__title">Hier · Vieux-Montréal</span>',
+    )
+    expect(html).toContain(
+      `<span class="yesterday__row yesterday__row--other yesterday__row--divider"><span>Plateau</span><strong>${formatBriefMoney(game.lastDay?.revenue ?? cents(0))}</strong></span>`,
+    )
+  })
+
+  it('says « Fermé pour l’hiver » for a truck stored, « fermé » for the other line', () => {
+    const before = tick(
+      withSecondTruck(createInitialState(42), {
+        kind: 'storage',
+        storage: MAY,
+        truck: SECOND,
+      }),
+    )
+    const stored = tick(before)
+    const card = yesterdayCard(stored, SECOND, storedOn(before))
+    expect(card.closed).toBe("Fermé pour l'hiver")
+    // Not knowing why, as after a load, it says only « Fermé ».
+    expect(yesterdayCard(stored, SECOND, null).closed).toBe('Fermé')
+    const html = renderToStaticMarkup(
+      <YesterdayView
+        {...card}
+        folded={false}
+        onFoldChange={() => {}}
+        onOpen={() => {}}
+      />,
+    )
+    expect(html).toContain(
+      '<span class="yesterday__closed">Fermé pour l&#x27;hiver</span>',
+    )
+    expect(html).not.toContain('Clients servis')
+    expect(yesterdayCard(stored, FIRST_TRUCK).others).toEqual([
+      { id: SECOND, name: 'Vieux-Montréal', value: 'fermé' },
+    ])
+  })
+
+  it('shows dashes for a truck just bought, and stays as it was with one truck', () => {
+    const played = tick(tick(createInitialState(42)))
+    const bought = withSecondTruck(played)
+    expect(yesterdayCard(bought, SECOND)).toMatchObject({
+      numbers: null,
+      closed: null,
+    })
+    expect(yesterdayCard(bought, FIRST_TRUCK).others).toEqual([
+      { id: SECOND, name: 'Vieux-Montréal', value: '—' },
+    ])
+    expect(yesterdayCard(played, FIRST_TRUCK)).toEqual({
+      numbers: numbersOf(played.lastDay!),
+      note: null,
+      title: 'Hier',
+      closed: null,
+      others: [],
+    })
+  })
+
+  it('follows the truck picked', () => {
+    gameStore.setState({ game: bothOpen() })
+    const html = () =>
+      renderToStaticMarkup(<Yesterday folded={false} onFoldChange={() => {}} />)
+    expect(html()).toContain('Hier · Vieux-Montréal')
+    SHOWN_TRUCK.pick(FIRST_TRUCK)
+    expect(html()).toContain('Hier · Plateau')
+  })
+})
+
+// A storage over the whole of May, the month a new game starts in.
+const MAY = { from: { month: 5, day: 1 }, to: { month: 5, day: 31 } }
+
+describe('« Hier » says why a truck was closed as the day was played (#265)', () => {
+  const EVERY_DAY = [1, 2, 3, 4, 5, 6, 7]
+
+  /** A store whose second truck opens every day, with `changes`. */
+  function playing(...changes: Parameters<typeof withSecondTruck>[1][]) {
+    const store = createGameStore(
+      tick(
+        withSecondTruck(
+          createInitialState(42),
+          { kind: 'daysOpen', weekdays: EVERY_DAY, truck: SECOND },
+          ...changes,
+        ),
+      ),
+    )
+    const stored = watchStoredDays(store)
+    const closed = () =>
+      yesterdayCard(store.getState().game, SECOND, stored.last()).closed
+    return { store, stored, closed }
+  }
+
+  it('still says « Fermé pour l’hiver » the morning the storage is taken off', () => {
+    const { store, stored, closed } = playing(
+      { kind: 'ownerAt', truck: SECOND },
+      { kind: 'storage', storage: MAY, truck: SECOND },
+    )
+    // Nothing played yet in this store: why is not known.
+    expect(stored.last()).toBeNull()
+    store.getState().advance(1)
+    expect(closed()).toBe("Fermé pour l'hiver")
+    // Taken off for tomorrow: the day played was still stored, though the
+    // morning holds no storage any more.
+    store.getState().decide({ kind: 'storage', storage: null, truck: SECOND })
+    store.getState().advance(1)
+    const { game } = store.getState()
+    expect(truckDecisionsOf(game.decisions, SECOND).storage ?? null).toBeNull()
+    expect(game.trucks?.[0]?.lastDay?.open).toBe(false)
+    expect(closed()).toBe("Fermé pour l'hiver")
+    // The next day, with the owner there, it opens.
+    store.getState().advance(1)
+    expect(closed()).toBeNull()
+    stored.stop()
+  })
+
+  it('says « Fermé » for a day closed with nobody, the storage put on after', () => {
+    const { store, stored, closed } = playing()
+    store.getState().advance(1)
+    expect(closed()).toBe('Fermé')
+    store.getState().decide({ kind: 'storage', storage: MAY, truck: SECOND })
+    expect(closed()).toBe('Fermé')
+    // Put on for tomorrow: the day played was still closed with nobody,
+    // though the morning holds the storage.
+    store.getState().advance(1)
+    const { game } = store.getState()
+    expect(truckDecisionsOf(game.decisions, SECOND).storage).toEqual(MAY)
+    expect(closed()).toBe('Fermé')
+    store.getState().advance(1)
+    expect(closed()).toBe("Fermé pour l'hiver")
+    stored.stop()
+  })
+
+  it('reads the last day of a run of days, and forgets it all for another game', () => {
+    const { store, stored, closed } = playing({
+      kind: 'storage',
+      storage: MAY,
+      truck: SECOND,
+    })
+    const from = store.getState().game.day
+    store.getState().advance(3)
+    expect(store.getState().game.day).toBe(from + 3)
+    expect(stored.last()).toEqual({ day: from + 2, trucks: [SECOND] })
+    expect(closed()).toBe("Fermé pour l'hiver")
+    // A game loaded: why its last day was closed is not known.
+    store.getState().startGame(store.getState().game)
+    expect(stored.last()).toBeNull()
+    expect(closed()).toBe('Fermé')
+    stored.stop()
   })
 })

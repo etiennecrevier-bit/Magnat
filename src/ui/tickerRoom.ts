@@ -16,6 +16,9 @@ export const TOP_BAR_ROOM = '--top-bar-room'
 /** The custom property that holds the height of the week's card. */
 export const REPORT_CARD_HEIGHT = '--report-card-height'
 
+/** The custom property that holds the height of « Hier », under it. */
+export const YESTERDAY_HEIGHT = '--yesterday-height'
+
 /** The parts of a ResizeObserver used here, so tests can fake one. */
 export interface ObserverLike {
   observe: (target: Element) => void
@@ -98,6 +101,26 @@ export function keepRoomOver(
     card,
     page,
     REPORT_CARD_HEIGHT,
+    (box) => box.height,
+    observe,
+  )
+}
+
+/**
+ * Keeps `page`'s `--yesterday-height` at the height of « Hier » `card`,
+ * now and each time it changes size, as when a line per other truck comes
+ * (#265) or it folds down to its pill, so the week's card stays above it;
+ * returns what stops it and takes the property away.
+ */
+export function keepRoomAbove(
+  card: Element,
+  page: PageLike,
+  observe: (onResize: () => void) => ObserverLike = resizeObserver,
+): () => void {
+  return keepMeasured(
+    card,
+    page,
+    YESTERDAY_HEIGHT,
     (box) => box.height,
     observe,
   )

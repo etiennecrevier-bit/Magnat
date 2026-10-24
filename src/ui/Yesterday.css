@@ -1,12 +1,16 @@
 /* « Hier », at the bottom right, level with the dock (Dock.css). Where the
    window is too narrow for both side by side, it stands above the dock.
    --report-room is how far above the window's bottom the week's card,
-   above « Hier », sits (WeekSlideIn.css). Text colours keep at least 4.5:1
+   above « Hier », sits (WeekSlideIn.css): above all of « Hier », whose
+   height GameScreens.tsx keeps in --yesterday-height as its lines come and
+   go, its 6 px shadow and an 8 px gap. Text colours keep at least 4.5:1
    against the cream #fff7e8. Declared on the body, like Dock.css's rooms,
    so they follow the band's real height. */
 body {
   --yesterday-bottom: var(--dock-bottom, 3.5rem);
-  --report-room: calc(var(--yesterday-bottom) + 118px);
+  --report-room: calc(
+    var(--yesterday-bottom) + var(--yesterday-height, 112px) + 14px
+  );
 }
 
 .yesterday-spot {
@@ -20,7 +24,8 @@ body {
 
 .yesterday {
   position: relative;
-  width: 13rem;
+  min-width: 13rem;
+  max-width: 18rem;
   border: 3px solid #2b2622;
   border-radius: 18px;
   background: #fff7e8;
@@ -148,4 +153,16 @@ body {
   color: #6b625a;
   font-weight: 600;
   line-height: 1.25;
+}
+
+/* Why the truck shown sold nothing (#265), in place of its numbers. */
+.yesterday__closed {
+  color: #6b625a;
+}
+
+/* Each other truck's sales (#265), under a thin line. */
+.yesterday__row--divider {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #d9cdb8;
 }

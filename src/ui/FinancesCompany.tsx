@@ -5,9 +5,11 @@ import {
   companyBoard,
   type CompanyBoard,
   type FinanceTile,
+  type TruckFinanceRow,
 } from './financesBoard.ts'
 import { FinancingBlock } from './FinancingBlock.tsx'
 import { formatGamePeriod } from './formatGameDate.ts'
+import { formatWholeStatementAmount } from './formatMoney.ts'
 import { Icon } from './icons.tsx'
 import { STATEMENT_TITLES, type StatementTab } from './statementPeriods.ts'
 import { useGame, type FinanceSection, type FinanceSections } from './store.ts'
@@ -74,6 +76,44 @@ function Accordion({
   )
 }
 
+/**
+ * « Par camion » (#265): each truck's sales and margin this month, a row
+ * each, then the total; a negative margin in parentheses.
+ */
+function TruckTable({
+  rows,
+  labelledBy,
+}: {
+  rows: readonly TruckFinanceRow[]
+  labelledBy: string
+}) {
+  return (
+    <table className="finances-company__trucks" aria-labelledby={labelledBy}>
+      <thead>
+        <tr>
+          <th scope="col">Camion</th>
+          <th scope="col">Ventes</th>
+          <th scope="col">Marge</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(({ id, label, sales, margin }) => (
+          <tr
+            key={id}
+            className={
+              id === 'total' ? 'finances-company__trucks-total' : undefined
+            }
+          >
+            <th scope="row">{label}</th>
+            <td>{formatWholeStatementAmount(sales)}</td>
+            <td>{formatWholeStatementAmount(margin)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 interface FinancesCompanyViewProps {
   board: CompanyBoard
   sections: FinanceSections
@@ -88,7 +128,8 @@ interface FinancesCompanyViewProps {
 
 /**
  * « Entreprise », level by level: four tiles, each with its parts in its
- * tooltip and a click to the statement it comes from; the last 30 days;
+ * tooltip and a click to the statement it comes from; « Par camion » with
+ * two trucks or more; the last 30 days;
  * « À surveiller », when there is something to watch; then the statements,
  * and « Financement » once the game took a loan or sold shares, each in an
  * accordion closed until the player opens it.
@@ -101,7 +142,7 @@ export function FinancesCompanyView({
   headingRef,
 }: FinancesCompanyViewProps) {
   const id = useId()
-  const { tiles, chart, watch, financing } = board
+  const { tiles, trucks, chart, watch, financing } = board
   const first = chart[0]
   const last = chart.at(-1)
   const accordions: {
@@ -158,6 +199,14 @@ export function FinancesCompanyView({
           ))}
         </div>
       </section>
+      {trucks !== null && (
+        <section aria-labelledby={`${id}-trucks`}>
+          <h3 id={`${id}-trucks`} className="finances-company__kicker">
+            Par camion
+          </h3>
+          <TruckTable rows={trucks} labelledBy={`${id}-trucks`} />
+        </section>
+      )}
       <section aria-labelledby={`${id}-chart`}>
         <h3 id={`${id}-chart`} className="finances-company__kicker">
           30 derniers jours

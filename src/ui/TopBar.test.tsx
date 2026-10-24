@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DifficultyId } from '../content/schema.ts'
 import { defiById } from '../engine/challenge.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
-import { DEFIS, FOOD_TRUCK } from '../engine/day.ts'
+import { DEFIS, DIFFICULTIES, FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { cents } from '../engine/money.ts'
 import { titleOf } from '../engine/dream.ts'
@@ -12,13 +12,22 @@ import { defaultProfile } from '../engine/profile.ts'
 import type { GameState } from '../engine/types.ts'
 import { closedBakery } from '../engine/bakery.ts'
 import { balance, postEntry } from '../finance/journal.ts'
-import { LOW_BELOW_MONTHS, monthlyFixedCosts } from './cashLevel.ts'
+import {
+  LOW_BELOW_MONTHS,
+  monthlyFixedCosts,
+  nextFixedCosts,
+} from './cashLevel.ts'
 import type { TopAlert } from './alerts.ts'
 import { sparklinePoints } from './cashChip.ts'
 import { cashAtCloses } from './cashHistory.ts'
 import { createMessageStack } from './messageStack.ts'
 import { gameStore, newChallenge, type GameStoreState } from './store.ts'
 import TopBar, { TopBarView } from './TopBar.tsx'
+import { SHOWN_TRUCK } from '../world/shownTruck.ts'
+import { FIRST_TRUCK } from '../engine/trucks.ts'
+import { dateDay, SECOND, withSecondTruck } from './fixtures/twoTrucks.ts'
+import { formatMoney } from './formatMoney.ts'
+import { seasonChip } from './trucks.ts'
 
 // A static render reads a Zustand store's initial state, so the connected
 // top bar reads the app store's current state through this stand-in.
@@ -33,6 +42,7 @@ vi.mock('./store.ts', async (importOriginal) => {
 
 afterEach(() => {
   gameStore.setState(gameStore.getInitialState(), true)
+  SHOWN_TRUCK.pick(null)
 })
 
 // Every space in an amount is a no-break space (U+00A0).
@@ -411,4 +421,103 @@ describe('TopBar', () => {
       expect(html).toContain('Faible')
     },
   )
+})
+
+describe('the top bar with two trucks (#265)', () => {
+  const JULY_15 = dateDay(1, 7, 15)
+  const FEBRUARY_6 = dateDay(2, 2, 6)
+
+  /** The second truck bought on day 0, the game on the morning of `day`. */
+  function twoTrucksOn(day: number): GameState {
+    return { ...withSecondTruck(createInitialState(42)), day }
+  }
+
+  it('shows the season pill beside the energy, the word always there, its tooltip giving the months', () => {
+    const html = renderToStaticMarkup(
+      <TopBarView
+        businessName="Le P'tit Camion"
+        day={JULY_15}
+        cash={cents(1_000_000)}
+        fixedCosts={cents(175_000)}
+        energy={100}
+        avatar="homme"
+        season={seasonChip('vieuxMontreal', 7)}
+        speed={1}
+        onSpeedChange={() => {}}
+        defiLabel={null}
+        defiEnergy={null}
+        onDefi={() => {}}
+        onSettings={() => {}}
+      />,
+    )
+    expect(html).toMatch(
+      /<\/div><p class="top-bar__season top-bar__season--haute" tabindex="0" aria-describedby="[^"]+"><span aria-hidden="true">☀︎ <\/span>Haute saison<\/p>/,
+    )
+    expect(html).toContain(
+      '<p class="tip__title">Vieux-Montréal</p><dl class="tip__rows"><div class="tip__row"><dt>Haute saison</dt><dd>juin à août</dd></div><div class="tip__row"><dt>Basse saison</dt><dd>décembre à mars</dd></div></dl>',
+    )
+    // One truck, no season: the bar as it always was.
+    expect(render(JULY_15, 1)).not.toContain('top-bar__season')
+  })
+
+  it('reads the season of the district shown, « Saison normale » on the Plateau', () => {
+    gameStore.setState({ game: twoTrucksOn(FEBRUARY_6) })
+    SHOWN_TRUCK.pick(SECOND)
+    const winter = renderToStaticMarkup(<TopBar />)
+    expect(winter).toContain(
+      '<span aria-hidden="true">❄︎ </span>Basse saison</p>',
+    )
+    SHOWN_TRUCK.pick(FIRST_TRUCK)
+    expect(renderToStaticMarkup(<TopBar />)).toContain('>Saison normale</p>')
+    gameStore.setState({ game: twoTrucksOn(JULY_15) })
+    SHOWN_TRUCK.pick(SECOND)
+    expect(renderToStaticMarkup(<TopBar />)).toContain('>Haute saison</p>')
+  })
+
+  it('puts the switcher under the top-left cards, only with two trucks', () => {
+    expect(renderToStaticMarkup(<TopBar />)).not.toContain('truck-switcher')
+    gameStore.setState({ game: twoTrucksOn(JULY_15) })
+    const html = renderToStaticMarkup(<TopBar />)
+    expect(html).toMatch(
+      /^<header class="top-bar"><div class="top-bar__start"><div class="top-bar__left">.*<\/div><div class="truck-switcher" role="group" aria-label="Camion affiché">/,
+    )
+  })
+
+  it('reads the encaisse against the permit due the next 1st too', () => {
+    const march = twoTrucksOn(dateDay(2, 3, 15))
+    gameStore.setState({ game: march })
+    const permit = DIFFICULTIES.districtPermits.moyen.vieuxMontreal ?? 0
+    const costs = nextFixedCosts({
+      day: march.day,
+      difficulty: 'moyen',
+      firstDay: 0,
+      bakery: march.bakery,
+      dream: march.dream,
+      trucks: march.trucks ?? [],
+    })
+    const alone = nextFixedCosts({
+      day: march.day,
+      difficulty: 'moyen',
+      firstDay: 0,
+      bakery: march.bakery,
+      dream: march.dream,
+    })
+    expect(costs).toBe(alone + FOOD_TRUCK.monthlyCostsCents.insurance + permit)
+    expect(renderToStaticMarkup(<TopBar />)).toContain(
+      `<dt>Frais fixes du mois</dt><dd>${formatMoney(cents(costs))}</dd>`,
+    )
+  })
+
+  it('shows the chip of a truck closed tomorrow with nobody there', () => {
+    gameStore.setState({
+      game: withSecondTruck(createInitialState(42), {
+        kind: 'daysOpen',
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        truck: SECOND,
+      }),
+    })
+    expect(renderToStaticMarkup(<TopBar />)).toContain(
+      `Fermé demain${S}: personne au camion</button>`,
+    )
+  })
 })
