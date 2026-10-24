@@ -461,6 +461,49 @@ describe('a day the street closes the truck', () => {
   })
 })
 
+describe("the Vieux-Montréal's changes to the street (#262)", () => {
+  const SECOND = 'vieuxMontreal'
+  const forSecond = (change: StreetChange): StreetModifier => ({
+    ...modifier('tournage', change, 1, 1),
+    district: SECOND,
+  })
+
+  it('keep them in the day, with their district, made or queued', () => {
+    const queued: DelayedEffect = {
+      day: 1,
+      event: 'tournage',
+      effect: { kind: 'closed', days: 2 },
+      district: SECOND,
+    }
+    expect(
+      modifiersToday(withEvents(tuesday, [forSecond(FEWER)], [queued])),
+    ).toEqual([forSecond(FEWER), { ...forSecond(CLOSED), lastDay: 2 }])
+  })
+
+  it('never close the first truck the city shows, nor stop its products, nor show on its street', () => {
+    const game = holding(
+      withEvents(
+        tuesday,
+        [forSecond(CLOSED), forSecond(NO_CAFE)],
+        [
+          {
+            day: 1,
+            event: 'tournage',
+            effect: { kind: 'closed', days: 1 },
+            district: SECOND,
+          },
+        ],
+      ),
+      'cafe',
+      20,
+    )
+    expect(opensToday(game)).toBe(true)
+    expect(openingStock(game, 'cafe')).toBeGreaterThan(20)
+    expect(chosenModifiers(game)).toEqual([])
+    expect(truckView(game).modifiers).toEqual([])
+  })
+})
+
 describe('openingStock while a product cannot be sold', () => {
   it('restocks none of it, as the engine skips it, and the others as usual', () => {
     const game = holding(

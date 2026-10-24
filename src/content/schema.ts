@@ -1208,10 +1208,15 @@ const eventConditionsSchema = z.strictObject({
   /** The product's restock rule buys some. */
   productOnMenu: productIdSchema.optional(),
   /**
-   * Whether the truck opens the next day: the days open hold its weekday
-   * and no change to the street closes it.
+   * Whether the truck opens the next day: the days open hold its weekday,
+   * it is not stored then, and no change to the street closes it.
    */
   openTomorrow: z.boolean().optional(),
+  /**
+   * A truck works in this district (#262), stored or not. The card's changes
+   * to the street, and `openTomorrow`, are then that district's truck's.
+   */
+  district: districtIdSchema.optional(),
   /** Only ever comes as another event's follow-up. */
   followUpOnly: z.boolean().optional(),
   /**

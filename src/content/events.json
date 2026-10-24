@@ -3666,6 +3666,397 @@
           ]
         }
       ]
+    },
+    {
+      "id": "guideTouristique",
+      "weight": 1,
+      "character": {
+        "id": "gastonBrisebois",
+        "name": "Gaston Brisebois",
+        "role": "Guide touristique"
+      },
+      "title": "Le guide touristique",
+      "situation": "Un homme en canotier lève son parapluie fermé au-dessus d'un groupe de touristes, puis vient s'accouder à votre comptoir du Vieux-Montréal.",
+      "quote": "J'amène mes groupes chez vous. {montant:commission} par semaine, pis vous voyez la différence.",
+      "conditions": {
+        "district": "vieuxMontreal",
+        "months": [5, 6, 7, 8, 9],
+        "weekdays": [5],
+        "cooldownDays": 120
+      },
+      "choices": [
+        {
+          "id": "marcheConclu",
+          "label": "Marché conclu",
+          "tags": [
+            {
+              "text": "Commission −{montant} chaque vendredi, 4 semaines",
+              "effect": "commission"
+            },
+            {
+              "text": "Touristes +{montant} pendant 4 semaines",
+              "effect": "touristes"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Gaston vous serre la main et repart en brandissant son parapluie. Une heure plus tard, son premier groupe fait la file devant votre camion.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 12000,
+                  "description": "Commission de Gaston Brisebois, semaine 1",
+                  "name": "commission"
+                },
+                {
+                  "kind": "charge",
+                  "amountCents": 12000,
+                  "description": "Commission de Gaston Brisebois, semaine 2",
+                  "inDays": 7
+                },
+                {
+                  "kind": "charge",
+                  "amountCents": 12000,
+                  "description": "Commission de Gaston Brisebois, semaine 3",
+                  "inDays": 14
+                },
+                {
+                  "kind": "charge",
+                  "amountCents": 12000,
+                  "description": "Commission de Gaston Brisebois, semaine 4",
+                  "inDays": 21
+                },
+                {
+                  "kind": "walkIns",
+                  "factor": 1.25,
+                  "segment": "touriste",
+                  "days": 28,
+                  "name": "touristes"
+                },
+                {
+                  "kind": "headline",
+                  "id": "guideTouristique"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "nonMerci",
+          "label": "Non merci",
+          "tags": [
+            {
+              "text": "Rien ne change",
+              "difficulties": ["facile", "moyen"]
+            },
+            {
+              "text": "Touristes −{montant} pendant 2 semaines",
+              "effect": "touristes"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Gaston hausse les épaules et rouvre son parapluie. « Les Glaces Bonsecours, elles, savent reconnaître une bonne affaire. »",
+              "effects": [
+                {
+                  "kind": "walkIns",
+                  "factor": 0.95,
+                  "segment": "touriste",
+                  "days": 14,
+                  "difficulties": ["difficile"],
+                  "name": "touristes"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "festivalJazz",
+      "weight": 1,
+      "character": {
+        "id": "marieSoleilLajoie",
+        "name": "Marie-Soleil Lajoie",
+        "role": "Coordonnatrice, Festival de jazz"
+      },
+      "title": "Le Festival de jazz",
+      "situation": "Une femme pressée, laissez-passer au cou et radio à l'oreille, s'arrête devant votre camion du Vieux-Montréal, planchette serrée contre elle.",
+      "quote": "Dix jours, des milliers de personnes. L'emplacement près de la scène : {montant:emplacement}. Je vous le garde jusqu'à ce soir.",
+      "conditions": {
+        "district": "vieuxMontreal",
+        "date": {
+          "month": 6,
+          "dayOfMonth": 26
+        }
+      },
+      "choices": [
+        {
+          "id": "payer",
+          "label": "Payer l'emplacement",
+          "tags": [
+            {
+              "text": "Emplacement −{montant}",
+              "effect": "emplacement"
+            },
+            {
+              "text": "Clients +{montant} pendant 10 jours",
+              "effect": "foule"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Marie-Soleil coche une case, vous tend un plan du site et repart en courant. Dès demain, la foule du festival passe devant votre comptoir.",
+              "effects": [
+                {
+                  "kind": "charge",
+                  "amountCents": 150000,
+                  "description": "Emplacement au Festival de jazz",
+                  "account": "6100",
+                  "name": "emplacement"
+                },
+                {
+                  "kind": "walkIns",
+                  "factor": 1.8,
+                  "days": 10,
+                  "inDays": 1,
+                  "name": "foule"
+                },
+                {
+                  "kind": "headline",
+                  "id": "festivalJazz",
+                  "inDays": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "rester",
+          "label": "Rester où je suis",
+          "tags": [
+            {
+              "text": "Clients −{montant} pendant 10 jours",
+              "effect": "foule"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Vous gardez votre coin. Pendant dix jours, la musique vous parvient de loin, et la foule avec elle reste là-bas.",
+              "effects": [
+                {
+                  "kind": "walkIns",
+                  "factor": 0.9,
+                  "days": 10,
+                  "inDays": 1,
+                  "name": "foule"
+                },
+                {
+                  "kind": "headline",
+                  "id": "festivalJazz",
+                  "inDays": 1
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tournage",
+      "weight": 1,
+      "character": {
+        "id": "brunoCastonguay",
+        "name": "Bruno Castonguay",
+        "role": "Régisseur de plateau"
+      },
+      "title": "Le tournage",
+      "situation": "Des camions de production bloquent la rue pavée. Un homme en casquette à l'envers, walkie-talkie à la main, s'approche de votre camion du Vieux-Montréal.",
+      "quote": "On tourne une scène en 1890. Votre camion, lui, est pas en 1890. {montant:location} pour trois jours fermé?",
+      "conditions": {
+        "district": "vieuxMontreal",
+        "months": [5, 6, 7, 8, 9, 10],
+        "openTomorrow": true,
+        "cooldownDays": 180
+      },
+      "choices": [
+        {
+          "id": "accepter",
+          "label": "Accepter",
+          "tags": [
+            "Fermé 3 jours",
+            {
+              "text": "+{montant} reçus",
+              "effect": "location"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Bruno vous paie sur-le-champ. Pendant trois jours, des calèches et des figurants en chapeau haut-de-forme passent devant votre camion fermé.",
+              "effects": [
+                {
+                  "kind": "cashSale",
+                  "amountCents": 40000,
+                  "description": "Location de l'emplacement pour un tournage",
+                  "name": "location"
+                },
+                {
+                  "kind": "closed",
+                  "days": 3,
+                  "inDays": 1
+                },
+                {
+                  "kind": "headline",
+                  "id": "tournage",
+                  "inDays": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "negocier",
+          "label": "Négocier",
+          "tags": [
+            {
+              "text": "Peut-être +{montant} reçus",
+              "effect": "location"
+            },
+            "Fermé 3 jours ou moins de clients",
+            "Risqué"
+          ],
+          "outcomes": [
+            {
+              "chance": 0.5,
+              "result": "Bruno soupire, parle longtemps dans son walkie-talkie, puis double son offre : {montant:location}. Vous fermez trois jours.",
+              "effects": [
+                {
+                  "kind": "cashSale",
+                  "amountCents": 80000,
+                  "description": "Location de l'emplacement pour un tournage",
+                  "name": "location"
+                },
+                {
+                  "kind": "closed",
+                  "days": 3,
+                  "inDays": 1
+                },
+                {
+                  "kind": "headline",
+                  "id": "tournage",
+                  "inDays": 1
+                }
+              ]
+            },
+            {
+              "chance": 0.5,
+              "result": "Bruno hausse les épaules. « On va vous cacher derrière une charrette de foin. » Ils tournent quand même, et les clients font le détour pendant trois jours.",
+              "effects": [
+                {
+                  "kind": "walkIns",
+                  "factor": 0.5,
+                  "days": 3,
+                  "inDays": 1
+                },
+                {
+                  "kind": "headline",
+                  "id": "tournage",
+                  "inDays": 1
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "glacesBonsecours",
+      "weight": 1,
+      "character": {
+        "id": "ritaEsposito",
+        "name": "Rita Esposito",
+        "role": "Glaces Bonsecours"
+      },
+      "title": "Les Glaces Bonsecours",
+      "situation": "Rita, du chariot des Glaces Bonsecours, traverse la rue avec deux cornets à la main et vous en tend un.",
+      "quote": "Un cornet pis une limonade, un prix pour les deux. On partage les clients au lieu de se les voler.",
+      "conditions": {
+        "district": "vieuxMontreal",
+        "months": [6, 7],
+        "cooldownDays": 365
+      },
+      "choices": [
+        {
+          "id": "equipe",
+          "label": "Faire équipe",
+          "tags": [
+            {
+              "text": "Touristes +{montant} pendant 30 jours",
+              "effect": "touristes"
+            },
+            {
+              "text": "Part des cornets −{montant}",
+              "effect": "cornets"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Rita vous serre la main, collante de sorbet. Ses clients viennent chercher leur limonade chez vous, et les vôtres vont chercher leur cornet chez elle.",
+              "effects": [
+                {
+                  "kind": "walkIns",
+                  "factor": 1.25,
+                  "segment": "touriste",
+                  "days": 30,
+                  "name": "touristes"
+                },
+                {
+                  "kind": "charge",
+                  "amountCents": 6000,
+                  "description": "Part des cornets, Glaces Bonsecours",
+                  "difficulties": ["difficile"],
+                  "name": "cornets"
+                },
+                {
+                  "kind": "headline",
+                  "id": "glacesBonsecours"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "chacunPourSoi",
+          "label": "Chacun pour soi",
+          "tags": [
+            {
+              "text": "Touristes −{montant} pendant 30 jours",
+              "effect": "touristes"
+            }
+          ],
+          "outcomes": [
+            {
+              "chance": 1,
+              "result": "Rita reprend son cornet. Le lendemain, une affiche neuve sur son chariot : « Prix réduits tout l'été ».",
+              "effects": [
+                {
+                  "kind": "walkIns",
+                  "factor": 0.92,
+                  "segment": "touriste",
+                  "days": 30,
+                  "name": "touristes"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }

@@ -1,11 +1,13 @@
 import {
   streetChangeSchema,
+  type DistrictId,
   type ProductId,
   type SegmentId,
   type StreetModifierKind,
 } from '../content/schema.ts'
 import { SEGMENTS, perSegment, type CrowdChanges } from './customers.ts'
 import { PRODUCTS } from './inventory.ts'
+import { FIRST_DISTRICT } from './trucks.ts'
 import type { Day, StreetModifier } from './types.ts'
 
 // The street as the event cards change it for a while: construction cuts
@@ -25,6 +27,20 @@ export interface Street extends CrowdChanges {
   readonly closed: boolean
   /** Whether the owner works the day away from the counter. */
   readonly working: boolean
+}
+
+/**
+ * The modifiers of `modifiers` that change the street of the truck in
+ * `district` (#262), in their order: those made for that district, and,
+ * for the first truck's, those made for no district.
+ */
+export function modifiersAt(
+  modifiers: readonly StreetModifier[],
+  district: DistrictId,
+): StreetModifier[] {
+  return modifiers.filter(
+    (modifier) => (modifier.district ?? FIRST_DISTRICT) === district,
+  )
 }
 
 /**

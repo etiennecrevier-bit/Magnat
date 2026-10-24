@@ -113,7 +113,7 @@ import {
   staffMorning,
   traitValue,
 } from './staff.ts'
-import { inEffect, streetOn, type Street } from './street.ts'
+import { inEffect, modifiersAt, streetOn, type Street } from './street.ts'
 import {
   FIRST_DISTRICT,
   FIRST_TRUCK,
@@ -345,7 +345,8 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * once the game's Défi, if any, is over. First the start of the day: the
  * delayed effects of the events' choices due that day, then the receivables
  * due (see `startOfDay`). Then the street that day, with the changes in
- * effect folded together (see `streetOn`).
+ * effect folded together, those made for the first truck's district (see
+ * `streetOn` and `modifiersAt`).
  * On the 1st of the month, open, closed or stored: the month's charges (see
  * `monthlyCharges`), the first truck's permit its district's in `districts`
  * (see `permitOn`), the truck's counted in months from the game's first day,
@@ -369,7 +370,8 @@ export function currentPrice(state: GameState, product: ProductId): Cents {
  * open outside the dates it is stored (see `isStored`) that the street does
  * not close, with the owner or an employee at the truck,
  * each truck in turn, the first one first (#259), the others each on its
- * own generator and the street with no change, with no marketing, no
+ * own generator and the street with the changes made for its district
+ * only (#262), with no marketing, no
  * bakery and no discount, each naming itself on its lines of the état des
  * résultats:
  * the morning restock of every product the street leaves on sale, but the
@@ -462,7 +464,10 @@ export function playDay(
   const { difficulty } = started.profile
   const { modifiers } = started.events
   const bonuses = dreamBonuses(started.dream, dream)
-  const street = withDreamStreet(streetOn(modifiers, day), bonuses)
+  const street = withDreamStreet(
+    streetOn(modifiersAt(modifiers, FIRST_DISTRICT), day),
+    bonuses,
+  )
   let journal = started.journal
 
   if (dayOfMonth === 1) {
@@ -523,15 +528,19 @@ export function playDay(
     trucksOf(started).map(({ id, district }) => [id, district]),
   )
   // Each truck's street: the first truck's with the events' changes and the
-  // rungs' bonuses, the others' the street with none (#259), then its
-  // district's rival that month, if any (#260).
-  const streetOf = (truck: TruckId): Street =>
-    withRival(
-      truck === FIRST_TRUCK ? street : streetOn([], day),
-      districtOf.get(truck) ?? FIRST_DISTRICT,
+  // rungs' bonuses, the others' with the changes made for their district
+  // only (#259, #262), then its district's rival that month, if any (#260).
+  const streetOf = (truck: TruckId): Street => {
+    const district = districtOf.get(truck) ?? FIRST_DISTRICT
+    return withRival(
+      truck === FIRST_TRUCK
+        ? street
+        : streetOn(modifiersAt(modifiers, district), day),
+      district,
       month,
       districts,
     )
+  }
   // Whether the truck opens that day, staffed or not: one of its days open,
   // outside the dates it is stored (#260), that its street does not close.
   const scheduled = (truck: TruckId): boolean => {
@@ -574,7 +583,7 @@ export function playDay(
 
   // Each truck in turn, the first one first: the first truck as the game
   // has always played it, each other one on its own generator, with its
-  // own crew, the street with no change and no marketing, its croissants
+  // own crew, its district's street and no marketing, its croissants
   // bought.
   const away = awayFromCounter(state, places, dream)
   // The products in season (#261): those out of it are never bought, and

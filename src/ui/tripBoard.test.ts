@@ -170,6 +170,26 @@ describe('tripBoard', () => {
     expect(row(monday, 'fournil').closesTruck).toBe(false)
   })
 
+  it("closes the first truck for a trip on a day a choice closes only the Vieux-Montréal's (#262)", () => {
+    const closed = (district?: 'vieuxMontreal'): GameState => ({
+      ...TUESDAY,
+      events: {
+        ...TUESDAY.events,
+        modifiers: [
+          {
+            event: 'tournage',
+            change: { kind: 'closed' },
+            fromDay: TUESDAY.day,
+            lastDay: TUESDAY.day,
+            ...(district === undefined ? {} : { district }),
+          },
+        ],
+      },
+    })
+    expect(row(closed('vieuxMontreal'), 'fournil').closesTruck).toBe(true)
+    expect(row(closed(), 'fournil').closesTruck).toBe(false)
+  })
+
   it("marks the day's trip", () => {
     const board = tripBoard(goTo(TUESDAY, 'meunerie'))
     expect(board.trip).toBe('meunerie')

@@ -1,4 +1,5 @@
 import type {
+  DistrictId,
   EventEffect,
   FinancingContent,
   FoodTruckContent,
@@ -124,8 +125,8 @@ export function untimed(effect: TimedEventEffect): EventEffect {
  * - `headline`: the headline is queued.
  * - `walkIns`, `appeal`, `willingness`, `unavailable` and `closed`: a change
  *   to the street, kept in `events.modifiers` after the others, with
- *   `event`, in effect from `state.day` for `days` days, that day included.
- *   No draw.
+ *   `event`, in effect from `state.day` for `days` days, that day included,
+ *   for the truck in `district`, the first truck when none (#262). No draw.
  * - `contract`: a contract with the grocer of `grocers`, signed that day at
  *   their price times `priceFactor` (see `startContract`); nothing while one
  *   of theirs runs or the most at once do.
@@ -146,6 +147,7 @@ export function applyEffect(
   grocers: GrocerContent = GROCERS,
   financing: FinancingContent = FINANCING,
   places: PlacesContent = PLACES,
+  district?: DistrictId,
 ): GameState {
   const { day } = state
   switch (effect.kind) {
@@ -280,6 +282,7 @@ export function applyEffect(
         change,
         fromDay: day,
         lastDay: day + days - 1,
+        ...(district === undefined ? {} : { district }),
       }
       return {
         ...state,
@@ -317,7 +320,7 @@ export function applyEffect(
 /**
  * The start of business day `state.day`, before the restock: first the
  * delayed effects due that day, in order (see `applyEffect`, with
- * `grocers` and `places`), then each receivable due, collected in full in its own
+ * `grocers`, `places` and the district each was made for), then each receivable due, collected in full in its own
  * « Encaissement » entry, Dr 1000 Encaisse / Cr 1100 Comptes clients.
  * Returns a new state; never mutates `state`.
  */
@@ -336,7 +339,7 @@ export function startOfDay(
       ...state,
       events: { ...state.events, delayed: delayed.slice(due) },
     }
-    for (const { event, effect } of delayed.slice(0, due)) {
+    for (const { event, effect, district } of delayed.slice(0, due)) {
       started = applyEffect(
         started,
         effect,
@@ -345,6 +348,7 @@ export function startOfDay(
         grocers,
         undefined,
         places,
+        district,
       )
     }
   }

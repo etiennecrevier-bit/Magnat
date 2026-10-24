@@ -3,6 +3,7 @@ import dreamJson from '../content/dream.json'
 import {
   loadDreamContent,
   type DifficultyId,
+  type DistrictId,
   type DreamContent,
   type WinterStorage,
 } from '../content/schema.ts'
@@ -42,7 +43,7 @@ import { defaultProfile } from './profile.ts'
 import { seedRng } from './rng.ts'
 import { STAFF, askingWage } from './staff.ts'
 import { FIRST_TRUCK } from './trucks.ts'
-import type { Day, GameState, Truck } from './types.ts'
+import type { Day, GameState, StreetModifier, Truck } from './types.ts'
 
 // The districts (#260): each its crowd and its seasons, Vieux-Montréal's
 // yearly permit and its rival, and « Remiser pour l'hiver ».
@@ -615,5 +616,64 @@ describe('a year with a truck in Vieux-Montréal', () => {
     }
     expect(withMemo(state, SALES_MEMO, 8)).toHaveLength(1)
     expect(truckEntries(state, FIRST_TRUCK, 8).length).toBeGreaterThan(1)
+  })
+})
+
+describe("a card's changes to the street, by district (#262)", () => {
+  // Day 2, a Wednesday in May: Kevin opens the Vieux-Montréal, the owner
+  // the Plateau.
+  const end = (closes: readonly GameState[]) => closes.at(-1) as GameState
+  const morning = end(played(twoTrucks('moyen'), 2))
+  /** The close of `morning` with `change` in effect that day, for `district`. */
+  const closeWith = (
+    change: StreetModifier['change'],
+    district?: DistrictId,
+  ): GameState => {
+    const modifier: StreetModifier = {
+      event: 'b',
+      change,
+      fromDay: morning.day,
+      lastDay: morning.day,
+      ...(district === undefined ? {} : { district }),
+    }
+    return end(
+      played(
+        { ...morning, events: { ...morning.events, modifiers: [modifier] } },
+        1,
+      ),
+    )
+  }
+  const plain = end(played(morning, 1))
+  const second = (state: GameState) =>
+    state.trucks?.find(({ id }) => id === SECOND)?.lastDay
+  const first = (state: GameState) => state.lastDay
+
+  it('opens both trucks on the plain day', () => {
+    expect(first(plain)?.visits.length).toBeGreaterThan(0)
+    expect(second(plain)?.visits.length).toBeGreaterThan(0)
+  })
+
+  it("closes the Vieux-Montréal's truck alone for its district", () => {
+    const closed = closeWith({ kind: 'closed' }, SECOND)
+    expect(second(closed)?.open).toBe(false)
+    expect(second(closed)?.visits).toEqual([])
+    expect(first(closed)?.visits).toEqual(first(plain)?.visits)
+    expect(first(closed)?.revenue).toBe(first(plain)?.revenue)
+  })
+
+  it("brings more customers to the Vieux-Montréal's truck alone for its district", () => {
+    const crowded = closeWith({ kind: 'walkIns', factor: 2 }, SECOND)
+    expect(second(crowded)?.visits.length).toBeGreaterThan(
+      second(plain)?.visits.length ?? 0,
+    )
+    expect(first(crowded)?.visits).toEqual(first(plain)?.visits)
+  })
+
+  it('changes the first truck alone for no district, or the Plateau', () => {
+    for (const district of [undefined, 'plateau'] as const) {
+      const closed = closeWith({ kind: 'closed' }, district)
+      expect(first(closed)?.visits, district).toEqual([])
+      expect(second(closed)?.visits, district).toEqual(second(plain)?.visits)
+    }
   })
 })

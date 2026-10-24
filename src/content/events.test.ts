@@ -88,6 +88,25 @@ const APPOINTMENT_CARDS = ['rendezVousCaisse']
 /** Coralie's story of issue #236, which only the tutorial brings, on its day 4. */
 const TUTORIAL_CARDS = ['tutoStory']
 
+/**
+ * The Vieux-Montréal's cards of issue #262, which come only while a truck
+ * works there.
+ */
+const DISTRICT_CARDS = [
+  'guideTouristique',
+  'festivalJazz',
+  'tournage',
+  'glacesBonsecours',
+]
+
+/** The characters of issue #262, whose portraits #263 brings. */
+const DISTRICT_CHARACTERS = [
+  'gastonBrisebois',
+  'marieSoleilLajoie',
+  'brunoCastonguay',
+  'ritaEsposito',
+]
+
 /** The portraits of issue #95, one per character but the silhouette. */
 const PORTRAITS = [
   'gillesLacasse',
@@ -334,7 +353,7 @@ describe('events.json', () => {
     expect(essai?.weight).toBe(0)
   })
 
-  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, the six of #156, the two of #159, the three of #160, the one of #164, then the one of #236, in order', () => {
+  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, the six of #156, the two of #159, the three of #160, the one of #164, the one of #236, then those of #262, in order', () => {
     expect(content.events.map(({ id }) => id)).toEqual([
       'essai',
       ...CARDS,
@@ -345,6 +364,7 @@ describe('events.json', () => {
       ...NOTICE_CARDS,
       ...APPOINTMENT_CARDS,
       ...TUTORIAL_CARDS,
+      ...DISTRICT_CARDS,
     ])
   })
 
@@ -355,11 +375,14 @@ describe('events.json', () => {
     }
   })
 
-  it('dates only « Le 1er juillet », on June 30', () => {
+  it('dates only « Le 1er juillet », on June 30, and the Festival de jazz, on June 26', () => {
     const dated = content.events.flatMap(({ id, conditions }) =>
       conditions?.date === undefined ? [] : [[id, conditions.date]],
     )
-    expect(dated).toEqual([['premierJuillet', { month: 6, dayOfMonth: 30 }]])
+    expect(dated).toEqual([
+      ['premierJuillet', { month: 6, dayOfMonth: 30 }],
+      ['festivalJazz', { month: 6, dayOfMonth: 26 }],
+    ])
   })
 
   it('may draw every card but essai and those of #159, #160, #164 and #236, which the engine brings, unless it only comes as a follow-up', () => {
@@ -522,12 +545,17 @@ describe('events.json', () => {
     expect(typed).toEqual([])
   })
 
-  it('names the characters by the ids of their portraits in issue #95 and #159, or of #137 and #156', () => {
+  it('names the characters by the ids of their portraits in issue #95 and #159, or of #137, #156 and #262', () => {
     const characters = new Set(
       content.events.slice(1).map(({ character }) => character.id),
     )
     expect([...characters].sort()).toEqual(
-      [...PORTRAITS, ...FINANCING_PORTRAITS, ...WITHOUT_PORTRAITS].sort(),
+      [
+        ...PORTRAITS,
+        ...FINANCING_PORTRAITS,
+        ...WITHOUT_PORTRAITS,
+        ...DISTRICT_CHARACTERS,
+      ].sort(),
     )
   })
 

@@ -12,7 +12,8 @@ import {
   tripTime,
   type TripRefusal,
 } from '../engine/places.ts'
-import { streetOn } from '../engine/street.ts'
+import { modifiersAt, streetOn } from '../engine/street.ts'
+import { FIRST_DISTRICT } from '../engine/trucks.ts'
 import type { GameState } from '../engine/types.ts'
 import { formatDayAndMonth } from './formatGameDate.ts'
 import type { StatusLine } from './productFacts.ts'
@@ -130,7 +131,10 @@ function opensToday(game: GameState): boolean {
   const { weekday } = toCalendar(started.day)
   return (
     started.decisions.daysOpen.includes(weekday) &&
-    !streetOn(started.events.modifiers, started.day).closed
+    !streetOn(
+      modifiersAt(started.events.modifiers, FIRST_DISTRICT),
+      started.day,
+    ).closed
   )
 }
 

@@ -22,7 +22,8 @@ import {
 } from './events.ts'
 import { next } from './rng.ts'
 import { serialize } from './save.ts'
-import type { GameState } from './types.ts'
+import { newTruck } from './trucks.ts'
+import type { GameState, StreetModifier, TruckDecisions } from './types.ts'
 
 // Drawing the morning's event card, and playing the player's choice.
 
@@ -64,6 +65,29 @@ function card(id: string, extra: Record<string, unknown> = {}) {
       },
     ],
     ...extra,
+  }
+}
+
+/** The Vieux-Montréal's truck, the second one (#260). */
+const SECOND = 'vieuxMontreal'
+
+/**
+ * `state` with the Vieux-Montréal's truck too, run as the first one, but as
+ * `own` changes it (#262).
+ */
+function withSecond(
+  state: GameState,
+  own: Partial<TruckDecisions> = {},
+): GameState {
+  const { prices, restock, daysOpen } = state.decisions
+  const first = { prices, restock, daysOpen }
+  return {
+    ...state,
+    trucks: [newTruck(state.seed, { id: SECOND, district: SECOND }, 0)],
+    decisions: {
+      ...state.decisions,
+      trucks: { [SECOND]: { ...first, ...own } },
+    },
   }
 }
 
@@ -565,6 +589,90 @@ describe('drawEvent', () => {
       expect(draws(queued(3, 'walkIns'), opens)).toBe('a')
     })
 
+    it('district: a truck works there, stored or not (#262)', () => {
+      const at = (district: string) =>
+        content([card('a', { conditions: { district } })])
+      expect(draws(MORNING, at('plateau'))).toBe('a')
+      expect(draws(MORNING, at(SECOND))).toBeNull()
+      expect(draws(withSecond(MORNING), at(SECOND))).toBe('a')
+      expect(draws(withSecond(MORNING), at('plateau'))).toBe('a')
+      const stored = withSecond(MORNING, {
+        storage: { from: { month: 1, day: 1 }, to: { month: 12, day: 31 } },
+      })
+      expect(draws(stored, at(SECOND))).toBe('a')
+    })
+
+    it("openTomorrow with a district: that district's truck, its days open, its storage and its own changes to the street, made or queued (#262)", () => {
+      const first = content([card('a', { conditions: { openTomorrow: true } })])
+      const second = content([
+        card('a', { conditions: { openTomorrow: true, district: SECOND } }),
+      ])
+      const closesSecond = content([
+        card('a', { conditions: { openTomorrow: false, district: SECOND } }),
+      ])
+      // Day 2, a Wednesday: both trucks open Thursday, day 3, May 4.
+      expect(toCalendar(3)).toMatchObject({ month: 5, weekday: 4 })
+      const both = (
+        own: Partial<TruckDecisions> = {},
+        events: Partial<GameState['events']> = {},
+      ) =>
+        on(2, {
+          ...withSecond(MORNING, own),
+          events: { ...MORNING.events, ...events },
+        })
+      expect(draws(both(), first)).toBe('a')
+      expect(draws(both(), second)).toBe('a')
+      expect(draws(both(), closesSecond)).toBeNull()
+
+      // Its own days open and its storage, not the first truck's.
+      const noThursday = both({ daysOpen: [1, 2, 3, 5, 6, 7] })
+      expect(draws(noThursday, second)).toBeNull()
+      expect(draws(noThursday, closesSecond)).toBe('a')
+      expect(draws(noThursday, first)).toBe('a')
+      const inMay = both({
+        storage: { from: { month: 5, day: 1 }, to: { month: 5, day: 31 } },
+      })
+      expect(draws(inMay, second)).toBeNull()
+      expect(draws(inMay, first)).toBe('a')
+
+      // A change made for one truck's district closes that truck only; one
+      // made for none, or for the Plateau, closes the first truck.
+      const made = (district?: 'plateau' | typeof SECOND) => {
+        const modifier: StreetModifier = {
+          event: 'b',
+          change: { kind: 'closed' },
+          fromDay: 2,
+          lastDay: 3,
+          ...(district === undefined ? {} : { district }),
+        }
+        return both({}, { modifiers: [modifier] })
+      }
+      expect(draws(made(SECOND), second)).toBeNull()
+      expect(draws(made(SECOND), first)).toBe('a')
+      expect(draws(made(), second)).toBe('a')
+      expect(draws(made(), first)).toBeNull()
+      expect(draws(made('plateau'), first)).toBeNull()
+      expect(draws(made('plateau'), second)).toBe('a')
+      const queued = (district?: typeof SECOND) =>
+        both(
+          {},
+          {
+            delayed: [
+              {
+                day: 3,
+                event: 'b',
+                effect: { kind: 'closed', days: 1 },
+                ...(district === undefined ? {} : { district }),
+              },
+            ],
+          },
+        )
+      expect(draws(queued(SECOND), second)).toBeNull()
+      expect(draws(queued(SECOND), first)).toBe('a')
+      expect(draws(queued(), second)).toBe('a')
+      expect(draws(queued(), first)).toBeNull()
+    })
+
     it('cashAboveCents and cashBelowCents: Encaisse that morning', () => {
       const cash = balance(MORNING.journal, '1000', { toDay: 1 })
       const at = (conditions: Record<string, number>) =>
@@ -759,6 +867,98 @@ describe('resolveEvent', () => {
     ])
     expect(chosen.rngState).toBe(waiting.rngState)
     expect(chosen.journal).toBe(waiting.journal)
+  })
+
+  it("keeps a district card's changes to the street, made now or queued, for its district's truck, and those of a card with none for the first truck (#262)", () => {
+    const streetCard = (id: string, conditions: Record<string, unknown>) =>
+      card(id, {
+        conditions,
+        choices: [
+          {
+            id: 'oui',
+            label: 'Oui',
+            tags: ['Fermé'],
+            outcomes: [
+              {
+                chance: 1,
+                result: 'Fait.',
+                effects: [
+                  { kind: 'walkIns', factor: 0.5, days: 3 },
+                  { kind: 'closed', days: 2, inDays: 2 },
+                  { kind: 'energy', amount: -5, inDays: 2 },
+                ],
+              },
+            ],
+          },
+          {
+            id: 'non',
+            label: 'Non',
+            tags: ['Rien ne change'],
+            outcomes: [{ chance: 1, result: 'Rien.', effects: [] }],
+          },
+        ],
+      })
+    const cards = content([
+      streetCard('vieux', { district: SECOND }),
+      streetCard('plateau', { fromDay: 1000 }),
+    ])
+    const morning = withSecond(MORNING)
+    const chosen = (event: string) =>
+      resolveEvent(
+        {
+          ...morning,
+          events: { ...morning.events, pending: { event, followUp: false } },
+        },
+        'oui',
+        cards,
+      )
+
+    const vieux = chosen('vieux')
+    expect(vieux.events.modifiers).toEqual([
+      {
+        event: 'vieux',
+        change: { kind: 'walkIns', factor: 0.5 },
+        fromDay: 1,
+        lastDay: 3,
+        district: SECOND,
+      },
+    ])
+    expect(vieux.events.delayed).toEqual([
+      {
+        day: 3,
+        event: 'vieux',
+        effect: { kind: 'closed', days: 2 },
+        district: SECOND,
+      },
+      {
+        day: 3,
+        event: 'vieux',
+        effect: { kind: 'energy', amount: -5 },
+        district: SECOND,
+      },
+    ])
+    // On day 3, the queued closing starts for the same truck.
+    const later = play(play(play(vieux, NO_EVENTS), NO_EVENTS), NO_EVENTS)
+    expect(later.day).toBe(4)
+    expect(later.events.modifiers).toEqual([
+      {
+        event: 'vieux',
+        change: { kind: 'closed' },
+        fromDay: 3,
+        lastDay: 4,
+        district: SECOND,
+      },
+    ])
+
+    const plateau = chosen('plateau')
+    expect(plateau.events.modifiers[0]).not.toHaveProperty('district')
+    expect(plateau.events.delayed[0]).not.toHaveProperty('district')
+    expect(
+      play(
+        play(play(plateau, NO_EVENTS), NO_EVENTS),
+        NO_EVENTS,
+      ).events.modifiers.some((modifier) => 'district' in modifier),
+    ).toBe(false)
   })
 
   it('draws the outcome by its chance, then applies its effects now or later', () => {
