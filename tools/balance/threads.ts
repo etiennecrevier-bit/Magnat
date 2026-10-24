@@ -5,6 +5,14 @@ import type {
   EventPolicy,
   FinancingPolicy,
 } from '../sim/simulate.ts'
+import type {
+  DefinitionsJob,
+  DefinitionsRun,
+  LeversJob,
+  LeversRun,
+  SensitivityJob,
+  SensitivityRun,
+} from './audit.ts'
 import type { BakeryJob, BakeryRun } from './bakery.ts'
 import type { DefiRun } from './defis.ts'
 import type { GrowthJob, GrowthRun } from './growth.ts'
@@ -55,8 +63,11 @@ export interface DefisJob {
   readonly search: number
 }
 
+/** What one audit worker plays (auditWorker.ts, #298). */
+export type AuditJob = DefinitionsJob | LeversJob | SensitivityJob
+
 export type WorkerJob =
-  GridJob | OwnersJob | DefisJob | BakeryJob | GrowthJob | HiringJob
+  GridJob | OwnersJob | DefisJob | BakeryJob | GrowthJob | HiringJob | AuditJob
 
 /** What a worker posts back for `Job`. */
 export type JobRun<Job extends WorkerJob> = Job extends DefisJob
@@ -69,7 +80,13 @@ export type JobRun<Job extends WorkerJob> = Job extends DefisJob
         ? GrowthRun
         : Job extends HiringJob
           ? HiringRun
-          : DifficultyRun
+          : Job extends DefinitionsJob
+            ? DefinitionsRun
+            : Job extends LeversJob
+              ? LeversRun
+              : Job extends SensitivityJob
+                ? SensitivityRun
+                : DifficultyRun
 
 /**
  * What `job` plays, for its error messages: a difficulty, a Défi, or a
@@ -85,6 +102,12 @@ export function jobLabel(job: WorkerJob): string {
       return `${job.difficulty} contracts ${job.contracts}`
     case 'hiring':
       return `${job.difficulty} hiring ${job.role}`
+    case 'audit-definitions':
+      return `${job.difficulty} definitions`
+    case 'audit-levers':
+      return `${job.difficulty} levers from ${job.situation}`
+    case 'audit-sensitivity':
+      return `${job.label} × ${job.factor}`
     default:
       return job.difficulty
   }
@@ -120,15 +143,19 @@ export interface Playing<Run = DifficultyRun> {
 }
 
 const WORKER = new URL('./worker.ts', import.meta.url)
+const AUDIT_WORKER = new URL('./auditWorker.ts', import.meta.url)
 
 /**
- * Starts a worker thread that plays `job`. The thread loads the TypeScript
- * through tsx, as `npm run balance` does, whatever the parent runs under.
+ * Starts a worker thread that plays `job`: auditWorker.ts for an audit
+ * job, which must load the content itself (#298), worker.ts for the
+ * others. The thread loads the TypeScript through tsx, as `npm run
+ * balance` does, whatever the parent runs under.
  */
 export function playInWorker<Job extends WorkerJob>(
   job: Job,
 ): Playing<JobRun<Job>> {
-  const worker = new Worker(WORKER, {
+  const file = job.kind.startsWith('audit-') ? AUDIT_WORKER : WORKER
+  const worker = new Worker(file, {
     workerData: job,
     execArgv: ['--import', 'tsx'],
   })

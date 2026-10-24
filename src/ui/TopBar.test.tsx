@@ -388,14 +388,14 @@ describe('TopBar', () => {
       weeklyPay: 100_000,
       day: 61,
       date: 'Samedi 1er juillet, an 1',
-      cash: `2${S}438${S}$`,
+      cash: `2${S}612${S}$`,
     },
     {
       difficulty: 'moyen',
       weeklyPay: 150_000,
       day: 123,
       date: 'Vendredi 1er septembre, an 1',
-      cash: `884${S}$`,
+      cash: `1${S}230${S}$`,
     },
   ] as const)(
     'warns that cash is low at $difficulty on the morning of $date, which ends below zero',

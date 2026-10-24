@@ -157,7 +157,7 @@ Plays the bakery, le fournil (#157), against twins that buy their croissants, an
 | `--months` | 24                        | Months each game plays from May 1st, year 1, a whole number from 1; only here, with `--growth` and with `--hiring`.                  |
 | `--out`    | `docs/balance/phase-4.md` | File the report goes to, relative to the current folder (the repo root under `npm run`).                            |
 
-**Running it.** One worker thread a difficulty and truck, three at once at most; the default run takes about a minute. The same options always write the same file. After any change to the engine or the content that moves the numbers, run it again with the default options and commit the report.
+**Running it.** One worker thread a difficulty and truck, three at once at most; the default run takes about a minute. The same options always write the same file, and the report names them, the sensitivity section the command that played it. After any change to the engine or the content that moves the numbers, run it again with the default options and commit the report.
 
 The code is in `balance/`: `bakery.ts` plays the games and their twins, and works out the break-even, and `bakeryReport.ts` writes the report, both without I/O. `simulate()`, `startGame()` and `playMorning()` in `sim/simulate.ts` take the difficulties every day of a game plays with, so a run can try other prices than the shipped ones.
 
@@ -203,9 +203,34 @@ Plays each candidate in each role (#255) and writes `docs/balance/phase-5.md`, k
 | `--months` | 12                        | Months each game plays from May 1st, year 1, a whole number from 1.                                                                              |
 | `--out`    | `docs/balance/phase-5.md` | File the report goes to, relative to the current folder (the repo root under `npm run`).                                                         |
 
-**Running it.** One worker thread a role, three at once; the default run takes under half a minute. The same options always write the same file. After any change to the engine or the content that moves the employees, run it again and commit the report.
+**Running it.** One worker thread a role, three at once; the default run takes under half a minute. The same options always write the same file, and the report names them, the sensitivity section the command that played it. After any change to the engine or the content that moves the employees, run it again and commit the report.
 
 The code is in `balance/`: `hiring.ts` plays the games and their twins and reads the targets, and `hiringReport.ts` writes the report, both without I/O.
+
+## Auditing the whole game
+
+```sh
+npm run balance -- --audit
+```
+
+Plays #298's audit of a fair chance of winning and writes `docs/balance/audit-2026-10.md`, keeping its hand-written part (the findings and the content changes). Four parts, each played by worker threads, three at once:
+
+- **Definitions**: at each difficulty, seeds 1 to `--games` of the sensible player (`sensible.ts`: the starting prices, $30 of marketing a day, open 6 days, the owner paid $700 a week, croissants for the last open day's demand × 1.15, a grocer only when it is the careful chain's next with its reserve, and none before month 2 but one, renewals and the financing accepted, every card of the content coming up, the others answered at random or by their first choice), of #166's best strategy, naive and careful players with Mme Prudhomme's letters added, and of a careless player that goes bankrupt; they check definitions 1, 2, 3, 5 and 7.
+- **Lever check** (`levers.ts`): every decision a player makes (each price, each restock, the days open, the owner's pay, marketing, the contracts, the bakery and its oven, closing it, where croissants come from and how many are baked, each role's hire, a wage, firing, the trips, the financing, winter storage, each rung of « Le rêve » and who works the second truck) swept from situations reached by play (a calm October, a busy summer of year 2, the naive player's cash crunch, and for a rung the first morning the best strategy can afford it), each setting played on to the end of month `--months` from the same morning, a shared setup first (a bakery for the baker, a contract for the delivery person, the rungs before a rung). `decisionCoverage()` names the levers of each kind of decision the engine knows, or why none sweeps it. A situation whose morning comes after the last month is not played. Settings are compared on the seeds where each of them was played, and a lever never played fails definition 4 rather than passing it unseen. Definitions 4 and 6.
+- **Sensitivity** (`tunables.ts`): every numeric leaf of the balance files, moved on its own by −20 % and +20 % (whole numbers rounded half up, or moved by one; probabilities kept within 0 and 1; a share of a whole moved with the others rescaled; a value the game's loaders refuse reported, not played), the sensible player and the best strategy playing it, at its own difficulty for a leaf of one. `auditWorker.ts` makes the change in the content files before the engine loads them, so a worker plays one change; the shipped content plays first as the baseline. The report ranks a tornado per difficulty and lists the cliffs and the dead. Every other content file is named with why it is left out; a file the audit does not know stops the run.
+
+| Option             | Default                          | Meaning                                                                                                                                                                  |
+| ------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--audit`          |                                  | Plays the audit. `--percentiles`, `--defis`, `--bakery`, `--growth`, `--hiring`, `--years`, `--search`, `--events`, `--contracts`, `--financing` and `--json` do not go with it. |
+| `--games`          | 30                               | Seeds each part plays at each difficulty, 1 to this, a whole number from 1.                                                                                             |
+| `--months`         | 24                               | Months each game plays from May 1st, year 1, a whole number from 1.                                                                                                      |
+| `--no-sensitivity` |                                  | Skips the sensitivity and keeps the report's own section: the quick loop while tuning.                                                                                   |
+| `--tunables`       |                                  | Moves only the tunables whose label holds this text, for a quick check; not with `--no-sensitivity`.                                                                     |
+| `--out`            | `docs/balance/audit-2026-10.md`  | File the report goes to, relative to the current folder (the repo root under `npm run`).                                                                                 |
+
+**Running it.** `--no-sensitivity` takes about half an hour; the sensitivity adds a few hours, about 1,700 worker jobs. The same options always write the same file, and the report names them, the sensitivity section the command that played it. `fairness.survival.test.ts` and `fairness.trap.test.ts`, part of `npm test`, guard definitions 1, 2, 5 and 7 on a few seeds with the counts the last full run pinned: after a change that moves them, run the audit again and update both.
+
+The code is in `balance/`: `sensible.ts`, `levers.ts` and `audit.ts` play the games and read the definitions, `tunables.ts` lists and moves the tunables, and `auditReport.ts` writes the report, all without I/O.
 
 ## The 10-year invariant test
 

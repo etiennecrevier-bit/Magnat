@@ -11,7 +11,7 @@
           "sensitivity": 8
         },
         "chocolat": {
-          "referencePriceCents": 250,
+          "referencePriceCents": 280,
           "purchaseProbability": 0.6,
           "sensitivity": 8
         },

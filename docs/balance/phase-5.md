@@ -17,7 +17,7 @@ Each table shows, by candidate, the median over the seeds: the gap, the days abs
 | Target | Measured | Met |
 | --- | --- | --- |
 | No candidate is the best hire in every role, ties counted | none is | yes |
-| The weakest candidate beats no hire in at least one role | Olivier Girard, whose best role is « Boulanger », at $506.93 | yes |
+| The weakest candidate beats no hire in at least one role | Olivier Girard, whose best role is « Boulanger », at $1,074.64 | yes |
 
 The best hire of each role, by median gap, ties all:
 
@@ -27,26 +27,26 @@ The best hire of each role, by median gap, ties all:
 
 ## « Au camion »
 
-Twins: median Encaisse $18,547.63.
+Twins: median Encaisse $19,660.39.
 
 | Candidate | Strength | Weakness | Asks an hour | Gap | Days absent | Botched | Thrown away | Bankrupt |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Olivier Girard | Accueil | Fiabilité | $16.00 | -$19,166.66 | 19 | 388.5 | 0 | 0 (0) |
-| Thierry Nguyen | Minutie | Fiabilité | $16.00 | -$20,854.52 | 19 | 86 | 0 | 0 (0) |
-| Nadia Benali | Rapidité | Fiabilité | $16.00 | -$20,967.02 | 19.5 | 393.5 | 0 | 0 (0) |
-| Amélie Gagnon | Accueil | Rapidité | $18.00 | -$22,287.04 | 6.5 | 362.5 | 0 | 0 (0) |
-| Chloé Morin | Accueil | Minutie | $18.00 | -$22,501.31 | 6.5 | 751.5 | 0 | 0 (0) |
-| Kevin Bouchard | Rapidité | Minutie | $18.00 | -$24,487.49 | 7 | 753.5 | 0 | 3 (0) |
-| Isabelle Fortin | Minutie | Rapidité | $18.00 | -$24,503.22 | 5.5 | 51.5 | 0 | 3 (0) |
-| Sophie Roy | Fiabilité | Rapidité | $19.00 | -$26,333.49 | 0 | 362 | 0 | 7 (0) |
-| Jonathan Côté | Fiabilité | Minutie | $19.00 | -$26,340.20 | 0 | 755.5 | 0 | 7 (0) |
-| Samuel Lavoie | Rapidité | Accueil | $18.00 | -$27,077.32 | 5 | 395.5 | 0 | 10 (0) |
-| Mathieu Pelletier | Minutie | Accueil | $18.00 | -$27,094.93 | 6 | 77.5 | 0 | 9 (0) |
-| Maude Leblanc | Fiabilité | Accueil | $19.00 | -$28,852.40 | 0 | 388.5 | 0 | 27 (0) |
+| Olivier Girard | Accueil | Fiabilité | $16.00 | -$18,835.76 | 19 | 392 | 0 | 0 (0) |
+| Nadia Benali | Rapidité | Fiabilité | $16.00 | -$20,502.70 | 19.5 | 401 | 0 | 0 (0) |
+| Thierry Nguyen | Minutie | Fiabilité | $16.00 | -$20,602.51 | 19 | 91.5 | 0 | 0 (0) |
+| Amélie Gagnon | Accueil | Rapidité | $18.00 | -$21,966.48 | 6.5 | 366.5 | 0 | 0 (0) |
+| Chloé Morin | Accueil | Minutie | $18.00 | -$22,243.30 | 6.5 | 757 | 0 | 0 (0) |
+| Kevin Bouchard | Rapidité | Minutie | $18.00 | -$24,055.61 | 7 | 761.5 | 0 | 0 (0) |
+| Isabelle Fortin | Minutie | Rapidité | $18.00 | -$24,064.56 | 5.5 | 55 | 0 | 0 (0) |
+| Jonathan Côté | Fiabilité | Minutie | $19.00 | -$25,907.58 | 0 | 764 | 0 | 3 (0) |
+| Sophie Roy | Fiabilité | Rapidité | $19.00 | -$25,946.50 | 0 | 365.5 | 0 | 2 (0) |
+| Samuel Lavoie | Rapidité | Accueil | $18.00 | -$26,634.92 | 5 | 405 | 0 | 7 (0) |
+| Mathieu Pelletier | Minutie | Accueil | $18.00 | -$26,672.90 | 6 | 83 | 0 | 5 (0) |
+| Maude Leblanc | Fiabilité | Accueil | $19.00 | -$28,526.99 | 0 | 394 | 0 | 22 (0) |
 
 ## « Livreur »
 
-Twins: median Encaisse $92,810.13.
+Twins: median Encaisse $93,922.89.
 
 | Candidate | Strength | Weakness | Asks an hour | Gap | Days absent | Botched | Thrown away | Bankrupt |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -65,22 +65,22 @@ Twins: median Encaisse $92,810.13.
 
 ## « Boulanger »
 
-Twins: median Encaisse $81,237.60.
+Twins: median Encaisse $81,487.39.
 
 | Candidate | Strength | Weakness | Asks an hour | Gap | Days absent | Botched | Thrown away | Bankrupt |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Mathieu Pelletier | Minutie | Accueil | $22.50 | $2,480.38 | 7 | 0 | 1227 | 0 (0) |
-| Isabelle Fortin | Minutie | Rapidité | $22.50 | $2,077.26 | 6.5 | 0 | 1226 | 0 (0) |
-| Sophie Roy | Fiabilité | Rapidité | $23.50 | $1,892.79 | 0 | 0 | 2496 | 0 (0) |
-| Maude Leblanc | Fiabilité | Accueil | $23.50 | $1,892.79 | 0 | 0 | 2496 | 0 (0) |
-| Samuel Lavoie | Rapidité | Accueil | $22.50 | $1,806.59 | 6 | 0 | 2454 | 0 (0) |
-| Thierry Nguyen | Minutie | Fiabilité | $20.50 | $1,687.63 | 22 | 0 | 1174 | 0 (0) |
-| Amélie Gagnon | Accueil | Rapidité | $22.50 | $1,568.57 | 7 | 0 | 2452 | 0 (0) |
-| Jonathan Côté | Fiabilité | Minutie | $23.50 | $977.59 | 0 | 0 | 4160 | 0 (0) |
-| Nadia Benali | Rapidité | Fiabilité | $20.50 | $963.39 | 22 | 0 | 2358 | 0 (0) |
-| Chloé Morin | Accueil | Minutie | $22.50 | $657.27 | 8 | 0 | 4080 | 0 (0) |
-| Kevin Bouchard | Rapidité | Minutie | $22.50 | $580.60 | 8 | 0 | 4076.5 | 0 (0) |
-| Olivier Girard | Accueil | Fiabilité | $20.50 | $506.93 | 23 | 0 | 2340 | 0 (0) |
+| Mathieu Pelletier | Minutie | Accueil | $22.50 | $2,759.59 | 7 | 0 | 1227 | 0 (0) |
+| Isabelle Fortin | Minutie | Rapidité | $22.50 | $2,643.96 | 6.5 | 0 | 1226 | 0 (0) |
+| Sophie Roy | Fiabilité | Rapidité | $23.50 | $2,536.01 | 0 | 0 | 2496 | 0 (0) |
+| Maude Leblanc | Fiabilité | Accueil | $23.50 | $2,536.01 | 0 | 0 | 2496 | 0 (0) |
+| Amélie Gagnon | Accueil | Rapidité | $22.50 | $2,330.35 | 7 | 0 | 2452 | 0 (0) |
+| Samuel Lavoie | Rapidité | Accueil | $22.50 | $2,242.75 | 6 | 0 | 2454 | 0 (0) |
+| Thierry Nguyen | Minutie | Fiabilité | $20.50 | $2,106.95 | 22 | 0 | 1174 | 0 (0) |
+| Jonathan Côté | Fiabilité | Minutie | $23.50 | $1,620.81 | 0 | 0 | 4160 | 0 (0) |
+| Nadia Benali | Rapidité | Fiabilité | $20.50 | $1,491.55 | 22 | 0 | 2358 | 0 (0) |
+| Chloé Morin | Accueil | Minutie | $22.50 | $1,393.59 | 8 | 0 | 4080 | 0 (0) |
+| Kevin Bouchard | Rapidité | Minutie | $22.50 | $1,223.59 | 8 | 0 | 4076.5 | 0 (0) |
+| Olivier Girard | Accueil | Fiabilité | $20.50 | $1,074.64 | 23 | 0 | 2340 | 0 (0) |
 
 <!-- Written by hand: npm run balance keeps everything below this line. -->
 

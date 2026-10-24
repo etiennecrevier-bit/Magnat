@@ -14,6 +14,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { parseBalanceArgs, USAGE } from './cli.ts'
 import { DEFIS_END, DEFIS_START } from './defisReport.ts'
 import { GROWTH_END, GROWTH_START } from './growthReport.ts'
+import { SENSITIVITY_END, SENSITIVITY_START } from './auditReport.ts'
 import { HAND_WRITTEN } from './report.ts'
 
 // `npm run balance`: its options, and the real command run in a child
@@ -290,17 +291,85 @@ describe('parseBalanceArgs', () => {
     )
   })
 
-  it('rejects --months without --bakery, --growth or --hiring, and a month count below 1', () => {
+  it('defaults --audit to 30 games of 24 months with the sensitivity, written to audit-2026-10.md', () => {
+    expect(parseBalanceArgs(['--audit'])).toEqual({
+      mode: 'audit',
+      games: 30,
+      months: 24,
+      sensitivity: true,
+      tunables: null,
+      out: join(root, 'docs', 'balance', 'audit-2026-10.md'),
+    })
+  })
+
+  it('reads every option of --audit, the out file from the current folder', () => {
+    expect(
+      parseBalanceArgs([
+        '--audit',
+        '--games',
+        '2',
+        '--months',
+        '3',
+        '--tunables',
+        'Cents',
+        '--out',
+        'tmp/a.md',
+      ]),
+    ).toEqual({
+      mode: 'audit',
+      games: 2,
+      months: 3,
+      sensitivity: true,
+      tunables: 'Cents',
+      out: resolve('tmp/a.md'),
+    })
+    expect(parseBalanceArgs(['--audit', '--no-sensitivity'])).toMatchObject({
+      sensitivity: false,
+      tunables: null,
+    })
+  })
+
+  it.each([
+    ['--percentiles'],
+    ['--defis'],
+    ['--bakery'],
+    ['--growth'],
+    ['--hiring'],
+    ['--years', '1'],
+    ['--search', '1'],
+    ['--events', 'random'],
+    ['--contracts', 'all'],
+    ['--financing', 'accept'],
+    ['--json', 'tmp/f.json'],
+  ])('rejects %s with --audit', (option, ...value) => {
+    expect(() => parseBalanceArgs(['--audit', option, ...value])).toThrow(
+      `${option} does not go with --audit`,
+    )
+  })
+
+  it('rejects --no-sensitivity and --tunables without --audit, and --tunables with --no-sensitivity', () => {
+    expect(() => parseBalanceArgs(['--no-sensitivity'])).toThrow(
+      '--no-sensitivity goes only with --audit',
+    )
+    expect(() => parseBalanceArgs(['--growth', '--tunables', 'x'])).toThrow(
+      '--tunables goes only with --audit',
+    )
+    expect(() =>
+      parseBalanceArgs(['--audit', '--no-sensitivity', '--tunables', 'x']),
+    ).toThrow('--tunables does not go with --no-sensitivity')
+  })
+
+  it('rejects --months without --bakery, --growth, --hiring or --audit, and a month count below 1', () => {
     for (const argv of [
       ['--months', '3'],
       ['--percentiles', '--months', '3'],
       ['--defis', '--months', '3'],
     ]) {
       expect(() => parseBalanceArgs(argv)).toThrow(
-        '--months goes only with --bakery, --growth or --hiring',
+        '--months goes only with --bakery, --growth, --hiring or --audit',
       )
     }
-    for (const mode of ['--bakery', '--growth', '--hiring']) {
+    for (const mode of ['--bakery', '--growth', '--hiring', '--audit']) {
       expect(() => parseBalanceArgs([mode, '--months', '0'])).toThrow(
         '--months must be a whole number from 1: 0',
       )
@@ -593,6 +662,60 @@ describe('npm run balance', () => {
     )
     expect(report.endsWith(`\n\n${tail.join('\n')}`)).toBe(true)
     expect(report).not.toContain('Old.')
+  }, 120_000)
+
+  it('with --audit, writes the same report from the same seeds, and keeps its sensitivity without it', () => {
+    const report = join(out, 'audit', 'audit.md')
+    mkdirSync(join(out, 'audit'))
+    const play = (...extra: string[]) => {
+      const { status, stdout, stderr } = balance(
+        '--audit',
+        '--games',
+        '1',
+        '--months',
+        '2',
+        '--out',
+        report,
+        ...extra,
+      )
+      expect(stderr).toBe('')
+      expect(status).toBe(0)
+      expect(stdout.trimEnd().split('\n').at(-1)).toMatch(
+        new RegExp(
+          `^Wrote ${report.replaceAll('\\', '\\\\')} in \\d+\\.\\d s$`,
+        ),
+      )
+      return readFileSync(report, 'utf8')
+    }
+    const filtered =
+      'npm run balance -- --audit --games 1 --months 2 --tunables "difficulties.moyen.startingCashCents"'
+    const first = play('--tunables', 'difficulties.moyen.startingCashCents')
+    expect(first).toContain(`Written by \`${filtered}\``)
+    expect(first).toContain(`Played by \`${filtered}\``)
+    expect(first).toContain(
+      '| difficulty.json | difficulties.moyen.startingCashCents |',
+    )
+    // Two months end before October 1 and June 1 of year 2: those
+    // situations are not played, and no seed compares their settings.
+    expect(first).toContain('| marketing | calm | 0 |')
+    expect(first).toContain('| marketing | summer | 0 |')
+    expect(first).toContain('| marketing | crunch | 1 |')
+    expect(first.split('\n')).toContain(HAND_WRITTEN)
+    writeFileSync(report, first.replace('## Findings', '## Findings\n\nMine.'))
+    const second = play('--tunables', 'difficulties.moyen.startingCashCents')
+    expect(second).toBe(first.replace('## Findings', '## Findings\n\nMine.'))
+    const kept = play('--no-sensitivity')
+    expect(kept).toContain(
+      'Written by `npm run balance -- --audit --games 1 --months 2 --no-sensitivity`',
+    )
+    expect(kept).toContain('this run kept it from an earlier one')
+    expect(kept).toContain(`Played by \`${filtered}\``)
+    const header = (text: string) => text.split('\n').slice(2)
+    expect(
+      header(kept).filter((line) => !line.startsWith('Written by')),
+    ).toEqual(header(second).filter((line) => !line.startsWith('Written by')))
+    expect(kept.split(SENSITIVITY_START)).toHaveLength(2)
+    expect(kept.split(SENSITIVITY_END)).toHaveLength(2)
   }, 120_000)
 
   it('with --growth, writes the same section from the same seeds, keeping the rest of the report', () => {

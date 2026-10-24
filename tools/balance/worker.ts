@@ -30,5 +30,9 @@ function play(job: WorkerJob): unknown {
       return runGrowth(job)
     case 'hiring':
       return runHiring(job)
+    case 'audit-definitions':
+    case 'audit-levers':
+    case 'audit-sensitivity':
+      throw new RangeError('The audit plays in auditWorker.ts')
   }
 }
