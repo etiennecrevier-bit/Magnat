@@ -1,9 +1,12 @@
 import { z } from 'zod'
 import assetsJson from './assets.json'
 import {
+  dateRangeSchema,
+  districtIdSchema,
   grocerIdSchema,
   placeIdSchema,
   productIdSchema,
+  type DistrictId,
   type GrocerId,
   type PlaceId,
 } from './schema.ts'
@@ -39,6 +42,15 @@ export const colorNameSchema = z.enum([
   'heatSky',
   'lamplight',
   'white',
+  // Vieux-Montréal's (#264): the second truck, its stone, granite and
+  // cobbles, the snow, the rival's cart and its tarp.
+  'teal',
+  'stone',
+  'granite',
+  'cobble',
+  'snow',
+  'glacePink',
+  'tarp',
 ])
 
 export type ColorName = z.infer<typeof colorNameSchema>
@@ -70,6 +82,8 @@ export const pieceKindSchema = z.enum([
   'banner',
   'outOfOrderCard',
   'lettering',
+  'storedSign',
+  'barriers',
 ])
 
 export type PieceKind = z.infer<typeof pieceKindSchema>
@@ -192,12 +206,16 @@ export type Light = z.output<typeof lightSchema>
 
 /**
  * When a piece shows: only on days the truck is open, or only on closed
- * ones; while a change to the street that an event card made is in effect,
- * unless one of the card's choices in `except` made it; while a product
- * cannot be sold; or on open days while a product can be sold.
+ * ones; on those the owner serves at it; on those it is stored for the
+ * winter (#260); while a change to the street that an event card made is in
+ * effect, unless one of the card's choices in `except` made it; while a
+ * product cannot be sold; on open days while a product can be sold; in the
+ * street's summer or its winter (#264); while a product is in its season or
+ * out of it (#261); or in the months the district's rival works, or the
+ * others.
  */
 const showsSchema = z.union([
-  z.enum(['open', 'closed']),
+  z.enum(['open', 'closed', 'owner', 'stored']),
   z.strictObject({
     /** The id of the event card, in events.json. */
     event: z.string().min(1),
@@ -206,6 +224,10 @@ const showsSchema = z.union([
   }),
   z.strictObject({ unavailable: productIdSchema }),
   z.strictObject({ sells: productIdSchema }),
+  z.strictObject({ season: z.enum(['summer', 'winter']) }),
+  z.strictObject({ inSeason: productIdSchema }),
+  z.strictObject({ outOfSeason: productIdSchema }),
+  z.strictObject({ rival: z.boolean() }),
 ])
 
 export type Shows = z.output<typeof showsSchema>
@@ -217,7 +239,14 @@ const WRITTEN: readonly PieceKind[] = [
   'banner',
   'outOfOrderCard',
   'lettering',
+  'storedSign',
 ]
+
+/**
+ * What a stored truck's card writes for the month it comes back (#264):
+ * « De retour en {mois} ».
+ */
+export const MONTH_FIELD = '{mois}'
 
 const pieceSchema = z.strictObject({
   id: z.string().min(1),
@@ -734,6 +763,175 @@ function checkCity(
   }
 }
 
+/**
+ * How the street is framed in a window narrower than `narrow`, a phone's:
+ * `focus`, the part of the design that must show, is fitted between the top
+ * bar's `top` and the dock's `bottom`, standing on the dock. Wider windows
+ * show the whole design, on the window's bottom.
+ */
+const frameSchema = z.strictObject({
+  focus: z.strictObject({
+    x: z.number(),
+    y: z.number(),
+    width: size,
+    height: size,
+  }),
+  top: z.number().nonnegative(),
+  bottom: z.number().nonnegative(),
+  narrow: size,
+})
+
+/** The business name written on the truck's sign. */
+const signTextSchema = z.strictObject({
+  fontSize: size,
+  color: colorNameSchema,
+  /** Room left on each side of the name, which shrinks to fit. */
+  paddingX: z.number().nonnegative(),
+  /**
+   * What follows the name, after « · », on this street's truck: its
+   * corner of the district, such as « Vieux-Port ».
+   */
+  suffix: spotText.optional(),
+})
+
+/** A range of numbers, both ends included. */
+const rangeSchema = z
+  .strictObject({ min: z.number(), max: z.number() })
+  .refine(({ min, max }) => min <= max, {
+    message: 'the least is above the most',
+  })
+
+/** The district whose street is the manifest's own: the first truck's. */
+const FIRST_DISTRICT: DistrictId = 'plateau'
+
+/**
+ * The street of a district other than the Plateau (#264), which shows when
+ * the player looks at its truck: its own pieces and spots, drawn with the
+ * manifest's layers, palette and light, framed on a phone by its own
+ * `frame`, its business name followed by its `signText.suffix`.
+ */
+const districtStreetSchema = z.strictObject({
+  _note: z.string().optional(),
+  frame: frameSchema,
+  signText: signTextSchema,
+  /**
+   * How far right of the Plateau's this street's truck stands: the line,
+   * the avatar behind the counter, the spill on it and the tally move with
+   * it.
+   */
+  truckOffsetX: z.number(),
+  /**
+   * Where the employee at the truck stands on the sidewalk, their feet's x:
+   * between the truck and what stands right of it.
+   */
+  employeeX: z.number(),
+  /**
+   * The street's winter, both days included, over the year's end: its
+   * pieces with `{ "season": "winter" }` show then, the others with
+   * `{ "season": "summer" }` the rest of the year, and its snow falls.
+   */
+  winter: dateRangeSchema,
+  /**
+   * The falling snow in winter: `count` flakes over the part of the street
+   * on screen, each `radius` round at `opacity`, falling `fall` and
+   * swaying `drift` each way once every `driftMs`, per real second.
+   */
+  snow: z.strictObject({
+    count: z.int().positive(),
+    radius: rangeSchema,
+    opacity: rangeSchema,
+    fall: rangeSchema,
+    drift: z.number().nonnegative(),
+    driftMs: size,
+    color: colorNameSchema,
+  }),
+  /**
+   * The calèche that crosses the street from right to left in summer: its
+   * image, drawn `width` × `height` with its top at `y`, at `speed` per
+   * real second, once every `everyMs`, give or take `jitterMs`.
+   */
+  caleche: z.strictObject({
+    image: z
+      .string()
+      .regex(IMAGE_PATH, 'expected a file path under src/world/art/'),
+    y: z.number(),
+    width: size,
+    height: size,
+    speed: size,
+    everyMs: size,
+    jitterMs: z.number().nonnegative(),
+  }),
+  pieces: z.array(pieceSchema),
+  spots: z.array(spotSchema),
+})
+
+export type DistrictStreet = z.output<typeof districtStreetSchema>
+
+/**
+ * Checks a street's pieces and spots against the manifest's `layers`, at
+ * `path` in it: unique ids, known layers, none in the shadow layer, the
+ * written pieces with a text and the others without, the croissants'
+ * fill, a spot's piece among the pieces, and one sign and one rack.
+ */
+function checkStreet(
+  street: {
+    readonly pieces: readonly Piece[]
+    readonly spots: readonly Spot[]
+  },
+  layers: ReadonlySet<string>,
+  shadowLayer: string,
+  path: readonly (string | number)[],
+  ctx: z.RefinementCtx,
+): void {
+  const issue = (at: readonly (string | number)[], message: string) =>
+    ctx.addIssue({ code: 'custom', message, path: [...path, ...at] })
+  const ids = new Set<string>()
+  street.pieces.forEach((piece, index) => {
+    const at = (key: string) => ['pieces', index, key]
+    if (ids.has(piece.id)) issue(at('id'), `duplicate piece id: ${piece.id}`)
+    ids.add(piece.id)
+    if (!layers.has(piece.layer)) {
+      issue(at('layer'), `unknown layer: ${piece.layer}`)
+    }
+    if (piece.layer === shadowLayer) {
+      issue(at('layer'), 'the shadow layer holds no piece')
+    }
+    if (piece.fill !== undefined && piece.kind !== 'croissants') {
+      issue(at('fill'), 'only the croissants fill with stock')
+    }
+    if (piece.kind === 'croissants' && piece.fill === undefined) {
+      issue(at('fill'), 'the croissants need a fill')
+    }
+    const written = WRITTEN.includes(piece.kind)
+    if (written && piece.text === undefined) {
+      issue(at('text'), `${piece.kind} pieces need a text`)
+    }
+    if (!written && piece.text !== undefined) {
+      issue(at('text'), `${piece.kind} pieces write no text`)
+    }
+  })
+
+  const spotIds = new Set<string>()
+  street.spots.forEach((spot, index) => {
+    if (spotIds.has(spot.id)) {
+      issue(['spots', index, 'id'], `duplicate spot id: ${spot.id}`)
+    }
+    spotIds.add(spot.id)
+    if (spot.piece !== undefined && !ids.has(spot.piece)) {
+      issue(['spots', index, 'piece'], `unknown piece: ${spot.piece}`)
+    }
+  })
+
+  // The world writes the business name on the one sign and fills the one
+  // croissant rack.
+  for (const kind of ['truckSign', 'croissants'] as const) {
+    const count = street.pieces.filter((p) => p.kind === kind).length
+    if (count !== 1) {
+      issue(['pieces'], `expected exactly one ${kind} piece, found ${count}`)
+    }
+  }
+}
+
 export const assetManifestSchema = z
   .strictObject({
     _note: z.string().optional(),
@@ -742,23 +940,8 @@ export const assetManifestSchema = z
       width: z.int().positive(),
       height: z.int().positive(),
     }),
-    /**
-     * How the street is framed in a window narrower than `narrow`, a
-     * phone's: `focus`, the part of the design that must show, is fitted
-     * between the top bar's `top` and the dock's `bottom`, standing on the
-     * dock. Wider windows show the whole design, on the window's bottom.
-     */
-    frame: z.strictObject({
-      focus: z.strictObject({
-        x: z.number(),
-        y: z.number(),
-        width: size,
-        height: size,
-      }),
-      top: z.number().nonnegative(),
-      bottom: z.number().nonnegative(),
-      narrow: size,
-    }),
+    /** How the Plateau's street is framed on a phone (see `frameSchema`). */
+    frame: frameSchema,
     /**
      * How many pixels an SVG image is drawn at per logical pixel of its own
      * size, once when it loads: enough to stay sharp with the window's scale
@@ -774,13 +957,8 @@ export const assetManifestSchema = z
       periodMs: size,
       rise: z.number().nonnegative(),
     }),
-    /** The business name written on the truck's sign. */
-    signText: z.strictObject({
-      fontSize: size,
-      color: colorNameSchema,
-      /** Room left on each side of the name, which shrinks to fit. */
-      paddingX: z.number().nonnegative(),
-    }),
+    /** The business name written on the Plateau's truck's sign. */
+    signText: signTextSchema,
     /** How the placeholders are lit, and the textures over the world. */
     light: lightSchema,
     /** The customers who fan themselves, as in a heat wave. */
@@ -795,11 +973,14 @@ export const assetManifestSchema = z
       swing: z.number().nonnegative(),
       color: colorNameSchema,
     }),
-    /** Layer ids, back to front. */
+    /** Layer ids, back to front, which every street draws its pieces in. */
     layers: z.array(z.string().min(1)).min(1),
+    /** The Plateau's street. */
     pieces: z.array(pieceSchema),
     /** The things in the street the player clicks, later ones on top. */
     spots: z.array(spotSchema),
+    /** The street of each district other than the Plateau (#264). */
+    districtStreets: z.partialRecord(districtIdSchema, districtStreetSchema),
     /**
      * The note that the street can be clicked, shown in the player's first
      * game for its first `days` days, centred on `x` with its foot at `y`
@@ -846,95 +1027,60 @@ export const assetManifestSchema = z
       })
     }
 
-    const ids = new Set<string>()
-    manifest.pieces.forEach((piece, index) => {
-      if (ids.has(piece.id)) {
+    checkStreet(manifest, layers, shadowLayer, [], ctx)
+    for (const district of districtIdSchema.options) {
+      const street = manifest.districtStreets[district]
+      if (district === FIRST_DISTRICT) {
+        if (street !== undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            message: "the Plateau's street is the manifest's own",
+            path: ['districtStreets', district],
+          })
+        }
+        continue
+      }
+      if (street === undefined) {
         ctx.addIssue({
           code: 'custom',
-          message: `duplicate piece id: ${piece.id}`,
-          path: ['pieces', index, 'id'],
+          message: `${district} has no street`,
+          path: ['districtStreets'],
         })
+        continue
       }
-      ids.add(piece.id)
-      if (!layers.has(piece.layer)) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `unknown layer: ${piece.layer}`,
-          path: ['pieces', index, 'layer'],
-        })
-      }
-      if (piece.layer === shadowLayer) {
-        ctx.addIssue({
-          code: 'custom',
-          message: 'the shadow layer holds no piece',
-          path: ['pieces', index, 'layer'],
-        })
-      }
-      if (piece.fill !== undefined && piece.kind !== 'croissants') {
-        ctx.addIssue({
-          code: 'custom',
-          message: 'only the croissants fill with stock',
-          path: ['pieces', index, 'fill'],
-        })
-      }
-      if (piece.kind === 'croissants' && piece.fill === undefined) {
-        ctx.addIssue({
-          code: 'custom',
-          message: 'the croissants need a fill',
-          path: ['pieces', index, 'fill'],
-        })
-      }
-      const written = WRITTEN.includes(piece.kind)
-      if (written && piece.text === undefined) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `${piece.kind} pieces need a text`,
-          path: ['pieces', index, 'text'],
-        })
-      }
-      if (!written && piece.text !== undefined) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `${piece.kind} pieces write no text`,
-          path: ['pieces', index, 'text'],
-        })
-      }
-    })
-
-    const spotIds = new Set<string>()
-    manifest.spots.forEach((spot, index) => {
-      if (spotIds.has(spot.id)) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `duplicate spot id: ${spot.id}`,
-          path: ['spots', index, 'id'],
-        })
-      }
-      spotIds.add(spot.id)
-      if (spot.piece !== undefined && !ids.has(spot.piece)) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `unknown piece: ${spot.piece}`,
-          path: ['spots', index, 'piece'],
-        })
-      }
-    })
-
-    // The world writes the business name on the one sign and fills the one
-    // croissant rack.
-    for (const kind of ['truckSign', 'croissants'] as const) {
-      const count = manifest.pieces.filter((p) => p.kind === kind).length
-      if (count !== 1) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `expected exactly one ${kind} piece, found ${count}`,
-          path: ['pieces'],
-        })
-      }
+      checkStreet(
+        street,
+        layers,
+        shadowLayer,
+        ['districtStreets', district],
+        ctx,
+      )
     }
   })
 
 export type AssetManifest = z.output<typeof assetManifestSchema>
+
+/** The street of `district`, other than the Plateau; null for the Plateau. */
+export function districtStreetOf(
+  manifest: Pick<AssetManifest, 'districtStreets'>,
+  district: DistrictId,
+): DistrictStreet | null {
+  return manifest.districtStreets[district] ?? null
+}
+
+/**
+ * `manifest` drawing the street of `district`: its pieces, spots, frame and
+ * sign in place of the Plateau's. The Plateau's is `manifest` itself.
+ */
+export function streetManifest(
+  manifest: AssetManifest,
+  district: DistrictId,
+): AssetManifest {
+  const street = districtStreetOf(manifest, district)
+  if (street === null) return manifest
+  const { pieces, spots, frame, signText } = street
+  return { ...manifest, pieces, spots, frame, signText }
+}
 
 export type Palette = AssetManifest['palette']
 

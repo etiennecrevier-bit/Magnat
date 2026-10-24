@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="60" height="241" viewBox="290 424 60 241">
+<defs>
+<filter id="ve-soft2" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2"></feGaussianBlur></filter>
+</defs>
+<ellipse cx="320" cy="654" rx="24" ry="5" fill="#34404f" opacity="0.35" filter="url(#ve-soft2)"></ellipse>
+<rect x="316.0" y="470.0" width="8.0" height="178.0" fill="#2f3337"></rect>
+<rect x="316.0" y="470.0" width="3.0" height="178.0" fill="#5d656b"></rect>
+<polygon points="302.0,440.0 338.0,440.0 332.0,474.0 308.0,474.0" fill="#2f3337"></polygon>
+<rect x="310.0" y="446.0" width="20.0" height="24.0" fill="#f2e7c9"></rect>
+<polygon points="298.0,440.0 342.0,440.0 320.0,424.0" fill="#2f3337"></polygon>
+</svg>

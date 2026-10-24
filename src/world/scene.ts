@@ -1,5 +1,10 @@
 import { Container, Graphics, Sprite, Text, type Texture } from 'pixi.js'
-import type { AssetManifest, Piece, Shows } from '../content/assets.ts'
+import {
+  MONTH_FIELD,
+  type AssetManifest,
+  type Piece,
+  type Shows,
+} from '../content/assets.ts'
 import type { VisualEffects } from '../ui/settings.ts'
 import { TITLE_FONT, TITLE_FONT_FAMILY } from './fonts.ts'
 import { createMaterials } from './materials.ts'
@@ -14,7 +19,12 @@ import {
   type MakeFilters,
   type Shadows,
 } from './shadows.ts'
-import { rackFill, showsOn, type TruckView } from './truckView.ts'
+import {
+  rackFill,
+  showsOn,
+  type ShowsView,
+  type TruckView,
+} from './truckView.ts'
 
 /** The street, built once from the manifest and redrawn from the game. */
 export interface Scene {
@@ -28,10 +38,10 @@ export interface Scene {
   /** The shadows on the ground, where the people add theirs. */
   readonly shadows: Shadows
   /**
-   * Shows `view`: open or closed, the croissants, the business name and
-   * the changes to the street in effect.
+   * Shows `view`: open, closed or stored, the croissants, the business name
+   * and the changes to the street in effect, in its season.
    */
-  update: (view: TruckView) => void
+  update: (view: SceneView) => void
   /** Moves the steam on by `deltaMs` milliseconds. */
   animate: (deltaMs: number) => void
   /** Softens the shadows' edge with the full visual effects only. */
@@ -39,6 +49,10 @@ export interface Scene {
   /** Takes the street down, with its textures and filters. */
   destroy: () => void
 }
+
+/** What the scene shows of the truck's day. */
+export type SceneView = ShowsView &
+  Pick<TruckView, 'croissants' | 'businessName' | 'reopens'>
 
 /** How wide `text` is drawn. Pixi measures it in the browser only. */
 export type MeasureWidth = (text: Text) => number
@@ -82,6 +96,8 @@ export function buildScene(
   const steam: Container[] = []
   let rack: { piece: Piece; art: Container; mask: Graphics } | undefined
   let sign: { piece: Piece; text: Text } | undefined
+  // The stored truck's cards, each line written with its month.
+  const months: { text: Text; template: string }[] = []
 
   for (const piece of manifest.pieces) {
     const node = new Container({ label: piece.id, x: piece.x, y: piece.y })
@@ -118,7 +134,15 @@ export function buildScene(
       )
       sign = { piece, text }
     }
+    if (piece.kind === 'storedSign') {
+      for (const line of art.getChildrenByLabel('line')) {
+        if (line instanceof Text && line.text.includes(MONTH_FIELD)) {
+          months.push({ text: line, template: line.text })
+        }
+      }
+    }
   }
+  const { suffix } = manifest.signText
 
   const { periodMs, rise } = manifest.steamPuff
   let steamPhase = 0
@@ -142,9 +166,16 @@ export function buildScene(
           .fill('white')
         rack.art.visible = fill > 0
       }
-      if (sign !== undefined && sign.text.text !== view.businessName) {
+      for (const { text, template } of months) {
+        text.text = template.replace(MONTH_FIELD, monthName(view.reopens))
+      }
+      const name =
+        suffix === undefined
+          ? view.businessName
+          : `${view.businessName} · ${suffix}`
+      if (sign !== undefined && sign.text.text !== name) {
         const { text, piece } = sign
-        text.text = view.businessName
+        text.text = name
         text.scale.set(1)
         const room = piece.width - 2 * manifest.signText.paddingX
         const width = measureWidth(text)
@@ -168,6 +199,19 @@ export function buildScene(
     },
   }
 }
+
+/**
+ * The month `month` (1 for January) in French, « mai »; none without one.
+ */
+export function monthName(month: number | null): string {
+  if (month === null) return ''
+  return MONTH_FORMAT.format(Date.UTC(2001, month - 1, 1))
+}
+
+const MONTH_FORMAT = new Intl.DateTimeFormat('fr-CA', {
+  month: 'long',
+  timeZone: 'UTC',
+})
 
 /** The piece's image stretched to its size, or else its placeholder. */
 function drawPiece(

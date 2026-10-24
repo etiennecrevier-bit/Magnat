@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="56" viewBox="0 646 1440 56">
+<defs>
+<linearGradient id="ve-dropDown" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#34404f" stop-opacity="0.55"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0"></stop>
+</linearGradient>
+<pattern id="ve-granite" width="120" height="58" patternUnits="userSpaceOnUse">
+<path d="M0 57.5H120M60 0V58" stroke="#34404f" stroke-opacity="0.18" stroke-width="1.4"></path>
+</pattern>
+</defs>
+<rect x="0.0" y="646.0" width="1440.0" height="56.0" fill="#d6d0c6"></rect>
+<rect x="0.0" y="646.0" width="1440.0" height="56.0" fill="url(#ve-granite)"></rect>
+<rect x="0.0" y="646.0" width="1440.0" height="12.0" fill="url(#ve-dropDown)" opacity="0.55"></rect>
+</svg>

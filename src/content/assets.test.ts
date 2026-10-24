@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import assetsJson from './assets.json'
-import { colorNameSchema, loadAssetManifest, type Shows } from './assets.ts'
+import {
+  colorNameSchema,
+  districtStreetOf,
+  loadAssetManifest,
+  streetManifest,
+  type Shows,
+} from './assets.ts'
 import {
   loadEventContent,
   loadGrocerContent,
@@ -24,6 +30,19 @@ function piece(raw: ReturnType<typeof shipped>, id: string) {
   const found = raw.pieces.find((p) => p.id === id)
   if (found === undefined) throw new Error(`No piece ${id}`)
   return found
+}
+
+/** The manifest with every district's street's pieces after the Plateau's. */
+function everyStreet() {
+  const manifest = loadAssetManifest()
+  const streets = Object.values(manifest.districtStreets)
+  return {
+    ...manifest,
+    pieces: [
+      ...manifest.pieces,
+      ...streets.flatMap((street) => street?.pieces ?? []),
+    ],
+  }
 }
 
 describe('assets.json', () => {
@@ -193,7 +212,7 @@ describe('assets.json', () => {
   })
 
   it('names only event cards that exist', () => {
-    const { pieces, fans } = loadAssetManifest()
+    const { pieces, fans } = everyStreet()
     const cards = new Set(loadEventContent().events.map(({ id }) => id))
     const named = [...pieces.map((p) => p.shows), fans.shows].flatMap(
       (shows?: Shows) =>
@@ -206,7 +225,7 @@ describe('assets.json', () => {
   })
 
   it("names only the card's own choices in `except`", () => {
-    const { pieces, fans } = loadAssetManifest()
+    const { pieces, fans } = everyStreet()
     const { events } = loadEventContent()
     const except = [...pieces.map((p) => p.shows), fans.shows].flatMap(
       (shows?: Shows) =>
@@ -245,6 +264,14 @@ describe('assets.json', () => {
       { event: 'conesOrange', except: ['changerDeCoin'] },
       { unavailable: 'croissant' },
       { sells: 'cafe' },
+      'owner',
+      'stored',
+      { season: 'summer' },
+      { season: 'winter' },
+      { inSeason: 'limonade' },
+      { outOfSeason: 'limonade' },
+      { rival: true },
+      { rival: false },
     ]) {
       const raw = shipped()
       piece(raw, 'bunting').shows = shows
@@ -277,12 +304,166 @@ describe('assets.json', () => {
       [
         { id: 'menu', piece: 'chalkboard', shows: undefined },
         { id: 'stocks', piece: 'croissant-rack', shows: undefined },
-        { id: 'owner', piece: undefined, shows: 'open' },
+        { id: 'owner', piece: undefined, shows: 'owner' },
         { id: 'employee', piece: undefined, shows: undefined },
         { id: 'city', piece: 'far', shows: undefined },
       ],
     )
     expect(streetLegend).toMatchObject({ days: 3, text: 'Cliquez sur la rue' })
+  })
+})
+
+describe("Vieux-Montréal's street in assets.json (#264)", () => {
+  const manifest = loadAssetManifest()
+  const street = districtStreetOf(manifest, 'vieuxMontreal')
+  if (street === null) throw new Error('No street for Vieux-Montréal')
+  const byId = (id: string) => {
+    const found = street.pieces.find((p) => p.id === id)
+    if (found === undefined) throw new Error(`No piece ${id}`)
+    return found
+  }
+  const plateau = (id: string) => {
+    const found = manifest.pieces.find((p) => p.id === id)
+    if (found === undefined) throw new Error(`No Plateau piece ${id}`)
+    return found
+  }
+
+  it('is the street of every district but the Plateau, whose is the manifest', () => {
+    expect(Object.keys(manifest.districtStreets)).toEqual(['vieuxMontreal'])
+    expect(districtStreetOf(manifest, 'plateau')).toBeNull()
+    expect(streetManifest(manifest, 'plateau')).toBe(manifest)
+  })
+
+  it('swaps its pieces, spots, frame and sign in for the Plateau’s', () => {
+    const shown = streetManifest(manifest, 'vieuxMontreal')
+    expect(shown.pieces).toBe(street.pieces)
+    expect(shown.spots).toBe(street.spots)
+    expect(shown.frame).toBe(street.frame)
+    expect(shown.signText).toMatchObject({ suffix: 'Vieux-Port' })
+    expect(shown.layers).toBe(manifest.layers)
+    expect(shown.palette).toBe(manifest.palette)
+    expect(manifest.signText.suffix).toBeUndefined()
+  })
+
+  it('draws every piece in a layer the manifest lists, none in the shadows', () => {
+    for (const p of street.pieces) {
+      expect(manifest.layers, p.id).toContain(p.layer)
+      expect(p.layer, p.id).not.toBe(manifest.light.shadowLayer)
+    }
+  })
+
+  it('has its winter from December 1st to March 31st', () => {
+    expect(street.winter).toEqual({
+      from: { month: 12, day: 1 },
+      to: { month: 3, day: 31 },
+    })
+  })
+
+  it('comes in summer and winter art, each season a backdrop of each', () => {
+    const seasons = (season: 'summer' | 'winter') =>
+      street.pieces
+        .filter(
+          ({ shows }) =>
+            typeof shows === 'object' &&
+            'season' in shows &&
+            shows.season === season,
+        )
+        .map(({ id }) => id)
+    for (const id of ['sky', 'far', 'building-1', 'building-5', 'lantern']) {
+      expect(seasons('summer')).toContain(`${id}-summer`)
+      expect(seasons('winter')).toContain(`${id}-winter`)
+    }
+    expect(seasons('summer')).toEqual(
+      expect.arrayContaining(['cloud-1', 'cloud-2']),
+    )
+    expect(seasons('winter')).toEqual(
+      expect.arrayContaining(['road-snow', 'snowbanks', 'roof-snow']),
+    )
+  })
+
+  it('stands its truck 60 right of the Plateau’s, in teal, with the Plateau’s fittings', () => {
+    expect(street.truckOffsetX).toBe(60)
+    expect(byId('truck')).toMatchObject({ color: 'teal', x: 600, y: 450 })
+    for (const id of [
+      'espresso-machine',
+      'croissant-rack',
+      'croissants',
+      'counter',
+      'awning',
+      'awning-rolled',
+      'closed-sign',
+      'truck-sign',
+      'steam',
+    ]) {
+      expect(byId(id).x, id).toBe(plateau(id).x + 60)
+      expect(byId(id).y, id).toBe(plateau(id).y)
+    }
+    for (const id of ['espresso-machine', 'croissant-rack', 'awning']) {
+      expect(byId(id).image, id).toBe(plateau(id).image)
+    }
+  })
+
+  it('shows the shutter and its card while stored, the cart open in the rival’s months', () => {
+    expect(byId('shutter').shows).toBe('stored')
+    expect(byId('stored-sign')).toMatchObject({
+      kind: 'storedSign',
+      shows: 'stored',
+      text: "Fermé pour l'hiver · De retour en {mois}",
+    })
+    expect(byId('cart').shows).toEqual({ rival: true })
+    expect(byId('cart-tarp').shows).toEqual({ rival: false })
+    const order = street.pieces.map(({ id }) => id)
+    for (const id of ['awning', 'awning-rolled', 'closed-sign', 'counter']) {
+      expect(order.indexOf(id), id).toBeLessThan(order.indexOf('shutter'))
+    }
+    expect(order.indexOf('shutter')).toBeLessThan(order.indexOf('stored-sign'))
+  })
+
+  it('letters the truck by the products in season', () => {
+    expect(byId('lettering-limonade')).toMatchObject({
+      text: 'CAFÉ · CROISSANTS · LIMONADE',
+      shows: { inSeason: 'limonade' },
+    })
+    expect(byId('lettering')).toMatchObject({
+      text: 'CAFÉ · CROISSANTS',
+      shows: { outOfSeason: 'limonade' },
+    })
+    expect(byId('lemonade-jar').shows).toEqual({ sells: 'limonade' })
+    expect(byId('hot-chocolate-pot').shows).toEqual({ outOfSeason: 'limonade' })
+  })
+
+  it('puts up the new cards’ pieces: the festival’s banner, the shoot’s barriers', () => {
+    const { events } = loadEventContent()
+    const choices = (event: string) =>
+      events.find(({ id }) => id === event)?.choices.map(({ id }) => id)
+    const festival = { event: 'festivalJazz', except: ['rester'] }
+    expect(byId('festival-banner')).toMatchObject({
+      text: 'Festival de jazz',
+      shows: festival,
+    })
+    expect(byId('bunting').shows).toEqual(festival)
+    expect(choices('festivalJazz')).toContain('rester')
+    expect(byId('barriers-left').shows).toEqual({ event: 'tournage' })
+    expect(choices('tournage')).toBeDefined()
+  })
+
+  it('stands the employee between the truck and the cart', () => {
+    const truck = byId('truck')
+    const cart = byId('cart')
+    expect(street.employeeX).toBeGreaterThan(truck.x + truck.width)
+    expect(street.employeeX).toBeLessThan(cart.x)
+  })
+
+  it('frames the phone on its truck, 60 right of the Plateau’s', () => {
+    expect(street.frame.focus).toEqual({
+      ...manifest.frame.focus,
+      x: manifest.frame.focus.x + 60,
+    })
+  })
+
+  it('falls 170 flakes of snow, as the winter target, and crosses a calèche', () => {
+    expect(street.snow).toMatchObject({ count: 170, color: 'white' })
+    expect(street.caleche).toMatchObject({ image: 'vieux/caleche.svg' })
   })
 })
 
@@ -622,6 +803,95 @@ describe('loadAssetManifest', () => {
       /expected a file path under src\/world\/art\//,
     )
   }
+
+  for (const shows of [
+    { season: 'spring' },
+    { rival: 'yes' },
+    { inSeason: 'pizza' },
+    'stocked',
+  ]) {
+    rejects(
+      `a piece shown ${JSON.stringify(shows)}`,
+      (raw) => {
+        piece(raw, 'bunting').shows = shows
+      },
+      /shows/,
+    )
+  }
+
+  /** The shipped Vieux-Montréal street, to break. */
+  const vieux = (raw: ReturnType<typeof shipped>) =>
+    (
+      raw.districtStreets as {
+        vieuxMontreal: {
+          pieces: Record<string, unknown>[]
+          spots: Record<string, unknown>[]
+          winter: unknown
+        }
+      }
+    ).vieuxMontreal
+
+  rejects(
+    'a district without its street',
+    (raw) => {
+      raw.districtStreets = {}
+    },
+    /vieuxMontreal has no street/,
+  )
+  rejects(
+    'a street for the Plateau, whose is the manifest’s own',
+    (raw) => {
+      const streets = raw.districtStreets as Record<string, unknown>
+      streets.plateau = streets.vieuxMontreal
+    },
+    /the Plateau's street is the manifest's own/,
+  )
+  rejects(
+    'a district street with two pieces of one id',
+    (raw) => {
+      const { pieces } = vieux(raw)
+      pieces.push({ ...pieces[0] })
+    },
+    /duplicate piece id: sky-summer/,
+  )
+  rejects(
+    'a district street with a piece in an unknown layer',
+    (raw) => {
+      vieux(raw).pieces[0]!.layer = 'moon'
+    },
+    /unknown layer: moon/,
+  )
+  rejects(
+    'a district street whose spot follows a piece it lacks',
+    (raw) => {
+      vieux(raw).spots[1]!.piece = 'chalkboard'
+    },
+    /unknown piece: chalkboard/,
+  )
+  rejects(
+    'a stored sign without its text',
+    (raw) => {
+      const sign = vieux(raw).pieces.find((p) => p.id === 'stored-sign')
+      delete sign?.text
+    },
+    /storedSign pieces need a text/,
+  )
+  rejects(
+    'a district street with two signs',
+    (raw) => {
+      const { pieces } = vieux(raw)
+      const sign = pieces.find((p) => p.id === 'truck-sign')
+      pieces.push({ ...sign, id: 'truck-sign-2' })
+    },
+    /expected exactly one truckSign piece, found 2/,
+  )
+  rejects(
+    'a district street without its winter',
+    (raw) => {
+      delete (vieux(raw) as { winter?: unknown }).winter
+    },
+    /winter/,
+  )
 
   it('names the palette after the colour list', () => {
     expect(Object.keys(loadAssetManifest().palette).sort()).toEqual(

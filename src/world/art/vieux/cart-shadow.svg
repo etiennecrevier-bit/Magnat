@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="204" height="40" viewBox="1138 666 204 40">
+<defs>
+<filter id="ve-soft4" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4"></feGaussianBlur></filter>
+</defs>
+<ellipse cx="1240" cy="686" rx="90" ry="8" fill="#34404f" opacity="0.35" filter="url(#ve-soft4)"></ellipse>
+</svg>

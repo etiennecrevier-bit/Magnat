@@ -7,7 +7,7 @@ import {
   type Filter,
 } from 'pixi.js'
 import { describe, expect, it, vi } from 'vitest'
-import type { AssetManifest } from '../content/assets.ts'
+import { streetManifest, type AssetManifest } from '../content/assets.ts'
 import type { StreetChange } from '../content/schema.ts'
 import { createInitialState, tick } from '../engine/clock.ts'
 import type { StreetModifier } from '../engine/types.ts'
@@ -16,16 +16,25 @@ import { fitStreet } from './layout.ts'
 import { tonesOf } from './light.ts'
 import { ASSETS } from './manifest.ts'
 import { SKY_COLOR } from './mountWorld.ts'
-import { buildScene, type Scene } from './scene.ts'
+import { buildScene, monthName, type Scene } from './scene.ts'
 import type { MakeFilters, ShadowFilters } from './shadows.ts'
 import { truckView, type TruckView } from './truckView.ts'
 
 const OPEN: TruckView = {
+  truck: 'plateau',
+  district: 'plateau',
   open: true,
   croissants: 70,
   selling: { cafe: true, chocolat: true, croissant: true, limonade: false },
+  inSeason: { cafe: true, chocolat: true, croissant: true, limonade: false },
   businessName: "Le P'tit Camion",
   modifiers: [],
+  stored: false,
+  reopens: null,
+  ownerHere: true,
+  staff: 0,
+  rival: false,
+  season: 'summer',
 }
 const CLOSED: TruckView = { ...OPEN, open: false, croissants: 0 }
 
@@ -1028,5 +1037,264 @@ describe("the street's art", () => {
       expect(drawn.texture, id).toBe(texture)
     }
     expect(art(scene, 'triplex-4').label).toBe('placeholder')
+  })
+})
+
+/** Vieux-Montréal's street (#264), as the street draws it. */
+const VIEUX = streetManifest(ASSETS, 'vieuxMontreal')
+const VIEUX_STREET = ASSETS.districtStreets.vieuxMontreal!
+
+/** A summer day at Vieux-Montréal's truck, open, the rival at work. */
+const VIEUX_JULY: TruckView = {
+  ...OPEN,
+  truck: 'vieuxMontreal',
+  district: 'vieuxMontreal',
+  selling: { cafe: true, chocolat: true, croissant: true, limonade: true },
+  inSeason: { cafe: true, chocolat: true, croissant: true, limonade: true },
+  rival: true,
+}
+
+/** A winter day at Vieux-Montréal's truck, stored until May. */
+const VIEUX_FEBRUARY: TruckView = {
+  ...OPEN,
+  truck: 'vieuxMontreal',
+  district: 'vieuxMontreal',
+  open: false,
+  croissants: 0,
+  selling: { cafe: false, chocolat: false, croissant: false, limonade: false },
+  stored: true,
+  reopens: 5,
+  season: 'winter',
+}
+
+describe("Vieux-Montréal's street (#264)", () => {
+  const visible = (scene: Scene, id: string) => node(scene, id).visible
+
+  it('shows its summer art in summer and its winter art in winter', () => {
+    const scene = build(VIEUX)
+    scene.update(VIEUX_JULY)
+    for (const id of ['sky-summer', 'building-1-summer', 'cloud-1']) {
+      expect(visible(scene, id), id).toBe(true)
+    }
+    for (const id of ['sky-winter', 'building-1-winter', 'snowbanks']) {
+      expect(visible(scene, id), id).toBe(false)
+    }
+    scene.update(VIEUX_FEBRUARY)
+    for (const id of ['sky-summer', 'building-1-summer', 'cloud-1']) {
+      expect(visible(scene, id), id).toBe(false)
+    }
+    for (const id of ['sky-winter', 'building-1-winter', 'snowbanks']) {
+      expect(visible(scene, id), id).toBe(true)
+    }
+    // The ground both seasons share.
+    for (const view of [VIEUX_JULY, VIEUX_FEBRUARY]) {
+      scene.update(view)
+      expect(visible(scene, 'road')).toBe(true)
+      expect(visible(scene, 'truck')).toBe(true)
+    }
+  })
+
+  it('pulls the shutter down and hangs its card while stored, but not open', () => {
+    const scene = build(VIEUX)
+    scene.update(VIEUX_FEBRUARY)
+    expect(visible(scene, 'shutter')).toBe(true)
+    expect(visible(scene, 'stored-sign')).toBe(true)
+    scene.update(VIEUX_JULY)
+    expect(visible(scene, 'shutter')).toBe(false)
+    expect(visible(scene, 'stored-sign')).toBe(false)
+    expect(visible(scene, 'awning')).toBe(true)
+  })
+
+  it('writes the month the truck comes back on its card', () => {
+    const scene = build(VIEUX)
+    scene.update(VIEUX_FEBRUARY)
+    const lines = art(scene, 'stored-sign')
+      .getChildrenByLabel('line')
+      .map((line) => (line as Text).text)
+    expect(lines).toEqual(["Fermé pour l'hiver", 'De retour en mai'])
+    scene.update({ ...VIEUX_FEBRUARY, reopens: 4 })
+    expect(
+      (art(scene, 'stored-sign').getChildrenByLabel('line')[1] as Text).text,
+    ).toBe('De retour en avril')
+  })
+
+  it('names the months in French', () => {
+    expect([1, 5, 8, 12].map(monthName)).toEqual([
+      'janvier',
+      'mai',
+      'août',
+      'décembre',
+    ])
+    expect(monthName(null)).toBe('')
+  })
+
+  it('opens the cart in the rival’s months, and tarps it the others', () => {
+    const scene = build(VIEUX)
+    scene.update(VIEUX_JULY)
+    expect(visible(scene, 'cart')).toBe(true)
+    expect(visible(scene, 'cart-tarp')).toBe(false)
+    scene.update({ ...VIEUX_JULY, rival: false })
+    expect(visible(scene, 'cart')).toBe(false)
+    expect(visible(scene, 'cart-tarp')).toBe(true)
+    expect(visible(scene, 'cart-tarp-snow')).toBe(false)
+    scene.update(VIEUX_FEBRUARY)
+    expect(visible(scene, 'cart-tarp-snow')).toBe(true)
+  })
+
+  it('letters the truck by the products in season, the lemonade jar while it sells', () => {
+    const scene = build(VIEUX)
+    scene.update(VIEUX_JULY)
+    expect(visible(scene, 'lettering-limonade')).toBe(true)
+    expect(visible(scene, 'lettering')).toBe(false)
+    expect(visible(scene, 'lemonade-jar')).toBe(true)
+    expect(visible(scene, 'hot-chocolate-pot')).toBe(false)
+    const october = {
+      ...VIEUX_JULY,
+      selling: { ...VIEUX_JULY.selling, limonade: false },
+      inSeason: { ...VIEUX_JULY.inSeason, limonade: false },
+    }
+    scene.update(october)
+    expect(visible(scene, 'lettering-limonade')).toBe(false)
+    expect(visible(scene, 'lettering')).toBe(true)
+    expect(visible(scene, 'lemonade-jar')).toBe(false)
+    expect(visible(scene, 'hot-chocolate-pot')).toBe(true)
+  })
+
+  it("writes the player's name with « · Vieux-Port » on its sign, and the Plateau's alone", () => {
+    const nameOf = (scene: Scene) =>
+      (node(scene, 'truck-sign').getChildByLabel('name') as Text).text
+    const vieux = build(VIEUX)
+    vieux.update(VIEUX_JULY)
+    expect(nameOf(vieux)).toBe("Le P'tit Camion · Vieux-Port")
+    vieux.update({ ...VIEUX_JULY, businessName: 'Chez Mimi' })
+    expect(nameOf(vieux)).toBe('Chez Mimi · Vieux-Port')
+    const plateau = build(ASSETS)
+    plateau.update({ ...OPEN, businessName: 'Chez Mimi' })
+    expect(nameOf(plateau)).toBe('Chez Mimi')
+  })
+
+  it('hangs the jazz festival unless the player stayed put, and barriers for the shoot', () => {
+    const scene = build(VIEUX)
+    const festival = (choice: string) => ({
+      ...VIEUX_JULY,
+      modifiers: [
+        {
+          event: 'festivalJazz',
+          change: { kind: 'walkIns' as const, factor: 1.8 },
+          fromDay: 10,
+          lastDay: 19,
+          district: 'vieuxMontreal' as const,
+          choice,
+        },
+      ],
+    })
+    scene.update(festival('payer'))
+    expect(visible(scene, 'festival-banner')).toBe(true)
+    expect(visible(scene, 'bunting')).toBe(true)
+    scene.update(festival('rester'))
+    expect(visible(scene, 'festival-banner')).toBe(false)
+    scene.update({
+      ...VIEUX_JULY,
+      open: false,
+      modifiers: [
+        {
+          event: 'tournage',
+          change: { kind: 'closed' as const },
+          fromDay: 10,
+          lastDay: 12,
+          district: 'vieuxMontreal' as const,
+          choice: 'accepter',
+        },
+      ],
+    })
+    expect(visible(scene, 'barriers-left')).toBe(true)
+    expect(visible(scene, 'barriers-right')).toBe(true)
+    expect(shadowsOf(scene, 'barriers-left').length).toBeGreaterThan(0)
+    expect(shadowsOf(scene, 'barriers-left').every((s) => s.visible)).toBe(true)
+  })
+})
+
+describe("Vieux-Montréal's art (#264)", () => {
+  const ART_VIEUX = VIEUX.pieces.flatMap((piece) =>
+    piece.image === undefined ? [] : [{ piece, image: piece.image }],
+  )
+  const { width: designWidth } = ASSETS.designSize
+
+  it('finds a file for every image it names', () => {
+    expect(ART_VIEUX.length).toBeGreaterThan(40)
+    for (const { piece, image } of ART_VIEUX) {
+      expect(ART_URLS.has(image), `${piece.id}: ${image}`).toBe(true)
+    }
+    expect(ART_URLS.has(VIEUX_STREET.caleche.image)).toBe(true)
+  })
+
+  it("stands each piece at the target's place, at its own proportions", () => {
+    for (const { piece, image } of ART_VIEUX) {
+      const { view } = svgBox(SVGS[image]!)
+      if (image.endsWith('/sky.svg')) {
+        expect(view).toMatchObject({ x: 0, y: piece.y, width: designWidth })
+        continue
+      }
+      expect([piece.width, piece.height], piece.id).toEqual([
+        view.width,
+        view.height,
+      ])
+      // The Plateau's files serve the truck 60 to the right.
+      const dx = image.startsWith('truck/') ? VIEUX_STREET.truckOffsetX : 0
+      const copy = /-(left|right)(-\d)?(-summer|-winter)?$/.test(piece.id)
+      if (copy) expect(piece.y, piece.id).toBe(view.y)
+      else expect([piece.x, piece.y], piece.id).toEqual([view.x + dx, view.y])
+    }
+    const caleche = svgBox(SVGS[VIEUX_STREET.caleche.image]!)
+    expect([VIEUX_STREET.caleche.width, VIEUX_STREET.caleche.height]).toEqual([
+      caleche.view.width,
+      caleche.view.height,
+    ])
+    expect(VIEUX_STREET.caleche.y).toBe(caleche.view.y)
+  })
+
+  it.each([
+    [1440, 900],
+    [2560, 1080],
+    [390, 844],
+  ])('leaves no gap in a %i × %i window, summer or winter', (w, h) => {
+    const fit = fitStreet(w, h, VIEUX)
+    const shown = {
+      left: -fit.x / fit.scale,
+      right: (w - fit.x) / fit.scale,
+      top: -fit.y / fit.scale,
+      bottom: (h - fit.y) / fit.scale,
+    }
+    const across = (pieces: readonly { x: number; width: number }[]) => {
+      let reach = shown.left
+      for (const p of [...pieces].sort((a, b) => a.x - b.x)) {
+        if (p.x > reach) return false
+        reach = Math.max(reach, p.x + p.width)
+      }
+      return reach >= shown.right
+    }
+    for (const season of ['summer', 'winter']) {
+      const art = (name: string) =>
+        ART_VIEUX.filter(
+          ({ image, piece }) =>
+            image.includes(name) &&
+            (piece.shows === undefined ||
+              (typeof piece.shows === 'object' &&
+                'season' in piece.shows &&
+                piece.shows.season === season)),
+        ).map(({ piece }) => piece)
+      for (const row of [
+        'building',
+        'sidewalk.svg',
+        'curb',
+        'road.svg',
+        'sky',
+      ]) {
+        expect(across(art(row)), `${season} ${row}`).toBe(true)
+      }
+      expect(art('sky')[0]!.y).toBeLessThanOrEqual(shown.top)
+      const ground = Math.max(...art('road').map((p) => p.y + p.height))
+      expect(ground).toBeGreaterThanOrEqual(shown.bottom)
+    }
   })
 })

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="184" viewBox="0 716 1440 184">
+<defs>
+<linearGradient id="ve-dropDown" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#34404f" stop-opacity="0.55"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0"></stop>
+</linearGradient>
+<pattern id="ve-cobbles" width="34" height="16" patternUnits="userSpaceOnUse">
+<rect x="1" y="1" width="15" height="6" rx="3" fill="#7d766e"></rect><rect x="18" y="1" width="15" height="6" rx="3" fill="#6f6862"></rect>
+<rect x="-7" y="9" width="15" height="6" rx="3" fill="#6f6862"></rect><rect x="10" y="9" width="15" height="6" rx="3" fill="#837b72"></rect><rect x="27" y="9" width="15" height="6" rx="3" fill="#756e67"></rect>
+<rect x="2" y="1.5" width="10" height="1.6" rx="0.8" fill="#fff1cf" fill-opacity="0.25"></rect><rect x="11" y="9.5" width="10" height="1.6" rx="0.8" fill="#fff1cf" fill-opacity="0.22"></rect>
+</pattern>
+</defs>
+<rect x="0.0" y="716.0" width="1440.0" height="184.0" fill="#6a645d"></rect>
+<rect x="0.0" y="716.0" width="1440.0" height="184.0" fill="url(#ve-cobbles)"></rect>
+<rect x="0.0" y="716.0" width="1440.0" height="30.0" fill="url(#ve-dropDown)" opacity="0.5"></rect>
+</svg>

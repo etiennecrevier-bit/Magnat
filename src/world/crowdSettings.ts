@@ -1,4 +1,4 @@
-import type { AssetManifest } from '../content/assets.ts'
+import type { AssetManifest, DistrictStreet } from '../content/assets.ts'
 import type { AvatarFatigue } from '../content/avatarFatigue.ts'
 import type { GradientStop } from './noise.ts'
 import { ASSETS, AVATAR_FATIGUE } from './manifest.ts'
@@ -150,6 +150,31 @@ export interface CrowdSettings {
     readonly officeChance: number
     /** The chance a weekend customer comes with a child. */
     readonly familyChance: number
+    /**
+     * A tourist's look (#264), from `tourist()` in the reference's
+     * `vieux.py`: the chance of a sun hat and its colours, its band, and
+     * the chances they carry a camera or a map, and their colours.
+     */
+    readonly tourist: {
+      readonly hatChance: number
+      readonly hats: readonly string[]
+      readonly band: string
+      readonly cameraChance: number
+      readonly mapChance: number
+      readonly camera: string
+      readonly lens: string
+      readonly map: string
+      readonly mapFold: string
+    }
+    /**
+     * How everyone is bundled up in winter (#264), from `bundled()` in
+     * `vieux.py`: the tuques' colours, their pompom's and the scarf's.
+     */
+    readonly winter: {
+      readonly tuques: readonly string[]
+      readonly pompom: string
+      readonly scarf: string
+    }
   }
   /** How everyone's body takes the light, and the shadows at their feet. */
   readonly figure: FigureLight
@@ -316,6 +341,22 @@ export const CROWD: CrowdSettings = {
     trousers: '#3B3A44',
     officeChance: 0.35,
     familyChance: 0.3,
+    tourist: {
+      hatChance: 0.6,
+      hats: ['#F3E6C8', '#2B2622'],
+      band: '#B3261E',
+      cameraChance: 0.4,
+      mapChance: 0.3,
+      camera: '#2B2622',
+      lens: '#A7AEB3',
+      map: '#F3E6C8',
+      mapFold: '#C9B79A',
+    },
+    winter: {
+      tuques: ['#B3261E', '#2E7D4F', '#2F6FB0', '#D9A441'],
+      pompom: '#FFF7E8',
+      scarf: '#E8C547',
+    },
   },
   figure: {
     shade: { arm: 0.45, hand: 0.4, leg: 0.36 },
@@ -358,4 +399,28 @@ export const CROWD: CrowdSettings = {
       },
     },
   },
+}
+
+/**
+ * The crowd at the truck of `street`, a district's other than the
+ * Plateau's (#264): its truck stands `truckOffsetX` right of the
+ * Plateau's, and the line, the avatar behind the counter, the spill on it
+ * and the tally with it; the employee stands at its `employeeX`. The
+ * Plateau's crowd is `settings` itself.
+ */
+export function crowdFor(
+  settings: CrowdSettings,
+  street: Pick<DistrictStreet, 'truckOffsetX' | 'employeeX'> | null,
+): CrowdSettings {
+  if (street === null) return settings
+  const dx = street.truckOffsetX
+  const { spill } = settings.fatigue
+  return {
+    ...settings,
+    counterX: settings.counterX + dx,
+    avatar: { ...settings.avatar, x: settings.avatar.x + dx },
+    employee: { ...settings.employee, x: street.employeeX },
+    fatigue: { ...settings.fatigue, spill: { ...spill, x: spill.x + dx } },
+    tally: { ...settings.tally, x: settings.tally.x + dx },
+  }
 }

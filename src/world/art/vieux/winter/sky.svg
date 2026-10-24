@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="8" height="1800" viewBox="0 -2700 1440 3600" preserveAspectRatio="none">
+<defs>
+<linearGradient id="vh-skyWinter" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#b9c4cc"></stop><stop offset="0.6" stop-color="#d9dee1"></stop><stop offset="1" stop-color="#eef0ef"></stop>
+</linearGradient>
+</defs>
+<rect x="0" y="-2700" width="1440" height="2700" fill="#b9c4cc"></rect>
+<rect x="0.0" y="0.0" width="1440.0" height="900.0" fill="url(#vh-skyWinter)"></rect>
+</svg>
