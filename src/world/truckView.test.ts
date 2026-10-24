@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import type {
-  EventContent,
-  ProductId,
-  StreetChange,
+import dreamJson from '../content/dream.json'
+import {
+  loadDreamContent,
+  type CandidateId,
+  type DreamContent,
+  type EventContent,
+  type ProductId,
+  type StreetChange,
 } from '../content/schema.ts'
+import { BAKERY } from '../engine/bakery.ts'
 import { createInitialState, tick, toCalendar } from '../engine/clock.ts'
+import { GROCERS } from '../engine/contracts.ts'
 import {
   CUSTOMERS,
+  DEFIS,
   DIFFICULTIES,
   ENERGY,
   EVENTS,
@@ -15,26 +22,37 @@ import {
   playDay,
 } from '../engine/day.ts'
 import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
-import { resolveEvent } from '../engine/events.ts'
+import { defaultWinterStorage } from '../engine/districts.ts'
+import { NO_EVENTS, resolveEvent } from '../engine/events.ts'
+import { FINANCING } from '../engine/financing.ts'
 import { PRODUCTS, onHand } from '../engine/inventory.ts'
 import { cents } from '../engine/money.ts'
+import { PERCENTILES } from '../engine/percentiles.ts'
+import { PLACES } from '../engine/places.ts'
+import { STAFF, askingWage, isAbsent, quitsOnDay } from '../engine/staff.ts'
 import { MODIFIER_KINDS } from '../engine/street.ts'
+import { FIRST_TRUCK } from '../engine/trucks.ts'
 import type {
   DelayedEffect,
   EventRecord,
   GameState,
   StreetModifier,
+  Visit,
 } from '../engine/types.ts'
 import { ASSETS } from './manifest.ts'
 import {
   type ChosenModifier,
   chosenModifiers,
+  crewAt,
   modifiersToday,
+  onSidewalk,
   openingStock,
   opensToday,
   rackFill,
   showsOn,
+  staffAtTruck,
   truckView,
+  type ShowsView,
 } from './truckView.ts'
 
 const SEED = 42
@@ -116,6 +134,8 @@ describe('rackFill (the croissant stock shown on the rack)', () => {
 describe('truckView', () => {
   it('shows the truck closed with an empty rack on the first Monday', () => {
     expect(truckView(monday)).toEqual({
+      truck: 'plateau',
+      district: 'plateau',
       open: false,
       croissants: 0,
       selling: {
@@ -124,8 +144,20 @@ describe('truckView', () => {
         croissant: false,
         limonade: false,
       },
+      inSeason: {
+        cafe: true,
+        chocolat: true,
+        croissant: true,
+        limonade: false,
+      },
       businessName: "Le P'tit Camion",
       modifiers: [],
+      stored: false,
+      reopens: null,
+      ownerHere: true,
+      staff: 0,
+      rival: false,
+      season: 'summer',
     })
   })
 
@@ -141,11 +173,25 @@ describe('truckView', () => {
 
   it('opens on Tuesday with the starting order of croissants', () => {
     expect(truckView(tuesday)).toEqual({
+      truck: 'plateau',
+      district: 'plateau',
       open: true,
       croissants: 70,
       selling: { cafe: true, chocolat: true, croissant: true, limonade: false },
+      inSeason: {
+        cafe: true,
+        chocolat: true,
+        croissant: true,
+        limonade: false,
+      },
       businessName: "Le P'tit Camion",
       modifiers: [],
+      stored: false,
+      reopens: null,
+      ownerHere: true,
+      staff: 0,
+      rival: false,
+      season: 'summer',
     })
     expect(rackFill(truckView(tuesday).croissants, 100, 4)).toBe(0.75)
   })
@@ -572,10 +618,48 @@ describe('chosenModifiers', () => {
 })
 
 describe('showsOn', () => {
-  const view = (open: boolean, ...modifiers: ChosenModifier[]) => ({
+  const view = (open: boolean, ...modifiers: ChosenModifier[]): ShowsView => ({
     open,
     modifiers,
     selling: { cafe: true, chocolat: true, croissant: true, limonade: false },
+    stored: false,
+    ownerHere: true,
+    inSeason: { cafe: true, chocolat: true, croissant: true, limonade: false },
+    rival: false,
+    season: 'summer',
+  })
+
+  it('shows an owner piece on open days the owner serves at the truck (#264)', () => {
+    expect(showsOn('owner', view(true))).toBe(true)
+    expect(showsOn('owner', { ...view(true), ownerHere: false })).toBe(false)
+    expect(showsOn('owner', view(false))).toBe(false)
+  })
+
+  it('shows a stored piece while the truck is stored (#264)', () => {
+    expect(showsOn('stored', { ...view(false), stored: true })).toBe(true)
+    expect(showsOn('stored', view(false))).toBe(false)
+  })
+
+  it("shows a season's piece in the street's season (#264)", () => {
+    const winter = { ...view(true), season: 'winter' as const }
+    expect(showsOn({ season: 'summer' }, view(true))).toBe(true)
+    expect(showsOn({ season: 'winter' }, view(true))).toBe(false)
+    expect(showsOn({ season: 'winter' }, winter)).toBe(true)
+    expect(showsOn({ season: 'summer' }, winter)).toBe(false)
+  })
+
+  it('shows a piece while its product is in season, or out of it, open or not (#264)', () => {
+    expect(showsOn({ inSeason: 'cafe' }, view(false))).toBe(true)
+    expect(showsOn({ inSeason: 'limonade' }, view(true))).toBe(false)
+    expect(showsOn({ outOfSeason: 'limonade' }, view(true))).toBe(true)
+    expect(showsOn({ outOfSeason: 'cafe' }, view(true))).toBe(false)
+  })
+
+  it("shows a piece in the rival's months, or the others (#264)", () => {
+    const rival = { ...view(true), rival: true }
+    expect(showsOn({ rival: true }, rival)).toBe(true)
+    expect(showsOn({ rival: false }, rival)).toBe(false)
+    expect(showsOn({ rival: false }, view(true))).toBe(true)
   })
   const cones = modifier('conesOrange', FEWER, 1, 3)
   const broken = modifier('machineTousse', NO_CAFE, 1, 3)
@@ -696,5 +780,296 @@ describe('the construction of « Les cônes orange »', () => {
       ).toContain('walkIns')
       expect(construction(game), `day ${game.day}`).toEqual([])
     }
+  })
+})
+
+// More than one truck (#264): what the world shows of each truck agrees with
+// how `playDay` plays it, through storage, absences, quits, trips and moves.
+describe('a game with two trucks (#264)', () => {
+  const SECOND = 'vieuxMontreal'
+
+  /**
+   * « Le rêve » with « Deuxième camion » first in its ladder, at a price a
+   * game can pay on day 0, as the engine's tests buy it.
+   */
+  const DREAM: DreamContent = loadDreamContent({
+    ...dreamJson,
+    company: [
+      { ...dreamJson.company[2], priceCents: 500_000 },
+      dreamJson.company[0],
+      dreamJson.company[1],
+    ],
+  })
+
+  const choose = (state: GameState, ...changes: DecisionChange[]) =>
+    changes.reduce(
+      (next, change) =>
+        applyDecision(
+          next,
+          change,
+          FOOD_TRUCK,
+          DEFIS,
+          BAKERY,
+          STAFF,
+          DREAM,
+          DIFFICULTIES,
+          PLACES,
+        ),
+      state,
+    )
+
+  /** The next day played, no event coming up. */
+  const next = (state: GameState) =>
+    tick(
+      state,
+      FOOD_TRUCK,
+      CUSTOMERS,
+      DIFFICULTIES,
+      PERSONAL,
+      ENERGY,
+      NO_EVENTS,
+      DEFIS,
+      PERCENTILES,
+      BAKERY,
+      GROCERS,
+      STAFF,
+      FINANCING,
+      DREAM,
+      PLACES,
+    )
+
+  /** A hire « Au camion » of `candidate` at `wage`, their asking one by default. */
+  const hiring = (
+    candidate: CandidateId,
+    hourlyWage = askingWage(candidate, 'camion'),
+  ): DecisionChange => ({ kind: 'hire', role: 'camion', candidate, hourlyWage })
+
+  /** Day 0 with the second truck bought, both trucks open every day. */
+  const BOUGHT = choose(
+    createInitialState(SEED),
+    { kind: 'buy', rung: 'deuxiemeCamion' },
+    { kind: 'daysOpen', weekdays: [1, 2, 3, 4, 5, 6, 7] },
+    { kind: 'daysOpen', weekdays: [1, 2, 3, 4, 5, 6, 7], truck: SECOND },
+  )
+
+  /** Whether each truck opened on the day `played` played last. */
+  const opened = (played: GameState) => ({
+    first: (played.lastDay?.visits.length ?? 0) > 0,
+    second: played.trucks?.[0]?.lastDay?.open ?? false,
+  })
+
+  /**
+   * Plays the day of `state`, after checking that the world shows each
+   * truck open as the engine then plays it, and its crew as it serves.
+   */
+  const agreeing = (state: GameState, label: string): GameState => {
+    const played = next(state)
+    const engine = opened(played)
+    expect(opensToday(state), `${label}: first`).toBe(engine.first)
+    expect(opensToday(state, SECOND), `${label}: second`).toBe(engine.second)
+    const servers = (visits: readonly Visit[]) =>
+      new Set(visits.flatMap(({ servedBy }) => servedBy ?? []))
+    for (const [truck, visits] of [
+      [FIRST_TRUCK, played.lastDay?.visits ?? []],
+      [SECOND, played.trucks?.[0]?.lastDay?.visits ?? []],
+    ] as const) {
+      const crew = crewAt(state, truck)
+      const served = servers(visits)
+      if (visits.length === 0) continue
+      expect(served.has('owner'), `${label}: owner at ${truck}`).toBe(
+        crew.ownerHere,
+      )
+      expect(served.size - (served.has('owner') ? 1 : 0)).toBeLessThanOrEqual(
+        crew.staff,
+      )
+    }
+    return played
+  }
+
+  it('shows each truck open, stored or closed as the engine plays it, for a year', () => {
+    // The owner at the Vieux, Amélie at the Plateau; the Vieux stored for
+    // the winter from day 100 on.
+    let state = choose(
+      BOUGHT,
+      { kind: 'ownerAt', truck: SECOND },
+      hiring('amelie'),
+    )
+    let stored = 0
+    for (let day = 0; day < 365; day += 1) {
+      if (day === 100) {
+        state = choose(state, {
+          kind: 'storage',
+          storage: defaultWinterStorage(),
+          truck: SECOND,
+        })
+      }
+      if (truckView(state, SECOND).stored) stored += 1
+      state = agreeing(state, `day ${state.day}`)
+    }
+    expect(stored).toBeGreaterThan(100)
+  })
+
+  it('reads the stored truck and the month it comes back', () => {
+    let state = choose(BOUGHT, {
+      kind: 'storage',
+      storage: defaultWinterStorage(),
+      truck: SECOND,
+    })
+    state = next(state)
+    while (toCalendar(state.day).month !== 2) state = next(state)
+    const view = truckView(state, SECOND)
+    expect(view).toMatchObject({
+      truck: SECOND,
+      district: SECOND,
+      open: false,
+      stored: true,
+      reopens: 5,
+      season: 'winter',
+      rival: false,
+    })
+    // The first truck is never stored, and has no winter art.
+    expect(truckView(state)).toMatchObject({
+      stored: false,
+      reopens: null,
+      season: 'summer',
+    })
+  })
+
+  it("reads the rival's months, the products in season and its district's changes", () => {
+    let state = next(BOUGHT)
+    while (toCalendar(state.day).month !== 7) state = next(state)
+    const july = truckView(state, SECOND)
+    expect(july).toMatchObject({ rival: true, season: 'summer' })
+    expect(july.inSeason.limonade).toBe(true)
+    while (toCalendar(state.day).month !== 10) state = next(state)
+    const october = truckView(state, SECOND)
+    expect(october).toMatchObject({ rival: false, season: 'summer' })
+    expect(october.inSeason.limonade).toBe(false)
+    const shoot: StreetModifier = {
+      event: 'tournage',
+      change: CLOSED,
+      fromDay: state.day,
+      lastDay: state.day,
+      district: SECOND,
+    }
+    const shot = withEvents(state, [shoot])
+    expect(truckView(shot, SECOND).modifiers).toEqual([
+      { ...shoot, choice: undefined },
+    ])
+    expect(truckView(shot, SECOND).open).toBe(false)
+    expect(truckView(shot).modifiers).toEqual([])
+  })
+
+  it('closes a truck whose sole employee is absent, and opens it again', () => {
+    // Nobody but Kevin at the Vieux, the owner at the Plateau.
+    const kevin = {
+      candidate: 'kevin',
+      role: 'camion',
+      hourlyWage: askingWage('kevin', 'camion'),
+    } as const
+    let state = next(
+      choose(BOUGHT, hiring('kevin'), {
+        kind: 'assign',
+        candidate: 'kevin',
+        truck: SECOND,
+      }),
+    )
+    while (!isAbsent(SEED, state.day, kevin)) {
+      expect(crewAt(state, SECOND)).toEqual({ ownerHere: false, staff: 1 })
+      state = agreeing(state, `day ${state.day}`)
+    }
+    expect(crewAt(state, SECOND)).toEqual({ ownerHere: false, staff: 0 })
+    expect(opensToday(state, SECOND)).toBe(false)
+    state = agreeing(state, `absent on day ${state.day}`)
+    while (isAbsent(SEED, state.day, kevin)) state = next(state)
+    expect(opensToday(state, SECOND)).toBe(true)
+    agreeing(state, `back on day ${state.day}`)
+  })
+
+  it('closes the truck the morning its sole employee quits underpaid, unless paid in time', () => {
+    const underpaid = cents(askingWage('kevin', 'camion') - 100)
+    // Hired today, Kevin starts tomorrow, underpaid from then on.
+    const assigned = next(
+      next(
+        choose(BOUGHT, hiring('kevin', underpaid), {
+          kind: 'assign',
+          candidate: 'kevin',
+          truck: SECOND,
+        }),
+      ),
+    )
+    const kevin = assigned.staff.find(({ candidate }) => candidate === 'kevin')
+    const quits = kevin === undefined ? null : quitsOnDay(kevin)
+    if (quits === null) throw new Error('Kevin is not underpaid')
+    let state = assigned
+    while (state.day < quits) state = next(state)
+    expect(crewAt(state, SECOND).staff).toBe(0)
+    expect(opensToday(state, SECOND)).toBe(false)
+    agreeing(state, 'the morning Kevin quits')
+    // Paid his asking wage the day before, he stays.
+    let paid = assigned
+    while (paid.day < quits - 1) paid = next(paid)
+    paid = next(
+      choose(paid, {
+        kind: 'setWage',
+        candidate: 'kevin',
+        hourlyWage: askingWage('kevin', 'camion'),
+      }),
+    )
+    expect(paid.day).toBe(quits)
+    if (!isAbsent(SEED, quits, { candidate: 'kevin', role: 'camion' })) {
+      expect(crewAt(paid, SECOND).staff).toBe(1)
+      expect(opensToday(paid, SECOND)).toBe(true)
+    }
+    agreeing(paid, 'the morning Kevin would have quit')
+  })
+
+  it('closes the owner’s truck while they are away all day, unless someone covers it', () => {
+    // Away all day, as at the permits office.
+    const morning = next(BOUGHT)
+    const away = { ...morning, ownerAway: true }
+    expect(crewAt(away)).toEqual({ ownerHere: false, staff: 0 })
+    expect(opensToday(away)).toBe(false)
+    agreeing(away, 'away, no cover')
+    // Amélie at the Plateau covers it, and serves behind the counter.
+    let covered = next(choose(morning, hiring('amelie')))
+    while (isAbsent(SEED, covered.day, { candidate: 'amelie', role: 'camion' }))
+      covered = next(covered)
+    covered = { ...covered, ownerAway: true }
+    expect(crewAt(covered)).toEqual({ ownerHere: false, staff: 1 })
+    expect(truckView(covered)).toMatchObject({ open: true, ownerHere: false })
+    expect(onSidewalk(truckView(covered))).toBe(0)
+    agreeing(covered, 'away, Amélie covering')
+  })
+
+  it('moves the owner and an employee the morning after they are moved', () => {
+    let state = next(choose(BOUGHT, hiring('amelie')))
+    expect(crewAt(state)).toMatchObject({ ownerHere: true })
+    expect(crewAt(state, SECOND)).toEqual({ ownerHere: false, staff: 0 })
+    // Moved today, they work where they were until tomorrow.
+    state = choose(
+      state,
+      { kind: 'ownerAt', truck: SECOND },
+      { kind: 'assign', candidate: 'amelie', truck: SECOND },
+    )
+    expect(crewAt(state)).toMatchObject({ ownerHere: true })
+    state = agreeing(state, 'the day they are moved')
+    expect(crewAt(state)).toEqual({ ownerHere: false, staff: 0 })
+    expect(crewAt(state, SECOND).ownerHere).toBe(true)
+    expect(opensToday(state)).toBe(false)
+    for (let day = 0; day < 10; day += 1) {
+      state = agreeing(state, `moved, day ${state.day}`)
+    }
+  })
+
+  it('draws the employees on the sidewalk but the one behind the counter', () => {
+    expect(onSidewalk({ ownerHere: true, staff: 2 })).toBe(2)
+    expect(onSidewalk({ ownerHere: false, staff: 2 })).toBe(1)
+    expect(onSidewalk({ ownerHere: false, staff: 0 })).toBe(0)
+  })
+
+  it('shows the first truck for a truck the game lacks', () => {
+    expect(truckView(tuesday, SECOND)).toEqual(truckView(tuesday))
+    expect(staffAtTruck(tuesday, SECOND)).toBe(0)
   })
 })

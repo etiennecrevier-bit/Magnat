@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="530" height="232" viewBox="556 72 530 232">
+<rect x="560.0" y="92.0" width="62.0" height="210.0" fill="#b6bdc3" opacity="0.85"></rect>
+<rect x="598.0" y="92.0" width="24.0" height="210.0" fill="#34404f" opacity="0.10"></rect>
+<polygon points="556.0,92.0 626.0,92.0 616.0,72.0 566.0,72.0" fill="#b6bdc3" opacity="0.85"></polygon>
+<path d="M 570 150 l 6 -16 l 6 16 z" fill="#34404f" opacity="0.10"></path>
+<path d="M 586 150 l 6 -16 l 6 16 z" fill="#34404f" opacity="0.10"></path>
+<path d="M 602 150 l 6 -16 l 6 16 z" fill="#34404f" opacity="0.10"></path>
+<rect x="668.0" y="92.0" width="62.0" height="210.0" fill="#b6bdc3" opacity="0.85"></rect>
+<rect x="706.0" y="92.0" width="24.0" height="210.0" fill="#34404f" opacity="0.10"></rect>
+<polygon points="664.0,92.0 734.0,92.0 724.0,72.0 674.0,72.0" fill="#b6bdc3" opacity="0.85"></polygon>
+<path d="M 678 150 l 6 -16 l 6 16 z" fill="#34404f" opacity="0.10"></path>
+<path d="M 694 150 l 6 -16 l 6 16 z" fill="#34404f" opacity="0.10"></path>
+<path d="M 710 150 l 6 -16 l 6 16 z" fill="#34404f" opacity="0.10"></path>
+<rect x="616.0" y="170.0" width="56.0" height="132.0" fill="#b6bdc3" opacity="0.8"></rect>
+<polygon points="612.0,170.0 676.0,170.0 644.0,128.0" fill="#b6bdc3" opacity="0.8"></polygon>
+<path d="M 1010 240 C 1010 196, 1080 196, 1080 240 Z" fill="#c0c7cb" opacity="0.9"></path>
+<rect x="1004.0" y="240.0" width="82.0" height="64.0" fill="#b6bdc3" opacity="0.85"></rect>
+<rect x="1042.0" y="176.0" width="6.0" height="24.0" fill="#b6bdc3"></rect>
+</svg>

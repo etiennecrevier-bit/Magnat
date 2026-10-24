@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="478" height="266" viewBox="600 450 478 266">
+<defs>
+<linearGradient id="ve-faceV" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#fff1cf" stop-opacity="0.26"></stop><stop offset="0.5" stop-color="#fff1cf" stop-opacity="0"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0.30"></stop>
+</linearGradient>
+<linearGradient id="ve-faceH" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0" stop-color="#fff1cf" stop-opacity="0.30"></stop><stop offset="0.45" stop-color="#fff1cf" stop-opacity="0"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0.38"></stop>
+</linearGradient>
+<linearGradient id="ve-glass" x1="0" y1="0" x2="0.35" y2="1">
+<stop offset="0" stop-color="#e6f3f5"></stop><stop offset="0.45" stop-color="#a8cad7"></stop><stop offset="1" stop-color="#6a8ea2"></stop>
+</linearGradient>
+<linearGradient id="ve-warmInside" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#ffe9bd"></stop><stop offset="1" stop-color="#e9b980"></stop>
+</linearGradient>
+<linearGradient id="ve-chrome" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0" stop-color="#dfe6ea"></stop><stop offset="0.45" stop-color="#8d9aa2"></stop><stop offset="1" stop-color="#55626a"></stop>
+</linearGradient>
+</defs>
+<g transform="translate(600,410)">
+<rect x="0" y="40" width="380" height="232" rx="16" fill="#3f8f8a"></rect>
+<rect x="376" y="100" width="100" height="172" rx="16" fill="#3f8f8a"></rect>
+<rect x="0" y="40" width="380" height="232" rx="16" fill="url(#ve-faceV)"></rect>
+<rect x="376" y="100" width="100" height="172" rx="16" fill="url(#ve-faceV)"></rect>
+<rect x="376" y="100" width="100" height="172" rx="16" fill="#34404f" opacity="0.10"></rect>
+<rect x="0" y="40" width="476" height="232" rx="16" fill="url(#ve-faceH)" opacity="0.55"></rect>
+<rect x="250" y="214" width="2" height="18" fill="#3c7778"></rect>
+<circle cx="30" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="29.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="70" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="69.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="110" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="109.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="150" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="149.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="190" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="189.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="230" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="229.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="270" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="269.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="310" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="309.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="350" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="349.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<rect x="6" y="44" width="368" height="5" rx="2.5" fill="#fff1cf" opacity="0.7"></rect>
+<rect x="0" y="232" width="476" height="40" fill="#3c7b7b"></rect>
+<rect x="0" y="232" width="476" height="3" fill="#8cb6a6"></rect>
+<rect x="400" y="114" width="60" height="58" rx="8" fill="url(#ve-glass)"></rect>
+<polygon points="428.0,114.0 446.0,114.0 418.0,172.0 402.0,172.0" fill="#ffffff" opacity="0.35"></polygon>
+<rect x="466" y="200" width="12" height="16" rx="3" fill="#fff1c4"></rect>
+<rect x="18" y="62" width="344" height="150" rx="8" fill="url(#ve-warmInside)"></rect>
+<rect x="30" y="82" width="320" height="6" fill="#b88a5e"></rect>
+<path d="M 46 272 A 44 44 0 0 1 134 272 Z" fill="#386067"></path>
+<circle cx="90" cy="272" r="34" fill="#2b2622"></circle>
+<circle cx="90" cy="272" r="26" fill="#3a3430"></circle>
+<circle cx="90" cy="272" r="14" fill="url(#ve-chrome)"></circle>
+<path d="M 63 262 A 29 29 0 0 1 84 244" stroke="#7d746c" stroke-width="3" fill="none" stroke-linecap="round"></path>
+<path d="M 366 272 A 44 44 0 0 1 454 272 Z" fill="#386067"></path>
+<circle cx="410" cy="272" r="34" fill="#2b2622"></circle>
+<circle cx="410" cy="272" r="26" fill="#3a3430"></circle>
+<circle cx="410" cy="272" r="14" fill="url(#ve-chrome)"></circle>
+<path d="M 383 262 A 29 29 0 0 1 404 244" stroke="#7d746c" stroke-width="3" fill="none" stroke-linecap="round"></path>
+</g>
+</svg>

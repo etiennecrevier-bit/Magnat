@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="344" height="50" viewBox="618 588 344 50">
+<defs>
+<linearGradient id="ve-faceV" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#fff1cf" stop-opacity="0.26"></stop><stop offset="0.5" stop-color="#fff1cf" stop-opacity="0"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0.30"></stop>
+</linearGradient>
+<linearGradient id="ve-faceH" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0" stop-color="#fff1cf" stop-opacity="0.30"></stop><stop offset="0.45" stop-color="#fff1cf" stop-opacity="0"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0.38"></stop>
+</linearGradient>
+<linearGradient id="ve-dropDown" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#34404f" stop-opacity="0.55"></stop><stop offset="1" stop-color="#34404f" stop-opacity="0"></stop>
+</linearGradient>
+<linearGradient id="ve-warmInside" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#ffe9bd"></stop><stop offset="1" stop-color="#e9b980"></stop>
+</linearGradient>
+</defs>
+<g transform="translate(600,410)">
+<rect x="0" y="40" width="380" height="232" rx="16" fill="#3f8f8a"></rect>
+<rect x="0" y="40" width="380" height="232" rx="16" fill="url(#ve-faceV)"></rect>
+<rect x="0" y="40" width="476" height="232" rx="16" fill="url(#ve-faceH)" opacity="0.55"></rect>
+<rect x="250" y="214" width="2" height="18" fill="#3c7778"></rect>
+<circle cx="30" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="29.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="70" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="69.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="110" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="109.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="150" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="149.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="190" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="189.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="230" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="229.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="270" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="269.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="310" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="309.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<circle cx="350" cy="226" r="2" fill="#3c7b7b"></circle><circle cx="349.4" cy="225.4" r="0.9" fill="#fff1cf" opacity="0.8"></circle>
+<rect x="18" y="62" width="344" height="150" rx="8" fill="url(#ve-warmInside)"></rect>
+<rect x="18" y="178" width="344" height="22" fill="#8a5a3c"></rect>
+<rect x="18" y="178" width="344" height="4" fill="#b58059"></rect>
+<rect x="18" y="200" width="344" height="14" fill="url(#ve-dropDown)"></rect>
+</g>
+</svg>

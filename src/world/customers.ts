@@ -47,7 +47,7 @@ import {
   type Replay,
 } from './replay.ts'
 import type { Shadows } from './shadows.ts'
-import { showsOn, staffAtTruck, truckView } from './truckView.ts'
+import { onSidewalk, showsOn, truckView, type TruckView } from './truckView.ts'
 
 /** The customers on the street, the avatar who serves them and the tally. */
 export interface Customers {
@@ -58,8 +58,11 @@ export interface Customers {
    * world, with the street's transform.
    */
   readonly labels: Container
-  /** Follows the game the store holds. */
-  onGame: (game: GameState) => void
+  /**
+   * Follows the game the store holds, at the truck `view` reads it for:
+   * the first truck's by default.
+   */
+  onGame: (game: GameState, view?: TruckView) => void
   /**
    * Moves everyone on by `deltaMs` real milliseconds at game `speed`, with
    * `span` of the street on screen.
@@ -133,6 +136,12 @@ export interface CustomersSetup {
  * unit leaves a spill on the counter, which fades out. Yawns go on at ×10,
  * where no one walks; the spill goes with the customers.
  *
+ * Behind the counter stands the avatar while the owner serves at the
+ * truck, or else one of its employees, in the staff's mustard shirt and
+ * never tired; the other employees serving there stand on the sidewalk
+ * (see `onSidewalk`). In the street's winter (#264), everyone who comes is
+ * bundled up.
+ *
  * The player can pick one customer at a time, which rings their feet and
  * opens their card (see `cardOf`), with a line picked the first time. The
  * card closes once they walk off the screen or the street clears.
@@ -160,7 +169,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
   const counter = truckLayer?.getChildByLabel('counter') ?? null
   let fatigue: Fatigue = 'rested'
   let avatar: ReturnType<typeof startAvatar> | null = null
-  const showAvatar = (kind: Avatar, open: boolean) => {
+  const showAvatar = (kind: Server, open: boolean) => {
     if (avatar?.kind !== kind) {
       avatar?.destroy()
       avatar = startAvatar(kind, style, settings, random)
@@ -170,7 +179,9 @@ export function startCustomers(setup: CustomersSetup): Customers {
         else truckLayer.addChildAt(avatar.root, at)
       }
     }
-    avatar.setFatigue(fatigue)
+    // An employee behind the counter is never tired: the energy is the
+    // owner's.
+    avatar.setFatigue(kind === STAFF ? 'rested' : fatigue)
     avatar.root.visible = open
     if (!open) avatar.rest()
   }
@@ -201,6 +212,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
 
   let replay: Replay | null = null
   let open = false
+  let winter = false
   const views = new Map<number, CustomerView>()
   const fans = settings.fans
   let hot = false
@@ -281,17 +293,17 @@ export function startCustomers(setup: CustomersSetup): Customers {
   return {
     root,
     labels,
-    onGame: (game) => {
+    onGame: (game, view = truckView(game)) => {
       const wasOpen = open
-      const view = truckView(game)
       open = view.open
       hot = showsOn(fans.shows, view)
+      winter = view.season === 'winter'
       // Now rather than at the next frame, which a paused street doesn't
       // draw: a heat wave that ended would keep its fans.
       swingFans()
       fatigue = fatigueOf(game.energy, setup.energy)
-      showAvatar(game.profile.avatar, open)
-      employee.show(open && staffAtTruck(game) > 0)
+      showAvatar(view.ownerHere ? game.profile.avatar : STAFF, open)
+      employee.show(open && onSidewalk(view) > 0)
       if (!open) {
         crowd.dismiss()
         dropSpill()
@@ -299,7 +311,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
       // A choice can close the truck on the day shown, which keeps the day
       // and its summary: the replay goes with the truck all the same.
       if (!clock.follow(game) && open === wasOpen) return
-      replay = replayOf(game)
+      replay = replayOf(game, view.truck, open)
       sampler.start(replay?.visits ?? [])
       if (replay === null) {
         // Hidden now rather than at the next frame, which a paused street
@@ -349,6 +361,7 @@ export function startCustomers(setup: CustomersSetup): Customers {
           hot
             ? { chance: fans.chance, color: style.palette[fans.color] }
             : null,
+          winter,
         )
         const view = createCustomerView(
           look,
@@ -618,24 +631,44 @@ function boxOf(node: Container): Box {
   return { left: minX, top: minY, right: maxX, bottom: maxY }
 }
 
+/** Who stands behind the counter: the owner, as their avatar, or staff. */
+type Server = Avatar | typeof STAFF
+
+/** An employee behind the counter, while the owner is elsewhere. */
+const STAFF = 'staff'
+
 /**
  * The avatar behind the counter: the arm that reaches for each sale, and
- * the owner's fatigue, which `setFatigue` shows.
+ * the owner's fatigue, which `setFatigue` shows. For `staff`, an employee
+ * in their place, in the staff's mustard shirt, with the employee's skin
+ * and hair.
  */
 function startAvatar(
-  kind: Avatar,
+  kind: Server,
   style: PeopleStyle,
   settings: CrowdSettings,
   random: () => number,
 ) {
   const look = settings.fatigue
-  const art = drawAvatar(
-    kind,
-    style,
-    settings.avatar,
-    settings.looks.trousers,
-    look.circlesColor,
-  )
+  const { employee } = settings
+  const art =
+    kind === STAFF
+      ? drawAvatar(
+          'homme',
+          style,
+          { ...settings.avatar, skin: employee.skin, hair: employee.hair },
+          settings.looks.trousers,
+          look.circlesColor,
+          style.palette.mustard,
+        )
+      : drawAvatar(
+          kind,
+          style,
+          settings.avatar,
+          settings.looks.trousers,
+          look.circlesColor,
+        )
+  if (kind === STAFF) art.root.label = 'server'
   art.root.position.set(settings.avatar.x, settings.avatar.feetY)
   const yawns = createYawns(look.yawn, random)
   let fatigue: Fatigue | null = null

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Spot } from '../content/assets.ts'
+import { streetManifest, type Spot } from '../content/assets.ts'
 import { DOCK_ITEMS } from '../ui/dock.ts'
 import { ASSETS } from './manifest.ts'
 import {
@@ -17,6 +17,11 @@ const OPEN: SpotsView = {
   open: true,
   modifiers: [],
   selling: { cafe: true, chocolat: true, croissant: true, limonade: false },
+  stored: false,
+  ownerHere: true,
+  inSeason: { cafe: true, chocolat: true, croissant: true, limonade: false },
+  rival: false,
+  season: 'summer',
   inChallenge: false,
   staffAtTruck: 0,
 }
@@ -109,6 +114,15 @@ describe('the spots of the street', () => {
     ])
   })
 
+  it('lose the owner on a day they serve at another truck, or are away (#264)', () => {
+    expect(ids(spotsShown(ASSETS, { ...STAFFED, ownerHere: false }))).toEqual([
+      'menu',
+      'stocks',
+      'employee',
+      'city',
+    ])
+  })
+
   it("follow their piece's own days", () => {
     const manifest = {
       pieces: ASSETS.pieces.map((piece) =>
@@ -120,6 +134,87 @@ describe('the spots of the street', () => {
     }
     expect(ids(spotsShown(manifest, OPEN))).not.toContain('stocks')
     expect(ids(spotsShown(manifest, CLOSED))).toContain('stocks')
+  })
+})
+
+describe("Vieux-Montréal's spots (#264)", () => {
+  const street = streetManifest(ASSETS, 'vieuxMontreal')
+
+  it('are its own: the lettering opens the menu, Notre-Dame the city', () => {
+    expect(
+      street.spots.map(({ id, opens, shows, piece, staffed }) => ({
+        id,
+        opens,
+        shows,
+        piece,
+        staffed,
+      })),
+    ).toEqual([
+      {
+        id: 'menu',
+        opens: { dock: 'camion', tab: 'menu' },
+        shows: 'open',
+        piece: undefined,
+        staffed: undefined,
+      },
+      {
+        id: 'stocks',
+        opens: { dock: 'camion', tab: 'stocks' },
+        shows: undefined,
+        piece: 'croissant-rack',
+        staffed: undefined,
+      },
+      {
+        id: 'owner',
+        opens: { dock: 'camion', tab: 'schedule' },
+        shows: 'owner',
+        piece: undefined,
+        staffed: undefined,
+      },
+      {
+        id: 'employee',
+        opens: { dock: 'equipe' },
+        shows: undefined,
+        piece: undefined,
+        staffed: true,
+      },
+      {
+        id: 'city',
+        opens: { dock: 'ville' },
+        shows: undefined,
+        piece: undefined,
+        staffed: undefined,
+      },
+    ])
+  })
+
+  it("stand 60 right of the Plateau's at the truck, as the truck does", () => {
+    for (const id of ['stocks', 'owner']) {
+      const plateau = ASSETS.spots.find((spot) => spot.id === id)
+      const vieux = street.spots.find((spot) => spot.id === id)
+      expect(vieux?.x).toBe((plateau?.x ?? 0) + 60)
+      expect(vieux?.y).toBe(plateau?.y)
+    }
+  })
+
+  it('show the stocks only on a stored day, the truck shut', () => {
+    expect(
+      ids(spotsShown(street, { ...STAFFED, open: false, stored: true })),
+    ).toEqual(['stocks', 'city'])
+  })
+
+  it("put the employee's spot over the employee, between the truck and the cart", () => {
+    const employee = street.spots.find(({ id }) => id === 'employee')
+    const truck = street.pieces.find(({ id }) => id === 'truck')
+    const cart = street.pieces.find(({ id }) => id === 'cart')
+    if (employee === undefined || truck === undefined || cart === undefined) {
+      throw new Error('No employee, truck or cart')
+    }
+    const x = ASSETS.districtStreets.vieuxMontreal?.employeeX ?? 0
+    expect(employee.x).toBeLessThan(x)
+    expect(employee.x + employee.width).toBeGreaterThan(x)
+    expect(employee.x).toBeGreaterThanOrEqual(truck.x + truck.width)
+    expect(employee.x + employee.width).toBeLessThanOrEqual(cart.x)
   })
 })
 

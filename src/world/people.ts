@@ -51,6 +51,23 @@ export interface Look {
   readonly child: ChildLook | null
   /** The colour of the fan they fan themselves with; null without one. */
   readonly fan: string | null
+  /** A tourist's hat and what they carry (#264); none for the others. */
+  readonly tourist?: TouristLook | null
+  /** What someone wears bundled up in winter (#264); none in summer. */
+  readonly bundled?: BundledLook | null
+}
+
+/** A tourist's sun hat, if any, and their camera or map, if any. */
+export interface TouristLook {
+  /** The colour of their hat; null without one. */
+  readonly hat: string | null
+  readonly carries: 'camera' | 'map' | null
+}
+
+/** Someone bundled up: a tuque with its pompom, a scarf, a coat's hem. */
+export interface BundledLook {
+  /** The colour of their tuque. */
+  readonly tuque: string
 }
 
 /** The fans customers may carry: the chance of each, and their colour. */
@@ -64,8 +81,8 @@ export const SEGMENT_ACCESSORY: Readonly<Record<SegmentId, string>> = {
   aubaine: 'bag',
   habitue: 'newspaper',
   chic: 'coat',
-  // A placeholder until the street draws the tourists (#264).
-  touriste: 'touristBag',
+  // Their hat, camera or map (#264).
+  touriste: 'tourist',
 }
 
 /** A side of a drawing, before it is turned. */
@@ -141,7 +158,9 @@ export function createPeopleShading(
  * Picks how a customer of `segment` looks, from `looks`. On a weekday some
  * carry an office cue; on a weekend some come with a child. With `fans`,
  * as in a heat wave, some fan themselves: that takes one more draw, last,
- * so without it the draws are the same.
+ * so without it the draws are the same. A tourist then draws their hat and
+ * what they carry (#264), and in `winter` everyone their tuque, so the
+ * others' draws in summer are the same too.
  */
 export function pickLook(
   segment: SegmentId,
@@ -149,6 +168,7 @@ export function pickLook(
   looks: CrowdSettings['looks'],
   random: () => number,
   fans: FanPick | null = null,
+  winter = false,
 ): Look {
   const skin = pick(looks.skinTones, random)
   const clothes = pick(looks.clothes, random)
@@ -171,6 +191,9 @@ export function pickLook(
     fans !== null && fans.chance > 0 && random() < fans.chance
       ? fans.color
       : null
+  const tourist =
+    segment === 'touriste' ? pickTourist(looks.tourist, random) : null
+  const bundled = winter ? { tuque: pick(looks.winter.tuques, random) } : null
   return {
     segment,
     skin,
@@ -181,7 +204,28 @@ export function pickLook(
     office,
     child,
     fan,
+    tourist,
+    bundled,
   }
+}
+
+/**
+ * Picks a tourist's hat, with its chance, and their camera or map: one
+ * without a hat carries one of the two, so every tourist shows.
+ */
+function pickTourist(
+  tourist: CrowdSettings['looks']['tourist'],
+  random: () => number,
+): TouristLook {
+  const hat = random() < tourist.hatChance ? pick(tourist.hats, random) : null
+  const draw = random()
+  const carries =
+    draw < tourist.cameraChance
+      ? 'camera'
+      : draw < tourist.cameraChance + tourist.mapChance || hat === null
+        ? 'map'
+        : null
+  return { hat, carries }
 }
 
 /** Picks a hair colour, and whether a cap of it covers the head. */
@@ -219,6 +263,8 @@ interface Carried {
   readonly over: readonly Container[]
   /** What each hand holds, around its centre, on that side's bent arm. */
   readonly held: Partial<Record<Side, (outward: number) => Container>>
+  /** Over everything, the head too: a hat, a scarf, a camera, a map. */
+  readonly top?: readonly Container[]
 }
 
 const NOTHING: Carried = { behind: [], over: [], held: {} }
@@ -276,9 +322,8 @@ export function drawCustomer(
     )
   }
   // A bargain hunter's tote hangs from their shoulder behind the arm, so
-  // the hand on its side shows. Its straps are in its shade. A tourist
-  // carries one too, until the street draws them (#264).
-  if (look.segment === 'aubaine' || look.segment === 'touriste') {
+  // the hand on its side shows. Its straps are in its shade.
+  if (look.segment === 'aubaine') {
     const tote = tonesOf(looks.tote, light)
     behind.push(
       new Graphics({ label: SEGMENT_ACCESSORY[look.segment] })
@@ -373,6 +418,14 @@ export function drawCustomer(
     const fan = look.fan
     held.right = () => drawFan(h, fan, light)
   }
+  // As the reference's `bundled()` and `tourist()` draw them, over the
+  // person: what they wear in winter, then a tourist's hat, camera or map.
+  const top: Container[] = []
+  const bundled = look.bundled ?? null
+  if (bundled !== null) top.push(drawBundled(u, bundled, look.clothes, looks))
+  if (look.segment === 'touriste') {
+    top.push(drawTourist(u, look.tourist ?? DEFAULT_TOURIST, looks))
+  }
   drawPerson(
     root,
     {
@@ -381,14 +434,86 @@ export function drawCustomer(
       clothes: look.clothes,
       sleeves: look.segment === 'chic' ? looks.coat : look.clothes,
       trousers: looks.trousers,
-      hair: look.hair,
-      headwear: look.headwear,
+      // A tuque covers the head as a cap does, in its colour.
+      hair: bundled?.tuque ?? look.hair,
+      headwear: bundled === null ? look.headwear : 'cap',
     },
     style,
     sun,
-    { behind, over, held },
+    { behind, over, held, top },
   )
   return root
+}
+
+/** What a tourist drawn without one shows: the reference's first. */
+const DEFAULT_TOURIST: TouristLook = { hat: null, carries: 'camera' }
+
+/**
+ * A tourist's sun hat with its red band, their camera on its strap or the
+ * map in their hand, as `tourist()` draws them in the reference's
+ * `vieux.py` (#264), at `u` of its lengths, feet at 0, 0.
+ */
+function drawTourist(
+  u: number,
+  tourist: TouristLook,
+  looks: CrowdSettings['looks'],
+): Container {
+  const kit = looks.tourist
+  const g = new Graphics({ label: SEGMENT_ACCESSORY.touriste })
+  if (tourist.hat !== null) {
+    g.ellipse(0, -110 * u, 26 * u, 6 * u)
+      .fill(tourist.hat)
+      .roundRect(-14 * u, -124 * u, 28 * u, 14 * u, 6 * u)
+      .fill(tourist.hat)
+      .rect(-14 * u, -114 * u, 28 * u, 3 * u)
+      .fill(kit.band)
+  }
+  if (tourist.carries === 'camera') {
+    g.moveTo(-12 * u, -82 * u)
+      .lineTo(-2 * u, -60 * u)
+      .lineTo(12 * u, -82 * u)
+      .stroke({ width: 1.6 * u, color: kit.camera })
+      .roundRect(-10 * u, -64 * u, 18 * u, 12 * u, 2 * u)
+      .fill(kit.camera)
+      .circle(-1 * u, -58 * u, 3.4 * u)
+      .fill(kit.lens)
+  }
+  if (tourist.carries === 'map') {
+    g.poly([-34, -70, -8, -74, -8, -50, -34, -46].map((at) => at * u))
+      .fill(kit.map)
+      .moveTo(-25 * u, -71 * u)
+      .lineTo(-25 * u, -47 * u)
+      .moveTo(-16 * u, -73 * u)
+      .lineTo(-16 * u, -49 * u)
+      .stroke({ width: 1.4 * u, color: kit.mapFold })
+  }
+  return g
+}
+
+/**
+ * Someone bundled up, as `bundled()` draws them in the reference's
+ * `vieux.py` (#264), at `u` of its lengths, feet at 0, 0: a tuque with a
+ * cream pompom over their cap, a scarf and the hem of their coat, which is
+ * their `coat` colour.
+ */
+function drawBundled(
+  u: number,
+  bundled: BundledLook,
+  coat: string,
+  looks: CrowdSettings['looks'],
+): Container {
+  const { pompom, scarf } = looks.winter
+  return new Graphics({ label: 'bundled' })
+    .moveTo(-16 * u, -106 * u)
+    .quadraticCurveTo(0, -134 * u, 16 * u, -106 * u)
+    .closePath()
+    .fill(bundled.tuque)
+    .circle(0, -130 * u, 5 * u)
+    .fill(pompom)
+    .roundRect(-16 * u, -88 * u, 32 * u, 9 * u, 4 * u)
+    .fill(scarf)
+    .roundRect(-20 * u, -40 * u, 40 * u, 14 * u, 6 * u)
+    .fill(coat)
 }
 
 /** -1 where the sun is on the drawing's left, 1 where it is on its right. */
@@ -514,6 +639,7 @@ function drawPerson(
         }),
     )
   }
+  for (const item of carried.top ?? []) parent.addChild(item)
 }
 
 /** A hand of `color`, `r` round, centred on `x`, `y`. */
@@ -859,7 +985,8 @@ const OWNER = 130
  * the hair of `avatar` and two eyes, with no outlines. The arm on the
  * screen's left can reach across the counter; the other hangs behind the
  * shirt, in shade. Dark circles under the eyes, in `circles`, and the open
- * mouth of a yawn are drawn hidden, for fatigue to show.
+ * mouth of a yawn are drawn hidden, for fatigue to show. With `shirt`, an
+ * employee serving in the owner's place (#264), in that shirt.
  */
 export function drawAvatar(
   avatar: Avatar,
@@ -867,11 +994,11 @@ export function drawAvatar(
   settings: CrowdSettings['avatar'],
   trousers: string,
   circles: string,
+  shirt: string = style.palette.playerBlue,
 ): AvatarArt {
   const v = settings.height / OWNER
   const { palette, light, shading } = style
   const { shade, lit } = shading.figure
-  const shirt = palette.playerBlue
   const root = new Container({ label: `avatar:${avatar}` })
   // The avatar faces the viewer, so the sun lights their left.
   const sun: Side = 'left'

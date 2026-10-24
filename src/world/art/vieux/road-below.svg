@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="360" viewBox="0 900 1440 360">
+<defs>
+<pattern id="ve-cobbles" width="34" height="16" patternUnits="userSpaceOnUse">
+<rect x="1" y="1" width="15" height="6" rx="3" fill="#7d766e"></rect><rect x="18" y="1" width="15" height="6" rx="3" fill="#6f6862"></rect>
+<rect x="-7" y="9" width="15" height="6" rx="3" fill="#6f6862"></rect><rect x="10" y="9" width="15" height="6" rx="3" fill="#837b72"></rect><rect x="27" y="9" width="15" height="6" rx="3" fill="#756e67"></rect>
+<rect x="2" y="1.5" width="10" height="1.6" rx="0.8" fill="#fff1cf" fill-opacity="0.25"></rect><rect x="11" y="9.5" width="10" height="1.6" rx="0.8" fill="#fff1cf" fill-opacity="0.22"></rect>
+</pattern>
+</defs>
+<rect x="0" y="900" width="1440" height="360" fill="#6a645d"></rect>
+<rect x="0" y="900" width="1440" height="360" fill="url(#ve-cobbles)"></rect>
+</svg>

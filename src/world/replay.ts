@@ -1,7 +1,13 @@
 import type { DayTypeId, WalkIns } from '../content/schema.ts'
 import { toCalendar } from '../engine/clock.ts'
 import { dayTypeOf } from '../engine/customers.ts'
-import type { GameState, Visit, VisitOutcome } from '../engine/types.ts'
+import { FIRST_TRUCK } from '../engine/trucks.ts'
+import type {
+  GameState,
+  TruckId,
+  Visit,
+  VisitOutcome,
+} from '../engine/types.ts'
 import type { CrowdSettings } from './crowdSettings.ts'
 import { opensToday } from './truckView.ts'
 
@@ -22,15 +28,23 @@ export interface Replay {
 }
 
 /**
- * The day the street replays while the top bar shows `game.day`: the last
- * day played, `game.lastDay`. Null when there is none, when it had no
- * visits, or when the truck is closed on `game.day`, so no one buys from a
+ * The day the street of the truck `truck` replays while the top bar shows
+ * `game.day`: its last day played, `game.lastDay` for the first truck's.
+ * Null when there is none, when it had no visits, or when the truck is
+ * closed on `game.day` (`open`, see `opensToday`), so no one buys from a
  * truck showing « Fermé ».
  */
-export function replayOf(game: GameState): Replay | null {
-  const { lastDay } = game
+export function replayOf(
+  game: GameState,
+  truck: TruckId = FIRST_TRUCK,
+  open: boolean = opensToday(game, truck),
+): Replay | null {
+  const lastDay =
+    truck === FIRST_TRUCK
+      ? game.lastDay
+      : (game.trucks?.find(({ id }) => id === truck)?.lastDay ?? null)
   if (lastDay === null || lastDay.visits.length === 0) return null
-  if (!opensToday(game)) return null
+  if (!open) return null
   return {
     visits: lastDay.visits,
     dayType: dayTypeOf(toCalendar(lastDay.day).weekday),

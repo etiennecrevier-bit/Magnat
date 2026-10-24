@@ -6,6 +6,7 @@ import { FOOD_TRUCK } from '../engine/day.ts'
 import { applyDecision } from '../engine/decisions.ts'
 import { cents } from '../engine/money.ts'
 import { next, seedRng } from '../engine/rng.ts'
+import { FIRST_TRUCK, newTruck, truckDecisionsOf } from '../engine/trucks.ts'
 import type { GameState, Visit, VisitOutcome } from '../engine/types.ts'
 import { todayNumbers } from '../ui/todayNumbers.ts'
 import { CROWD, type CrowdSettings } from './crowdSettings.ts'
@@ -16,6 +17,7 @@ import {
   moodOf,
   replayOf,
 } from './replay.ts'
+import { opensToday } from './truckView.ts'
 
 const WALK_INS = FOOD_TRUCK.walkIns
 const MS_PER_DAY = 4000
@@ -71,6 +73,51 @@ function visit(
 }
 
 describe('replayOf', () => {
+  describe('at the second truck (#264)', () => {
+    const SECOND = 'vieuxMontreal'
+    const EVERY_DAY = [1, 2, 3, 4, 5, 6, 7]
+    // Both trucks open every day, the owner at the second.
+    const start = createInitialState(42)
+    const bought: GameState = applyDecision(
+      applyDecision(
+        {
+          ...start,
+          trucks: [newTruck(42, { id: SECOND, district: SECOND }, 0)],
+          decisions: {
+            ...start.decisions,
+            trucks: {
+              [SECOND]: {
+                ...truckDecisionsOf(start.decisions, FIRST_TRUCK),
+                daysOpen: EVERY_DAY,
+              },
+            },
+          },
+        },
+        { kind: 'daysOpen', weekdays: EVERY_DAY },
+      ),
+      { kind: 'ownerAt', truck: SECOND },
+    )
+    const played = tick(tick(tick(bought)))
+
+    it("replays the second truck's own last day at its street", () => {
+      const own = played.trucks?.[0]?.lastDay
+      expect(own?.visits.length).toBeGreaterThan(0)
+      expect(replayOf(played, SECOND)?.visits).toBe(own?.visits)
+      expect(replayOf(played, SECOND)?.served).toBe(
+        own?.visits.filter(({ servedMinute }) => servedMinute !== null).length,
+      )
+    })
+
+    it('replays nothing at the first truck, closed with nobody at it', () => {
+      expect(opensToday(played)).toBe(false)
+      expect(replayOf(played)).toBeNull()
+    })
+
+    it('replays nothing at the second truck on a day it is closed', () => {
+      expect(replayOf(played, SECOND, false)).toBeNull()
+    })
+  })
+
   it('replays nothing before a day is played', () => {
     expect(replayOf(monday)).toBeNull()
   })

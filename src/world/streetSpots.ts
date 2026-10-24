@@ -4,7 +4,7 @@ import { DOCK_ITEMS } from '../ui/dock.ts'
 import type { StreetLegend } from '../ui/settings.ts'
 import type { CityLink } from './cityPicker.ts'
 import type { Point } from './customerCard.ts'
-import { showsOn, type TruckView } from './truckView.ts'
+import { showsOn, type ShowsView } from './truckView.ts'
 
 // The street's hotspots (#208): the chalkboard, the croissant rack, the
 // owner and the far city each open their panel, as the dock does. The street
@@ -21,20 +21,20 @@ export interface Fit {
 }
 
 /** What the street's spots show by: the truck's day and the game around it. */
-export interface SpotsView extends Pick<
-  TruckView,
-  'open' | 'modifiers' | 'selling'
-> {
+export interface SpotsView extends ShowsView {
   /** Whether the game is a Défi. */
   readonly inChallenge: boolean
-  /** The employees serving at the truck (see `staffAtTruck`). */
+  /**
+   * The employees the street draws on the sidewalk by the truck (see
+   * `onSidewalk`).
+   */
   readonly staffAtTruck: number
 }
 
 /**
  * The spots of `manifest` the street shows in `view`: each with its piece,
  * or on the days its own `shows` says, or, `staffed`, on open days while an
- * employee serves at the truck, or always. In a Défi, those that open a dock
+ * employee stands on the sidewalk by the truck, or always. In a Défi, those that open a dock
  * button the Défi hides go too, as « Ville » does.
  */
 export function spotsShown(

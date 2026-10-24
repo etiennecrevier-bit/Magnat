@@ -88,7 +88,7 @@ export default function WorldCanvas({
       const stopWorld = await startWorld(
         app,
         gatedScenes(gate, {
-          street: (scene) =>
+          street: (scene, truck) =>
             startStreet(
               scene,
               gameStore,
@@ -98,6 +98,7 @@ export default function WorldCanvas({
               PICKER,
               settingsStore,
               () => openLater(opener),
+              truck,
             ),
           city: (scene) =>
             startCity(scene, { onOpen: () => openLater(opener) }),

@@ -4,9 +4,16 @@ import {
   type Ticker,
   type UnresolvedAsset,
 } from 'pixi.js'
-import type { AssetManifest, Spot } from '../content/assets.ts'
+import {
+  districtStreetOf,
+  streetManifest,
+  type AssetManifest,
+  type Spot,
+} from '../content/assets.ts'
 import pacing from '../content/pacing.json'
 import { ENERGY, FOOD_TRUCK } from '../engine/day.ts'
+import { FIRST_TRUCK } from '../engine/trucks.ts'
+import type { TruckId } from '../engine/types.ts'
 import {
   settingsStore,
   type SettingsStore,
@@ -16,8 +23,9 @@ import { gameStore, type GameStore } from '../ui/store.ts'
 import { loadArt, type LoadTexture } from './art.ts'
 import { createAtmosphere } from './atmosphere.ts'
 import { bakeRenderer, createBackdrop, type Backdrop } from './backdrop.ts'
+import { createCaleche } from './caleche.ts'
 import type { Span } from './crowd.ts'
-import { CROWD, type CrowdSettings } from './crowdSettings.ts'
+import { CROWD, crowdFor, type CrowdSettings } from './crowdSettings.ts'
 import { placeCard, type Point } from './customerCard.ts'
 import { startCustomers } from './customers.ts'
 import { TITLE_FONT_ASSET } from './fonts.ts'
@@ -28,6 +36,7 @@ import { SKY_COLOR, type WorldApp } from './mountWorld.ts'
 import { PICKER, type Picker } from './picker.ts'
 import { buildScene, type MeasureWidth } from './scene.ts'
 import { filtersFor, type MakeFilters } from './shadows.ts'
+import { createSnow, type Area } from './snow.ts'
 import {
   designPoint,
   legendShows,
@@ -38,7 +47,7 @@ import {
   type StreetLink,
 } from './streetSpots.ts'
 import { setUpOrUndo } from './teardown.ts'
-import { staffAtTruck, truckView } from './truckView.ts'
+import { districtOf, onSidewalk, truckView } from './truckView.ts'
 
 /**
  * How the street loads what it draws: Pixi's `Assets`, or a test's fakes.
@@ -102,6 +111,13 @@ export type StreetSettings = Pick<SettingsStore, 'getState' | 'subscribe'>
  * it shows (see `legendShows`). While `onOpen` returns null, as before a
  * game starts, the spots open and mark nothing, and the legend hides.
  *
+ * It shows the street of the truck `truck`'s district (#264), the
+ * Plateau's for the first truck, or for a truck the game lacks: that
+ * district's pieces and spots from `manifest` (see `streetManifest`), its
+ * crowd at its truck (see `crowdFor`), and in its winter its falling snow
+ * over the people, or in its summer a calèche crossing in front of them
+ * now and then.
+ *
  * A font or an image that fails to load warns and falls back to the system
  * font or the piece's placeholder, so the street still shows. A start that
  * fails once loaded, as on an app no longer there, takes down what it set
@@ -116,14 +132,25 @@ export async function startStreet(
   picker: Picker = PICKER,
   settings: StreetSettings = settingsStore,
   onOpen: () => ((link: StreetLink) => void) | null = () => null,
+  truck: TruckId = FIRST_TRUCK,
 ): Promise<() => void> {
+  const district = districtOf(store.getState().game, truck)
+  const street = districtStreetOf(manifest, district)
+  const shown = streetManifest(manifest, district)
+  const crowd = crowdFor(people.settings, street)
   const [, textures] = await Promise.all([
     loadTitleFont(loaders.loadFont),
-    loadArt(manifest.pieces, loaders.loadTexture, manifest.artResolution),
+    loadArt(
+      street === null
+        ? shown.pieces
+        : [...shown.pieces, { image: street.caleche.image }],
+      loaders.loadTexture,
+      manifest.artResolution,
+    ),
   ])
   return setUpOrUndo((undo) => {
     const scene = buildScene(
-      manifest,
+      shown,
       textures,
       loaders.measureWidth,
       loaders.makeFilters ?? filtersFor(app.renderer?.type),
@@ -137,7 +164,7 @@ export async function startStreet(
       street: scene.root,
       style: scene.style,
       shadows: scene.shadows,
-      crowd: people.settings,
+      crowd,
       walkIns: FOOD_TRUCK.walkIns,
       msPerDay: pacing.msPerDayAtNormalSpeed,
       lines: LINES,
@@ -146,18 +173,42 @@ export async function startStreet(
     })
     undo(() => customers.destroy())
     scene.root.addChild(customers.root)
+    // In front of the people: the calèche in summer, then the snow in winter.
+    const caleche =
+      street === null
+        ? null
+        : createCaleche(
+            street.caleche,
+            textures.get(street.caleche.image),
+            people.random,
+          )
+    const snow =
+      street === null
+        ? null
+        : createSnow(
+            street.snow,
+            manifest.palette[street.snow.color],
+            people.random,
+          )
+    for (const part of [caleche, snow]) {
+      if (part === null) continue
+      undo(() => part.destroy())
+      scene.root.addChild(part.root)
+    }
 
     // The backdrop drawn once, where the renderer can (see backdrop.ts).
     let backdrop: Backdrop | null = null
 
     // The screen follows the window; each frame refits the scene if it moved.
     let fitted = { width: -1, height: -1, scale: 1, x: 0, y: 0 }
-    // The part of the design on screen, where customers come and go.
+    // The part of the design on screen, where customers come and go and
+    // the snow falls.
     let span: Span = { left: 0, right: manifest.designSize.width }
+    let area: Area = { ...span, top: 0, bottom: manifest.designSize.height }
     const fit = () => {
       const { width, height } = app.screen
       if (width === fitted.width && height === fitted.height) return
-      const { scale, x, y } = fitStreet(width, height, manifest)
+      const { scale, x, y } = fitStreet(width, height, shown)
       fitted = { width, height, scale, x, y }
       for (const layer of [scene.root, customers.labels]) {
         layer.scale.set(scale)
@@ -165,11 +216,13 @@ export async function startStreet(
       }
       atmosphere.fit(width, height)
       span = { left: -x / scale, right: (width - x) / scale }
+      area = { ...span, top: -y / scale, bottom: (height - y) / scale }
       backdrop?.invalidate()
     }
     const showEffects = (effects: VisualEffects) => {
       scene.setEffects(effects)
       atmosphere.setEffects(effects)
+      snow?.setEffects(effects)
       // Only the grain and the unevenness blend with the back buffer, which
       // costs a copy of the screen each frame. Both it and the canvas, which
       // Pixi starts without it, antialias.
@@ -188,7 +241,7 @@ export async function startStreet(
           ? null
           : {
               card: picked.card,
-              place: placeCard(picked.box, app.screen, people.settings.card),
+              place: placeCard(picked.box, app.screen, crowd.card),
             },
       )
     }
@@ -204,7 +257,7 @@ export async function startStreet(
         pointer === null || customers.isOver(pointer)
           ? null
           : openingAt(pointer)
-      const { streetLegend: legend } = manifest
+      const { streetLegend: legend } = shown
       const { game } = store.getState()
       const shows =
         opens &&
@@ -254,6 +307,8 @@ export async function startStreet(
       backdrop?.update(app.screen.width, app.screen.height)
       scene.animate(ticker.deltaMS)
       customers.frame(ticker.deltaMS, store.getState().speed, span)
+      caleche?.frame(ticker.deltaMS, span)
+      snow?.frame(ticker.deltaMS, area)
       // Where the cast shadows show through one texture, its pixels are the
       // screen's.
       scene.shadows.redraw(fitted.scale * (app.renderer?.resolution ?? 1))
@@ -262,16 +317,19 @@ export async function startStreet(
     }
 
     const show = (game: GameState) => {
-      const view = truckView(game)
+      const view = truckView(game, truck, manifest)
       scene.update(view)
-      // A change to the street may show a piece of the backdrop or hide it.
+      // A change to the street may show a piece of the backdrop or hide it,
+      // as its season does.
       backdrop?.invalidate()
-      spots = spotsShown(manifest, {
+      spots = spotsShown(shown, {
         ...view,
         inChallenge: game.challenge !== null,
-        staffAtTruck: staffAtTruck(game),
+        staffAtTruck: onSidewalk(view),
       })
-      customers.onGame(game)
+      customers.onGame(game, view)
+      caleche?.show(view.season === 'summer')
+      snow?.show(view.season === 'winter')
     }
     const layers = [scene.root, atmosphere.root, customers.labels]
     undo(() => {
@@ -281,7 +339,7 @@ export async function startStreet(
     // Every layer under the shadows, drawn once, where the renderer can
     // draw into a texture.
     const shadowLayer = scene.root.getChildByLabel(
-      `layer:${manifest.light.shadowLayer}`,
+      `layer:${shown.light.shadowLayer}`,
     )
     const renderer = bakeRenderer(app.renderer)
     backdrop =

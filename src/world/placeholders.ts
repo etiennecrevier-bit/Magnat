@@ -596,6 +596,70 @@ export const PLACEHOLDERS: Record<PieceKind, DrawPlaceholder> = {
     text.position.set(piece.width / 2, piece.height / 2)
     return new Container({ children: [text] })
   },
+
+  storedSign: (piece, style) => {
+    // The winter target's card on the shutter (#264): its text on two
+    // lines, split at « · », each a `line` the street fills the month in.
+    const { width: w, height: h } = piece
+    const { palette } = style
+    const g = new Graphics()
+      .roundRect(0, 0, w, h, 8)
+      .fill(palette.cream)
+      .stroke({ width: style.outline, color: palette.ink })
+    const lines = (piece.text ?? '').split(' · ')
+    const children: Container[] = [g]
+    lines.forEach((line, index) => {
+      const text = writing(line, {
+        fontSize: h * STORED_SIGN.fontSize[index === 0 ? 0 : 1],
+        fill: palette.ink,
+      })
+      text.label = 'line'
+      text.position.set(w / 2, h * STORED_SIGN.middle[index === 0 ? 0 : 1])
+      children.push(text)
+    })
+    return new Container({ children })
+  },
+
+  barriers: (piece, style) => {
+    // A row of sawhorses, their planks striped orange and cream.
+    const { height: h } = piece
+    const { palette } = style
+    const g = new Graphics()
+    const plank = h * 0.3
+    for (const { left, width } of sawhorses(piece)) {
+      for (const leg of [left + width * 0.12, left + width * 0.82]) {
+        box(g, leg, plank, width * 0.06, h - plank, palette.wood, style, 0, 2)
+      }
+      const blocks = 5
+      for (let i = 0; i < blocks; i += 1) {
+        box(
+          g,
+          left + (i * width) / blocks,
+          0,
+          width / blocks,
+          plank,
+          i % 2 === 0 ? color(piece, style) : palette.cream,
+          style,
+          plank * 0.2,
+        )
+      }
+    }
+    return g
+  },
+}
+
+/** The stored truck's card: each line's size and middle, shares of its height. */
+const STORED_SIGN = { fontSize: [0.23, 0.19], middle: [0.33, 0.68] } as const
+
+/** The sawhorses of a row of barriers, each about 120 wide, 16 apart. */
+function sawhorses({ width: w }: Piece): { left: number; width: number }[] {
+  const count = Math.max(1, Math.round(w / 136))
+  const gap = 16
+  const width = (w - gap * (count - 1)) / count
+  return Array.from({ length: count }, (_, i) => ({
+    left: i * (width + gap),
+    width,
+  }))
 }
 
 /**
@@ -627,6 +691,13 @@ export const PLACEHOLDER_SHADOWS: Partial<
     return signLegs(piece).flatMap((leg) => [
       shadows.castBody(id, x + leg, y + h, w * 0.05, h),
       shadows.contactShadow(id, x + leg, y + h, w * 0.14, 'prop'),
+    ])
+  },
+  barriers: (piece, shadows) => {
+    const { id, x, y, height: h } = piece
+    return sawhorses(piece).flatMap(({ left, width }) => [
+      shadows.castBody(id, x + left + width / 2, y + h, width, h),
+      shadows.contactShadow(id, x + left + width / 2, y + h, width, 'prop'),
     ])
   },
 }

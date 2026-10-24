@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="594" height="49" viewBox="578 691 594 49">
+<defs>
+<filter id="ve-soft4" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4"></feGaussianBlur></filter>
+</defs>
+<ellipse cx="840" cy="715" rx="250" ry="12" fill="#34404f" opacity="0.55" filter="url(#ve-soft4)"></ellipse>
+<polygon points="610.0,710.0 1086.0,710.0 1160.0,728.0 680.0,728.0" fill="#34404f" opacity="0.22" filter="url(#ve-soft4)"></polygon>
+</svg>

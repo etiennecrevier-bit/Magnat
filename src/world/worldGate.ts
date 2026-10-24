@@ -163,12 +163,13 @@ export function gateWorld(
  */
 export function gatedScenes(gate: FrameGate | null, scenes: Scenes): Scenes {
   if (gate === null) return scenes
-  const shown =
-    (start: Scenes['street']): Scenes['street'] =>
-    async (app) => {
-      const stop = await start(app)
-      gate.invalidate()
-      return stop
-    }
-  return { street: shown(scenes.street), city: shown(scenes.city) }
+  const shown = async (stop: () => void) => {
+    gate.invalidate()
+    return stop
+  }
+  return {
+    // The street of the truck asked for (#264).
+    street: async (app, truck) => shown(await scenes.street(app, truck)),
+    city: async (app) => shown(await scenes.city(app)),
+  }
 }

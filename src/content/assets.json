@@ -38,7 +38,14 @@
     "coneOrange": "#E2701F",
     "heatSky": "#F3D9A4",
     "lamplight": "#F6C76B",
-    "white": "#FFFFFF"
+    "white": "#FFFFFF",
+    "teal": "#3F8F8A",
+    "stone": "#B9B0A1",
+    "granite": "#D6D0C6",
+    "cobble": "#6A645D",
+    "snow": "#F7F9FA",
+    "glacePink": "#F6D6E1",
+    "tarp": "#6C7A84"
   },
   "outlineWidth": 3,
   "steamPuff": {
@@ -805,7 +812,7 @@
       "label": "Vous",
       "detail": "horaire, salaire",
       "labelBelow": true,
-      "shows": "open"
+      "shows": "owner"
     },
     {
       "id": "employee",
@@ -834,6 +841,1104 @@
       "piece": "far"
     }
   ],
+  "districtStreets": {
+    "vieuxMontreal": {
+      "_note": "The street of Vieux-Montréal (#264), shown while the player looks at its truck: the pieces and spots of the Plateau's street are replaced by these, drawn in the manifest's layers, palette and light. Its static pieces are art cut from the design reference's `vieux-summer-target.svg` and `vieux-winter-target.svg` by `src/world/art/cut_vieux.py`, at the reference's places: the sky, the clouds, Notre-Dame and Bonsecours in the haze, the five stone buildings (the third, which has no shop, copied twice past each edge for wide windows), the granite sidewalk, the curb and the cobbled road in tiles one design wide, the lantern, the rival's cart « GLACES » under its umbrella or its tarp, and the teal truck. Each piece with `{ \"season\": \"summer\" }` shows outside the `winter` dates, those with `{ \"season\": \"winter\" }` within them: the winter's art has snow on the cornices, sills, awnings and dormers, snowbanks on the curb and slush on the road. The truck stands `truckOffsetX` right of the Plateau's, as the reference draws it: its body and counter are teal, its espresso machine, rack, croissants, awning and board the Plateau's files, the lemonade jar the reference's, the hot chocolate pot in the jar's place out of the lemonade's season. Stored (`stored`, #260), it shows the shutter and « Fermé pour l'hiver · De retour en {mois} », the month it comes back filled in. Its lettering follows the products in season (`inSeason`, `outOfSeason`), and its board writes the business name followed by `signText.suffix`. The cart is open in the rival's months (`{ \"rival\": true }`) and under its tarp the others. The jazz festival hangs its bunting and banner, unless the player stayed put (`rester`); the film shoot puts barriers on the sidewalk. The employee at the truck stands at `employeeX`, between the truck and the cart. `snow` is the winter's falling snow, `caleche` the summer's calèche crossing the road.",
+      "frame": {
+        "focus": {
+          "x": 500,
+          "y": 390,
+          "width": 770,
+          "height": 350
+        },
+        "top": 240,
+        "bottom": 176,
+        "narrow": 700
+      },
+      "signText": {
+        "fontSize": 18,
+        "color": "cream",
+        "paddingX": 18,
+        "suffix": "Vieux-Port"
+      },
+      "truckOffsetX": 60,
+      "employeeX": 1112,
+      "winter": {
+        "from": {
+          "month": 12,
+          "day": 1
+        },
+        "to": {
+          "month": 3,
+          "day": 31
+        }
+      },
+      "snow": {
+        "count": 170,
+        "radius": {
+          "min": 1.2,
+          "max": 3.4
+        },
+        "opacity": {
+          "min": 0.55,
+          "max": 0.95
+        },
+        "fall": {
+          "min": 30,
+          "max": 70
+        },
+        "drift": 14,
+        "driftMs": 5000,
+        "color": "white"
+      },
+      "caleche": {
+        "image": "vieux/caleche.svg",
+        "y": 712,
+        "width": 394,
+        "height": 153,
+        "speed": 70,
+        "everyMs": 30000,
+        "jitterMs": 10000
+      },
+      "pieces": [
+        {
+          "id": "sky-summer",
+          "kind": "backdrop",
+          "layer": "sky",
+          "x": -1440,
+          "y": -2700,
+          "width": 4320,
+          "height": 3600,
+          "color": "sky",
+          "image": "vieux/summer/sky.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "sky-winter",
+          "kind": "backdrop",
+          "layer": "sky",
+          "x": -1440,
+          "y": -2700,
+          "width": 4320,
+          "height": 3600,
+          "color": "snow",
+          "image": "vieux/winter/sky.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "cloud-1",
+          "kind": "backdrop",
+          "layer": "sky",
+          "x": 170,
+          "y": 71,
+          "width": 192,
+          "height": 82,
+          "color": "cream",
+          "image": "vieux/cloud-1.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "cloud-2",
+          "kind": "backdrop",
+          "layer": "sky",
+          "x": 1065,
+          "y": 33,
+          "width": 242,
+          "height": 104,
+          "color": "cream",
+          "image": "vieux/cloud-2.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "far-summer",
+          "kind": "backdrop",
+          "layer": "far",
+          "x": 556,
+          "y": 72,
+          "width": 530,
+          "height": 232,
+          "color": "haze",
+          "image": "vieux/summer/far.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "far-winter",
+          "kind": "backdrop",
+          "layer": "far",
+          "x": 556,
+          "y": 72,
+          "width": 530,
+          "height": 232,
+          "color": "haze",
+          "image": "vieux/winter/far.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "building-3-left-2-summer",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": -688,
+          "y": 160,
+          "width": 346,
+          "height": 486,
+          "color": "stone",
+          "image": "vieux/summer/building-3.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "building-3-left-2-winter",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": -690,
+          "y": 156,
+          "width": 350,
+          "height": 490,
+          "color": "stone",
+          "image": "vieux/winter/building-3.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "building-3-left-1-summer",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": -348,
+          "y": 160,
+          "width": 346,
+          "height": 486,
+          "color": "stone",
+          "image": "vieux/summer/building-3.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "building-3-left-1-winter",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": -350,
+          "y": 156,
+          "width": 350,
+          "height": 490,
+          "color": "stone",
+          "image": "vieux/winter/building-3.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "building-1-summer",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": -8,
+          "y": 130,
+          "width": 316,
+          "height": 516,
+          "color": "stone",
+          "image": "vieux/summer/building-1.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "building-1-winter",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": -10,
+          "y": 126,
+          "width": 320,
+          "height": 520,
+          "color": "stone",
+          "image": "vieux/winter/building-1.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "building-2-summer",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 302,
+          "y": 156,
+          "width": 276,
+          "height": 490,
+          "color": "stone",
+          "image": "vieux/summer/building-2.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "building-2-winter",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 300,
+          "y": 148,
+          "width": 280,
+          "height": 498,
+          "color": "stone",
+          "image": "vieux/winter/building-2.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "building-3-summer",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 572,
+          "y": 160,
+          "width": 346,
+          "height": 486,
+          "color": "stone",
+          "image": "vieux/summer/building-3.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "building-3-winter",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 570,
+          "y": 156,
+          "width": 350,
+          "height": 490,
+          "color": "stone",
+          "image": "vieux/winter/building-3.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "building-4-summer",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 912,
+          "y": 110,
+          "width": 306,
+          "height": 536,
+          "color": "stone",
+          "image": "vieux/summer/building-4.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "building-4-winter",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 910,
+          "y": 106,
+          "width": 310,
+          "height": 540,
+          "color": "stone",
+          "image": "vieux/winter/building-4.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "building-5-summer",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 1212,
+          "y": 150,
+          "width": 246,
+          "height": 496,
+          "color": "stone",
+          "image": "vieux/summer/building-5.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "building-5-winter",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 1210,
+          "y": 146,
+          "width": 250,
+          "height": 500,
+          "color": "stone",
+          "image": "vieux/winter/building-5.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "building-3-right-1-summer",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 1452,
+          "y": 160,
+          "width": 346,
+          "height": 486,
+          "color": "stone",
+          "image": "vieux/summer/building-3.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "building-3-right-1-winter",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 1450,
+          "y": 156,
+          "width": 350,
+          "height": 490,
+          "color": "stone",
+          "image": "vieux/winter/building-3.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "building-3-right-2-summer",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 1792,
+          "y": 160,
+          "width": 346,
+          "height": 486,
+          "color": "stone",
+          "image": "vieux/summer/building-3.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "building-3-right-2-winter",
+          "kind": "backdrop",
+          "layer": "buildings",
+          "x": 1790,
+          "y": 156,
+          "width": 350,
+          "height": 490,
+          "color": "stone",
+          "image": "vieux/winter/building-3.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "sidewalk-left",
+          "kind": "backdrop",
+          "layer": "sidewalk",
+          "x": -1440,
+          "y": 646,
+          "width": 1440,
+          "height": 56,
+          "color": "granite",
+          "image": "vieux/sidewalk.svg"
+        },
+        {
+          "id": "sidewalk",
+          "kind": "backdrop",
+          "layer": "sidewalk",
+          "x": 0,
+          "y": 646,
+          "width": 1440,
+          "height": 56,
+          "color": "granite",
+          "image": "vieux/sidewalk.svg"
+        },
+        {
+          "id": "sidewalk-right",
+          "kind": "backdrop",
+          "layer": "sidewalk",
+          "x": 1440,
+          "y": 646,
+          "width": 1440,
+          "height": 56,
+          "color": "granite",
+          "image": "vieux/sidewalk.svg"
+        },
+        {
+          "id": "curb-left",
+          "kind": "backdrop",
+          "layer": "sidewalk",
+          "x": -1440,
+          "y": 700,
+          "width": 1440,
+          "height": 16,
+          "color": "stone",
+          "image": "vieux/curb.svg"
+        },
+        {
+          "id": "curb",
+          "kind": "backdrop",
+          "layer": "sidewalk",
+          "x": 0,
+          "y": 700,
+          "width": 1440,
+          "height": 16,
+          "color": "stone",
+          "image": "vieux/curb.svg"
+        },
+        {
+          "id": "curb-right",
+          "kind": "backdrop",
+          "layer": "sidewalk",
+          "x": 1440,
+          "y": 700,
+          "width": 1440,
+          "height": 16,
+          "color": "stone",
+          "image": "vieux/curb.svg"
+        },
+        {
+          "id": "sidewalk-snow-left",
+          "kind": "backdrop",
+          "layer": "sidewalk",
+          "x": -1440,
+          "y": 646,
+          "width": 1440,
+          "height": 56,
+          "color": "snow",
+          "image": "vieux/sidewalk-snow.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "sidewalk-snow",
+          "kind": "backdrop",
+          "layer": "sidewalk",
+          "x": 0,
+          "y": 646,
+          "width": 1440,
+          "height": 56,
+          "color": "snow",
+          "image": "vieux/sidewalk-snow.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "sidewalk-snow-right",
+          "kind": "backdrop",
+          "layer": "sidewalk",
+          "x": 1440,
+          "y": 646,
+          "width": 1440,
+          "height": 56,
+          "color": "snow",
+          "image": "vieux/sidewalk-snow.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "road-left",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": -1440,
+          "y": 716,
+          "width": 1440,
+          "height": 184,
+          "color": "cobble",
+          "image": "vieux/road.svg"
+        },
+        {
+          "id": "road",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": 0,
+          "y": 716,
+          "width": 1440,
+          "height": 184,
+          "color": "cobble",
+          "image": "vieux/road.svg"
+        },
+        {
+          "id": "road-right",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": 1440,
+          "y": 716,
+          "width": 1440,
+          "height": 184,
+          "color": "cobble",
+          "image": "vieux/road.svg"
+        },
+        {
+          "id": "road-below-left",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": -1440,
+          "y": 900,
+          "width": 1440,
+          "height": 360,
+          "color": "cobble",
+          "image": "vieux/road-below.svg"
+        },
+        {
+          "id": "road-below",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": 0,
+          "y": 900,
+          "width": 1440,
+          "height": 360,
+          "color": "cobble",
+          "image": "vieux/road-below.svg"
+        },
+        {
+          "id": "road-below-right",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": 1440,
+          "y": 900,
+          "width": 1440,
+          "height": 360,
+          "color": "cobble",
+          "image": "vieux/road-below.svg"
+        },
+        {
+          "id": "road-snow-left",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": -1440,
+          "y": 716,
+          "width": 1440,
+          "height": 184,
+          "color": "snow",
+          "image": "vieux/road-snow.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "road-snow",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": 0,
+          "y": 716,
+          "width": 1440,
+          "height": 184,
+          "color": "snow",
+          "image": "vieux/road-snow.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "road-snow-right",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": 1440,
+          "y": 716,
+          "width": 1440,
+          "height": 184,
+          "color": "snow",
+          "image": "vieux/road-snow.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "snowbanks-left",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": -1440,
+          "y": 694,
+          "width": 1440,
+          "height": 28,
+          "color": "snow",
+          "image": "vieux/snowbanks.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "snowbanks",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": 0,
+          "y": 694,
+          "width": 1440,
+          "height": 28,
+          "color": "snow",
+          "image": "vieux/snowbanks.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "snowbanks-right",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": 1440,
+          "y": 694,
+          "width": 1440,
+          "height": 28,
+          "color": "snow",
+          "image": "vieux/snowbanks.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "truck-shadow",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": 578,
+          "y": 691,
+          "width": 594,
+          "height": 49,
+          "color": "cobble",
+          "image": "vieux/truck/truck-shadow.svg"
+        },
+        {
+          "id": "cart-shadow",
+          "kind": "backdrop",
+          "layer": "street",
+          "x": 1138,
+          "y": 666,
+          "width": 204,
+          "height": 40,
+          "color": "cobble",
+          "image": "vieux/cart-shadow.svg"
+        },
+        {
+          "id": "lantern-summer",
+          "kind": "backdrop",
+          "layer": "furniture",
+          "x": 290,
+          "y": 424,
+          "width": 60,
+          "height": 241,
+          "color": "ink",
+          "image": "vieux/summer/lantern.svg",
+          "shows": {
+            "season": "summer"
+          }
+        },
+        {
+          "id": "lantern-winter",
+          "kind": "backdrop",
+          "layer": "furniture",
+          "x": 290,
+          "y": 422,
+          "width": 60,
+          "height": 243,
+          "color": "ink",
+          "image": "vieux/winter/lantern.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "cart",
+          "kind": "backdrop",
+          "layer": "furniture",
+          "x": 1146,
+          "y": 452,
+          "width": 184,
+          "height": 236,
+          "color": "glacePink",
+          "image": "vieux/cart.svg",
+          "shows": {
+            "rival": true
+          }
+        },
+        {
+          "id": "cart-tarp",
+          "kind": "backdrop",
+          "layer": "furniture",
+          "x": 1170,
+          "y": 560,
+          "width": 140,
+          "height": 104,
+          "color": "tarp",
+          "image": "vieux/cart-tarp.svg",
+          "shows": {
+            "rival": false
+          }
+        },
+        {
+          "id": "cart-tarp-snow",
+          "kind": "backdrop",
+          "layer": "furniture",
+          "x": 1168,
+          "y": 550,
+          "width": 146,
+          "height": 60,
+          "color": "snow",
+          "image": "vieux/cart-tarp-snow.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "bunting",
+          "kind": "bunting",
+          "layer": "furniture",
+          "x": -1440,
+          "y": 236,
+          "width": 4320,
+          "height": 70,
+          "color": "dangerRed",
+          "shows": {
+            "event": "festivalJazz",
+            "except": ["rester"]
+          }
+        },
+        {
+          "id": "festival-banner",
+          "kind": "banner",
+          "layer": "furniture",
+          "x": 660,
+          "y": 190,
+          "width": 340,
+          "height": 52,
+          "color": "cream",
+          "text": "Festival de jazz",
+          "shows": {
+            "event": "festivalJazz",
+            "except": ["rester"]
+          }
+        },
+        {
+          "id": "barriers-left",
+          "kind": "barriers",
+          "layer": "furniture",
+          "x": 370,
+          "y": 642,
+          "width": 220,
+          "height": 56,
+          "color": "coneOrange",
+          "shows": {
+            "event": "tournage"
+          }
+        },
+        {
+          "id": "barriers-right",
+          "kind": "barriers",
+          "layer": "furniture",
+          "x": 1350,
+          "y": 642,
+          "width": 240,
+          "height": 56,
+          "color": "coneOrange",
+          "shows": {
+            "event": "tournage"
+          }
+        },
+        {
+          "id": "truck",
+          "kind": "truck",
+          "layer": "truck",
+          "x": 600,
+          "y": 450,
+          "width": 478,
+          "height": 266,
+          "color": "teal",
+          "image": "vieux/truck/truck.svg"
+        },
+        {
+          "id": "espresso-machine",
+          "kind": "espressoMachine",
+          "layer": "truck",
+          "x": 636,
+          "y": 520,
+          "width": 74,
+          "height": 68,
+          "color": "steel",
+          "image": "truck/espresso-machine.svg"
+        },
+        {
+          "id": "out-of-order",
+          "kind": "outOfOrderCard",
+          "layer": "truck",
+          "x": 638,
+          "y": 532,
+          "width": 70,
+          "height": 44,
+          "color": "cream",
+          "text": "Hors service",
+          "shows": {
+            "unavailable": "cafe"
+          }
+        },
+        {
+          "id": "steam",
+          "kind": "steam",
+          "layer": "truck",
+          "x": 657,
+          "y": 490,
+          "width": 32,
+          "height": 30,
+          "color": "cream",
+          "shows": {
+            "sells": "cafe"
+          }
+        },
+        {
+          "id": "hot-chocolate-pot",
+          "kind": "pot",
+          "layer": "truck",
+          "x": 716,
+          "y": 552,
+          "width": 40,
+          "height": 36,
+          "color": "brickRed",
+          "shows": {
+            "outOfSeason": "limonade"
+          }
+        },
+        {
+          "id": "croissant-rack",
+          "kind": "rack",
+          "layer": "truck",
+          "x": 862,
+          "y": 502,
+          "width": 84,
+          "height": 80,
+          "color": "wood",
+          "image": "truck/croissant-rack.svg"
+        },
+        {
+          "id": "croissants",
+          "kind": "croissants",
+          "layer": "truck",
+          "x": 862,
+          "y": 502,
+          "width": 84,
+          "height": 78,
+          "color": "mustard",
+          "image": "truck/croissants.svg",
+          "fill": {
+            "capacity": 100,
+            "steps": 3
+          }
+        },
+        {
+          "id": "counter",
+          "kind": "counter",
+          "layer": "truck",
+          "x": 618,
+          "y": 588,
+          "width": 344,
+          "height": 50,
+          "color": "wood",
+          "image": "vieux/truck/counter.svg"
+        },
+        {
+          "id": "lemonade-jar",
+          "kind": "jar",
+          "layer": "truck",
+          "x": 718,
+          "y": 538,
+          "width": 34,
+          "height": 52,
+          "color": "lamplight",
+          "image": "vieux/truck/lemonade-jar.svg",
+          "shows": {
+            "sells": "limonade"
+          }
+        },
+        {
+          "id": "awning",
+          "kind": "awning",
+          "layer": "truck",
+          "x": 612,
+          "y": 444,
+          "width": 360,
+          "height": 68,
+          "color": "dangerRed",
+          "image": "truck/awning.svg",
+          "shows": "open"
+        },
+        {
+          "id": "awning-rolled",
+          "kind": "rolledAwning",
+          "layer": "truck",
+          "x": 612,
+          "y": 446,
+          "width": 356,
+          "height": 22,
+          "color": "dangerRed",
+          "shows": "closed"
+        },
+        {
+          "id": "closed-sign",
+          "kind": "closedSign",
+          "layer": "truck",
+          "x": 735,
+          "y": 470,
+          "width": 110,
+          "height": 66,
+          "color": "cream",
+          "shows": "closed"
+        },
+        {
+          "id": "shutter",
+          "kind": "backdrop",
+          "layer": "truck",
+          "x": 612,
+          "y": 444,
+          "width": 356,
+          "height": 182,
+          "color": "steel",
+          "image": "vieux/truck/shutter.svg",
+          "shows": "stored"
+        },
+        {
+          "id": "stored-sign",
+          "kind": "storedSign",
+          "layer": "truck",
+          "x": 710,
+          "y": 510,
+          "width": 160,
+          "height": 74,
+          "color": "cream",
+          "text": "Fermé pour l'hiver · De retour en {mois}",
+          "shows": "stored"
+        },
+        {
+          "id": "truck-sign",
+          "kind": "truckSign",
+          "layer": "truck",
+          "x": 650,
+          "y": 410,
+          "width": 280,
+          "height": 40,
+          "color": "ink",
+          "image": "truck/truck-sign.svg"
+        },
+        {
+          "id": "roof-snow",
+          "kind": "backdrop",
+          "layer": "truck",
+          "x": 594,
+          "y": 438,
+          "width": 486,
+          "height": 76,
+          "color": "snow",
+          "image": "vieux/truck/roof-snow.svg",
+          "shows": {
+            "season": "winter"
+          }
+        },
+        {
+          "id": "lettering-limonade",
+          "kind": "lettering",
+          "layer": "truck",
+          "x": 730,
+          "y": 654,
+          "width": 240,
+          "height": 14,
+          "color": "ink",
+          "text": "CAFÉ · CROISSANTS · LIMONADE",
+          "shows": {
+            "inSeason": "limonade"
+          }
+        },
+        {
+          "id": "lettering",
+          "kind": "lettering",
+          "layer": "truck",
+          "x": 740,
+          "y": 650,
+          "width": 220,
+          "height": 20,
+          "color": "ink",
+          "text": "CAFÉ · CROISSANTS",
+          "shows": {
+            "outOfSeason": "limonade"
+          }
+        }
+      ],
+      "spots": [
+        {
+          "id": "menu",
+          "x": 720,
+          "y": 640,
+          "width": 260,
+          "height": 36,
+          "opens": {
+            "dock": "camion",
+            "tab": "menu"
+          },
+          "label": "Menu",
+          "detail": "prix du jour",
+          "shows": "open"
+        },
+        {
+          "id": "stocks",
+          "x": 860,
+          "y": 488,
+          "width": 98,
+          "height": 100,
+          "opens": {
+            "dock": "camion",
+            "tab": "stocks"
+          },
+          "label": "Stocks",
+          "detail": "commandes du matin",
+          "piece": "croissant-rack"
+        },
+        {
+          "id": "owner",
+          "x": 754,
+          "y": 500,
+          "width": 76,
+          "height": 100,
+          "opens": {
+            "dock": "camion",
+            "tab": "schedule"
+          },
+          "label": "Vous",
+          "detail": "horaire, salaire",
+          "labelBelow": true,
+          "shows": "owner"
+        },
+        {
+          "id": "employee",
+          "x": 1084,
+          "y": 562,
+          "width": 56,
+          "height": 136,
+          "opens": {
+            "dock": "equipe"
+          },
+          "label": "Équipe",
+          "detail": "embauches, rôles",
+          "staffed": true
+        },
+        {
+          "id": "city",
+          "x": 560,
+          "y": 96,
+          "width": 180,
+          "height": 140,
+          "opens": {
+            "dock": "ville"
+          },
+          "label": "La ville",
+          "detail": "banque, meunerie, fournil"
+        }
+      ]
+    }
+  },
   "streetLegend": {
     "x": 730,
     "y": 398,

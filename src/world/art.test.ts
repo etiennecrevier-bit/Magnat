@@ -126,3 +126,31 @@ describe('loadArt', () => {
     )
   })
 })
+
+describe("the district streets' art (#264)", () => {
+  const streets = Object.values(ASSETS.districtStreets)
+
+  it('has a file for every image a district street names, its calèche too', () => {
+    const images = streets.flatMap((street) => [
+      ...(street?.pieces ?? []).flatMap((p) => p.image ?? []),
+      street?.caleche.image ?? [],
+    ])
+    expect(images.length).toBeGreaterThan(0)
+    for (const image of images.flat()) {
+      expect(ART_URLS.has(image), image).toBe(true)
+    }
+  })
+
+  it('loads the calèche with the street’s pieces, once', async () => {
+    const loadTexture = vi.fn(async () => Texture.WHITE)
+    const street = ASSETS.districtStreets.vieuxMontreal
+    if (street === undefined) throw new Error('No Vieux-Montréal')
+    const textures = await loadArt(
+      [...street.pieces, { image: street.caleche.image }],
+      loadTexture,
+      RESOLUTION,
+    )
+    expect(textures.has(street.caleche.image)).toBe(true)
+    expect(loadTexture).toHaveBeenCalledTimes(textures.size)
+  })
+})
