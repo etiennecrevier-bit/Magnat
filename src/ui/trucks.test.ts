@@ -20,6 +20,7 @@ import {
   seasonMonths,
   seasonOf,
   storageDates,
+  storedOn,
   truckDayOf,
   truckName,
   unstaffedTomorrow,
@@ -238,43 +239,57 @@ describe('a truck’s last day (#265)', () => {
     const bought = withSecondTruck(START)
     // A truck just bought has no day yet.
     expect(truckDayOf(bought, SECOND)).toBeNull()
-    expect(closedText(bought, SECOND)).toBeNull()
+    expect(closedText(bought, SECOND, null)).toBeNull()
     const played = tick(
       decided(bought, { kind: 'daysOpen', weekdays: EVERY_DAY, truck: SECOND }),
     )
     // Day 0, a Monday: the Plateau closed, Vieux-Montréal open with nobody.
     expect(truckDayOf(played, FIRST_TRUCK)).toBe(played.lastDay)
     expect(truckDayOf(played, SECOND)).toBe(played.trucks?.[0]?.lastDay)
-    expect(closedText(played, FIRST_TRUCK)).toBe('Fermé')
-    expect(closedText(played, SECOND)).toBe('Fermé')
+    const stored = storedOn(bought)
+    expect(stored).toEqual({ day: 0, trucks: [] })
+    expect(closedText(played, FIRST_TRUCK, stored)).toBe('Fermé')
+    expect(closedText(played, SECOND, stored)).toBe('Fermé')
     const next = tick(played)
     expect(wasOpen(next.lastDay!)).toBe(true)
-    expect(closedText(next, FIRST_TRUCK)).toBeNull()
+    expect(closedText(next, FIRST_TRUCK, storedOn(played))).toBeNull()
   })
 
-  it('says « Fermé pour l’hiver » for a day the storage covered, the day after its last too', () => {
+  it('says « Fermé pour l’hiver » for a day the storage covered as it was played', () => {
     // A day Vieux-Montréal was closed, as the engine records it.
     const closedDay = tick(withSecondTruck(START)).trucks?.[0]?.lastDay
     if (closedDay === null || closedDay === undefined) throw new Error('Played')
     expect(closedDay.open).toBe(false)
     const april30 = dateDay(2, 4, 30)
-    const stored = withSecondTruck(START, {
+    const withStorage = withSecondTruck(START, {
       kind: 'storage',
       storage: defaultWinterStorage(),
       truck: SECOND,
     })
+    const decisions = withStorage.pendingDecisions ?? withStorage.decisions
+    const on = (day: number): GameState => ({ ...withStorage, day, decisions })
     const reported = (day: number): GameState => ({
-      ...stored,
-      day: april30 + 1,
-      decisions: stored.pendingDecisions ?? stored.decisions,
-      trucks: stored.trucks?.map((truck) => ({
+      ...on(april30 + 1),
+      trucks: withStorage.trucks?.map((truck) => ({
         ...truck,
         lastDay: { ...closedDay, day },
       })),
     })
-    // Reported on April 30th, read on May 1st, when the truck is back.
-    expect(closedText(reported(april30), SECOND)).toBe("Fermé pour l'hiver")
-    expect(closedText(reported(april30 + 1), SECOND)).toBe('Fermé')
+    // Stored on April 30th, the storage's last day, read on May 1st, when
+    // the truck is back.
+    const april = storedOn(on(april30))
+    expect(april).toEqual({ day: april30, trucks: [SECOND] })
+    expect(closedText(reported(april30), SECOND, april)).toBe(
+      "Fermé pour l'hiver",
+    )
+    expect(storedOn(on(april30 + 1)).trucks).toEqual([])
+    expect(
+      closedText(reported(april30 + 1), SECOND, storedOn(on(april30 + 1))),
+    ).toBe('Fermé')
+    // What is known of another day, or nothing, as after a load, says
+    // « Fermé » only.
+    expect(closedText(reported(april30 + 1), SECOND, april)).toBe('Fermé')
+    expect(closedText(reported(april30), SECOND, null)).toBe('Fermé')
   })
 
   it('words the storage’s dates', () => {

@@ -17,7 +17,7 @@ import {
   truckOf,
   trucksOf,
 } from '../engine/trucks.ts'
-import type { DaySummary, GameState, TruckId } from '../engine/types.ts'
+import type { Day, DaySummary, GameState, TruckId } from '../engine/types.ts'
 import {
   SHOWN_TRUCK,
   shownTruckOf,
@@ -106,16 +106,42 @@ export function wasOpen(day: ReportedDay): boolean {
   return day.open ?? day.visits.length > 0
 }
 
+/** The trucks a storage kept closed on the day `day`, as it was played. */
+export interface StoredDay {
+  readonly day: Day
+  readonly trucks: readonly TruckId[]
+}
+
+/**
+ * The trucks of `game` that its storage keeps closed on the day it plays
+ * next. Read before `tick`: the morning after holds the next day's
+ * decisions, which may store a truck, or not, otherwise.
+ */
+export function storedOn(game: GameState): StoredDay {
+  return {
+    day: game.day,
+    trucks: truckIds(game).filter((id) =>
+      isStored(truckDecisionsOf(game.decisions, id).storage, game.day),
+    ),
+  }
+}
+
 /**
  * Why `game`'s truck `id` sold nothing on its last day: « Fermé pour
- * l'hiver » on a day its storage covers, « Fermé » on another day it did
- * not open; null when it opened, or has no day yet.
+ * l'hiver » when `stored`, the trucks stored the day it was played, has
+ * it, else « Fermé », as when why is not known, after a load; null when it
+ * opened, or has no day yet.
  */
-export function closedText(game: GameState, id: TruckId): string | null {
+export function closedText(
+  game: GameState,
+  id: TruckId,
+  stored: StoredDay | null,
+): string | null {
   const day = truckDayOf(game, id)
   if (day === null || wasOpen(day)) return null
-  const { storage } = truckDecisionsOf(game.decisions, id)
-  return isStored(storage, day.day) ? "Fermé pour l'hiver" : 'Fermé'
+  return stored?.day === day.day && stored.trucks.includes(id)
+    ? "Fermé pour l'hiver"
+    : 'Fermé'
 }
 
 /** `Kevin`: the first word of a name. */

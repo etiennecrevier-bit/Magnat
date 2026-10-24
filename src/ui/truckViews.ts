@@ -13,10 +13,12 @@ import {
 import {
   closedText,
   hasTrucks,
+  storedOn,
   truckDayOf,
   truckName,
   wasOpen,
   whoWorksToday,
+  type StoredDay,
 } from './trucks.ts'
 
 // What the panels show of the truck picked (#265): the switcher's pills,
@@ -105,11 +107,16 @@ export interface YesterdayCard {
 
 /**
  * « Hier » for `game`, showing the truck `shown`: its last day's numbers,
- * or why it was closed; with two trucks or more, its name in the title and
+ * or why it was closed, from `stored`, the trucks stored that day (see
+ * `watchStoredDays`); with two trucks or more, its name in the title and
  * a line per other truck. Who kept the truck open with the owner away
  * stays a fact of the first truck's day.
  */
-export function yesterdayCard(game: GameState, shown: TruckId): YesterdayCard {
+export function yesterdayCard(
+  game: GameState,
+  shown: TruckId,
+  stored: StoredDay | null = STORED_DAYS.last(),
+): YesterdayCard {
   const day = truckDayOf(game, shown)
   const { lastDay } = game
   const several = hasTrucks(game)
@@ -120,7 +127,7 @@ export function yesterdayCard(game: GameState, shown: TruckId): YesterdayCard {
         ? null
         : truckWithout(lastDay, game.staff),
     title: several ? `Hier · ${truckName(game, shown)}` : 'Hier',
-    closed: several ? closedText(game, shown) : null,
+    closed: several ? closedText(game, shown, stored) : null,
     others: several
       ? truckIds(game)
           .filter((id) => id !== shown)
@@ -144,6 +151,7 @@ export function yesterdayCard(game: GameState, shown: TruckId): YesterdayCard {
 /**
  * Forgets the truck picked in `shown` each time `store` starts or loads
  * another game, so a pick never carries into it. Returns the unsubscribe.
+ * The app's stores are watched below for the page's whole life.
  */
 export function forgetPickOnNewGame(
   store: GameStore = gameStore,
@@ -153,3 +161,53 @@ export function forgetPickOnNewGame(
     if (state.gamesStarted !== previous.gamesStarted) shown.pick(null)
   })
 }
+
+/** What remembers the trucks stored on the day last played. */
+export interface StoredDays {
+  /**
+   * The trucks stored the day last played; null when that is not known,
+   * before a day is played in this game, as after a load.
+   */
+  readonly last: () => StoredDay | null
+  /** Stops watching. */
+  readonly stop: () => void
+}
+
+/**
+ * Remembers, as `store` plays each day, the trucks its storage kept closed
+ * that day: the game no longer holds the decisions a day was played with
+ * once its morning has the next day's (see `storedOn`).
+ */
+export function watchStoredDays(store: GameStore = gameStore): StoredDays {
+  let morning: GameState | null = null
+  let last: StoredDay | null = null
+  const stopMornings = store.getState().watchMornings((next) => {
+    // The game the day was played from: the store's for a run's first day,
+    // the morning before for each next one, as the store takes a run's
+    // last morning only.
+    const current = store.getState().game
+    const before = current.day === next.day - 1 ? current : morning
+    last = before?.day === next.day - 1 ? storedOn(before) : null
+    morning = next
+  })
+  const stopStarts = store.subscribe((state, previous) => {
+    if (state.gamesStarted === previous.gamesStarted) return
+    morning = null
+    last = null
+  })
+  return {
+    last: () => last,
+    stop: () => {
+      stopMornings()
+      stopStarts()
+    },
+  }
+}
+
+/** The app store's, which « Hier » reads. */
+const STORED_DAYS = watchStoredDays()
+
+// Watched from the page's start rather than by a component: a game starts
+// from the menu while the top bar is not shown, and a new game's truck may
+// have the id of the one picked in the last.
+forgetPickOnNewGame()

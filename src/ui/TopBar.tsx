@@ -45,7 +45,6 @@ import {
   type SeasonChip,
 } from './trucks.ts'
 import TruckSwitcher from './TruckSwitcher.tsx'
-import { forgetPickOnNewGame } from './truckViews.ts'
 import { useMediaQuery } from './useMediaQuery.ts'
 import './TopBar.css'
 
@@ -334,9 +333,6 @@ export default function TopBar({
   const openPanel = useGame((state) => state.openPanel)
   const openDrawer = useGame((state) => state.openDrawer)
   const narrow = useMediaQuery(NARROW_QUERY)
-
-  // A new game, or one loaded, forgets the truck picked (#265).
-  useEffect(() => forgetPickOnNewGame(), [])
 
   useEffect(() => {
     // Réal's bubble waits for its own gesture: Space does not pause then.

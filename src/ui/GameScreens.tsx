@@ -24,6 +24,7 @@ import { settingsStore, type SettingsStore } from './settings.ts'
 import StaffPanel from './StaffPanel.tsx'
 import { gameStore, useGame } from './store.ts'
 import { watchStreetLegend } from './streetLegend.ts'
+import { keepRoomAbove } from './tickerRoom.ts'
 import { coachShowing, watchTutorial } from './tutorialFlow.ts'
 import { tutorialSignals } from './tutorialSignals.ts'
 import CoachBubble from './CoachBubble.tsx'
@@ -32,6 +33,12 @@ import TripPanel from './TripPanel.tsx'
 import WeekSlideIn from './WeekSlideIn.tsx'
 import Yesterday from './Yesterday.tsx'
 import './GameScreens.css'
+
+/** Keeps the height of « Hier » on the page, so the week's card stays
+    above it (see tickerRoom.ts). */
+function keepYesterdayRoom(spot: HTMLElement | null) {
+  return spot === null ? undefined : keepRoomAbove(spot, document.body)
+}
 
 /**
  * The panel open, in the dock's frame for those the dock opens, centred for
@@ -147,7 +154,7 @@ export default function GameScreens({
         <Messages />
       </div>
       <WeekSlideIn />
-      <div className="yesterday-spot">
+      <div ref={keepYesterdayRoom} className="yesterday-spot">
         <Yesterday folded={folded} onFoldChange={fold} />
       </div>
       <Dock />

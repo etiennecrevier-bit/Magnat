@@ -8,13 +8,19 @@ import { SHOWN_TRUCK } from '../world/shownTruck.ts'
 import { handleFoldKey } from './foldShortcut.ts'
 import type { KeyEventLike } from './pauseShortcut.ts'
 import { createSettingsStore } from './settings.ts'
-import { gameStore, PAUSED, type GameStoreState } from './store.ts'
+import {
+  createGameStore,
+  gameStore,
+  PAUSED,
+  type GameStoreState,
+} from './store.ts'
 import Yesterday, { YesterdayView } from './Yesterday.tsx'
 import { createInitialState, tick } from '../engine/clock.ts'
-import { FIRST_TRUCK } from '../engine/trucks.ts'
+import { FIRST_TRUCK, truckDecisionsOf } from '../engine/trucks.ts'
 import { hiring, SECOND, withSecondTruck } from './fixtures/twoTrucks.ts'
 import { todayNumbers as numbersOf, type TodayNumbers } from './todayNumbers.ts'
-import { yesterdayCard } from './truckViews.ts'
+import { storedOn } from './trucks.ts'
+import { watchStoredDays, yesterdayCard } from './truckViews.ts'
 
 // A static render reads a Zustand store's initial state, so « Hier » reads
 // the app store's current state through this stand-in.
@@ -291,17 +297,18 @@ describe('« Hier » with two trucks (#265)', () => {
   })
 
   it('says « Fermé pour l’hiver » for a truck stored, « fermé » for the other line', () => {
-    const stored = tick(
-      tick(
-        withSecondTruck(createInitialState(42), {
-          kind: 'storage',
-          storage: { from: { month: 5, day: 1 }, to: { month: 5, day: 31 } },
-          truck: SECOND,
-        }),
-      ),
+    const before = tick(
+      withSecondTruck(createInitialState(42), {
+        kind: 'storage',
+        storage: MAY,
+        truck: SECOND,
+      }),
     )
-    const card = yesterdayCard(stored, SECOND)
+    const stored = tick(before)
+    const card = yesterdayCard(stored, SECOND, storedOn(before))
     expect(card.closed).toBe("Fermé pour l'hiver")
+    // Not knowing why, as after a load, it says only « Fermé ».
+    expect(yesterdayCard(stored, SECOND, null).closed).toBe('Fermé')
     const html = renderToStaticMarkup(
       <YesterdayView
         {...card}
@@ -345,5 +352,87 @@ describe('« Hier » with two trucks (#265)', () => {
     expect(html()).toContain('Hier · Vieux-Montréal')
     SHOWN_TRUCK.pick(FIRST_TRUCK)
     expect(html()).toContain('Hier · Plateau')
+  })
+})
+
+// A storage over the whole of May, the month a new game starts in.
+const MAY = { from: { month: 5, day: 1 }, to: { month: 5, day: 31 } }
+
+describe('« Hier » says why a truck was closed as the day was played (#265)', () => {
+  const EVERY_DAY = [1, 2, 3, 4, 5, 6, 7]
+
+  /** A store whose second truck opens every day, with `changes`. */
+  function playing(...changes: Parameters<typeof withSecondTruck>[1][]) {
+    const store = createGameStore(
+      tick(
+        withSecondTruck(
+          createInitialState(42),
+          { kind: 'daysOpen', weekdays: EVERY_DAY, truck: SECOND },
+          ...changes,
+        ),
+      ),
+    )
+    const stored = watchStoredDays(store)
+    const closed = () =>
+      yesterdayCard(store.getState().game, SECOND, stored.last()).closed
+    return { store, stored, closed }
+  }
+
+  it('still says « Fermé pour l’hiver » the morning the storage is taken off', () => {
+    const { store, stored, closed } = playing(
+      { kind: 'ownerAt', truck: SECOND },
+      { kind: 'storage', storage: MAY, truck: SECOND },
+    )
+    // Nothing played yet in this store: why is not known.
+    expect(stored.last()).toBeNull()
+    store.getState().advance(1)
+    expect(closed()).toBe("Fermé pour l'hiver")
+    // Taken off for tomorrow: the day played was still stored, though the
+    // morning holds no storage any more.
+    store.getState().decide({ kind: 'storage', storage: null, truck: SECOND })
+    store.getState().advance(1)
+    const { game } = store.getState()
+    expect(truckDecisionsOf(game.decisions, SECOND).storage ?? null).toBeNull()
+    expect(game.trucks?.[0]?.lastDay?.open).toBe(false)
+    expect(closed()).toBe("Fermé pour l'hiver")
+    // The next day, with the owner there, it opens.
+    store.getState().advance(1)
+    expect(closed()).toBeNull()
+    stored.stop()
+  })
+
+  it('says « Fermé » for a day closed with nobody, the storage put on after', () => {
+    const { store, stored, closed } = playing()
+    store.getState().advance(1)
+    expect(closed()).toBe('Fermé')
+    store.getState().decide({ kind: 'storage', storage: MAY, truck: SECOND })
+    expect(closed()).toBe('Fermé')
+    // Put on for tomorrow: the day played was still closed with nobody,
+    // though the morning holds the storage.
+    store.getState().advance(1)
+    const { game } = store.getState()
+    expect(truckDecisionsOf(game.decisions, SECOND).storage).toEqual(MAY)
+    expect(closed()).toBe('Fermé')
+    store.getState().advance(1)
+    expect(closed()).toBe("Fermé pour l'hiver")
+    stored.stop()
+  })
+
+  it('reads the last day of a run of days, and forgets it all for another game', () => {
+    const { store, stored, closed } = playing({
+      kind: 'storage',
+      storage: MAY,
+      truck: SECOND,
+    })
+    const from = store.getState().game.day
+    store.getState().advance(3)
+    expect(store.getState().game.day).toBe(from + 3)
+    expect(stored.last()).toEqual({ day: from + 2, trucks: [SECOND] })
+    expect(closed()).toBe("Fermé pour l'hiver")
+    // A game loaded: why its last day was closed is not known.
+    store.getState().startGame(store.getState().game)
+    expect(stored.last()).toBeNull()
+    expect(closed()).toBe('Fermé')
+    stored.stop()
   })
 })

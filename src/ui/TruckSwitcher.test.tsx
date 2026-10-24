@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, tick } from '../engine/clock.ts'
 import { FIRST_TRUCK } from '../engine/trucks.ts'
 import type { GameState } from '../engine/types.ts'
-import { createShownTruck } from '../world/shownTruck.ts'
+import { createShownTruck, SHOWN_TRUCK } from '../world/shownTruck.ts'
 import { hiring, SECOND, withSecondTruck } from './fixtures/twoTrucks.ts'
 import { createGameStore, gameStore, type GameStoreState } from './store.ts'
 import TruckSwitcher, { TruckSwitcherView } from './TruckSwitcher.tsx'
@@ -155,5 +155,34 @@ describe('TruckSwitcher (#265)', () => {
     shown.pick(SECOND)
     store.getState().startGame(createInitialState(8))
     expect(shown.getState()).toBe(SECOND)
+  })
+
+  it("forgets the page's pick when a game starts from the menu, with no top bar shown", () => {
+    // The page's stores, watched since the module loaded: nothing here
+    // subscribes, as nothing is mounted between « Retour au menu » and the
+    // next game's start.
+    gameStore.getState().startGame(summer())
+    SHOWN_TRUCK.pick(SECOND)
+    // A new game with the same second truck, the owner at the Plateau.
+    const next = withSecondTruck(createInitialState(7))
+    expect(next.trucks?.map((truck) => truck.id)).toEqual([SECOND])
+    gameStore.getState().startGame(next)
+    expect(SHOWN_TRUCK.getState()).toBeNull()
+    const markup = renderToStaticMarkup(<TruckSwitcher />)
+    // Day 0, a Monday: the Plateau, where the owner works, closed.
+    expect(markup).toContain('aria-pressed="true">Plateau · fermé<')
+    // And into a one-truck game, so the pick does not come back with the
+    // truck bought again.
+    SHOWN_TRUCK.pick(SECOND)
+    gameStore.getState().startGame(createInitialState(8))
+    expect(SHOWN_TRUCK.getState()).toBeNull()
+  })
+
+  it("keeps the page's pick while the same game goes on", () => {
+    gameStore.getState().startGame(summer())
+    SHOWN_TRUCK.pick(FIRST_TRUCK)
+    gameStore.getState().decide({ kind: 'ownerAt', truck: FIRST_TRUCK })
+    expect(SHOWN_TRUCK.getState()).toBe(FIRST_TRUCK)
+    SHOWN_TRUCK.pick(null)
   })
 })
