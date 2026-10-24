@@ -115,12 +115,12 @@ export function createSnow(
   color: string,
   random: () => number,
 ): Snow {
-  // A soft-edged disc: full to most of its radius, fading at its rim.
+  // A disc as the target draws its flakes, its rim softened a little.
   const texture: Texture = textureOf(
     radialPixels(
       [
         { offset: 0, color, alpha: 1 },
-        { offset: 0.7, color, alpha: 1 },
+        { offset: 0.85, color, alpha: 1 },
         { offset: 1, color, alpha: 0 },
       ],
       { x: 0.5, y: 0.5 },
