@@ -1,6 +1,7 @@
 import {
   loadEventContent,
   type DefiContent,
+  type DistrictId,
   type EventCard,
   type EventChoiceRef,
   type EventConditions,
@@ -11,6 +12,7 @@ import {
   type PercentileContent,
   type RestockRule,
   type Standing,
+  type WinterStorage,
 } from '../content/schema.ts'
 import type { AccountCode } from '../finance/accounts.ts'
 import { balance } from '../finance/journal.ts'
@@ -19,14 +21,22 @@ import { toCalendar } from './calendar.ts'
 import { allowedChoices } from './challenge.ts'
 import { GROCERS, mayOffer } from './contracts.ts'
 import { DEFIS, EVENTS, FOOD_TRUCK } from './day.ts'
+import { isStored, reopensOn } from './districts.ts'
 import { applyEffect, insertByDay, untimed, whenDue } from './effects.ts'
 import { FINANCING } from './financing.ts'
 import { PERCENTILES } from './percentiles.ts'
 import { next } from './rng.ts'
 import { effectsAt } from './scaling.ts'
 import { standingOf } from './standing.ts'
-import { streetOn } from './street.ts'
-import type { Day, EventRecord, EventsState, GameState } from './types.ts'
+import { modifiersAt, streetOn } from './street.ts'
+import { FIRST_DISTRICT, trucksOf, truckDecisionsOf } from './trucks.ts'
+import type {
+  Day,
+  EventRecord,
+  EventsState,
+  GameState,
+  TruckDecisions,
+} from './types.ts'
 
 // The event cards: a morning may bring a dilemma, which waits for the
 // player's choice before the day can be played. Drawing an event, and
@@ -213,11 +223,13 @@ function picking(
  * the month) and the weekday are among those listed; the owner's energy is
  * below `energyBelow`; the product of `productOnMenu` has a rule that
  * supplies some, the bake rule for croissants the bakery makes that day and
- * the restock rule otherwise (see `supplyRule`); the truck opens the next
- * day, or stays closed, as `openTomorrow` says (see `opensOn`); the event
- * never came up, for
- * `oncePerGame`, came up fewer than `maxPerGame` times, or came up at least
- * `cooldownDays` days ago, follow-ups included; the history holds one of the
+ * the restock rule otherwise (see `supplyRule`); a truck works in the
+ * `district`, stored or not (#262); the truck, that district's or else the
+ * first one, opens the next day, or stays closed, as `openTomorrow` says
+ * (see `opensOn`), and is stored that morning, or not, as `stored` says
+ * (see `isStored`); the event never came up, for `oncePerGame`, came up
+ * fewer than `maxPerGame` times, or came up at least `cooldownDays` days
+ * ago, follow-ups included; the history holds one of the
  * choices `chosen` lists, and none of those `notChosen` lists; the
  * `grocer` may offer a contract (see `mayOffer`, with `grocers`); and
  * Encaisse is above `cashAboveCents` and below `cashBelowCents`, read from
@@ -240,6 +252,8 @@ export function conditionsHold(
     energyBelow,
     productOnMenu,
     openTomorrow,
+    district,
+    stored,
     oncePerGame,
     maxPerGame,
     cooldownDays,
@@ -272,7 +286,22 @@ export function conditionsHold(
   ) {
     return false
   }
-  if (openTomorrow !== undefined && opensOn(state, day + 1) !== openTomorrow) {
+  if (
+    district !== undefined &&
+    !trucksOf(state).some((truck) => truck.district === district)
+  ) {
+    return false
+  }
+  if (
+    openTomorrow !== undefined &&
+    opensOn(state, day + 1, district ?? FIRST_DISTRICT) !== openTomorrow
+  ) {
+    return false
+  }
+  if (
+    stored !== undefined &&
+    isStored(storageIn(state, district ?? FIRST_DISTRICT), day) !== stored
+  ) {
     return false
   }
   const last = seen.get(id)
@@ -314,9 +343,13 @@ export function conditionsHold(
  * scaled as the game scales them (see `scalingOf` and `effectsAt`), those
  * that start now applied at once (see `applyEffect`, with `foodTruck`'s
  * unit costs and `financing`'s rules) and the others queued for their day
- * (see `whenDue`), as they will run, a contract with one of `grocers`. The
- * event goes into the history and no longer waits. Returns a new state;
- * never mutates `state`.
+ * (see `whenDue`), those after the storage's end on the first day the
+ * truck of the event's district, or else the first truck, is no longer
+ * stored, that day itself when it is not (see `reopensOn`), as they will
+ * run, a contract with one of `grocers`, and the changes to the street for
+ * the truck of the event's `district`, if it sets one (#262). The event
+ * goes into the history and no longer waits. Returns a new state; never
+ * mutates `state`.
  * Throws an Error when no event waits, and a RangeError when `content` does
  * not hold the event, the event has no such choice, or the game's Défi, one
  * of `defis`, forces the event that morning without allowing the choice
@@ -373,17 +406,30 @@ export function resolveEvent(
       history: [...state.events.history, record],
     },
   }
+  const district = event.conditions?.district
   const effects = effectsAt(
     choice.outcomes[index]?.effects ?? [],
     state.profile.difficulty,
     scalingOf(state, content),
   )
   for (const timed of effects) {
-    const day = whenDue(timed, state.day)
+    const day =
+      timed.afterStorageEnd === true
+        ? reopensOn(storageIn(state, district ?? FIRST_DISTRICT), state.day)
+        : whenDue(timed, state.day)
     const effect = untimed(timed)
     resolved =
       day === state.day
-        ? applyEffect(resolved, effect, foodTruck, event.id, grocers, financing)
+        ? applyEffect(
+            resolved,
+            effect,
+            foodTruck,
+            event.id,
+            grocers,
+            financing,
+            undefined,
+            district,
+          )
         : {
             ...resolved,
             events: {
@@ -392,6 +438,7 @@ export function resolveEvent(
                 day,
                 event: event.id,
                 effect,
+                ...(district === undefined ? {} : { district }),
               }),
             },
           }
@@ -424,21 +471,54 @@ function onMenu(rule: RestockRule): boolean {
 }
 
 /**
- * Whether the truck opens on `day`, as the morning of `state` sees it: the
- * days open hold its weekday, and no change to the street closes it, among
- * those in effect and those the delayed effects will make.
+ * Whether the truck in `district` opens on `day`, as the morning of `state`
+ * sees it: its days open hold the weekday, it is not stored that day (see
+ * `isStored`), and no change to its street closes it, among those in effect
+ * and those the delayed effects will make (see `modifiersAt`). False when no
+ * truck works there.
  */
-function opensOn(state: GameState, day: Day): boolean {
-  const { daysOpen } = state.decisions
+function opensOn(state: GameState, day: Day, district: DistrictId): boolean {
+  const own = decisionsIn(state, district)
+  if (own === undefined) return false
+  const { daysOpen, storage } = own
   const { modifiers, delayed } = state.events
   return (
     daysOpen.includes(toCalendar(day).weekday) &&
-    !streetOn(modifiers, day).closed &&
+    !isStored(storage, day) &&
+    !streetOn(modifiersAt(modifiers, district), day).closed &&
     !delayed.some(
-      ({ day: from, effect }) =>
-        effect.kind === 'closed' && from <= day && day < from + effect.days,
+      (later) =>
+        later.effect.kind === 'closed' &&
+        (later.district ?? FIRST_DISTRICT) === district &&
+        later.day <= day &&
+        day < later.day + later.effect.days,
     )
   )
+}
+
+/**
+ * How the truck in `district` runs under the decisions of `state`'s
+ * morning; undefined when no truck works there.
+ */
+function decisionsIn(
+  state: GameState,
+  district: DistrictId,
+): TruckDecisions | undefined {
+  const truck = trucksOf(state).find((view) => view.district === district)
+  return truck === undefined
+    ? undefined
+    : truckDecisionsOf(state.decisions, truck.id)
+}
+
+/**
+ * The storage of the truck in `district` under the decisions of `state`'s
+ * morning: none when no truck works there, or it is not stored.
+ */
+function storageIn(
+  state: GameState,
+  district: DistrictId,
+): WinterStorage | undefined {
+  return decisionsIn(state, district)?.storage
 }
 
 /**

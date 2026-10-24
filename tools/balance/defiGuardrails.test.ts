@@ -224,10 +224,16 @@ describe('the shipped Défis', () => {
     expect(played.filter(({ broken }) => !broken)).toEqual([])
   })
 
-  it.each(ids)("%s: P3-13's owners win the same medals", (id) => {
-    const played = games(OWNER_SEEDS, (seed) =>
-      playDefi(id, seed, ownerStrategy(seed), DEFIS, gridOwnerChanges),
-    )
-    expect(medalCounts(played)).toEqual(P3_13_OWNERS[id])
-  })
+  // 200 seeds: about 2 s for « Payé dans 60 jours » alone, past the default
+  // 5 s when the whole suite shares the machine.
+  it.each(ids)(
+    "%s: P3-13's owners win the same medals",
+    (id) => {
+      const played = games(OWNER_SEEDS, (seed) =>
+        playDefi(id, seed, ownerStrategy(seed), DEFIS, gridOwnerChanges),
+      )
+      expect(medalCounts(played)).toEqual(P3_13_OWNERS[id])
+    },
+    30_000,
+  )
 })

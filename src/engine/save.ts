@@ -333,6 +333,8 @@ const modifierSchema = z.strictObject({
   change: streetChangeSchema,
   fromDay: gameDay,
   lastDay: gameDay,
+  // A save from before #262 has none: the first truck's.
+  district: districtIdSchema.optional(),
 })
 
 const workerSchema = z.union([z.literal('owner'), candidateIdSchema])
@@ -594,6 +596,8 @@ const eventsSchema = z.strictObject({
       day: gameDay,
       event: z.string(),
       effect: eventEffectSchema,
+      // A save from before #262 has none: the first truck's.
+      district: districtIdSchema.optional(),
     }),
   ),
   followUps: z.array(z.strictObject({ day: gameDay, event: z.string() })),

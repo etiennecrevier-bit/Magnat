@@ -32,7 +32,13 @@ const TEST_CHARACTER = 'essai'
 
 // Characters whose portrait is not drawn yet: their card shows the silhouette.
 // Take a character off the list when its file lands.
-const AWAITING_PORTRAIT: readonly string[] = []
+// The Vieux-Montréal's four (#262) come with #263.
+const AWAITING_PORTRAIT: readonly string[] = [
+  'gastonBrisebois',
+  'marieSoleilLajoie',
+  'brunoCastonguay',
+  'ritaEsposito',
+]
 
 const CHARACTERS: readonly string[] = [
   ...new Set(eventsJson.events.map((event) => event.character.id)),

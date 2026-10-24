@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createInitialState, tick, toCalendar } from '../engine/clock.ts'
+import { applyDecision, type DecisionChange } from '../engine/decisions.ts'
+import { defaultWinterStorage } from '../engine/districts.ts'
 import {
   CUSTOMERS,
   DIFFICULTIES,
@@ -11,20 +13,38 @@ import {
 import { conditionsHold, drawEvent, resolveEvent } from '../engine/events.ts'
 import { FULL_ENERGY } from '../engine/energy.ts'
 import { onHand } from '../engine/inventory.ts'
+import { cents } from '../engine/money.ts'
 import { next } from '../engine/rng.ts'
-import { streetOn, type Street } from '../engine/street.ts'
+import { choiceTags } from '../engine/scaling.ts'
+import { deserialize, serialize } from '../engine/save.ts'
+import { modifiersAt, streetOn, type Street } from '../engine/street.ts'
 import type { Day, GameState } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
-import { balance, entriesOf, type JournalEntry } from '../finance/journal.ts'
+import {
+  balance,
+  entriesOf,
+  postEntry,
+  type JournalEntry,
+} from '../finance/journal.ts'
 import { balanceSheet } from '../finance/statements.ts'
-import type { EventCard, EventChoice, EventContent } from './schema.ts'
+import type {
+  DifficultyId,
+  EventCard,
+  EventChoice,
+  EventContent,
+  RungId,
+  WinterStorage,
+} from './schema.ts'
 
 // The event cards of issues #93, #137 and #155, each choice played out in a
 // game of seed 42: every outcome of every choice, from the first morning the
 // card may come up, until nothing it started is left. chequeDansLaMalle,
 // which only comes as a follow-up, plays from the late payment of
-// grosseCommande. The cards play as written, with no difficulty scaling
-// them: the game is at Moyen, so the effects of Difficile only never apply.
+// grosseCommande. The Vieux-Montréal's cards (#262) play in a game whose
+// second truck is bought on day 0, the owner working there, and stored for
+// the winter on the content's default dates. The cards play
+// as written, with no difficulty scaling them: the game is at Moyen, so the
+// effects of Difficile only never apply.
 
 const SEED = 42
 const CASH: AccountCode = '1000'
@@ -81,14 +101,72 @@ function choiceOf(event: string, id: string): EventChoice {
 /** Every weekday, Monday to Sunday. */
 const WHOLE_WEEK = [1, 2, 3, 4, 5, 6, 7]
 
+/** The Vieux-Montréal's truck, the second one (#260). */
+const SECOND_TRUCK = 'vieuxMontreal'
+
+/** The rungs of « Améliorations » up to « Deuxième camion », in order. */
+const TO_SECOND_TRUCK: readonly RungId[] = [
+  'espresso',
+  'grandCamion',
+  'deuxiemeCamion',
+]
+
+/** More than the rungs up to « Deuxième camion » cost together. */
+const ENOUGH_FOR_THE_RUNGS = 20_000_000
+
+/** `state` with `amount` put into Encaisse by the owner, or taken out. */
+function ownerPuts(state: GameState, amount: number): GameState {
+  const moved = Math.abs(amount)
+  const [cash, equity] = amount > 0 ? [moved, 0] : [0, moved]
+  return {
+    ...state,
+    journal: postEntry(state.journal, {
+      day: state.day,
+      memo: 'Mise de fonds',
+      lines: [
+        { account: CASH, debit: cents(cash), credit: cents(equity) },
+        { account: '3000', debit: cents(equity), credit: cents(cash) },
+      ],
+    }),
+  }
+}
+
 /**
- * A new seed-42 game for `event`, with the starting decisions, and in its
- * history the first choice a card that remembers one asks for, made on day
- * 0.
+ * `state` with the Vieux-Montréal's truck bought that morning, with the
+ * rungs before it, Encaisse brought back where it was, and the owner
+ * working at it from the next morning on, stored for the winter by
+ * `storage` (#262).
+ */
+function withSecondTruck(
+  state: GameState,
+  storage: WinterStorage | null = defaultWinterStorage(),
+): GameState {
+  const cashOf = (game: GameState) =>
+    balance(game.journal, CASH, { toDay: game.day })
+  const bought = TO_SECOND_TRUCK.reduce(
+    (game, rung) => applyDecision(game, { kind: 'buy', rung }),
+    ownerPuts(state, ENOUGH_FOR_THE_RUNGS),
+  )
+  return [
+    { kind: 'ownerAt', truck: SECOND_TRUCK },
+    { kind: 'storage', truck: SECOND_TRUCK, storage },
+  ].reduce<GameState>(
+    (game, change) => applyDecision(game, change as DecisionChange),
+    ownerPuts(bought, cashOf(state) - cashOf(bought)),
+  )
+}
+
+/**
+ * A new seed-42 game for `event`, with the starting decisions, the second
+ * truck bought for a card of its district, and in its history the first
+ * choice a card that remembers one asks for, made on day 0.
  */
 function startOf(event: string): GameState {
-  const state = createInitialState(SEED)
-  const [made] = cardOf(event).conditions?.chosen ?? []
+  const { conditions } = cardOf(event)
+  const created = createInitialState(SEED)
+  const state =
+    conditions?.district === SECOND_TRUCK ? withSecondTruck(created) : created
+  const [made] = conditions?.chosen ?? []
   if (made === undefined) return state
   return {
     ...state,
@@ -1136,6 +1214,425 @@ describe('the morning of June 30 with a follow-up due (#155)', () => {
     expect(drawn.events.pending).toEqual({
       event: 'chequeDansLaMalle',
       followUp: true,
+    })
+  })
+})
+
+describe("the Vieux-Montréal's cards (#262)", () => {
+  const DISTRICT_CARDS = CARDS.filter(
+    ({ conditions }) => conditions?.district === SECOND_TRUCK,
+  )
+
+  /** The mornings of a year from `state`, played with no event. */
+  function yearFrom(state: GameState): GameState[] {
+    const mornings: GameState[] = []
+    let current = state
+    for (let day = 0; day < DAYS_PER_YEAR; day += 1) {
+      mornings.push(current)
+      current = tick(current)
+    }
+    return mornings
+  }
+  const plateauYear = yearFrom(createInitialState(SEED))
+  const twoTruckYear = yearFrom(withSecondTruck(createInitialState(SEED)))
+
+  /** The days from `from` to `to`, both included. */
+  function daysFrom(from: Day, to: Day): Day[] {
+    return Array.from({ length: to - from + 1 }, (_, n) => from + n)
+  }
+
+  /** The morning after `day`, one of `mornings`, which sums it up. */
+  function summaryOf(mornings: readonly GameState[], day: Day) {
+    const morning = mornings.find(({ lastDay }) => lastDay?.day === day)
+    if (morning?.lastDay == null) throw new Error(`Day ${day} was not played`)
+    return morning
+  }
+  /** The street of the truck in `district` on `day`, one of those played. */
+  function streetIn(
+    mornings: readonly GameState[],
+    day: Day,
+    district: 'plateau' | typeof SECOND_TRUCK,
+  ): Street {
+    const modifiers = summaryOf(mornings, day).lastDay?.modifiers ?? []
+    return streetOn(modifiersAt(modifiers, district), day)
+  }
+  /** The Vieux-Montréal truck's own summary of `day`. */
+  function secondTruckDay(mornings: readonly GameState[], day: Day) {
+    return summaryOf(mornings, day).trucks?.find(
+      ({ id }) => id === SECOND_TRUCK,
+    )?.lastDay
+  }
+  /** `morning`, at `difficulty`, with `event` waiting and `choiceId` chosen as the game scales it. */
+  function chooseAt(
+    morning: GameState,
+    difficulty: DifficultyId,
+    event: string,
+    choiceId: string,
+  ): GameState {
+    return resolveEvent(
+      {
+        ...morning,
+        profile: { ...morning.profile, difficulty },
+        events: { ...morning.events, pending: { event, followUp: false } },
+      },
+      choiceId,
+      EVENTS,
+    )
+  }
+  /** The amount the tag of `choice` naming `effect` shows at `difficulty`. */
+  function tagAmount(
+    event: string,
+    choice: string,
+    effect: string,
+    difficulty: DifficultyId,
+  ): number | null {
+    const { tags } = choiceOf(event, choice)
+    const tag = tags.find(
+      (written) => typeof written !== 'string' && written.effect === effect,
+    )
+    if (tag === undefined || typeof tag === 'string') return null
+    const named = choiceTags(choiceOf(event, choice), difficulty, EVENTS).find(
+      ({ text }) => text === tag.text,
+    )?.amount
+    if (named == null) return null
+    if (named.unit === 'money') return named.cents
+    if (named.unit === 'percent') return named.percent
+    return named.points
+  }
+
+  it('are the cards of the issue', () => {
+    expect(DISTRICT_CARDS.map(({ id }) => id)).toEqual([
+      'guideTouristique',
+      'festivalJazz',
+      'tournage',
+      'glacesBonsecours',
+      'hiverLong',
+    ])
+  })
+
+  it.each(DISTRICT_CARDS.map(({ id }) => id))(
+    '%s never comes up with the Plateau truck alone',
+    (id) => {
+      const card = cardOf(id)
+      const held = plateauYear.filter((state) =>
+        conditionsHold(card, state, new Map()),
+      )
+      expect(held).toEqual([])
+    },
+  )
+
+  it.each(DISTRICT_CARDS.map(({ id }) => id))(
+    '%s comes up with a truck in the Vieux-Montréal, only in its season',
+    (id) => {
+      const card = cardOf(id)
+      const { months, date, weekdays } = card.conditions ?? {}
+      const held = twoTruckYear
+        .filter((state) => conditionsHold(card, state, new Map()))
+        .map(({ day }) => toCalendar(day))
+      expect(held.length).toBeGreaterThan(0)
+      for (const today of held) {
+        if (months !== undefined) expect(months).toContain(today.month)
+        if (date !== undefined) {
+          expect([today.month, today.dayOfMonth]).toEqual([
+            date.month,
+            date.dayOfMonth,
+          ])
+        }
+        if (weekdays !== undefined) expect(weekdays).toContain(today.weekday)
+      }
+    },
+  )
+
+  it('keeps every season inside the summer the rival works for « Les Glaces Bonsecours », its 30 days included', () => {
+    const { months = [] } = cardOf('glacesBonsecours').conditions ?? {}
+    const lastStart = Math.max(...months)
+    expect(lastStart).toBeLessThanOrEqual(7)
+  })
+
+  describe('guideTouristique', () => {
+    const morning = firstMorning('guideTouristique')
+    const memoOf = (week: number) =>
+      `Commission de Gaston Brisebois, semaine ${week}`
+
+    it('comes up on a Friday', () => {
+      expect(toCalendar(morning.day).weekday).toBe(5)
+    })
+
+    it.each<DifficultyId>(['facile', 'moyen', 'difficile'])(
+      '« Marché conclu » charges what its tag shows that Friday and the next three, four times in all, at %s',
+      (difficulty) => {
+        const chosen = chooseAt(
+          morning,
+          difficulty,
+          'guideTouristique',
+          'marcheConclu',
+        )
+        const state = last(playOut(chosen, { minDays: 35 }))
+        const paid = [1, 2, 3, 4].flatMap((week) =>
+          entries(state, memoOf(week)).map(shape),
+        )
+        const amount = tagAmount(
+          'guideTouristique',
+          'marcheConclu',
+          'commission',
+          difficulty,
+        )
+        expect(paid).toEqual(
+          [0, 7, 14, 21].map((after) => ({
+            day: morning.day + after,
+            debited: '6900',
+            credited: CASH,
+            amount,
+          })),
+        )
+        for (const { day } of paid) expect(toCalendar(day).weekday).toBe(5)
+      },
+    )
+
+    it('« Marché conclu » brings the tourists to the Vieux-Montréal truck for 28 days, as its tag shows, and never to the Plateau', () => {
+      const chosen = choose(morning, 'guideTouristique', 'marcheConclu')
+      const mornings = playOut(chosen, { minDays: 35 })
+      const from = morning.day
+      for (let day = from; day <= from + 30; day += 1) {
+        const factor = day < from + 28 ? 1.25 : 1
+        expect(
+          streetIn(mornings, day, SECOND_TRUCK).walkIns.touriste,
+          `day ${day}`,
+        ).toBeCloseTo(factor)
+        expect(streetIn(mornings, day, 'plateau').walkIns.touriste).toBe(1)
+      }
+    })
+
+    it('« Non merci » costs nothing but at Difficile, where Gaston steers his groups away', () => {
+      const effects = choiceOf('guideTouristique', 'nonMerci').outcomes.flatMap(
+        ({ effects: list }) => list,
+      )
+      expect(effects.length).toBeGreaterThan(0)
+      for (const { difficulties } of effects) {
+        expect(difficulties).toEqual(['difficile'])
+      }
+    })
+  })
+
+  describe('festivalJazz', () => {
+    const morning = firstMorning('festivalJazz')
+    const after = (choiceId: string) =>
+      playOut(choose(morning, 'festivalJazz', choiceId))
+
+    it('comes up on June 26', () => {
+      expect(toCalendar(morning.day)).toMatchObject({
+        month: 6,
+        dayOfMonth: 26,
+      })
+    })
+
+    it('« Payer l’emplacement » charges its tag that morning and brings 1.8 times the crowd to the Vieux-Montréal truck alone for the ten days after', () => {
+      const mornings = after('payer')
+      const state = last(mornings)
+      expect(
+        entries(state, 'Emplacement au Festival de jazz').map(shape),
+      ).toEqual([
+        {
+          day: morning.day,
+          debited: RENT_AND_PERMIT,
+          credited: CASH,
+          amount: 150_000,
+        },
+      ])
+      const crowded = daysFrom(morning.day, morning.day + 12).filter(
+        (day) => streetIn(mornings, day, SECOND_TRUCK).walkIns.habitue > 1,
+      )
+      expect(crowded).toEqual(
+        Array.from({ length: 10 }, (_, n) => morning.day + 1 + n),
+      )
+      for (const day of crowded) {
+        expect(streetIn(mornings, day, SECOND_TRUCK).walkIns.touriste).toBe(1.8)
+        expect(streetIn(mornings, day, 'plateau').walkIns.touriste).toBe(1)
+      }
+    })
+
+    it('brings more customers to the Vieux-Montréal truck paying than staying where it is', () => {
+      const visits = (choiceId: string) => {
+        const mornings = after(choiceId)
+        let total = 0
+        for (let day = morning.day + 1; day <= morning.day + 10; day += 1) {
+          total += secondTruckDay(mornings, day)?.visits.length ?? 0
+        }
+        return total
+      }
+      expect(visits('payer')).toBeGreaterThan(visits('rester'))
+    })
+
+    it('saves and loads the choice, its queued crowd for the Vieux-Montréal and the crowd in effect', () => {
+      const chosen = choose(morning, 'festivalJazz', 'payer')
+      expect(chosen.events.delayed[0]).toMatchObject({
+        district: SECOND_TRUCK,
+      })
+      // The crowd starts on the morning after the choice.
+      const played = step(step(chosen))
+      expect(played.events.modifiers[0]).toMatchObject({
+        district: SECOND_TRUCK,
+      })
+      for (const state of [chosen, played]) {
+        expect(deserialize(serialize(state))).toEqual(state)
+      }
+    })
+  })
+
+  describe('tournage', () => {
+    const morning = firstMorning('tournage')
+
+    it('« Accepter » takes its tag in cash that morning and closes the Vieux-Montréal truck alone the three days after', () => {
+      const mornings = playOut(choose(morning, 'tournage', 'accepter'))
+      const state = last(mornings)
+      expect(
+        entries(state, "Location de l'emplacement pour un tournage").map(shape),
+      ).toEqual([
+        { day: morning.day, debited: CASH, credited: SALES, amount: 40_000 },
+      ])
+      expect(
+        daysFrom(morning.day, morning.day + 6).filter(
+          (day) => streetIn(mornings, day, SECOND_TRUCK).closed,
+        ),
+      ).toEqual([morning.day + 1, morning.day + 2, morning.day + 3])
+      for (let day = morning.day; day <= morning.day + 6; day += 1) {
+        expect(streetIn(mornings, day, 'plateau').closed).toBe(false)
+      }
+      for (const day of [1, 2, 3].map((n) => morning.day + n)) {
+        expect(secondTruckDay(mornings, day)?.open, `day ${day}`).toBe(false)
+      }
+    })
+
+    it('« Négocier » either doubles the money for the same three days, or halves the crowd for nothing', () => {
+      const won = last(playOut(choose(morning, 'tournage', 'negocier', 0)))
+      expect(
+        entries(won, "Location de l'emplacement pour un tournage").map(
+          amountOf,
+        ),
+      ).toEqual([80_000])
+      const lostMornings = playOut(choose(morning, 'tournage', 'negocier', 1))
+      expect(
+        entries(
+          last(lostMornings),
+          "Location de l'emplacement pour un tournage",
+        ),
+      ).toEqual([])
+      for (const day of [1, 2, 3].map((n) => morning.day + n)) {
+        expect(streetIn(lostMornings, day, SECOND_TRUCK).walkIns.chic).toBe(0.5)
+        expect(streetIn(lostMornings, day, 'plateau').walkIns.chic).toBe(1)
+      }
+    })
+  })
+
+  describe('glacesBonsecours', () => {
+    const morning = firstMorning('glacesBonsecours')
+
+    it('« Faire équipe » brings back the tourists the rival takes, for 30 days, and charges its share at Difficile only', () => {
+      const mornings = playOut(choose(morning, 'glacesBonsecours', 'equipe'), {
+        minDays: 35,
+      })
+      for (let day = morning.day; day < morning.day + 30; day += 1) {
+        expect(
+          streetIn(mornings, day, SECOND_TRUCK).walkIns.touriste,
+        ).toBeCloseTo(1.25)
+      }
+      expect(
+        streetIn(mornings, morning.day + 30, SECOND_TRUCK).walkIns.touriste,
+      ).toBe(1)
+      const memo = 'Part des cornets, Glaces Bonsecours'
+      expect(entries(last(mornings), memo)).toEqual([])
+      const hard = chooseAt(morning, 'difficile', 'glacesBonsecours', 'equipe')
+      expect(entries(hard, memo).map(amountOf)).toEqual([
+        tagAmount('glacesBonsecours', 'equipe', 'cornets', 'difficile'),
+      ])
+    })
+  })
+
+  describe('hiverLong', () => {
+    const morning = firstMorning('hiverLong')
+    // March 15th of year 1, and May 1st to 22nd of year 2.
+    const APRIL_1: Day = 335
+    const MAY_1: Day = 365
+    const MAY_22: Day = 386
+    /** `morning` with the Vieux-Montréal's truck stored by `storage`. */
+    const storedBy = (storage: WinterStorage | undefined): GameState => {
+      const own = morning.decisions.trucks?.[SECOND_TRUCK]
+      if (own === undefined) throw new Error('No second truck')
+      const { prices, restock, daysOpen } = own
+      return {
+        ...morning,
+        decisions: {
+          ...morning.decisions,
+          trucks: {
+            [SECOND_TRUCK]: {
+              prices,
+              restock,
+              daysOpen,
+              ...(storage === undefined ? {} : { storage }),
+            },
+          },
+        },
+      }
+    }
+
+    it('comes up on March 15 while the Vieux-Montréal truck is stored, on the default dates, and never while it is not', () => {
+      expect(morning.day).toBe(318)
+      expect(toCalendar(morning.day)).toMatchObject({
+        month: 3,
+        dayOfMonth: 15,
+      })
+      expect(
+        conditionsHold(cardOf('hiverLong'), storedBy(undefined), new Map()),
+      ).toBe(false)
+    })
+
+    it('« Rouvrir comme prévu » keeps the tourists away from the Vieux-Montréal truck alone for the 3 weeks after its storage', () => {
+      const mornings = playOut(choose(morning, 'hiverLong', 'rouvrir'), {
+        minDays: MAY_22 - morning.day + 1,
+      })
+      for (let day = APRIL_1; day <= MAY_22; day += 1) {
+        const factor = day >= MAY_1 && day < MAY_22 ? 0.4 : 1
+        expect(
+          streetIn(mornings, day, SECOND_TRUCK).walkIns.touriste,
+          `day ${day}`,
+        ).toBeCloseTo(factor)
+        expect(streetIn(mornings, day, 'plateau').walkIns.touriste).toBe(1)
+      }
+    })
+
+    it('« Rester remisé » keeps the Vieux-Montréal truck closed the 3 weeks after its storage, its insurance still paid', () => {
+      const mornings = playOut(choose(morning, 'hiverLong', 'resterRemise'), {
+        minDays: MAY_22 - morning.day + 1,
+      })
+      for (let day = APRIL_1; day <= MAY_22; day += 1) {
+        expect(streetIn(mornings, day, SECOND_TRUCK).closed, `day ${day}`).toBe(
+          day >= MAY_1 && day < MAY_22,
+        )
+        expect(streetIn(mornings, day, 'plateau').closed).toBe(false)
+      }
+      for (let day = MAY_1; day < MAY_22; day += 1) {
+        expect(secondTruckDay(mornings, day)?.visits, `day ${day}`).toEqual([])
+      }
+      expect(secondTruckDay(mornings, MAY_22)?.open).toBe(true)
+      const insured = entries(last(mornings), 'Assurances').filter(
+        ({ day, lines }) =>
+          day === MAY_1 && lines.some(({ truck }) => truck === SECOND_TRUCK),
+      )
+      expect(insured).toHaveLength(1)
+    })
+
+    it('starts both choices the morning after the storage ends, whatever its date', () => {
+      const early = storedBy({
+        from: { month: 12, day: 1 },
+        to: { month: 3, day: 31 },
+      })
+      for (const choiceId of ['rouvrir', 'resterRemise']) {
+        const chosen = choose(early, 'hiverLong', choiceId)
+        expect(
+          chosen.events.delayed.map(({ day, district }) => [day, district]),
+          choiceId,
+        ).toEqual([[APRIL_1, SECOND_TRUCK]])
+      }
     })
   })
 })

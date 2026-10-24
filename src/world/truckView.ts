@@ -9,7 +9,13 @@ import type {
 import { toCalendar } from '../engine/clock.ts'
 import { FOOD_TRUCK } from '../engine/day.ts'
 import { PRODUCTS, inSeason, onHand } from '../engine/inventory.ts'
-import { MODIFIER_KINDS, inEffect, streetOn } from '../engine/street.ts'
+import {
+  MODIFIER_KINDS,
+  inEffect,
+  modifiersAt,
+  streetOn,
+} from '../engine/street.ts'
+import { FIRST_DISTRICT } from '../engine/trucks.ts'
 import type { EventRecord, GameState, StreetModifier } from '../engine/types.ts'
 
 /** What the truck shows on the day the top bar names. */
@@ -68,7 +74,7 @@ function sellingOf(game: GameState): Record<ProductId, boolean> {
 export function opensToday(game: GameState): boolean {
   return (
     game.decisions.daysOpen.includes(toCalendar(game.day).weekday) &&
-    !streetOn(modifiersToday(game), game.day).closed
+    !streetOn(firstTruckModifiers(game), game.day).closed
   )
 }
 
@@ -93,23 +99,41 @@ const AT_TRUCK: StaffRoleId = 'camion'
  */
 export function modifiersToday(game: GameState): StreetModifier[] {
   const { day, events } = game
-  const starting = events.delayed.flatMap(({ day: due, event, effect }) => {
-    if (due > day || !changesStreet(effect)) return []
-    const { days, ...change } = effect
-    return [{ event, change, fromDay: day, lastDay: day + days - 1 }]
-  })
+  const starting = events.delayed.flatMap(
+    ({ day: due, event, effect, district }) => {
+      if (due > day || !changesStreet(effect)) return []
+      const { days, ...change } = effect
+      return [
+        {
+          event,
+          change,
+          fromDay: day,
+          lastDay: day + days - 1,
+          ...(district === undefined ? {} : { district }),
+        },
+      ]
+    },
+  )
   return inEffect([...events.modifiers, ...starting], day)
 }
 
 /**
- * The changes to the street in effect on day `game.day`, as
- * `modifiersToday` gives them, each with the choice that made it: the last
+ * The changes of `modifiersToday` to the first truck's street, the one the
+ * city shows: none made for another district's truck (#262).
+ */
+function firstTruckModifiers(game: GameState): StreetModifier[] {
+  return modifiersAt(modifiersToday(game), FIRST_DISTRICT)
+}
+
+/**
+ * The changes to the first truck's street in effect on day `game.day`, as
+ * `modifiersToday` gives them (#262), each with the choice that made it: the last
  * one of its card on its first day or before, as the history keeps them.
  * A change a Défi forces has none.
  */
 export function chosenModifiers(game: GameState): ChosenModifier[] {
   const { history } = game.events
-  return modifiersToday(game).map((modifier) => ({
+  return firstTruckModifiers(game).map((modifier) => ({
     ...modifier,
     choice: choiceOf(history, modifier),
   }))
@@ -181,7 +205,7 @@ function unsold(
  */
 export function openingStock(game: GameState, product: ProductId): number {
   const units = onHand(game.inventory, product)
-  const street = streetOn(modifiersToday(game), game.day)
+  const street = streetOn(firstTruckModifiers(game), game.day)
   if (
     !opensToday(game) ||
     street.unavailable[product] ||

@@ -30,7 +30,8 @@ import {
   weeklyWage,
   type Doer,
 } from '../engine/staff.ts'
-import { streetOn } from '../engine/street.ts'
+import { modifiersAt, streetOn } from '../engine/street.ts'
+import { FIRST_DISTRICT } from '../engine/trucks.ts'
 import type {
   Day,
   Employee,
@@ -126,7 +127,10 @@ export function todayWork(
   const started = startOfDay(game, FOOD_TRUCK, grocers)
   const { day, decisions } = started
   const { weekday } = toCalendar(day)
-  const street = streetOn(started.events.modifiers, day)
+  const street = streetOn(
+    modifiersAt(started.events.modifiers, FIRST_DISTRICT),
+    day,
+  )
   // The books the staff morning pays from are thrown away.
   const { staff } = staffMorning(
     started.journal,

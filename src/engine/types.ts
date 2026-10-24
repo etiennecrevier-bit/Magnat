@@ -987,6 +987,11 @@ export interface DelayedEffect {
   readonly event: string
   /** What it does, without the timing the content gave it. */
   readonly effect: EventEffect
+  /**
+   * The district whose truck its change to the street is for, that of the
+   * event's `district` condition (#262); the first truck's when none.
+   */
+  readonly district?: DistrictId
 }
 
 /** An event another one brings back. */
@@ -1032,6 +1037,11 @@ export interface StreetModifier {
   readonly fromDay: Day
   /** Its last day in effect: `fromDay` + its days − 1. */
   readonly lastDay: Day
+  /**
+   * The district whose truck it changes the street of, that of the event's
+   * `district` condition (#262); the first truck's when none.
+   */
+  readonly district?: DistrictId
 }
 
 /** What one customer owes for one sale on credit. */

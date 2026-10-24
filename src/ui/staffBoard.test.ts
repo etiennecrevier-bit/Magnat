@@ -491,6 +491,35 @@ describe('todayWork', () => {
     expect(todayWork(delayed).opens).toBe(false)
     expect(openedOn(tick(delayed), game.day)).toBe(false)
   })
+
+  it("opens the first truck on a day a choice closes the Vieux-Montréal's, made or queued (#262)", () => {
+    const game = tick(START)
+    const district = 'vieuxMontreal' as const
+    const closed = {
+      ...game,
+      events: {
+        ...game.events,
+        modifiers: [
+          {
+            event: 'tournage',
+            change: { kind: 'closed' } as const,
+            fromDay: game.day,
+            lastDay: game.day,
+            district,
+          },
+        ],
+        delayed: [
+          {
+            day: game.day,
+            event: 'tournage',
+            effect: { kind: 'closed', days: 1 } as const,
+            district,
+          },
+        ],
+      },
+    }
+    expect(todayWork(closed).opens).toBe(true)
+  })
 })
 
 /** What a year of `todayWork` found, by case, to show each case was met. */

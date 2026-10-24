@@ -88,6 +88,26 @@ const APPOINTMENT_CARDS = ['rendezVousCaisse']
 /** Coralie's story of issue #236, which only the tutorial brings, on its day 4. */
 const TUTORIAL_CARDS = ['tutoStory']
 
+/**
+ * The Vieux-Montréal's cards of issue #262, which come only while a truck
+ * works there.
+ */
+const DISTRICT_CARDS = [
+  'guideTouristique',
+  'festivalJazz',
+  'tournage',
+  'glacesBonsecours',
+  'hiverLong',
+]
+
+/** The characters of issue #262, whose portraits #263 brings. */
+const DISTRICT_CHARACTERS = [
+  'gastonBrisebois',
+  'marieSoleilLajoie',
+  'brunoCastonguay',
+  'ritaEsposito',
+]
+
 /** The portraits of issue #95, one per character but the silhouette. */
 const PORTRAITS = [
   'gillesLacasse',
@@ -334,7 +354,7 @@ describe('events.json', () => {
     expect(essai?.weight).toBe(0)
   })
 
-  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, the six of #156, the two of #159, the three of #160, the one of #164, then the one of #236, in order', () => {
+  it('holds the essai card, the twelve cards of issue #93, the four of #137, the thirteen of #155, the six of #156, the two of #159, the three of #160, the one of #164, the one of #236, then those of #262, in order', () => {
     expect(content.events.map(({ id }) => id)).toEqual([
       'essai',
       ...CARDS,
@@ -345,6 +365,7 @@ describe('events.json', () => {
       ...NOTICE_CARDS,
       ...APPOINTMENT_CARDS,
       ...TUTORIAL_CARDS,
+      ...DISTRICT_CARDS,
     ])
   })
 
@@ -355,11 +376,15 @@ describe('events.json', () => {
     }
   })
 
-  it('dates only « Le 1er juillet », on June 30', () => {
+  it('dates only « Le 1er juillet », on June 30, the Festival de jazz, on June 26, and the long winter, on March 15', () => {
     const dated = content.events.flatMap(({ id, conditions }) =>
       conditions?.date === undefined ? [] : [[id, conditions.date]],
     )
-    expect(dated).toEqual([['premierJuillet', { month: 6, dayOfMonth: 30 }]])
+    expect(dated).toEqual([
+      ['premierJuillet', { month: 6, dayOfMonth: 30 }],
+      ['festivalJazz', { month: 6, dayOfMonth: 26 }],
+      ['hiverLong', { month: 3, dayOfMonth: 15 }],
+    ])
   })
 
   it('may draw every card but essai and those of #159, #160, #164 and #236, which the engine brings, unless it only comes as a follow-up', () => {
@@ -522,12 +547,17 @@ describe('events.json', () => {
     expect(typed).toEqual([])
   })
 
-  it('names the characters by the ids of their portraits in issue #95 and #159, or of #137 and #156', () => {
+  it('names the characters by the ids of their portraits in issue #95 and #159, or of #137, #156 and #262', () => {
     const characters = new Set(
       content.events.slice(1).map(({ character }) => character.id),
     )
     expect([...characters].sort()).toEqual(
-      [...PORTRAITS, ...FINANCING_PORTRAITS, ...WITHOUT_PORTRAITS].sort(),
+      [
+        ...PORTRAITS,
+        ...FINANCING_PORTRAITS,
+        ...WITHOUT_PORTRAITS,
+        ...DISTRICT_CHARACTERS,
+      ].sort(),
     )
   })
 
@@ -820,7 +850,11 @@ describe('loadEventContent rejects', () => {
   })
 
   it('stock bought later at its own unit cost, which the card could not show', () => {
-    for (const timing of [{ inDays: 1 }, { onNextWeekday: 4 }]) {
+    for (const timing of [
+      { inDays: 1 },
+      { onNextWeekday: 4 },
+      { afterStorageEnd: true },
+    ]) {
       rejects(
         withEffects({
           kind: 'buyStock',
@@ -837,6 +871,14 @@ describe('loadEventContent rejects', () => {
   it('a trip for the morning the card is chosen, or to no place (#164)', () => {
     rejects(
       withEffects({ kind: 'trip', place: 'bureauPermis' }),
+      'a trip happens on a later day',
+    )
+    rejects(
+      withEffects({
+        kind: 'trip',
+        place: 'bureauPermis',
+        afterStorageEnd: true,
+      }),
       'a trip happens on a later day',
     )
     rejects(
@@ -857,7 +899,11 @@ describe('loadEventContent rejects', () => {
       { kind: 'contract', grocer: 'chezNormand' },
       { kind: 'grocerAway', grocer: 'chezNormand', days: 180 },
     ]) {
-      for (const timing of [{ inDays: 1 }, { onNextWeekday: 1 }]) {
+      for (const timing of [
+        { inDays: 1 },
+        { onNextWeekday: 1 },
+        { afterStorageEnd: true },
+      ]) {
         rejects(
           withEffects({ ...effect, ...timing }),
           'a contract, or a grocer walking away, happens now',
@@ -887,7 +933,11 @@ describe('loadEventContent rejects', () => {
 
   it('an emergency loan, or a share sale, on a later day', () => {
     for (const effect of [LOAN, SHARES]) {
-      for (const timing of [{ inDays: 1 }, { onNextWeekday: 1 }]) {
+      for (const timing of [
+        { inDays: 1 },
+        { onNextWeekday: 1 },
+        { afterStorageEnd: true },
+      ]) {
         rejects(
           withEffects({ ...effect, ...timing }),
           'an emergency loan, or a share sale, happens now',
@@ -969,10 +1019,26 @@ describe('loadEventContent rejects', () => {
     expect(loaded.events[0]?.tutorialOnly).toBe(true)
   })
 
-  it('an effect timed both ways', () => {
+  it.each([
+    { inDays: 2, onNextWeekday: 4 },
+    { inDays: 2, afterStorageEnd: true },
+    { onNextWeekday: 4, afterStorageEnd: true },
+  ])('an effect timed two ways, %j', (timing) => {
     rejects(
-      withEffects({ kind: 'energy', amount: -15, inDays: 2, onNextWeekday: 4 }),
-      'an effect starts after inDays or onNextWeekday, not both',
+      withEffects({ kind: 'energy', amount: -15, ...timing }),
+      'an effect starts after inDays, onNextWeekday or afterStorageEnd, one of them',
+    )
+  })
+
+  it('an effect after the storage’s end, written true or not at all (#262)', () => {
+    const effect = { kind: 'closed', days: 21, afterStorageEnd: true }
+    expect(
+      loadEventContent(withEffects(effect)).events[0]?.choices[0]?.outcomes[0]
+        ?.effects,
+    ).toEqual([effect])
+    rejects(
+      withEffects({ ...effect, afterStorageEnd: false }),
+      '→ at events[0].choices[0].outcomes[0].effects[0].afterStorageEnd',
     )
   })
 
