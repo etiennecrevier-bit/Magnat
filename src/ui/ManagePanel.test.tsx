@@ -6,11 +6,19 @@ import {
   applyDecision,
   latestDecisions,
   startingDecisions,
+  type DecisionChange,
 } from '../engine/decisions.ts'
+import { defaultWinterStorage } from '../engine/districts.ts'
+import { onHand } from '../engine/inventory.ts'
 import { cents } from '../engine/money.ts'
+import { FIRST_TRUCK } from '../engine/trucks.ts'
 import type { Decisions, GameState } from '../engine/types.ts'
+import { SHOWN_TRUCK } from '../world/shownTruck.ts'
 import { bakeryBoard, type BakeryBoard } from './bakeryBoard.ts'
+import { hiring, SECOND, withSecondTruck } from './fixtures/twoTrucks.ts'
 import ManagePanel, { ManagePanelView } from './ManagePanel.tsx'
+import { forTruck, shownDecisions } from './truckViews.ts'
+import Yesterday from './Yesterday.tsx'
 import { marketingFacts, type MarketingFacts } from './marketingFacts.ts'
 import { NumberFieldView } from './NumberField.tsx'
 import { productBoards } from './productFacts.ts'
@@ -35,6 +43,7 @@ vi.mock('./store.ts', async (importOriginal) => {
 
 afterEach(() => {
   gameStore.setState(gameStore.getInitialState(), true)
+  SHOWN_TRUCK.pick(null)
 })
 
 // Every space in an amount is a no-break space (U+00A0).
@@ -98,6 +107,11 @@ function button(html: string, label: string): string {
   )
   if (found === undefined) throw new Error(`No button ${label}`)
   return found
+}
+
+/** The days open of « Horaire », without « Remiser pour l'hiver » under them. */
+function daysPart(html: string): string {
+  return html.split('<section class="manage__storage"')[0] ?? ''
 }
 
 /** The first played day, a Tuesday: day 0 is a Monday, when the truck is closed. */
@@ -179,7 +193,7 @@ describe('ManagePanelView', () => {
     ])
     expect(inputs('schedule')).toEqual([])
     expect(
-      tags(render('schedule'), 'button').filter((tag) =>
+      tags(daysPart(render('schedule')), 'button').filter((tag) =>
         tag.includes('aria-pressed'),
       ),
     ).toHaveLength(7)
@@ -401,7 +415,7 @@ describe('ManagePanelView', () => {
   })
 
   it('has a labelled group of seven day toggles, pressed on the days open', () => {
-    const html = render('schedule')
+    const html = daysPart(render('schedule'))
     expect(html).toContain('role="group" aria-label="Jours d&#x27;ouverture"')
     const days = tags(html, 'button').filter(
       (tag) => attribute(tag, 'aria-pressed') !== undefined,
@@ -506,7 +520,10 @@ describe('ManagePanelView', () => {
         expect(describers(control)).toContain(`manage-locked-${kind}`)
       }
     }
-    for (const day of tags(render('schedule', { locked }), 'button')) {
+    for (const day of tags(
+      daysPart(render('schedule', { locked })),
+      'button',
+    )) {
       expect(day).toContain(' disabled=""')
       expect(attribute(day, 'aria-describedby')).toBe('manage-locked-daysOpen')
     }
@@ -919,5 +936,170 @@ describe('ManagePanel', () => {
     expect(attribute(button(days, 'lundi'), 'aria-pressed')).toBe('true')
     expect(attribute(button(days, 'mercredi'), 'aria-pressed')).toBe('false')
     expect(gameStore.getState().game.decisions.prices.cafe).toBe(325)
+  })
+})
+
+/**
+ * The morning of day 2, both trucks open every day: Kevin at the Plateau,
+ * the owner at Vieux-Montréal, whose coffee sells at 4,00 $.
+ */
+function twoTrucksPlayed(): GameState {
+  return tick(
+    tick(
+      withSecondTruck(
+        createInitialState(42),
+        { kind: 'daysOpen', weekdays: [1, 2, 3, 4, 5, 6, 7] },
+        {
+          kind: 'daysOpen',
+          weekdays: [1, 2, 3, 4, 5, 6, 7],
+          truck: SECOND,
+        },
+        { kind: 'price', product: 'cafe', price: cents(400), truck: SECOND },
+        hiring('kevin'),
+        { kind: 'ownerAt', truck: SECOND },
+      ),
+    ),
+  )
+}
+
+/** What the tests read of an element's props. */
+interface Props {
+  readonly children?: unknown
+  readonly onChange?: (change: DecisionChange) => void
+  readonly onClick?: () => void
+  readonly 'aria-pressed'?: boolean
+}
+
+/** An element, as the tests walk it. */
+interface Drawn {
+  readonly type: unknown
+  readonly props: Props
+}
+
+/** Each element of `node`, the children drawn by a function drawn too. */
+function tree(node: unknown): Drawn[] {
+  if (Array.isArray(node)) return node.flatMap(tree)
+  if (node === null || typeof node !== 'object' || !('props' in node)) return []
+  const element = node as Drawn
+  const { children } = element.props
+  const drawn =
+    typeof children === 'function'
+      ? (children as (anchor: object, tip: object) => unknown)(
+          {},
+          { open: () => {} },
+        )
+      : children
+  return [element, ...tree(drawn)]
+}
+
+describe('« Le camion » of the second truck (#265)', () => {
+  it('names the truck each change to its prices, stock, days or storage is for', () => {
+    const price = { kind: 'price', product: 'cafe', price: cents(300) } as const
+    expect(forTruck(price, SECOND)).toEqual({ ...price, truck: SECOND })
+    expect(forTruck(price, FIRST_TRUCK)).toBe(price)
+    const pay = { kind: 'ownerWeeklyPay', pay: cents(50_000) } as const
+    expect(forTruck(pay, SECOND)).toBe(pay)
+    const onChange = vi.fn()
+    const game = twoTrucksPlayed()
+    for (const tab of ['menu', 'stocks', 'schedule'] as const) {
+      const view = ManagePanelView({
+        tab,
+        decisions: shownDecisions(latestDecisions(game), SECOND),
+        today: shownDecisions(game.decisions, SECOND),
+        products: productBoards(game, SECOND),
+        locked: [],
+        bakery: bakeryBoard(game),
+        truck: SECOND,
+        onChange,
+      })
+      const section = tree(view).find(
+        (element) => typeof element.props.onChange === 'function',
+      )
+      section?.props.onChange?.({ kind: 'daysOpen', weekdays: [1] })
+    }
+    expect(onChange.mock.calls).toEqual([
+      [{ kind: 'daysOpen', weekdays: [1], truck: SECOND }],
+      [{ kind: 'daysOpen', weekdays: [1], truck: SECOND }],
+      [{ kind: 'daysOpen', weekdays: [1], truck: SECOND }],
+    ])
+  })
+
+  it('shows that truck’s prices, days and yesterday at it', () => {
+    const game = twoTrucksPlayed()
+    const decisions = shownDecisions(latestDecisions(game), SECOND)
+    expect(decisions.prices.cafe).toBe(400)
+    expect(decisions.ownerWeeklyPay).toBe(game.decisions.ownerWeeklyPay)
+    const second = game.trucks?.[0]
+    const boards = productBoards(game, SECOND)
+    expect(boards.cafe.facts?.sold).toBe(second?.lastDay?.sold.cafe)
+    expect(boards.cafe.facts?.sold).not.toBe(game.lastDay?.sold.cafe)
+    expect(boards.cafe.left).toBe(onHand(second?.inventory ?? [], 'cafe'))
+    const html = render('menu', { game, decisions })
+    expect(attribute(input(html, 'manage-price-cafe'), 'value')).toBe('4,00')
+  })
+
+  it('stores the truck for the winter, the dates beside, what keeps running in the tooltip', () => {
+    const html = render('schedule')
+    expect(html).toContain(
+      '<h3 id="manage-storage">Remiser pour l&#x27;hiver</h3>',
+    )
+    expect(html).toContain(
+      '<p id="manage-storage-dates" class="manage__storage-dates">Du 1er décembre au 30 avril</p>',
+    )
+    expect(html).toContain(
+      '<p class="tip__text">Le prêt, l&#x27;assurance et le permis continuent.</p>',
+    )
+    const onChange = vi.fn()
+    const toggle = (decisions: Decisions) => {
+      const view = ManagePanelView({
+        tab: 'schedule',
+        decisions,
+        today: decisions,
+        products: productBoards(createInitialState(1)),
+        locked: [],
+        bakery: bakeryBoard(createInitialState(1)),
+        truck: SECOND,
+        onChange,
+      })
+      const storage = tree(view).find(
+        (element) =>
+          typeof element.type === 'function' &&
+          element.type.name === 'StorageSection',
+      )
+      const drawn = (storage?.type as (props: object) => unknown)(
+        storage?.props ?? {},
+      )
+      const button = tree(drawn).find((element) => element.type === 'button')
+      expect(button?.props['aria-pressed']).toBe(
+        decisions.storage !== undefined,
+      )
+      button?.props.onClick?.()
+    }
+    const start = startingDecisions()
+    toggle(start)
+    toggle({ ...start, storage: defaultWinterStorage() })
+    expect(onChange.mock.calls).toEqual([
+      [{ kind: 'storage', storage: defaultWinterStorage(), truck: SECOND }],
+      [{ kind: 'storage', storage: null, truck: SECOND }],
+    ])
+  })
+
+  it('follows the truck picked, with « Hier », and names it in the title', () => {
+    gameStore.setState({ game: twoTrucksPlayed() })
+    const game = gameStore.getState().game
+    const first = renderToStaticMarkup(<ManagePanel />)
+    // With none picked, the truck the owner works at: Vieux-Montréal.
+    expect(first).toContain('>Le camion · Vieux-Montréal</h2>')
+    expect(attribute(input(first, 'manage-price-cafe'), 'value')).toBe('4,00')
+    const yesterday = () =>
+      renderToStaticMarkup(<Yesterday folded={false} onFoldChange={() => {}} />)
+    expect(yesterday()).toContain('Hier · Vieux-Montréal')
+    SHOWN_TRUCK.pick(FIRST_TRUCK)
+    const picked = renderToStaticMarkup(<ManagePanel />)
+    expect(picked).toContain('>Le camion · Plateau</h2>')
+    expect(attribute(input(picked, 'manage-price-cafe'), 'value')).toBe(
+      (game.decisions.prices.cafe / 100).toFixed(2).replace('.', ','),
+    )
+    expect(yesterday()).toContain('Hier · Plateau')
   })
 })

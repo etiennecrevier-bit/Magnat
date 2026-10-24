@@ -7,9 +7,11 @@ import {
 import { isLocked } from '../engine/challenge.ts'
 import { DEFIS, FOOD_TRUCK } from '../engine/day.ts'
 import { latestDecisions, type DecisionChange } from '../engine/decisions.ts'
+import { defaultWinterStorage } from '../engine/districts.ts'
 import { dreamBonuses, dreamLimits } from '../engine/dream.ts'
 import { PRODUCTS } from '../engine/inventory.ts'
-import type { Decisions, GameState } from '../engine/types.ts'
+import { FIRST_TRUCK } from '../engine/trucks.ts'
+import type { Decisions, GameState, TruckId } from '../engine/types.ts'
 import { bakeryBoard, type BakeryBoard } from './bakeryBoard.ts'
 import { BakerySection } from './BakerySection.tsx'
 import {
@@ -42,6 +44,8 @@ import {
 import { ProductGlyph } from './productGlyphs.tsx'
 import { useGame, type TruckTab } from './store.ts'
 import Tooltip from './Tooltip.tsx'
+import { storageDates, titledFor, useShownTruck } from './trucks.ts'
+import { forTruck, shownDecisions } from './truckViews.ts'
 import './panel.css'
 import './ManagePanel.css'
 
@@ -106,6 +110,12 @@ interface ManagePanelViewProps {
    * day is kept.
    */
   marketing?: MarketingFacts | null
+  /**
+   * The truck shown (#265), whose prices, stock and schedule `decisions`
+   * and `today` hold (see `shownDecisions`); the first one by default.
+   * Each change to them names it.
+   */
+  truck?: TruckId
   onChange: OnChange
 }
 
@@ -126,8 +136,10 @@ export function ManagePanelView({
   bakery,
   units = FOOD_TRUCK.decisionLimits.units,
   marketing = null,
-  onChange,
+  truck = FIRST_TRUCK,
+  onChange: decide,
 }: ManagePanelViewProps) {
+  const onChange: OnChange = (change) => decide(forTruck(change, truck))
   return (
     <div className="panel__content">
       {tab === 'menu' && (
@@ -150,11 +162,14 @@ export function ManagePanelView({
         />
       )}
       {tab === 'schedule' && (
-        <DaysOpenSection
-          daysOpen={decisions.daysOpen}
-          locked={locked.includes('daysOpen')}
-          onChange={onChange}
-        />
+        <>
+          <DaysOpenSection
+            daysOpen={decisions.daysOpen}
+            locked={locked.includes('daysOpen')}
+            onChange={onChange}
+          />
+          <StorageSection decisions={decisions} onChange={onChange} />
+        </>
       )}
       {tab === 'payMarketing' && (
         <PayMarketingTab
@@ -423,6 +438,59 @@ function DaysOpenSection({
   )
 }
 
+/**
+ * « Remiser pour l'hiver » (#260, #265): a toggle that stores the truck
+ * each year between its dates, shown beside it, or no more. The tooltip
+ * says what keeps running meanwhile, as a fact.
+ */
+function StorageSection({
+  decisions,
+  onChange,
+}: {
+  decisions: Decisions
+  onChange: OnChange
+}) {
+  const stored = decisions.storage !== undefined
+  const dates = storageDates(decisions.storage ?? defaultWinterStorage())
+  return (
+    <section className="manage__storage" aria-labelledby="manage-storage">
+      <h3 id="manage-storage">Remiser pour l'hiver</h3>
+      <Tooltip
+        content={{
+          title: "Remiser pour l'hiver",
+          text: "Le prêt, l'assurance et le permis continuent.",
+          rows: [{ label: 'Dates', value: dates }],
+        }}
+      >
+        {(anchor) => (
+          <div className="manage__storage-row" {...anchor}>
+            <button
+              type="button"
+              className="toggle"
+              aria-pressed={stored}
+              aria-describedby={describedBy(
+                'manage-storage-dates',
+                anchor['aria-describedby'],
+              )}
+              onClick={() =>
+                onChange({
+                  kind: 'storage',
+                  storage: stored ? null : defaultWinterStorage(),
+                })
+              }
+            >
+              Remiser pour l'hiver
+            </button>
+            <p id="manage-storage-dates" className="manage__storage-dates">
+              {dates}
+            </p>
+          </div>
+        )}
+      </Tooltip>
+    </section>
+  )
+}
+
 /** The kinds of decision the Défi `game` plays locks; none outside one. */
 function lockedKinds(game: GameState): DecisionKind[] {
   return decisionKindSchema.options.filter((kind) =>
@@ -439,10 +507,18 @@ function lockedKinds(game: GameState): DecisionKind[] {
  * typed. The changes already made stay either way.
  */
 export default function ManagePanel() {
-  const decisions = useGame((state) => latestDecisions(state.game))
   const game = useGame((state) => state.game)
+  const truck = useShownTruck(game)
+  const decisions = useMemo(
+    () => shownDecisions(latestDecisions(game), truck),
+    [game, truck],
+  )
+  const today = useMemo(
+    () => shownDecisions(game.decisions, truck),
+    [game, truck],
+  )
   const bakery = useMemo(() => bakeryBoard(game), [game])
-  const products = useMemo(() => productBoards(game), [game])
+  const products = useMemo(() => productBoards(game, truck), [game, truck])
   const dream = useGame((state) => state.game.dream)
   const units = useMemo(
     () => dreamLimits(FOOD_TRUCK.decisionLimits, dreamBonuses(dream)).units,
@@ -464,7 +540,7 @@ export default function ManagePanel() {
     <DockPanel
       dialogRef={dialogRef}
       className="manage"
-      title="Le camion"
+      title={titledFor(game, truck, 'Le camion')}
       tabs={TRUCK_TABS}
       tab={tab}
       onTab={(next) => {
@@ -478,12 +554,13 @@ export default function ManagePanel() {
       <ManagePanelView
         tab={tab}
         decisions={decisions}
-        today={game.decisions}
+        today={today}
         products={products}
         locked={lockedKinds(game)}
         bakery={bakery}
         units={units}
         marketing={marketing}
+        truck={truck}
         onChange={onChange}
       />
     </DockPanel>

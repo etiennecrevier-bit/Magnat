@@ -184,7 +184,7 @@ describe('the cards', () => {
     ['chalet', "+15 d'énergie par congé"],
     ['espresso', `−20${S}% de service`],
     ['grandCamion', `+50${S}% de stock`],
-    ['deuxiemeCamion', null],
+    ['deuxiemeCamion', 'Ouvre le Vieux-Montréal'],
   ])('sums up what %s gives in a chip', (id, chip) => {
     expect(bonusChip(rung(id))).toBe(chip)
     expect(
@@ -293,6 +293,7 @@ describe('rungFacts', () => {
         `L'ancien camion repris à sa valeur comptable${S}: 85${S}000,00${S}$`,
       ],
     ],
+    ['deuxiemeCamion', [`Ouvre${S}: Vieux-Montréal`]],
   ])('tells what %s gives, in plain facts', (id, lines) => {
     expect(rungFacts(game, rung(id)).map(factLine)).toEqual(lines)
   })

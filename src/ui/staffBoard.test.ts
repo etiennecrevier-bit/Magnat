@@ -106,8 +106,12 @@ describe('staffBoard', () => {
       // Nothing played yet.
       yesterday: null,
       days: [],
+      at: 'plateau',
     })
     expect(board.members).toEqual([])
+    // One truck: nobody picks where to work, and none closes for want of staff.
+    expect(board.trucks).toEqual([])
+    expect(board.unstaffed).toEqual([])
     expect(board.roles).toEqual([
       {
         role: 'camion',
@@ -170,6 +174,7 @@ describe('staffBoard', () => {
         training: AT_TRUCK_WEEK,
         yesterday: null,
         days: [],
+        truck: 'plateau',
       },
     ])
     expect(board.candidates.map(({ candidate }) => candidate)).not.toContain(

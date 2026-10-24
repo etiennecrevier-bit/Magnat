@@ -4,7 +4,7 @@ import { DIFFICULTIES, FOOD_TRUCK } from '../engine/day.ts'
 import { truckReplacedOn } from '../engine/dream.ts'
 import { monthlyFixedCosts } from '../engine/fixedCosts.ts'
 import { mulInt, type Cents } from '../engine/money.ts'
-import type { BakeryState, Day, DreamState } from '../engine/types.ts'
+import type { BakeryState, Day, DreamState, Truck } from '../engine/types.ts'
 
 // The engine reads the fixed costs too, for the event cards' draw (#137).
 export { monthlyFixedCosts }
@@ -17,12 +17,15 @@ export interface FixedCostsGame {
   readonly firstDay: Day
   readonly bakery: BakeryState
   readonly dream: DreamState
+  /** The trucks after the first (#259); none by default. */
+  readonly trucks?: readonly Pick<Truck, 'id' | 'district' | 'boughtOnDay'>[]
 }
 
 /**
  * What the next 1st of the month takes from the encaisse, seen on the
- * morning of `day` (see `monthlyFixedCosts`): what the cash chip reads the
- * encaisse against, and « À surveiller » shows.
+ * morning of `day` (see `monthlyFixedCosts`), each other truck's insurance
+ * and the permit due then included, a yearly one in full: what the cash
+ * chip reads the encaisse against, and « À surveiller » shows.
  */
 export function nextFixedCosts({
   day,
@@ -30,6 +33,7 @@ export function nextFixedCosts({
   firstDay,
   bakery,
   dream,
+  trucks = [],
 }: FixedCostsGame): Cents {
   return monthlyFixedCosts(
     day,
@@ -40,6 +44,8 @@ export function nextFixedCosts({
     bakery,
     undefined,
     truckReplacedOn(dream),
+    undefined,
+    trucks,
   )
 }
 

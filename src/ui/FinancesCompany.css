@@ -192,3 +192,40 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* « Par camion » (#265): a small table, the amounts right-aligned, the
+   total under a line. */
+.finances-company__trucks {
+  width: 100%;
+  max-width: 28rem;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.finances-company__trucks th,
+.finances-company__trucks td {
+  padding: 4px 8px;
+  text-align: right;
+}
+
+.finances-company__trucks th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.finances-company__trucks thead th {
+  color: #6b625a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.finances-company__trucks tbody th {
+  font-weight: 700;
+}
+
+.finances-company__trucks-total th,
+.finances-company__trucks-total td {
+  border-top: 2px solid #e3d6bf;
+  font-weight: 800;
+}

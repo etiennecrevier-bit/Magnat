@@ -1,18 +1,22 @@
 import type { EventContent } from '../content/schema.ts'
 import { endOfMonth, toCalendar } from '../engine/calendar.ts'
-import { EVENTS } from '../engine/day.ts'
+import { DIFFICULTIES, EVENTS } from '../engine/day.ts'
+import { DISTRICTS, permitOn } from '../engine/districts.ts'
 import { add, cents, sub, sum, type Cents } from '../engine/money.ts'
 import { netWorthChange, netWorthParts } from '../engine/netWorth.ts'
 import { effectsAt } from '../engine/scaling.ts'
+import { truckIds } from '../engine/trucks.ts'
 import type {
   Day,
   EventRecord,
   GameState,
   Receivable,
+  TruckId,
   WeekDay,
   WeekReport,
 } from '../engine/types.ts'
 import type { AccountCode } from '../finance/accounts.ts'
+import { marginByTruck, salesByTruck } from '../finance/byTruck.ts'
 import { balance } from '../finance/journal.ts'
 import type { StatementLine } from '../finance/statements.ts'
 import { nextFixedCosts } from './cashLevel.ts'
@@ -31,6 +35,7 @@ import {
 } from './statementPeriods.ts'
 import type { FinanceSection } from './store.ts'
 import type { TipContent, TipRow } from './tooltip.ts'
+import { hasTrucks, truckName } from './trucks.ts'
 import type { ChartDay } from './weeklyReport.ts'
 
 // « Entreprise » of « Finances » (#205): four tiles, the last 30 days and
@@ -351,19 +356,61 @@ export function lateReceivables(
 
 /** A line of « À surveiller ». */
 export interface WatchLine {
-  readonly id: 'charges' | 'spoilage' | 'late'
+  readonly id: 'charges' | 'permit' | 'spoilage' | 'late'
   readonly text: string
+}
+
+/** A yearly permit coming due (#265): whose, when and how much. */
+export interface PermitDue {
+  /** Its district's name. */
+  readonly district: string
+  /** The 1st of the month it is paid. */
+  readonly day: Day
+  readonly amount: Cents
+}
+
+/**
+ * The yearly permits of `game`'s trucks after the first that show in « À
+ * surveiller » on the morning of `game.day`: from the 1st of the month
+ * before the one each is paid in, up to the morning it is, its amount at
+ * the game's difficulty (see `permitOn`).
+ */
+export function permitsDue(
+  game: Pick<GameState, 'day' | 'profile' | 'trucks'>,
+): PermitDue[] {
+  return (game.trucks ?? []).flatMap(({ district }) => {
+    const { permit, name } = DISTRICTS.districts[district]
+    if (permit.kind !== 'yearly') return []
+    // The next 1st of the permit's month, today included.
+    let due = nextFirstOfMonth(game.day)
+    while (toCalendar(due).month !== permit.month) due = endOfMonth(due) + 1
+    const before = permit.month === 1 ? 12 : permit.month - 1
+    const shows = due === game.day || toCalendar(game.day).month === before
+    if (!shows) return []
+    const amount = permitOn(
+      district,
+      due,
+      game.profile.difficulty,
+      DIFFICULTIES,
+    )
+    return amount > 0 ? [{ district: name, day: due, amount }] : []
+  })
 }
 
 /**
  * « À surveiller », at most `MOST_WATCH_LINES` lines: what the next 1st
  * takes, the fixed costs `fixedCosts` (see `nextFixedCosts`) and the
- * payments `financing` has the loans make that day; the stock lost this
- * month, from `statements`, this month's, when there is some; and the
- * money owed whose payment a choice put off (see `lateReceivables`).
+ * payments `financing` has the loans make that day, less a yearly permit
+ * due then, which has its own line; then each yearly permit coming due
+ * (see `permitsDue`); the stock lost this month, from `statements`, this
+ * month's, when there is some; and the money owed whose payment a choice
+ * put off (see `lateReceivables`).
  */
 export function watchLines(
-  game: Pick<GameState, 'day' | 'receivables' | 'events' | 'profile'>,
+  game: Pick<
+    GameState,
+    'day' | 'receivables' | 'events' | 'profile' | 'trucks'
+  >,
   statements: Statements,
   fixedCosts: Cents,
   financing: FinancingSummary | null,
@@ -376,12 +423,22 @@ export function watchLines(
       next !== null && next.day === first ? [next.amount] : [],
     ),
   )
-  const charges = add(fixedCosts, loans)
+  const permits = permitsDue(game)
+  const ownLine = sum(
+    permits.flatMap(({ day, amount }) => (day === first ? [amount] : [])),
+  )
+  const charges = sub(add(fixedCosts, loans), ownLine)
   if (charges > 0) {
     const what = loans > 0 ? 'de frais fixes et de prêts' : 'de frais fixes'
     lines.push({
       id: 'charges',
       text: `${formatWholeMoney(charges)} ${what} le ${formatDayAndMonth(first)}`,
+    })
+  }
+  for (const { district, day, amount } of permits) {
+    lines.push({
+      id: 'permit',
+      text: `Permis du ${district}${COLON} ${formatWholeMoney(amount)} le ${formatDayAndMonth(day)}`,
     })
   }
   const lost = statements.incomeStatement.expenses.lines.find(
@@ -448,9 +505,63 @@ function thisMonth(game: Pick<GameState, 'journal' | 'day'>): Statements {
   return computeStatements(game.journal, period)
 }
 
+/** A row of « Par camion » (#265). */
+export interface TruckFinanceRow {
+  /** A truck's id, `others` for the sales no truck made, or `total`. */
+  readonly id: TruckId | 'others' | 'total'
+  readonly label: string
+  /** Ventes of the month so far. */
+  readonly sales: Cents
+  /** Ventes less the cost of the goods sold, the month so far. */
+  readonly margin: Cents
+}
+
+/**
+ * « Par camion », once `game` has two trucks or more: this month's sales
+ * and margin for each truck, the first one first, then « Autres ventes »,
+ * what no truck sold (the grocers' contracts and the events), when either
+ * is not 0, then « Total », the état des résultats' own; null with one
+ * truck.
+ */
+export function truckRows(
+  game: GameState,
+  statements: Statements,
+): TruckFinanceRow[] | null {
+  if (!hasTrucks(game)) return null
+  const { fromDay, toDay } = statements.period
+  const sales = salesByTruck(game.journal, { fromDay, toDay })
+  const margins = marginByTruck(game.journal, { fromDay, toDay })
+  const rows: TruckFinanceRow[] = truckIds(game).map((id) => ({
+    id,
+    label: truckName(game, id),
+    sales: sales.get(id) ?? ZERO,
+    margin: margins.get(id) ?? ZERO,
+  }))
+  const otherSales = sales.get(null) ?? ZERO
+  const otherMargin = margins.get(null) ?? ZERO
+  if (otherSales !== 0 || otherMargin !== 0) {
+    rows.push({
+      id: 'others',
+      label: 'Autres ventes',
+      sales: otherSales,
+      margin: otherMargin,
+    })
+  }
+  const { sales: total, grossMargin } = statements.incomeStatement
+  rows.push({
+    id: 'total',
+    label: 'Total',
+    sales: total.amount,
+    margin: grossMargin.amount,
+  })
+  return rows
+}
+
 /** Everything « Entreprise » shows, read from `game` on its morning. */
 export interface CompanyBoard {
   readonly tiles: readonly FinanceTile[]
+  /** « Par camion », with two trucks or more; null with one (#265). */
+  readonly trucks: readonly TruckFinanceRow[] | null
   readonly chart: readonly ChartDay[]
   readonly watch: readonly WatchLine[]
   /** Null when the game never took a loan nor sold shares. */
@@ -471,9 +582,11 @@ export function companyBoard(
     firstDay,
     bakery: game.bakery,
     dream: game.dream,
+    trucks: game.trucks ?? [],
   })
   return {
     tiles: financeTiles(game, statements),
+    trucks: truckRows(game, statements),
     chart: recentChartDays(
       weekReports,
       game.weekSoFar.days,

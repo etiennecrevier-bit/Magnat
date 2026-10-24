@@ -79,6 +79,25 @@ export function formatDayAndMonth(day: Day): string {
   return dayAndMonth(toCalendar(day))
 }
 
+/** A month's name in lower case, `juin`, from its number (1 = January). */
+export function formatMonthName(month: number): string {
+  return nameAt(MONTHS, month)
+}
+
+/**
+ * A date of every year, `1er décembre`, from its month (1 = January) and
+ * its day of the month.
+ */
+export function formatMonthDay({
+  month,
+  day,
+}: {
+  readonly month: number
+  readonly day: number
+}): string {
+  return dayAndMonth({ year: 1, month, dayOfMonth: day, weekday: 1 })
+}
+
 /** The weekday of a game day, in lower case as in a sentence: `jeudi`. */
 export function formatWeekdayName(day: Day): string {
   return nameAt(WEEKDAYS, toCalendar(day).weekday).toLowerCase()

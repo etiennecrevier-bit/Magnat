@@ -29,7 +29,7 @@ export function missedThisWeek({
   ).length
 }
 
-export type AlertId = 'missed' | 'messages'
+export type AlertId = 'missed' | 'closedTomorrow' | 'messages'
 
 /** A chip at the top right: an icon and words, never a colour alone. */
 export interface TopAlert {
@@ -40,15 +40,19 @@ export interface TopAlert {
 
 /**
  * The chips at the top right, the missed deliveries first: « Livraison
- * manquée » while one was missed this week, « 1 message » while messages
- * wait in the stack; none when nothing waits.
+ * manquée » while one was missed this week, « Fermé demain : personne au
+ * camion » while a truck closes tomorrow with nobody there (#265), « 1
+ * message » while messages wait in the stack; none when nothing waits.
  */
 export function topAlerts({
   missed,
   messages,
+  unstaffed = 0,
 }: {
   readonly missed: number
   readonly messages: number
+  /** The trucks that close tomorrow with nobody (see `unstaffedTomorrow`). */
+  readonly unstaffed?: number
 }): TopAlert[] {
   const alerts: TopAlert[] = []
   if (missed > 0) {
@@ -57,6 +61,13 @@ export function topAlerts({
       icon: 'alerte',
       label:
         missed === 1 ? 'Livraison manquée' : `${missed} livraisons manquées`,
+    })
+  }
+  if (unstaffed > 0) {
+    alerts.push({
+      id: 'closedTomorrow',
+      icon: 'alerte',
+      label: 'Fermé demain\u00a0: personne au camion',
     })
   }
   if (messages > 0) {
@@ -71,9 +82,9 @@ export function topAlerts({
 
 /**
  * What a chip does: a missed delivery opens the « Contrats » (see
- * `openContracts`); the messages chip brings the messages in `stack` back
- * on the street, those folded into it included, and moves the focus to the
- * newest.
+ * `openContracts`); a truck closed tomorrow opens « Équipe »; the
+ * messages chip brings the messages in `stack` back on the street, those
+ * folded into it included, and moves the focus to the newest.
  */
 export function followAlert(
   id: AlertId,
@@ -83,6 +94,10 @@ export function followAlert(
 ): void {
   if (id === 'missed') {
     openContracts(store)
+    return
+  }
+  if (id === 'closedTomorrow') {
+    store.getState().openPanel('staff')
     return
   }
   const newest = stack.getState().messages[0]

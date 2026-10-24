@@ -140,7 +140,7 @@ describe('DreamPanelView', () => {
     })
   })
 
-  it('shows the three rungs of « Entreprise », the second truck with no chip', () => {
+  it('shows the three rungs of « Entreprise », the second truck with the district it opens', () => {
     const html = render(START, 'company')
     expect(cards(html)).toHaveLength(3)
     expect(
@@ -153,7 +153,12 @@ describe('DreamPanelView', () => {
     expect(card(html, 'Machine à espresso pro')).toContain(
       `<img src="${attribute(upgradeArtUrl('espresso')!)}"`,
     )
-    expect(card(html, 'Deuxième camion')).not.toContain('dream__chip')
+    expect(card(html, 'Deuxième camion')).toContain(
+      '<p class="dream__chip">Ouvre le Vieux-Montréal</p>',
+    )
+    expect(card(html, 'Deuxième camion')).toContain(
+      '<dt>Ouvre</dt><dd>Vieux-Montréal</dd>',
+    )
   })
 
   it('offers « Acheter » on the next rung, described by the card’s tooltip', () => {

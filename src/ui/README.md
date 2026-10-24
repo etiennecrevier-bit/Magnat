@@ -83,6 +83,17 @@ The engine runs the two ladders and the titles (#162, `src/engine/dream.ts`); th
 - **« Magnat »** (`MagnatScreen.tsx`) opens on its own the morning after the close at which the net worth first reached the last title, with the business, the net worth and « Continuer »; the store opens that morning's report, then its event card, after it. The game goes on.
 - « Camion » takes the restock rules up to what the bigger truck allows (`dreamLimits()`), and « Vos finances » tags a home's payment that went unpaid « impayé », as a rent.
 
+## Two trucks
+
+The engine plays each truck (#259–#262) and the world draws the one shown (#264, `src/world/shownTruck.ts`); the UI reads them (#265, `trucks.ts`, `truckViews.ts`). Nothing of it shows while the game has one truck.
+- **The switcher** (`TruckSwitcher.tsx`), under the top-left card once « Deuxième camion » is bought: a pill per truck, named after its district, with who works there today, « Plateau · Kevin », « Vieux-Montréal · vous », or « fermé » and « remisé » (`whoWorksToday`, from the same morning as « Équipe »: each truck opens on its own days, outside its storage, its district's street open, with the owner or one of its employees who came). A press picks the truck in `SHOWN_TRUCK`, which the street, « Le camion », « Hier », the season and the phone's cash tooltip follow (`useShownTruck`); with none picked, the truck the owner works at. A new game, or one loaded, forgets the pick (`forgetPickOnNewGame`).
+- **« Le camion »** shows and changes the truck shown (`shownDecisions`, `forTruck`): its menu, stock and days, its facts from its own last day and stock (`productBoards(game, truck)`; another truck buys its croissants), « Le camion · Vieux-Montréal » as its title. « Horaire » gets « Remiser pour l'hiver », a toggle with its dates beside, « Le prêt, l'assurance et le permis continuent. » in its tooltip. The pay, the marketing and « Fournil » stay the company's.
+- **« Hier »** reads the truck shown, « Hier · Vieux-Montréal », or « Fermé pour l'hiver » / « Fermé » for a day it did not open, then a line per other truck with its sales (`yesterdayCard`).
+- **« Équipe »**: the owner's card gets « Je travaille au : » with a pill per truck, one pressed, and each employee « Au camion » their own; the change waits for tomorrow, today's chips stay today's. A truck that opens tomorrow with nobody shows « Plateau fermé demain : personne au camion » on the owner's card and the chip « Fermé demain : personne au camion » at the top right, which opens « Équipe » (`unstaffedTomorrow`).
+- **The season pill**, beside the energy: « ☀ Haute saison », « Saison normale » or « ❄ Basse saison » for the district shown this month, from its crowd's monthly factor; its tooltip gives the months (`seasonChip`).
+- **« Finances »**: « Par camion », after the tiles, a small table of each truck's ventes and marge this month, « Autres ventes » for the contracts and events, and the total, the état des résultats' own (`truckRows`, from `salesByTruck` and `marginByTruck`). « À surveiller » shows a yearly permit from the 1st of the month before it is due (`permitsDue`); the cash chip reads the encaisse against every truck's charges of the next 1st, that permit included (`nextFixedCosts` with the trucks), and the charges line leaves it to its own line.
+- **« Améliorations »**: « Deuxième camion » shows « Ouvre le Vieux-Montréal ».
+
 ## Aller à…
 
 The engine sends the owner into town (#164, `src/engine/places.ts`); the UI reads it and hands a trip to `applyDecision()`, which makes it that very morning.

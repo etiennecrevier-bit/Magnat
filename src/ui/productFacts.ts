@@ -5,7 +5,8 @@ import { CUSTOMERS, DIFFICULTIES, FOOD_TRUCK } from '../engine/day.ts'
 import { latestDecisions } from '../engine/decisions.ts'
 import { inSeason, onHand, orderSize, PRODUCTS } from '../engine/inventory.ts'
 import { add, cents, sub, type Cents } from '../engine/money.ts'
-import type { DaySummary, GameState } from '../engine/types.ts'
+import { FIRST_TRUCK, truckDecisionsOf } from '../engine/trucks.ts'
+import type { DaySummary, GameState, Lot, TruckId } from '../engine/types.ts'
 import { formatCount, formatMoney } from './formatMoney.ts'
 import type { TipContent, TipRow } from './tooltip.ts'
 import { clockTime } from './tripBoard.ts'
@@ -66,9 +67,12 @@ export interface YesterdayFacts {
   readonly segments: readonly SegmentProductFacts[]
 }
 
-/** Yesterday's facts for `product`, from `day`, the last day played. */
+/** Yesterday's facts for `product`, from `day`, a truck's last day played. */
 export function yesterdayFacts(
-  day: DaySummary,
+  day: Pick<
+    DaySummary,
+    'sold' | 'pricedOut' | 'lostSales' | 'spoiled' | 'visits'
+  >,
   product: ProductId,
 ): YesterdayFacts {
   const lostSales = day.lostSales[product]
@@ -103,32 +107,53 @@ export function seasonal(game: GameState, product: ProductId): boolean {
   return inSeason(product, game.day, FOOD_TRUCK.products)
 }
 
+/** The stock on hand this morning of `game`'s truck `truck`. */
+function stockOf(game: GameState, truck: TruckId): readonly Lot[] {
+  if (truck === FIRST_TRUCK) return game.inventory
+  return game.trucks?.find(({ id }) => id === truck)?.inventory ?? []
+}
+
 /**
- * Whether `product` is on sale today: in season (see `seasonal`), with
- * some on hand this morning, or the rule that supplies it today bringing
- * some (see `supplyRule`: the bake rule for croissants the running bakery
- * makes, the restock rule otherwise, croissants the player wants made
- * included while no bakery runs).
+ * Whether `product` is on sale today at the truck `truck`, the first one
+ * by default: in season (see `seasonal`), with some on hand this morning,
+ * or the rule that supplies it today bringing some (see `supplyRule`: the
+ * bake rule for croissants the running bakery makes, the restock rule
+ * otherwise, croissants the player wants made included while no bakery
+ * runs). Another truck always buys its croissants, by its own rule.
  */
-export function onSale(game: GameState, product: ProductId): boolean {
+export function onSale(
+  game: GameState,
+  product: ProductId,
+  truck: TruckId = FIRST_TRUCK,
+): boolean {
   if (!seasonal(game, product)) return false
-  const units = onHand(game.inventory, product)
+  const units = onHand(stockOf(game, truck), product)
   if (units > 0) return true
+  if (truck !== FIRST_TRUCK) {
+    const rule = truckDecisionsOf(game.decisions, truck).restock[product]
+    return orderSize(rule, units) > 0
+  }
   const bakery = morningBakery(game.bakery, game.decisions.bakery, game.day)
   const rule = supplyRule(bakery, game.decisions, game.day, product)
   return orderSize(rule, units) > 0
 }
 
 /**
- * What a unit of `product` costs the truck as of the latest decisions:
- * the content's cost, or the bakery's ingredients for croissants it will
- * make tomorrow, plus what it goes out in.
+ * What a unit of `product` costs the truck `truck`, the first one by
+ * default, as of the latest decisions: the content's cost, or for the
+ * first truck the bakery's ingredients for croissants it will make
+ * tomorrow, plus what it goes out in.
  */
-export function unitCost(game: GameState, product: ProductId): Cents {
+export function unitCost(
+  game: GameState,
+  product: ProductId,
+  truck: TruckId = FIRST_TRUCK,
+): Cents {
   const { unitCostCents, packagingCents } = FOOD_TRUCK.products[product]
   const latest = latestDecisions(game)
   const today = morningBakery(game.bakery, game.decisions.bakery, game.day)
   const made =
+    truck === FIRST_TRUCK &&
     product === BAKED &&
     latest.croissantSource === 'fabriquer' &&
     runsOn(today, latest.bakery, game.day + 1)
@@ -306,17 +331,25 @@ export interface ProductBoard {
   readonly cost: Cents
 }
 
-/** Each product's board for `game` on the morning of `game.day`. */
+/**
+ * Each product's board for `game`'s truck `truck`, the first one by
+ * default, on the morning of `game.day`: its own last day and stock.
+ */
 export function productBoards(
   game: GameState,
+  truck: TruckId = FIRST_TRUCK,
 ): Readonly<Record<ProductId, ProductBoard>> {
-  const { lastDay } = game
+  const lastDay =
+    truck === FIRST_TRUCK
+      ? game.lastDay
+      : (game.trucks?.find(({ id }) => id === truck)?.lastDay ?? null)
+  const stock = stockOf(game, truck)
   const board = (product: ProductId): ProductBoard => ({
     facts: lastDay === null ? null : yesterdayFacts(lastDay, product),
     inSeason: seasonal(game, product),
-    onSale: onSale(game, product),
-    left: onHand(game.inventory, product),
-    cost: unitCost(game, product),
+    onSale: onSale(game, product, truck),
+    left: onHand(stock, product),
+    cost: unitCost(game, product, truck),
   })
   return Object.fromEntries(
     PRODUCTS.map((product) => [product, board(product)]),

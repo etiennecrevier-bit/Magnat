@@ -102,6 +102,29 @@ describe('topAlerts', () => {
   })
 })
 
+describe('the chip of a truck closed tomorrow (#265)', () => {
+  it('shows « Fermé demain : personne au camion » after the missed deliveries', () => {
+    expect(topAlerts({ missed: 1, messages: 2, unstaffed: 1 })).toEqual([
+      { id: 'missed', icon: 'alerte', label: 'Livraison manquée' },
+      {
+        id: 'closedTomorrow',
+        icon: 'alerte',
+        label: 'Fermé demain\u00a0: personne au camion',
+      },
+      { id: 'messages', icon: 'cahier', label: '2 messages' },
+    ])
+    expect(topAlerts({ missed: 0, messages: 0, unstaffed: 0 })).toEqual([])
+  })
+
+  it('opens « Équipe », paused', () => {
+    const store = createGameStore(START)
+    followAlert('closedTomorrow', createMessageStack(), store, {
+      getElementById: vi.fn(),
+    })
+    expect(store.getState()).toMatchObject({ panel: 'staff', speed: PAUSED })
+  })
+})
+
 describe('followAlert', () => {
   const page = (focus: () => void) => ({
     getElementById: vi.fn(() => ({ focus }) as unknown as HTMLElement),

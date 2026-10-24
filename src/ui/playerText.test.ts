@@ -40,4 +40,20 @@ describe('the player-facing text', () => {
     )
     expect(found).toEqual([])
   })
+
+  it('never says « centre de profit » (#265)', () => {
+    const found = [
+      ...files(UI, /\.(ts|tsx)$/),
+      ...files(CONTENT, /\.fr\.json$/),
+    ].flatMap((url) =>
+      readFileSync(url, 'utf8')
+        .split('\n')
+        .flatMap((line, i) =>
+          /centres? de profits?/iu.test(line)
+            ? [`${url.pathname}:${i + 1}`]
+            : [],
+        ),
+    )
+    expect(found).toEqual([])
+  })
 })

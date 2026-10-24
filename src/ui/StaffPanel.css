@@ -233,3 +233,31 @@
   font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
 }
+
+/* « Je travaille au : » (#265): the trucks as pills, one pressed. */
+.staff__trucks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.staff__trucks-label {
+  flex-basis: 100%;
+  color: #52606d;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.staff__trucks .toggle {
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+/* A truck that closes tomorrow with nobody there: amber, with ⚠︎. */
+.staff__unstaffed {
+  margin: 0;
+  color: #8a5300;
+  font-size: 0.8125rem;
+  font-weight: 800;
+}

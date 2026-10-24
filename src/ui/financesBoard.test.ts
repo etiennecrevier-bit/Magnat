@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { toCalendar } from '../engine/calendar.ts'
-import { createInitialState } from '../engine/clock.ts'
-import { EVENTS } from '../engine/day.ts'
+import { createInitialState, tick } from '../engine/clock.ts'
+import { DIFFICULTIES, EVENTS, FOOD_TRUCK } from '../engine/day.ts'
 import { NO_EVENTS } from '../engine/events.ts'
 import { cents, sum, type Cents } from '../engine/money.ts'
 import { netWorth } from '../engine/netWorth.ts'
@@ -15,10 +15,23 @@ import type {
 import { balance, postEntry } from '../finance/journal.ts'
 import { balanceSheet, incomeStatement } from '../finance/statements.ts'
 import { nextFixedCosts } from './cashLevel.ts'
+import { DISTRICTS } from '../engine/districts.ts'
+import { monthlyFixedCosts } from '../engine/fixedCosts.ts'
+import { credit, debit } from '../engine/posting.ts'
+import { BAKERY } from '../engine/bakery.ts'
+import {
+  dateDay,
+  hiring,
+  SECOND,
+  withSecondTruck,
+} from './fixtures/twoTrucks.ts'
 import {
   CHART_DAYS,
+  companyBoard,
   daysPlayedThisMonth,
   financeTiles,
+  permitsDue,
+  truckRows,
   lateReceivables,
   monthDays,
   recentChartDays,
@@ -534,5 +547,177 @@ describe('recentChartDays', () => {
     const days = recentChartDays([], [], 45, 50)
     expect(days.map(({ day }) => day)).toEqual([45, 46, 47, 48, 49, 50])
     expect(days.every(({ played: has }) => !has)).toBe(true)
+  })
+})
+
+describe('« Par camion » (#265)', () => {
+  /** Days 1 to 3 played, both trucks open every day, Kevin at the Plateau. */
+  function bothPlayed(): GameState {
+    let game = withSecondTruck(
+      createInitialState(42),
+      { kind: 'daysOpen', weekdays: [1, 2, 3, 4, 5, 6, 7] },
+      { kind: 'daysOpen', weekdays: [1, 2, 3, 4, 5, 6, 7], truck: SECOND },
+      hiring('kevin'),
+      { kind: 'ownerAt', truck: SECOND },
+    )
+    for (let day = 0; day < 4; day += 1) game = tick(game)
+    return game
+  }
+
+  /** `game` with an entry of `lines` on its morning, no truck named. */
+  function posted(game: GameState, ...lines: Parameters<typeof debit>[]) {
+    const [first, second] = lines
+    if (first === undefined || second === undefined) throw new Error('lines')
+    return {
+      ...game,
+      journal: postEntry(game.journal, {
+        day: game.day,
+        memo: 'Livraison',
+        lines: [debit(...first), credit(...second)],
+      }),
+    }
+  }
+
+  it('is not there with one truck', () => {
+    const game = played(3).getState().game
+    expect(truckRows(game, thisMonth(game))).toBeNull()
+    expect(companyBoard(game, []).trucks).toBeNull()
+  })
+
+  it('adds up, with what no truck sold, to the month’s sales and margin', () => {
+    // A grocer's delivery: sold on credit, its croissants out of stock.
+    const game = posted(
+      posted(bothPlayed(), ['1100', cents(12_000)], ['4000', cents(12_000)]),
+      ['5000', cents(4_000)],
+      ['1200', cents(4_000)],
+    )
+    const statements = thisMonth(game)
+    const rows = truckRows(game, statements)
+    expect(rows?.map(({ label }) => label)).toEqual([
+      'Plateau',
+      'Vieux-Montréal',
+      'Autres ventes',
+      'Total',
+    ])
+    const [plateau, vieux, others, total] = rows ?? []
+    expect(plateau!.sales).toBeGreaterThan(0)
+    expect(vieux!.sales).toBeGreaterThan(0)
+    expect(others).toMatchObject({ sales: 12_000, margin: 8_000 })
+    const { sales, grossMargin } = statements.incomeStatement
+    expect(total).toMatchObject({
+      sales: sales.amount,
+      margin: grossMargin.amount,
+    })
+    expect(sum([plateau!, vieux!, others!].map(({ sales }) => sales))).toBe(
+      sales.amount,
+    )
+    expect(sum([plateau!, vieux!, others!].map(({ margin }) => margin))).toBe(
+      grossMargin.amount,
+    )
+    expect(companyBoard(game, []).trucks).toEqual(rows)
+  })
+
+  it('keeps « Autres ventes » for a cost no truck made, and leaves it out at 0', () => {
+    const game = bothPlayed()
+    expect(truckRows(game, thisMonth(game))?.map(({ id }) => id)).toEqual([
+      'plateau',
+      SECOND,
+      'total',
+    ])
+    const cost = posted(game, ['5000', cents(500)], ['1200', cents(500)])
+    expect(truckRows(cost, thisMonth(cost))?.[2]).toEqual({
+      id: 'others',
+      label: 'Autres ventes',
+      sales: 0,
+      margin: -500,
+    })
+  })
+})
+
+describe('the second truck’s charges in « À surveiller » (#265)', () => {
+  const START = createInitialState(42)
+  const MARCH_1 = dateDay(2, 3, 1)
+  const MARCH_15 = dateDay(2, 3, 15)
+  const APRIL_1 = dateDay(2, 4, 1)
+  const PERMIT = DIFFICULTIES.districtPermits.moyen.vieuxMontreal ?? cents(0)
+  const INSURANCE = cents(FOOD_TRUCK.monthlyCostsCents.insurance)
+
+  /** The second truck bought on day 0, the game on the morning of `day`. */
+  const on = (day: number, game: GameState = withSecondTruck(START)) => ({
+    ...game,
+    day,
+  })
+  const watch = (game: GameState) =>
+    companyBoard(game, []).watch.map(({ text }) => text)
+  /** What the cash gauge reads against, one-truck or two. */
+  const costs = (game: GameState) =>
+    nextFixedCosts({
+      day: game.day,
+      difficulty: game.profile.difficulty,
+      firstDay: 0,
+      bakery: game.bakery,
+      dream: game.dream,
+      trucks: game.trucks ?? [],
+    })
+
+  it('shows the permit from the 1st of the month before to the morning it is paid', () => {
+    const line = `Permis du Vieux-Montréal${S}: ${formatWholeMoney(PERMIT)} le 1er avril`
+    expect(watch(on(MARCH_1 - 1))).not.toContain(line)
+    expect(watch(on(MARCH_1))).toContain(line)
+    expect(watch(on(MARCH_15))).toContain(line)
+    expect(watch(on(APRIL_1))).toContain(line)
+    expect(watch(on(APRIL_1 + 1)).join()).not.toContain('Permis')
+    expect(permitsDue(on(MARCH_15))).toEqual([
+      { district: 'Vieux-Montréal', day: APRIL_1, amount: PERMIT },
+    ])
+    // Second, after the charges, so three lines never cut it.
+    expect(companyBoard(on(MARCH_15), []).watch[1]?.id).toBe('permit')
+  })
+
+  it('keeps the permit in the cash gauge’s amount, and once in « À surveiller »', () => {
+    const one = on(MARCH_15, START)
+    const two = on(MARCH_15)
+    expect(costs(two)).toBe(
+      monthlyFixedCosts(
+        MARCH_15,
+        'moyen',
+        0,
+        FOOD_TRUCK,
+        DIFFICULTIES,
+        two.bakery,
+        BAKERY,
+        null,
+        DISTRICTS,
+        two.trucks,
+      ),
+    )
+    expect(costs(two)).toBe(costs(one) + INSURANCE + PERMIT)
+    // The charges line leaves out the permit, which has its own.
+    expect(watch(two)[0]).toBe(
+      `${formatWholeMoney(cents(costs(one) + INSURANCE))} de frais fixes le 1er avril`,
+    )
+    expect(costs(on(APRIL_1))).toBe(
+      costs(on(APRIL_1, START)) + INSURANCE + PERMIT,
+    )
+    // On March 1st, the 1st paid that morning has no permit in it.
+    expect(costs(on(MARCH_1))).toBe(costs(on(MARCH_1, START)) + INSURANCE)
+  })
+
+  it('adds the insurance in an ordinary month, stored or not', () => {
+    const june = dateDay(1, 6, 15)
+    const two = on(june)
+    expect(costs(two)).toBe(costs(on(june, START)) + INSURANCE)
+    expect(watch(two)[0]).toBe(
+      `${formatWholeMoney(costs(two))} de frais fixes le 1er juillet`,
+    )
+    const stored = on(
+      june,
+      withSecondTruck(START, {
+        kind: 'storage',
+        storage: { from: { month: 5, day: 1 }, to: { month: 9, day: 30 } },
+        truck: SECOND,
+      }),
+    )
+    expect(costs(stored)).toBe(costs(two))
   })
 })

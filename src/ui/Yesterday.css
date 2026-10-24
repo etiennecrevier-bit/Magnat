@@ -20,7 +20,8 @@ body {
 
 .yesterday {
   position: relative;
-  width: 13rem;
+  min-width: 13rem;
+  max-width: 18rem;
   border: 3px solid #2b2622;
   border-radius: 18px;
   background: #fff7e8;
@@ -148,4 +149,16 @@ body {
   color: #6b625a;
   font-weight: 600;
   line-height: 1.25;
+}
+
+/* Why the truck shown sold nothing (#265), in place of its numbers. */
+.yesterday__closed {
+  color: #6b625a;
+}
+
+/* Each other truck's sales (#265), under a thin line. */
+.yesterday__row--divider {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #d9cdb8;
 }

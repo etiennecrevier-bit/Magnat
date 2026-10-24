@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CandidateId, StaffRoleId, TraitId } from '../content/schema.ts'
 import type { DecisionChange } from '../engine/decisions.ts'
 import { STAFF } from '../engine/staff.ts'
+import type { TruckId } from '../engine/types.ts'
 import { stepWage, WAGE_STEP_TEXT, wageChange } from './decisionInput.ts'
 import { describedBy, type Lock } from './describedBy.ts'
 import { STAFF_TABS, type StaffTab } from './dockFrame.ts'
@@ -27,6 +28,7 @@ import {
   type RoleOffer,
   type StaffBoard,
   type Task,
+  type TruckOption,
 } from './staffBoard.ts'
 import { useGame } from './store.ts'
 import type { TipActions } from './Tooltip.tsx'
@@ -83,11 +85,17 @@ export function StaffPanelView({
       <p className="manage__note">Les changements s'appliquent demain matin</p>
       {tab === 'team' ? (
         <ul className="staff__team" aria-label="L'équipe">
-          <OwnerCard owner={board.owner} />
+          <OwnerCard
+            owner={board.owner}
+            trucks={board.trucks}
+            unstaffed={board.unstaffed}
+            onChange={onChange}
+          />
           {board.members.map((member) => (
             <MemberCard
               key={member.candidate}
               member={member}
+              trucks={board.trucks}
               hours={hoursOf(board, member.role)}
               confirming={confirming === member.candidate}
               onConfirmingChange={onConfirmingChange}
@@ -200,8 +208,65 @@ function Portrait({ url }: { url: string | null }) {
   )
 }
 
-/** The owner's card, first: their pay stays a decision of « Le camion ». */
-function OwnerCard({ owner }: { owner: OwnerRow }) {
+/**
+ * « Je travaille au : Plateau / Vieux-Montréal » (#265): one pill per
+ * truck, the one worked at pressed, so nobody is at two trucks at once.
+ * A press on another sends its change.
+ */
+function TruckChoice({
+  said,
+  label,
+  trucks,
+  at,
+  onPick,
+}: {
+  /** The words before the pills: « Je travaille au ». */
+  said: string
+  /** What the group is named, for a screen reader. */
+  label: string
+  trucks: readonly TruckOption[]
+  at: TruckId | null
+  onPick: (truck: TruckId) => void
+}) {
+  return (
+    <div className="staff__trucks" role="group" aria-label={label}>
+      <span className="staff__trucks-label" aria-hidden="true">
+        {said}
+        {COLON}
+      </span>
+      {trucks.map(({ id, name }) => (
+        <button
+          key={id}
+          type="button"
+          className="toggle"
+          aria-pressed={id === at}
+          onClick={() => {
+            if (id !== at) onPick(id)
+          }}
+        >
+          {name}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * The owner's card, first: their pay stays a decision of « Le camion ».
+ * With two trucks or more, where they work, and each truck that closes
+ * tomorrow with nobody there.
+ */
+function OwnerCard({
+  owner,
+  trucks,
+  unstaffed,
+  onChange,
+}: {
+  owner: OwnerRow
+  trucks: readonly TruckOption[]
+  unstaffed: readonly TruckOption[]
+  onChange: OnChange
+}) {
   return (
     <li>
       <Tooltip content={ownerTip(owner)}>
@@ -221,6 +286,21 @@ function OwnerCard({ owner }: { owner: OwnerRow }) {
             {owner.yesterday !== null && (
               <p className="staff__yesterday">{owner.yesterday}</p>
             )}
+            {trucks.length > 1 && (
+              <TruckChoice
+                said="Je travaille au"
+                label="Je travaille au"
+                trucks={trucks}
+                at={owner.at}
+                onPick={(truck) => onChange({ kind: 'ownerAt', truck })}
+              />
+            )}
+            {unstaffed.map(({ id, name }) => (
+              <p key={id} className="staff__unstaffed">
+                <span aria-hidden="true">⚠︎ </span>
+                {name} fermé demain{COLON} personne au camion
+              </p>
+            ))}
           </div>
         )}
       </Tooltip>
@@ -235,12 +315,15 @@ function OwnerCard({ owner }: { owner: OwnerRow }) {
  */
 function MemberCard({
   member,
+  trucks,
   hours,
   confirming,
   onConfirmingChange,
   onChange,
 }: {
   member: MemberRow
+  /** The trucks to work at, with two or more. */
+  trucks: readonly TruckOption[]
   hours: number
   confirming: boolean
   onConfirmingChange: (candidate: CandidateId | null) => void
@@ -336,6 +419,17 @@ function MemberCard({
               </ul>
               {member.yesterday !== null && (
                 <p className="staff__yesterday">{member.yesterday}</p>
+              )}
+              {trucks.length > 1 && member.truck !== null && !settled && (
+                <TruckChoice
+                  said="Travaille au"
+                  label={`${name} travaille au`}
+                  trucks={trucks}
+                  at={member.truck}
+                  onPick={(truck) =>
+                    onChange({ kind: 'assign', candidate, truck })
+                  }
+                />
               )}
               <div className="staff__actions">
                 {status === 'startsTomorrow' && (
